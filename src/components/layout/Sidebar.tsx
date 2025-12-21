@@ -1,26 +1,22 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { 
-  LayoutDashboard, 
+  LayoutGrid, 
+  Link2, 
   Users, 
   MessageSquare, 
-  Link2, 
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  Phone
+  Send,
+  Menu
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: LayoutGrid, label: "Dashboard", path: "/" },
+  { icon: Link2, label: "Conexões", path: "/conexoes" },
   { icon: Users, label: "Leads", path: "/leads" },
-  { icon: MessageSquare, label: "Conversas", path: "/conversations" },
-  { icon: Link2, label: "Conexões", path: "/connections" },
-  { icon: Settings, label: "Configurações", path: "/settings" },
+  { icon: MessageSquare, label: "Atendimento", path: "/atendimento" },
+  { icon: Send, label: "Disparos", path: "/disparos" },
 ];
 
 export function Sidebar() {
@@ -30,93 +26,47 @@ export function Sidebar() {
   return (
     <aside 
       className={cn(
-        "h-screen bg-sidebar fixed left-0 top-0 z-50 flex flex-col transition-all duration-300 border-r border-sidebar-border",
-        collapsed ? "w-[72px]" : "w-64"
+        "fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-sidebar border-r border-sidebar-border transition-all duration-300 z-40",
+        collapsed ? "w-16" : "w-56"
       )}
     >
-      {/* Logo */}
-      <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl gradient-whatsapp flex items-center justify-center shadow-whatsapp">
-            <Phone className="w-5 h-5 text-primary-foreground" />
-          </div>
-          {!collapsed && (
-            <div className="animate-fade-in">
-              <h1 className="font-bold text-sidebar-foreground text-lg">WhatsApp</h1>
-              <p className="text-xs text-sidebar-foreground/60">CRM Hub</p>
-            </div>
-          )}
-        </div>
+      {/* Toggle */}
+      <div className="p-3 border-b border-sidebar-border">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full h-9 text-sidebar-muted hover:text-sidebar-foreground hover:bg-muted/30"
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-3 space-y-1">
+      <nav className="p-2 space-y-1">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path;
           const Icon = item.icon;
           
-          const linkContent = (
+          return (
             <Link
+              key={item.path}
               to={item.path}
               className={cn(
-                "flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group",
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
                 isActive 
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-whatsapp" 
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  ? "bg-primary text-primary-foreground" 
+                  : "text-sidebar-foreground hover:bg-muted/30"
               )}
             >
-              <Icon className={cn(
-                "w-5 h-5 shrink-0 transition-transform group-hover:scale-110",
-                isActive && "drop-shadow-sm"
-              )} />
+              <Icon className="w-5 h-5 shrink-0" />
               {!collapsed && (
-                <span className="font-medium animate-fade-in">{item.label}</span>
+                <span className="text-sm font-medium">{item.label}</span>
               )}
             </Link>
           );
-
-          if (collapsed) {
-            return (
-              <Tooltip key={item.path} delayDuration={0}>
-                <TooltipTrigger asChild>
-                  {linkContent}
-                </TooltipTrigger>
-                <TooltipContent side="right" className="font-medium">
-                  {item.label}
-                </TooltipContent>
-              </Tooltip>
-            );
-          }
-
-          return <div key={item.path}>{linkContent}</div>;
         })}
       </nav>
-
-      {/* Footer */}
-      <div className="p-3 border-t border-sidebar-border">
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-            collapsed ? "px-3" : "justify-start"
-          )}
-        >
-          <LogOut className="w-5 h-5 shrink-0" />
-          {!collapsed && <span className="ml-3">Sair</span>}
-        </Button>
-      </div>
-
-      {/* Collapse Toggle */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 bg-sidebar-primary text-sidebar-primary-foreground rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
-      >
-        {collapsed ? (
-          <ChevronRight className="w-4 h-4" />
-        ) : (
-          <ChevronLeft className="w-4 h-4" />
-        )}
-      </button>
     </aside>
   );
 }

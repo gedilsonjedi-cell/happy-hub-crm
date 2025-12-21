@@ -1,98 +1,128 @@
-import { Users, MessageSquare, Link2, TrendingUp, UserPlus, Clock } from "lucide-react";
+import { 
+  Users, 
+  UserPlus, 
+  MessageSquare, 
+  Send, 
+  TrendingUp,
+  Clock
+} from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { StatsCard } from "@/components/dashboard/StatsCard";
-import { RecentConversations } from "@/components/dashboard/RecentConversations";
-import { ConnectionStatus } from "@/components/dashboard/ConnectionStatus";
+import { cn } from "@/lib/utils";
+
+interface StatCardProps {
+  title: string;
+  value: number;
+  icon: React.ElementType;
+  iconColor?: string;
+}
+
+function StatCard({ title, value, icon: Icon, iconColor = "text-primary" }: StatCardProps) {
+  return (
+    <div className="bg-card rounded-lg border border-border p-5 animate-fade-in">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground mb-3">{title}</p>
+          <p className="text-3xl font-bold text-foreground">{value}</p>
+        </div>
+        <Icon className={cn("w-6 h-6", iconColor)} />
+      </div>
+    </div>
+  );
+}
+
+interface QuickActionProps {
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  onClick?: () => void;
+}
+
+function QuickAction({ title, description, icon: Icon, onClick }: QuickActionProps) {
+  return (
+    <button 
+      onClick={onClick}
+      className="gradient-card rounded-lg p-5 text-left hover:opacity-90 transition-opacity animate-slide-up w-full"
+    >
+      <Icon className="w-6 h-6 text-primary-foreground mb-4" />
+      <h3 className="font-semibold text-primary-foreground mb-1">{title}</h3>
+      <p className="text-sm text-primary-foreground/70">{description}</p>
+    </button>
+  );
+}
 
 const Index = () => {
   return (
     <MainLayout>
       {/* Header */}
       <div className="mb-8 animate-fade-in">
-        <h1 className="text-3xl font-bold text-foreground mb-2">
-          Olá, <span className="text-gradient">Usuário</span> 👋
-        </h1>
-        <p className="text-muted-foreground">
-          Aqui está o resumo das suas atividades de hoje
-        </p>
+        <h1 className="text-2xl font-bold text-foreground mb-1">Dashboard CRM</h1>
+        <p className="text-muted-foreground">Visão geral do seu CRM WhatsApp</p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatsCard
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard
           title="Total de Leads"
-          value="1.234"
-          change="+12% este mês"
-          changeType="positive"
+          value={0}
           icon={Users}
-          iconColor="bg-primary/10 text-primary"
+          iconColor="text-primary"
         />
-        <StatsCard
-          title="Conversas Ativas"
-          value="56"
-          change="+5 novas hoje"
-          changeType="positive"
+        <StatCard
+          title="Novos Hoje"
+          value={0}
+          icon={UserPlus}
+          iconColor="text-primary"
+        />
+        <StatCard
+          title="Conversas Abertas"
+          value={0}
           icon={MessageSquare}
-          iconColor="bg-warning/10 text-warning"
+          iconColor="text-primary"
         />
-        <StatsCard
-          title="Conexões Ativas"
-          value="3"
-          change="2 conectadas"
-          changeType="neutral"
-          icon={Link2}
-          iconColor="bg-accent/10 text-accent"
-        />
-        <StatsCard
-          title="Taxa de Resposta"
-          value="94%"
-          change="+2% vs semana passada"
-          changeType="positive"
-          icon={TrendingUp}
-          iconColor="bg-primary/10 text-primary"
+        <StatCard
+          title="Campanhas Enviadas"
+          value={0}
+          icon={Send}
+          iconColor="text-purple-400"
         />
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border/50 hover:border-primary/50 hover:shadow-whatsapp transition-all duration-300 group">
-          <div className="p-3 rounded-xl gradient-whatsapp text-primary-foreground group-hover:scale-110 transition-transform">
-            <UserPlus className="w-5 h-5" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold text-card-foreground">Adicionar Lead</p>
-            <p className="text-sm text-muted-foreground">Cadastrar novo contato</p>
-          </div>
-        </button>
+      <div className="bg-card rounded-lg border border-border p-6 mb-6 animate-slide-up">
+        <div className="flex items-center gap-2 mb-5">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Ações Rápidas</h2>
+        </div>
         
-        <button className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border/50 hover:border-primary/50 hover:shadow-whatsapp transition-all duration-300 group">
-          <div className="p-3 rounded-xl bg-warning/10 text-warning group-hover:scale-110 transition-transform">
-            <MessageSquare className="w-5 h-5" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold text-card-foreground">Nova Conversa</p>
-            <p className="text-sm text-muted-foreground">Iniciar atendimento</p>
-          </div>
-        </button>
-        
-        <button className="flex items-center gap-4 p-4 bg-card rounded-xl border border-border/50 hover:border-primary/50 hover:shadow-whatsapp transition-all duration-300 group">
-          <div className="p-3 rounded-xl bg-muted text-muted-foreground group-hover:scale-110 transition-transform">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold text-card-foreground">Pendentes</p>
-            <p className="text-sm text-muted-foreground">8 conversas aguardando</p>
-          </div>
-        </button>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <QuickAction
+            title="Adicionar Lead"
+            description="Cadastre novos contatos"
+            icon={UserPlus}
+          />
+          <QuickAction
+            title="Atendimentos"
+            description="Gerencie conversas"
+            icon={MessageSquare}
+          />
+          <QuickAction
+            title="Nova Campanha"
+            description="Dispare mensagens em massa"
+            icon={Send}
+          />
+        </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <RecentConversations />
+      {/* Recent Activity */}
+      <div className="bg-card rounded-lg border border-border p-6 animate-slide-up">
+        <div className="flex items-center gap-2 mb-5">
+          <Clock className="w-5 h-5 text-foreground" />
+          <h2 className="text-lg font-semibold text-foreground">Atividade Recente</h2>
         </div>
-        <div>
-          <ConnectionStatus />
+        
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <MessageSquare className="w-12 h-12 mb-4 opacity-30" />
+          <p>Nenhuma atividade recente</p>
         </div>
       </div>
     </MainLayout>
