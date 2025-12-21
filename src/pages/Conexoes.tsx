@@ -2,19 +2,10 @@ import { useState } from "react";
 import { 
   Link2, 
   Plus, 
-  Wifi, 
-  WifiOff, 
-  Phone, 
-  QrCode,
-  RefreshCw,
-  Trash2,
-  Settings,
-  Copy,
-  Check
+  ExternalLink
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -25,66 +16,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-interface Connection {
-  id: string;
-  name: string;
-  phone: string;
-  status: "connected" | "disconnected" | "connecting";
-  messagesCount: number;
-}
-
-const mockConnections: Connection[] = [
-  { 
-    id: "1", 
-    name: "Número Principal", 
-    phone: "+55 11 99999-0001", 
-    status: "connected",
-    messagesCount: 1234
-  },
-  { 
-    id: "2", 
-    name: "Suporte", 
-    phone: "+55 11 99999-0002", 
-    status: "connected",
-    messagesCount: 567
-  },
-  { 
-    id: "3", 
-    name: "Vendas", 
-    phone: "+55 11 99999-0003", 
-    status: "disconnected",
-    messagesCount: 890
-  },
-];
-
-const statusConfig = {
-  connected: { 
-    label: "Conectado", 
-    icon: Wifi,
-    className: "bg-primary/10 text-primary border-primary/30"
-  },
-  disconnected: { 
-    label: "Desconectado", 
-    icon: WifiOff,
-    className: "bg-destructive/10 text-destructive border-destructive/30"
-  },
-  connecting: { 
-    label: "Conectando", 
-    icon: Wifi,
-    className: "bg-warning/10 text-warning border-warning/30"
-  },
-};
-
 const Conexoes = () => {
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    appName: "",
+    accessToken: "",
+    whatsappNumber: ""
+  });
 
-  const handleCopy = (id: string) => {
-    setCopiedId(id);
-    toast.success("Copiado!");
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleConnect = () => {
+    if (!formData.appName || !formData.accessToken || !formData.whatsappNumber) {
+      toast.error("Preencha todos os campos");
+      return;
+    }
+    toast.success("Conexão realizada com sucesso!");
+    setIsDialogOpen(false);
+    setFormData({ appName: "", accessToken: "", whatsappNumber: "" });
   };
 
   return (
@@ -92,136 +41,115 @@ const Conexoes = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-8 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Conexões</h1>
-          <p className="text-muted-foreground">Gerencie seus números WhatsApp</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">Conexões WhatsApp</h1>
+          <p className="text-muted-foreground">Gerencie suas conexões com provedores BSP</p>
         </div>
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="default" className="gap-2">
+            <Button className="gap-2">
               <Plus className="w-4 h-4" />
               Nova Conexão
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md bg-card border-border">
             <DialogHeader>
-              <DialogTitle>Adicionar Conexão</DialogTitle>
-              <DialogDescription>
-                Conecte um novo número WhatsApp
+              <DialogTitle className="text-foreground">Conectar Notifica.me</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                Configure sua conexão com a API do Notifica.me para enviar e receber mensagens
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input placeholder="Ex: Vendas, Suporte..." />
+                <Label className="text-foreground">Nome do App</Label>
+                <Input 
+                  placeholder="seu-email@exemplo.com" 
+                  className="bg-muted/30 border-border"
+                  value={formData.appName}
+                  onChange={(e) => setFormData({ ...formData, appName: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
-                <Label>Número</Label>
-                <Input placeholder="+55 11 99999-0000" />
+                <Label className="text-foreground">Token de Acesso</Label>
+                <Input 
+                  type="password"
+                  placeholder="••••••••••"
+                  className="bg-muted/30 border-border"
+                  value={formData.accessToken}
+                  onChange={(e) => setFormData({ ...formData, accessToken: e.target.value })}
+                />
               </div>
-              <div className="flex justify-center p-6 bg-muted/30 rounded-lg border border-border">
-                <div className="text-center">
-                  <QrCode className="w-24 h-24 mx-auto text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Escaneie o QR Code
-                  </p>
-                </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Número WhatsApp</Label>
+                <Input 
+                  placeholder="+5511999999999"
+                  className="bg-muted/30 border-border"
+                  value={formData.whatsappNumber}
+                  onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-3">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Conectar</Button>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleConnect}>
+                Conectar
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold text-foreground">{mockConnections.length}</p>
-            </div>
+      {/* Integration Card */}
+      <div className="bg-card rounded-lg border border-border p-6 animate-slide-up">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-lg bg-muted/30 flex items-center justify-center border border-border">
             <Link2 className="w-6 h-6 text-primary" />
           </div>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Conectadas</p>
-              <p className="text-2xl font-bold text-primary">
-                {mockConnections.filter(c => c.status === "connected").length}
-              </p>
-            </div>
-            <Wifi className="w-6 h-6 text-primary" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-foreground mb-1">
+              Integração Notifica.me
+            </h3>
+            <p className="text-muted-foreground text-sm mb-3">
+              O Notifica.me é um provedor BSP oficial do WhatsApp. Conecte sua conta para enviar e receber mensagens.
+            </p>
+            <a 
+              href="https://notifica.me" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-primary text-sm hover:underline"
+            >
+              Criar conta no Notifica.me
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Mensagens</p>
-              <p className="text-2xl font-bold text-foreground">
-                {mockConnections.reduce((acc, c) => acc + c.messagesCount, 0).toLocaleString()}
-              </p>
-            </div>
-            <Phone className="w-6 h-6 text-warning" />
-          </div>
+          <Button variant="outline" onClick={() => setIsDialogOpen(true)}>
+            Configurar
+          </Button>
         </div>
       </div>
 
-      {/* Connections Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockConnections.map((connection) => {
-          const config = statusConfig[connection.status];
-          const StatusIcon = config.icon;
-          
-          return (
-            <div 
-              key={connection.id}
-              className="bg-card rounded-lg border border-border p-5 animate-fade-in"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg gradient-primary flex items-center justify-center">
-                    <Phone className="w-5 h-5 text-primary-foreground" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{connection.name}</h3>
-                    <p className="text-sm text-muted-foreground">{connection.phone}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between mb-4">
-                <Badge variant="outline" className={cn("text-xs", config.className)}>
-                  <StatusIcon className="w-3 h-3 mr-1" />
-                  {config.label}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {connection.messagesCount.toLocaleString()} msgs
-                </span>
-              </div>
+      {/* Info Section */}
+      <div className="mt-6 p-4 bg-muted/20 rounded-lg border border-border">
+        <h4 className="font-medium text-foreground mb-2">Como obter suas credenciais?</h4>
+        <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+          <li>Acesse o painel do Notifica.me e faça login</li>
+          <li>Vá em Configurações → API</li>
+          <li>Copie o Token de Acesso e o Nome do App</li>
+          <li>Cole as informações no formulário acima</li>
+        </ol>
+      </div>
 
-              <div className="flex gap-2">
-                {connection.status === "disconnected" ? (
-                  <Button variant="default" size="sm" className="flex-1 gap-2">
-                    <RefreshCw className="w-4 h-4" />
-                    Reconectar
-                  </Button>
-                ) : (
-                  <Button variant="outline" size="sm" className="flex-1 gap-2">
-                    <Settings className="w-4 h-4" />
-                    Configurar
-                  </Button>
-                )}
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          );
-        })}
+      {/* Connected Numbers Section (empty state) */}
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Números Conectados</h3>
+        <div className="bg-card rounded-lg border border-border p-8 text-center">
+          <Link2 className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+          <p className="text-muted-foreground">Nenhum número conectado ainda</p>
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            Configure uma integração acima para começar a enviar mensagens
+          </p>
+        </div>
       </div>
     </MainLayout>
   );
