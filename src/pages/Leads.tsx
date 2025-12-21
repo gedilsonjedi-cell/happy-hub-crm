@@ -6,8 +6,7 @@ import {
   Filter, 
   MoreVertical, 
   Phone, 
-  Mail, 
-  Calendar,
+  Mail,
   Upload,
   Download
 } from "lucide-react";
@@ -48,14 +47,13 @@ const mockLeads: Lead[] = [
   { id: "3", name: "Ana Costa", phone: "+55 31 97777-9012", email: "ana@email.com", status: "qualified", source: "Indicação", createdAt: "2024-01-13" },
   { id: "4", name: "Pedro Lima", phone: "+55 41 96666-3456", email: "pedro@email.com", status: "converted", source: "WhatsApp", createdAt: "2024-01-12" },
   { id: "5", name: "Carla Mendes", phone: "+55 51 95555-7890", email: "carla@email.com", status: "lost", source: "Facebook", createdAt: "2024-01-11" },
-  { id: "6", name: "Roberto Alves", phone: "+55 61 94444-1234", email: "roberto@email.com", status: "new", source: "WhatsApp", createdAt: "2024-01-10" },
 ];
 
 const statusConfig = {
-  new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/20" },
-  contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/20" },
-  qualified: { label: "Qualificado", className: "bg-accent/10 text-accent border-accent/20" },
-  converted: { label: "Convertido", className: "bg-success/10 text-success border-success/20" },
+  new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/30" },
+  contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/30" },
+  qualified: { label: "Qualificado", className: "bg-blue-500/10 text-blue-400 border-blue-400/30" },
+  converted: { label: "Convertido", className: "bg-primary/10 text-primary border-primary/30" },
   lost: { label: "Perdido", className: "bg-muted text-muted-foreground border-border" },
 };
 
@@ -73,19 +71,19 @@ const Leads = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 animate-fade-in">
         <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Leads</h1>
-          <p className="text-muted-foreground">Gerencie seus contatos e leads</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">Leads</h1>
+          <p className="text-muted-foreground">Gerencie seus contatos</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2">
             <Upload className="w-4 h-4" />
             Importar
           </Button>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2">
             <Download className="w-4 h-4" />
             Exportar
           </Button>
-          <Button variant="whatsapp" className="gap-2">
+          <Button size="sm" className="gap-2">
             <Plus className="w-4 h-4" />
             Novo Lead
           </Button>
@@ -98,7 +96,7 @@ const Leads = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome, telefone ou email..."
-            className="pl-10"
+            className="pl-10 bg-card border-border"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -110,16 +108,16 @@ const Leads = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {Object.entries(statusConfig).map(([key, config]) => (
           <div 
             key={key}
-            className="bg-card rounded-lg p-4 border border-border/50 text-center"
+            className="bg-card rounded-lg p-4 border border-border text-center"
           >
-            <p className="text-2xl font-bold text-card-foreground">
+            <p className="text-xl font-bold text-foreground">
               {mockLeads.filter(l => l.status === key).length}
             </p>
-            <Badge variant="outline" className={cn("text-xs mt-2", config.className)}>
+            <Badge variant="outline" className={cn("text-xs mt-1", config.className)}>
               {config.label}
             </Badge>
           </div>
@@ -127,33 +125,31 @@ const Leads = () => {
       </div>
 
       {/* Table */}
-      <div className="bg-card rounded-xl shadow-card border border-border/50 overflow-hidden animate-slide-up">
+      <div className="bg-card rounded-lg border border-border overflow-hidden animate-slide-up">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead>Lead</TableHead>
-              <TableHead>Contato</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Origem</TableHead>
-              <TableHead>Data</TableHead>
+            <TableRow className="border-border hover:bg-muted/30">
+              <TableHead className="text-muted-foreground">Lead</TableHead>
+              <TableHead className="text-muted-foreground">Contato</TableHead>
+              <TableHead className="text-muted-foreground">Status</TableHead>
+              <TableHead className="text-muted-foreground">Origem</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredLeads.map((lead, index) => (
+            {filteredLeads.map((lead) => (
               <TableRow 
                 key={lead.id}
-                className="hover:bg-muted/30 transition-colors animate-fade-in"
-                style={{ animationDelay: `${index * 30}ms` }}
+                className="border-border hover:bg-muted/20"
               >
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <Avatar className="w-10 h-10 border-2 border-primary/20">
-                      <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                    <Avatar className="w-9 h-9">
+                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
                         {lead.name.split(" ").map(n => n[0]).join("")}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="font-medium text-card-foreground">{lead.name}</span>
+                    <span className="font-medium text-foreground">{lead.name}</span>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -175,12 +171,6 @@ const Leads = () => {
                 </TableCell>
                 <TableCell>
                   <span className="text-sm text-muted-foreground">{lead.source}</span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(lead.createdAt).toLocaleDateString('pt-BR')}
-                  </div>
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
