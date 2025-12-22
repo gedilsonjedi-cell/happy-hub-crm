@@ -137,8 +137,8 @@ ${conversationContext}`;
               <Sparkles className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground text-sm">Assistente de Vendas</h3>
-              <p className="text-xs text-muted-foreground">IA para suporte em vendas</p>
+              <h3 className="font-semibold text-foreground text-sm">IA de Vendas</h3>
+              <p className="text-xs text-muted-foreground">Suporte inteligente em vendas</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
