@@ -54,12 +54,26 @@ interface Channel {
   connected: boolean;
 }
 
+interface MessageTemplate {
+  id: string;
+  name: string;
+  preview: string;
+}
+
 const mockChannels: Channel[] = [
   { id: "ch-1", name: "WhatsApp Principal", phone: "+55 11 99999-0001", connected: true },
   { id: "ch-2", name: "WhatsApp Vendas", phone: "+55 11 99999-0002", connected: true },
   { id: "ch-3", name: "WhatsApp Suporte", phone: "+55 11 99999-0003", connected: true },
   { id: "ch-4", name: "WhatsApp Marketing", phone: "+55 11 99999-0004", connected: true },
   { id: "ch-5", name: "WhatsApp Comercial", phone: "+55 11 99999-0005", connected: true },
+];
+
+const mockTemplates: MessageTemplate[] = [
+  { id: "template-1", name: "Boas-vindas", preview: "Olá {nome}! Seja bem-vindo à nossa empresa..." },
+  { id: "template-2", name: "Promoção", preview: "🔥 Oferta especial para você! Aproveite..." },
+  { id: "template-3", name: "Lembrete", preview: "Oi {nome}, passando para lembrar sobre..." },
+  { id: "template-4", name: "Aniversário", preview: "🎂 Parabéns {nome}! Desejamos um feliz..." },
+  { id: "template-5", name: "Reativação", preview: "Sentimos sua falta! Volte e confira..." },
 ];
 
 interface Campaign {
@@ -108,29 +122,69 @@ const statusConfig = {
 const Disparos = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
+  const [useUnifiedTemplate, setUseUnifiedTemplate] = useState(true);
   const [formData, setFormData] = useState({
     campaignName: "",
     team: "",
     chatbot: "disabled",
     startTime: "now",
-    messageTemplate: "",
-    dispatchInterval: "60" // segundos
+    unifiedTemplate: "",
+    dispatchInterval: "60"
   });
 
   const toggleChannel = (channelId: string) => {
-    setSelectedChannels(prev => 
-      prev.includes(channelId) 
+    setSelectedChannels(prev => {
+      const newSelected = prev.includes(channelId) 
         ? prev.filter(id => id !== channelId)
-        : [...prev, channelId]
-    );
+        : [...prev, channelId];
+      
+      // Remove template do canal se ele for desmarcado
+      if (!newSelected.includes(channelId)) {
+        setChannelTemplates(current => {
+          const updated = { ...current };
+          delete updated[channelId];
+          return updated;
+        });
+      }
+      
+      return newSelected;
+    });
   };
 
   const selectAllChannels = () => {
     if (selectedChannels.length === mockChannels.length) {
       setSelectedChannels([]);
+      setChannelTemplates({});
     } else {
       setSelectedChannels(mockChannels.map(c => c.id));
     }
+  };
+
+  const setChannelTemplate = (channelId: string, templateId: string) => {
+    setChannelTemplates(prev => ({
+      ...prev,
+      [channelId]: templateId
+    }));
+  };
+
+  const getSelectedTemplatesPreview = () => {
+    if (useUnifiedTemplate && formData.unifiedTemplate) {
+      const template = mockTemplates.find(t => t.id === formData.unifiedTemplate);
+      return template ? [template] : [];
+    }
+    
+    const templates: MessageTemplate[] = [];
+    selectedChannels.forEach(chId => {
+      const templateId = channelTemplates[chId];
+      if (templateId) {
+        const template = mockTemplates.find(t => t.id === templateId);
+        if (template && !templates.find(t => t.id === template.id)) {
+          templates.push(template);
+        }
+      }
+    });
+    return templates;
   };
 
   if (showCreateForm) {
@@ -409,31 +463,117 @@ const Disparos = () => {
             </div>
           </div>
 
-          {/* Right Column - Message Preview */}
+          {/* Right Column - Templates por Canal */}
           <div className="space-y-5">
-            {/* Disparo */}
-            <div className="space-y-2">
+            {/* Modo de Template */}
+            <div className="space-y-3">
               <Label className="text-foreground">
-                Disparo <span className="text-destructive">*</span>
+                Templates de Mensagem <span className="text-destructive">*</span>
               </Label>
-              <div className="flex items-center gap-2">
-                <Select 
-                  value={formData.messageTemplate} 
-                  onValueChange={(value) => setFormData({ ...formData, messageTemplate: value })}
+              
+              {/* Toggle entre unificado e por canal */}
+              <div className="flex gap-2">
+                <Button
+                  variant={useUnifiedTemplate ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setUseUnifiedTemplate(true)}
                 >
-                  <SelectTrigger className="bg-card border-border">
-                    <SelectValue placeholder="Modelo de mensagem" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="template-1">Boas-vindas</SelectItem>
-                    <SelectItem value="template-2">Promoção</SelectItem>
-                    <SelectItem value="template-3">Lembrete</SelectItem>
-                    <SelectItem value="template-4">Aniversário</SelectItem>
-                  </SelectContent>
-                </Select>
-                {formData.messageTemplate && <Check className="w-5 h-5 text-primary" />}
+                  Mesmo template
+                </Button>
+                <Button
+                  variant={!useUnifiedTemplate ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setUseUnifiedTemplate(false)}
+                >
+                  Template por canal
+                </Button>
               </div>
             </div>
+
+            {/* Template Unificado */}
+            {useUnifiedTemplate ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Select 
+                    value={formData.unifiedTemplate} 
+                    onValueChange={(value) => setFormData({ ...formData, unifiedTemplate: value })}
+                  >
+                    <SelectTrigger className="bg-card border-border">
+                      <SelectValue placeholder="Selecione o template" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      {mockTemplates.map(template => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.unifiedTemplate && <Check className="w-5 h-5 text-primary" />}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  O mesmo template será usado em todos os {selectedChannels.length} canais selecionados.
+                </p>
+              </div>
+            ) : (
+              /* Templates por Canal */
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Selecione um template para cada canal. Templates diferentes serão usados conforme configurado.
+                </p>
+                
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {selectedChannels.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-sm">
+                      Selecione pelo menos um canal
+                    </div>
+                  ) : (
+                    selectedChannels.map(chId => {
+                      const channel = mockChannels.find(c => c.id === chId);
+                      const selectedTemplate = channelTemplates[chId];
+                      const template = mockTemplates.find(t => t.id === selectedTemplate);
+                      
+                      return (
+                        <div 
+                          key={chId}
+                          className="p-3 bg-card rounded-lg border border-border space-y-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Smartphone className="w-4 h-4 text-primary" />
+                            <span className="text-sm font-medium text-foreground flex-1">
+                              {channel?.name}
+                            </span>
+                            {selectedTemplate && <Check className="w-4 h-4 text-primary" />}
+                          </div>
+                          <Select 
+                            value={selectedTemplate || ""} 
+                            onValueChange={(value) => setChannelTemplate(chId, value)}
+                          >
+                            <SelectTrigger className="bg-muted/50 border-border h-9">
+                              <SelectValue placeholder="Selecione o template" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-card border-border">
+                              {mockTemplates.map(t => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {template && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {template.preview}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Message Preview */}
             <div 
@@ -443,24 +583,29 @@ const Disparos = () => {
                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` 
               }}
             >
-              <div className="h-64 flex items-center justify-center">
-                {formData.messageTemplate ? (
-                  <div className="bg-card rounded-lg p-4 max-w-[80%] shadow-lg">
-                    <p className="text-foreground text-sm">
-                      Olá! Esta é uma prévia do seu modelo de mensagem selecionado.
-                    </p>
-                    <span className="text-xs text-muted-foreground mt-2 block text-right">12:00</span>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground/50 text-sm">
-                    Selecione um modelo para visualizar
-                  </p>
-                )}
+              <div className="p-3 border-b border-border/50 bg-card/30">
+                <p className="text-xs text-muted-foreground">Prévia das mensagens</p>
               </div>
-              <div className="p-4 bg-card/50 border-t border-border">
-                <Button variant="outline" className="w-full">
-                  Escolher
-                </Button>
+              <div className="min-h-48 max-h-64 overflow-y-auto p-4 space-y-3">
+                {getSelectedTemplatesPreview().length > 0 ? (
+                  getSelectedTemplatesPreview().map((template, idx) => (
+                    <div key={template.id} className="bg-card rounded-lg p-3 max-w-[85%] shadow-lg">
+                      <Badge variant="outline" className="text-xs mb-2 bg-primary/10 border-primary/30 text-primary">
+                        {template.name}
+                      </Badge>
+                      <p className="text-foreground text-sm">
+                        {template.preview}
+                      </p>
+                      <span className="text-xs text-muted-foreground mt-2 block text-right">12:0{idx}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="h-full flex items-center justify-center py-12">
+                    <p className="text-muted-foreground/50 text-sm text-center">
+                      Selecione template(s) para visualizar
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
