@@ -300,12 +300,12 @@ const Atendimento = () => {
             </div>
             
             {/* Status Filter Buttons */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("all")}
-                className="flex-1 text-xs"
+                className="text-xs px-3 h-8"
               >
                 Todos
               </Button>
@@ -313,12 +313,12 @@ const Atendimento = () => {
                 variant={filterStatus === "pending" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("pending")}
-                className="flex-1 text-xs gap-1"
+                className="text-xs px-3 h-8 gap-1 whitespace-nowrap"
               >
-                <Clock className="w-3 h-3" />
-                Pendentes
+                <Clock className="w-3 h-3 shrink-0" />
+                <span>Pendentes</span>
                 {pendingCount > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {pendingCount}
                   </Badge>
                 )}
@@ -327,12 +327,12 @@ const Atendimento = () => {
                 variant={filterStatus === "in_progress" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("in_progress")}
-                className="flex-1 text-xs gap-1"
+                className="text-xs px-3 h-8 gap-1 whitespace-nowrap"
               >
-                <Play className="w-3 h-3" />
-                Andamento
+                <Play className="w-3 h-3 shrink-0" />
+                <span>Andamento</span>
                 {inProgressCount > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {inProgressCount}
                   </Badge>
                 )}
