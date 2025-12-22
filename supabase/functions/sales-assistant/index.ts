@@ -12,39 +12,53 @@ serve(async (req) => {
   }
 
   try {
-    const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    // Verify authentication - REQUIRED
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      console.log('Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      console.log('Invalid token or user not found:', authError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Authenticated user:', user.id);
+
+    const { messages } = await req.json();
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
     }
 
-    // Get user from auth header
-    const authHeader = req.headers.get('authorization');
     let agentConfig = null;
 
-    if (authHeader) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const token = authHeader.replace('Bearer ', '');
-      
-      const { data: { user } } = await supabase.auth.getUser(token);
-      
-      if (user) {
-        // Fetch agent configuration
-        const { data: agent } = await supabase
-          .from('ai_agents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-        
-        if (agent) {
-          agentConfig = agent;
-          console.log('Usando configurações do agente:', agent.name);
-        }
-      }
+    // Fetch agent configuration for authenticated user
+    const { data: agent } = await supabase
+      .from('ai_agents')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    if (agent) {
+      agentConfig = agent;
+      console.log('Usando configurações do agente:', agent.name);
     }
 
     // Build dynamic system prompt based on agent config
