@@ -15,7 +15,11 @@ import {
   Video,
   File,
   Smile,
-  Type
+  Type,
+  Link,
+  Phone,
+  MessageSquare,
+  X
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -71,10 +75,23 @@ interface DetectedVariable {
   example: string;
 }
 
+interface TemplateButton {
+  id: string;
+  type: "quick_reply" | "url" | "phone";
+  label: string;
+  value: string;
+}
+
 const statusConfig = {
   pending: { label: "Pendente", className: "bg-warning/10 text-warning border-warning/30", icon: Clock },
   approved: { label: "Ativo", className: "bg-primary/10 text-primary border-primary/30", icon: Check },
   rejected: { label: "Rejeitado", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
+};
+
+const buttonTypeConfig = {
+  quick_reply: { label: "Resposta Rápida", icon: MessageSquare, placeholder: "Texto da resposta" },
+  url: { label: "Link", icon: Link, placeholder: "https://exemplo.com" },
+  phone: { label: "Telefone", icon: Phone, placeholder: "+5511999999999" },
 };
 
 const Templates = () => {
@@ -91,6 +108,7 @@ const Templates = () => {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [showButtonDialog, setShowButtonDialog] = useState(false);
   
   // New template form state
   const [formData, setFormData] = useState({
@@ -104,6 +122,12 @@ const Templates = () => {
     isArchived: false,
   });
   const [variableExamples, setVariableExamples] = useState<Record<string, string>>({});
+  const [templateButtons, setTemplateButtons] = useState<TemplateButton[]>([]);
+  const [newButton, setNewButton] = useState<Omit<TemplateButton, "id">>({
+    type: "quick_reply",
+    label: "",
+    value: "",
+  });
 
   // Detect variables from content
   const detectedVariables = useMemo(() => {
@@ -187,6 +211,42 @@ const Templates = () => {
       isArchived: false,
     });
     setVariableExamples({});
+    setTemplateButtons([]);
+  };
+
+  const handleAddButton = () => {
+    if (!newButton.label.trim()) {
+      toast.error("Preencha o texto do botão");
+      return;
+    }
+    if (newButton.type !== "quick_reply" && !newButton.value.trim()) {
+      toast.error("Preencha o valor do botão");
+      return;
+    }
+    if (newButton.label.length > 25) {
+      toast.error("O texto do botão deve ter no máximo 25 caracteres");
+      return;
+    }
+    if (templateButtons.length >= 3) {
+      toast.error("Máximo de 3 botões por template");
+      return;
+    }
+
+    setTemplateButtons(prev => [
+      ...prev,
+      {
+        ...newButton,
+        id: crypto.randomUUID(),
+        value: newButton.type === "quick_reply" ? newButton.label : newButton.value,
+      }
+    ]);
+    setNewButton({ type: "quick_reply", label: "", value: "" });
+    setShowButtonDialog(false);
+    toast.success("Botão adicionado");
+  };
+
+  const handleRemoveButton = (id: string) => {
+    setTemplateButtons(prev => prev.filter(b => b.id !== id));
   };
 
   const handleCreateTemplate = async () => {
@@ -488,7 +548,7 @@ const Templates = () => {
         )}
       </div>
 
-      {/* Create Template Dialog - New Design */}
+      {/* Create Template Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="bg-card border-border max-w-4xl max-h-[90vh] overflow-hidden p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
@@ -516,7 +576,7 @@ const Templates = () => {
                 {/* Message Text Area */}
                 <div className="relative">
                   <Textarea
-                    placeholder="Digite sua mensagem aqui...&#10;Use *[VARIAVEL]* para adicionar parâmetros dinâmicos"
+                    placeholder={"Digite sua mensagem aqui...\nUse *[VARIAVEL]* para adicionar parâmetros dinâmicos"}
                     className="bg-background border-border min-h-[180px] resize-none pr-10 text-sm"
                     value={formData.content}
                     onChange={(e) => {
@@ -552,12 +612,41 @@ const Templates = () => {
                   </span>
                 </div>
 
+                {/* Action Buttons Preview */}
+                {templateButtons.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {templateButtons.map((btn) => {
+                      const config = buttonTypeConfig[btn.type];
+                      const Icon = config.icon;
+                      return (
+                        <div 
+                          key={btn.id} 
+                          className="flex items-center justify-between bg-background rounded-lg border border-border p-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-4 h-4 text-primary" />
+                            <span className="text-sm text-foreground">{btn.label}</span>
+                          </div>
+                          <button 
+                            onClick={() => handleRemoveButton(btn.id)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Add Button */}
                 <Button 
                   variant="ghost" 
                   className="w-full mt-3 text-primary hover:text-primary hover:bg-primary/10 border border-dashed border-primary/30"
+                  onClick={() => setShowButtonDialog(true)}
+                  disabled={templateButtons.length >= 3}
                 >
-                  Adicionar botão
+                  {templateButtons.length >= 3 ? "Máximo de 3 botões" : "Adicionar botão"}
                 </Button>
               </div>
             </div>
@@ -663,7 +752,6 @@ const Templates = () => {
                   </div>
                 ) : (
                   <div className="border border-border rounded-lg overflow-hidden">
-                    {/* Table Header */}
                     <div className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-2 bg-muted/30 border-b border-border">
                       <span className="text-xs font-medium text-muted-foreground">Nome</span>
                       <span className="text-xs font-medium text-muted-foreground">Tipo</span>
@@ -671,7 +759,6 @@ const Templates = () => {
                       <span className="text-xs font-medium text-muted-foreground">Exemplo de uso</span>
                     </div>
                     
-                    {/* Table Body */}
                     <div className="divide-y divide-border">
                       {detectedVariables.map((variable) => (
                         <div key={variable.name} className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-3 items-center">
@@ -754,6 +841,85 @@ const Templates = () => {
               </Button>
               <Button onClick={handleCreateTemplate}>
                 Salvar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Button Dialog */}
+      <Dialog open={showButtonDialog} onOpenChange={setShowButtonDialog}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Adicionar botão</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label className="text-foreground">Tipo de botão</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(buttonTypeConfig) as Array<keyof typeof buttonTypeConfig>).map((type) => {
+                  const config = buttonTypeConfig[type];
+                  const Icon = config.icon;
+                  return (
+                    <button
+                      key={type}
+                      className={cn(
+                        "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all",
+                        newButton.type === type
+                          ? "bg-primary/10 border-primary/50 text-primary"
+                          : "bg-muted/30 border-border text-muted-foreground hover:border-primary/30"
+                      )}
+                      onClick={() => setNewButton({ ...newButton, type })}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="text-xs font-medium">{config.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">Texto do botão</Label>
+              <div className="relative">
+                <Input
+                  placeholder="Ex: Falar com vendas"
+                  className="bg-background border-border pr-12"
+                  value={newButton.label}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 25) {
+                      setNewButton({ ...newButton, label: e.target.value });
+                    }
+                  }}
+                  maxLength={25}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  {newButton.label.length}/25
+                </span>
+              </div>
+            </div>
+
+            {newButton.type !== "quick_reply" && (
+              <div className="space-y-2">
+                <Label className="text-foreground">
+                  {newButton.type === "url" ? "URL" : "Número de telefone"}
+                </Label>
+                <Input
+                  placeholder={buttonTypeConfig[newButton.type].placeholder}
+                  className="bg-background border-border"
+                  value={newButton.value}
+                  onChange={(e) => setNewButton({ ...newButton, value: e.target.value })}
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowButtonDialog(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAddButton}>
+                Adicionar
               </Button>
             </div>
           </div>
