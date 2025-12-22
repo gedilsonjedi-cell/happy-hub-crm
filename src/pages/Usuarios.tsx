@@ -64,7 +64,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Navigate } from "react-router-dom";
 
-type AppRole = "admin" | "supervisor" | "atendente";
+type AppRole = "super_admin" | "admin" | "supervisor" | "atendente";
 
 interface UserWithRole {
   id: string;
@@ -91,6 +91,11 @@ interface Organization {
 }
 
 const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; className: string }> = {
+  super_admin: { 
+    label: "Super Admin", 
+    icon: Shield, 
+    className: "bg-purple-500/10 text-purple-500 border-purple-500/30" 
+  },
   admin: { 
     label: "Admin", 
     icon: Shield, 
