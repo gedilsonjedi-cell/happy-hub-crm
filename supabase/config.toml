@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.agent-preview]
 verify_jwt = true
+
+[functions.gupshup-validate]
+verify_jwt = true
