@@ -11,7 +11,7 @@ import {
   GitBranch,
   Bot,
   UserCog,
-  Building2
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
