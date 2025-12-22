@@ -207,8 +207,12 @@ const Atendimento = () => {
   // Simulate receiving a new message (for demo purposes)
   // In production, this would be triggered by real-time events
   const handleNewCustomerMessage = useCallback((convId: string, messageContent: string) => {
-    setConversations(prev => prev.map(conv => {
-      if (conv.id !== convId) return conv;
+    // Check sound state before updating conversations
+    const shouldPlaySound = soundEnabled;
+    
+    setConversations(prev => {
+      const conv = prev.find(c => c.id === convId);
+      if (!conv) return prev;
       
       const newMessage: Message = {
         id: `msg-${Date.now()}`,
@@ -220,27 +224,30 @@ const Atendimento = () => {
       // If archived, move to in_progress
       const newStatus = conv.status === "archived" ? "in_progress" as const : conv.status;
       
-      // Play notification sound for pending or in_progress conversations
-      if (soundEnabled && (conv.status === "pending" || conv.status === "in_progress" || conv.status === "archived")) {
-        playNotificationSound();
-        
-        // Show toast notification
-        const statusLabel = conv.status === "archived" ? "restaurada" : "nova mensagem";
-        toast.info(`${conv.name}: ${statusLabel}`, {
-          description: messageContent.substring(0, 50) + (messageContent.length > 50 ? "..." : ""),
-        });
-      }
+      return prev.map(c => 
+        c.id !== convId ? c : {
+          ...c,
+          status: newStatus,
+          lastMessage: messageContent,
+          time: "Agora",
+          unread: (c.unread || 0) + 1,
+          messages: [...c.messages, newMessage]
+        }
+      );
+    });
+    
+    // Play notification sound outside of setState
+    const conv = conversations.find(c => c.id === convId);
+    if (shouldPlaySound && conv && (conv.status === "pending" || conv.status === "in_progress" || conv.status === "archived")) {
+      playNotificationSound();
       
-      return {
-        ...conv,
-        status: newStatus,
-        lastMessage: messageContent,
-        time: "Agora",
-        unread: (conv.unread || 0) + 1,
-        messages: [...conv.messages, newMessage]
-      };
-    }));
-  }, [soundEnabled, playNotificationSound]);
+      // Show toast notification
+      const statusLabel = conv.status === "archived" ? "restaurada" : "nova mensagem";
+      toast.info(`${conv.name}: ${statusLabel}`, {
+        description: messageContent.substring(0, 50) + (messageContent.length > 50 ? "..." : ""),
+      });
+    }
+  }, [soundEnabled, playNotificationSound, conversations]);
 
   // Demo: Simulate incoming messages every 30 seconds (for presentation)
   useEffect(() => {
