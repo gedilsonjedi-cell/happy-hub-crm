@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
@@ -36,10 +37,10 @@ export function Sidebar() {
   const userRole = useUserRole();
 
   // Filter menu items based on permissions
-  // During loading, show only items without permission requirements
+  // Show all items while loading (will filter after permissions load)
   const visibleMenuItems = menuItems.filter((item) => {
     if (item.permission === null) return true;
-    if (userRole.loading) return false; // Hide permission-based items while loading
+    if (userRole.loading) return true; // Show all items while loading for smoother UX
     return userRole[item.permission as keyof typeof userRole];
   });
 
@@ -64,28 +65,40 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="p-2 space-y-1">
-        {visibleMenuItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          const Icon = item.icon;
-          
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
-                isActive 
-                  ? "bg-primary text-primary-foreground" 
-                  : "text-sidebar-foreground hover:bg-muted/30"
-              )}
-            >
-              <Icon className="w-5 h-5 shrink-0" />
-              {!collapsed && (
-                <span className="text-sm font-medium">{item.label}</span>
-              )}
-            </Link>
-          );
-        })}
+        {userRole.loading ? (
+          // Show skeleton while loading
+          <>
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                <Skeleton className="w-5 h-5 rounded" />
+                {!collapsed && <Skeleton className="h-4 w-24" />}
+              </div>
+            ))}
+          </>
+        ) : (
+          visibleMenuItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+            
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                  isActive 
+                    ? "bg-primary text-primary-foreground" 
+                    : "text-sidebar-foreground hover:bg-muted/30"
+                )}
+              >
+                <Icon className="w-5 h-5 shrink-0" />
+                {!collapsed && (
+                  <span className="text-sm font-medium">{item.label}</span>
+                )}
+              </Link>
+            );
+          })
+        )}
       </nav>
     </aside>
   );
