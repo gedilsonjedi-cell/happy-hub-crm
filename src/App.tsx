@@ -17,6 +17,7 @@ import Usuarios from "./pages/Usuarios";
 import Perfil from "./pages/Perfil";
 import Relatorios from "./pages/Relatorios";
 import SuperAdmin from "./pages/SuperAdmin";
+import OrganizationDetails from "./pages/OrganizationDetails";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -60,6 +61,7 @@ const App = () => (
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
+          <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
