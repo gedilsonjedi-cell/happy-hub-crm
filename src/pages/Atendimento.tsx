@@ -181,7 +181,7 @@ const Atendimento = () => {
                     className="gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
-                    Assistente IA
+                    IA de Vendas
                   </Button>
                   <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
                     {statusConfig[selectedConversation.status].label}
