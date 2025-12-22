@@ -13,7 +13,10 @@ import {
   Pause,
   ArrowLeft,
   Settings2,
-  Check
+  Check,
+  Shuffle,
+  Timer,
+  Smartphone
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -41,7 +44,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+
+interface Channel {
+  id: string;
+  name: string;
+  phone: string;
+  connected: boolean;
+}
+
+const mockChannels: Channel[] = [
+  { id: "ch-1", name: "WhatsApp Principal", phone: "+55 11 99999-0001", connected: true },
+  { id: "ch-2", name: "WhatsApp Vendas", phone: "+55 11 99999-0002", connected: true },
+  { id: "ch-3", name: "WhatsApp Suporte", phone: "+55 11 99999-0003", connected: true },
+  { id: "ch-4", name: "WhatsApp Marketing", phone: "+55 11 99999-0004", connected: true },
+  { id: "ch-5", name: "WhatsApp Comercial", phone: "+55 11 99999-0005", connected: true },
+];
 
 interface Campaign {
   id: string;
@@ -88,14 +107,31 @@ const statusConfig = {
 
 const Disparos = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     campaignName: "",
     team: "",
-    channel: "",
     chatbot: "disabled",
     startTime: "now",
-    messageTemplate: ""
+    messageTemplate: "",
+    dispatchInterval: "60" // segundos
   });
+
+  const toggleChannel = (channelId: string) => {
+    setSelectedChannels(prev => 
+      prev.includes(channelId) 
+        ? prev.filter(id => id !== channelId)
+        : [...prev, channelId]
+    );
+  };
+
+  const selectAllChannels = () => {
+    if (selectedChannels.length === mockChannels.length) {
+      setSelectedChannels([]);
+    } else {
+      setSelectedChannels(mockChannels.map(c => c.id));
+    }
+  };
 
   if (showCreateForm) {
     return (
@@ -159,26 +195,120 @@ const Disparos = () => {
               </div>
             </div>
 
-            {/* Canal de atendimento */}
-            <div className="space-y-2">
-              <Label className="text-foreground">Canal de atendimento</Label>
-              <div className="flex items-center gap-2">
-                <Select 
-                  value={formData.channel} 
-                  onValueChange={(value) => setFormData({ ...formData, channel: value })}
+            {/* Canais de disparo - Seleção múltipla */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-foreground">
+                  Canais de disparo <span className="text-destructive">*</span>
+                </Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-primary hover:text-primary/80"
+                  onClick={selectAllChannels}
                 >
-                  <SelectTrigger className="bg-card border-border">
-                    <SelectValue placeholder="Selecione o canal" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="whatsapp-1">WhatsApp Principal</SelectItem>
-                    <SelectItem value="whatsapp-2">WhatsApp Vendas</SelectItem>
-                    <SelectItem value="whatsapp-3">WhatsApp Suporte</SelectItem>
-                  </SelectContent>
-                </Select>
-                {formData.channel && <Check className="w-5 h-5 text-primary" />}
+                  {selectedChannels.length === mockChannels.length ? "Desmarcar todos" : "Selecionar todos"}
+                </Button>
               </div>
+              
+              <div className="bg-muted/30 rounded-lg border border-border p-3 space-y-2 max-h-48 overflow-y-auto">
+                {mockChannels.map((channel) => (
+                  <div 
+                    key={channel.id}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                      selectedChannels.includes(channel.id) 
+                        ? "bg-primary/10 border-primary/50" 
+                        : "bg-card border-border hover:border-primary/30"
+                    )}
+                    onClick={() => toggleChannel(channel.id)}
+                  >
+                    <Checkbox 
+                      checked={selectedChannels.includes(channel.id)}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
+                    <Smartphone className="w-4 h-4 text-primary" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">{channel.name}</p>
+                      <p className="text-xs text-muted-foreground">{channel.phone}</p>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  </div>
+                ))}
+              </div>
+              
+              {selectedChannels.length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-primary">
+                  <Check className="w-4 h-4" />
+                  <span>{selectedChannels.length} canal(is) selecionado(s)</span>
+                </div>
+              )}
             </div>
+
+            {/* Modo de disparo intercalado */}
+            {selectedChannels.length > 1 && (
+              <div className="space-y-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                <div className="flex items-center gap-2">
+                  <Shuffle className="w-5 h-5 text-primary" />
+                  <Label className="text-foreground font-medium">Disparo Intercalado</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  As mensagens serão alternadas entre os {selectedChannels.length} canais selecionados, 
+                  distribuindo a carga e evitando bloqueios.
+                </p>
+                
+                {/* Intervalo entre disparos */}
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Timer className="w-4 h-4" />
+                    Intervalo entre disparos
+                  </Label>
+                  <Select 
+                    value={formData.dispatchInterval} 
+                    onValueChange={(value) => setFormData({ ...formData, dispatchInterval: value })}
+                  >
+                    <SelectTrigger className="bg-card border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="15">15 segundos</SelectItem>
+                      <SelectItem value="30">30 segundos</SelectItem>
+                      <SelectItem value="60">1 minuto</SelectItem>
+                      <SelectItem value="120">2 minutos</SelectItem>
+                      <SelectItem value="180">3 minutos</SelectItem>
+                      <SelectItem value="300">5 minutos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Preview da distribuição */}
+                <div className="mt-3 p-3 bg-card rounded-lg border border-border">
+                  <p className="text-xs text-muted-foreground mb-2">Ordem de disparo:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedChannels.slice(0, 5).map((chId, idx) => {
+                      const channel = mockChannels.find(c => c.id === chId);
+                      return (
+                        <Badge 
+                          key={chId} 
+                          variant="outline" 
+                          className="text-xs bg-primary/10 border-primary/30 text-primary"
+                        >
+                          {idx + 1}. {channel?.name.replace("WhatsApp ", "")}
+                        </Badge>
+                      );
+                    })}
+                    {selectedChannels.length > 5 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{selectedChannels.length - 5} mais
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    → Repete a cada {selectedChannels.length} mensagens
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Habilitar chatbot */}
             <div className="space-y-2">
@@ -234,10 +364,10 @@ const Disparos = () => {
                   Configurações personalizadas
                   <Settings2 className="w-4 h-4" />
                 </Button>
-                {formData.channel && <Check className="w-5 h-5 text-primary" />}
+                {selectedChannels.length > 0 && <Check className="w-5 h-5 text-primary" />}
               </div>
               <p className="text-xs text-muted-foreground">
-                Selecione o canal de atendimento para configurar o disparo
+                Selecione os canais para configurar o disparo
               </p>
             </div>
 
@@ -259,12 +389,22 @@ const Disparos = () => {
                 <span className="text-foreground">0</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-primary font-medium">Início do disparo:</span>
-                <span className="text-foreground">-</span>
+                <span className="text-primary font-medium">Canais selecionados:</span>
+                <span className="text-foreground">{selectedChannels.length}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-primary font-medium">Conclusão do disparo:</span>
-                <span className="text-foreground">-</span>
+                <span className="text-primary font-medium">Intervalo:</span>
+                <span className="text-foreground">
+                  {parseInt(formData.dispatchInterval) >= 60 
+                    ? `${parseInt(formData.dispatchInterval) / 60} min` 
+                    : `${formData.dispatchInterval}s`}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-primary font-medium">Modo:</span>
+                <span className="text-foreground">
+                  {selectedChannels.length > 1 ? "Intercalado" : "Único"}
+                </span>
               </div>
             </div>
           </div>
