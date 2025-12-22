@@ -17,6 +17,7 @@ interface CachedRoleData {
 interface UserRoleState {
   role: AppRole | null;
   loading: boolean;
+  syncing: boolean; // New: indicates background sync in progress
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isSupervisor: boolean;
@@ -78,6 +79,7 @@ export function useUserRole(): UserRoleState {
   const { user } = useAuth();
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   // Try to load from cache immediately
@@ -92,7 +94,7 @@ export function useUserRole(): UserRoleState {
     }
   }, [user?.id]);
 
-  const fetchRole = useCallback(async () => {
+  const fetchRole = useCallback(async (isBackgroundSync = false) => {
     if (!user) {
       setRole(null);
       setOrganizationId(null);
@@ -103,14 +105,19 @@ export function useUserRole(): UserRoleState {
 
     // Check cache first
     const cached = getCachedRole(user.id);
-    if (cached) {
+    if (cached && !isBackgroundSync) {
       setRole(cached.role);
       setOrganizationId(cached.organizationId);
       setLoading(false);
     }
 
+    // Set syncing state for background updates
+    if (isBackgroundSync || cached) {
+      setSyncing(true);
+    }
+
     try {
-      // Fetch role (in background if cached)
+      // Fetch role
       const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
@@ -149,12 +156,42 @@ export function useUserRole(): UserRoleState {
       if (!cached) setRole(null);
     } finally {
       setLoading(false);
+      setSyncing(false);
     }
   }, [user]);
 
+  // Initial fetch
   useEffect(() => {
     fetchRole();
   }, [fetchRole]);
+
+  // Listen for realtime changes to user_roles table
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('user-role-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'user_roles',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('Role changed:', payload);
+          // Clear cache and refetch
+          clearCachedRole();
+          fetchRole(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchRole]);
 
   const isSuperAdmin = role === "super_admin";
   const isAdmin = role === "admin";
@@ -165,6 +202,7 @@ export function useUserRole(): UserRoleState {
   return {
     role,
     loading,
+    syncing,
     organizationId,
     isSuperAdmin,
     isAdmin,
