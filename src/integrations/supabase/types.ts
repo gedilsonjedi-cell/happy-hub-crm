@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_agents: {
+        Row: {
+          agent_profile: string | null
+          communication_style: string | null
+          company_info: string | null
+          created_at: string
+          faq: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          nickname: string | null
+          objective: string | null
+          products_services: string | null
+          sign_conversations: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_profile?: string | null
+          communication_style?: string | null
+          company_info?: string | null
+          created_at?: string
+          faq?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          nickname?: string | null
+          objective?: string | null
+          products_services?: string | null
+          sign_conversations?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_profile?: string | null
+          communication_style?: string | null
+          company_info?: string | null
+          created_at?: string
+          faq?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          nickname?: string | null
+          objective?: string | null
+          products_services?: string | null
+          sign_conversations?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       campaign_channels: {
         Row: {
           campaign_id: string
