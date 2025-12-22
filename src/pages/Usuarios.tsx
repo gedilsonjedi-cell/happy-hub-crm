@@ -496,9 +496,21 @@ const Usuarios = () => {
     );
   }
 
-  // Redirect non-admins
+  // Show access denied for non-admins
   if (!isAdmin) {
-    return <Navigate to="/" replace />;
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
+            <UserX className="w-8 h-8 text-destructive" />
+          </div>
+          <h2 className="text-xl font-semibold">Acesso Negado</h2>
+          <p className="text-muted-foreground text-center max-w-md">
+            Você não tem permissão para acessar esta página. Entre em contato com um administrador se acredita que isso é um erro.
+          </p>
+        </div>
+      </MainLayout>
+    );
   }
 
   if (loading) {
