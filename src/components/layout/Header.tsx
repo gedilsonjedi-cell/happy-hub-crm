@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 import { MessageSquare, LogOut, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
 export function Header() {
+  const { user, signOut } = useAuth();
+
   return (
     <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
       {/* Logo */}
@@ -22,15 +25,11 @@ export function Header() {
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
             Início
           </Link>
-          <Link to="/numeros" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Números
+          <Link to="/templates" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Templates
           </Link>
-          <Link to="/recarga" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Recarga
-          </Link>
-          <Link to="/admin" className="text-sm text-primary hover:text-primary/80 transition-colors flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-            Admin
+          <Link to="/conexoes" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Conexões
           </Link>
         </nav>
       </div>
@@ -44,12 +43,19 @@ export function Header() {
         </div>
 
         {/* User */}
-        <span className="text-sm text-muted-foreground hidden md:block">
-          gedilson.junior@h...
-        </span>
+        {user && (
+          <span className="text-sm text-muted-foreground hidden md:block">
+            {user.email?.substring(0, 20)}...
+          </span>
+        )}
 
         {/* Logout */}
-        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="gap-2 text-muted-foreground hover:text-foreground"
+          onClick={signOut}
+        >
           <LogOut className="w-4 h-4" />
           <span className="hidden md:inline">Sair</span>
         </Button>

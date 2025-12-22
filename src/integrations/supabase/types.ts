@@ -14,7 +14,297 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      campaign_channels: {
+        Row: {
+          campaign_id: string
+          channel_id: string
+          id: string
+          order_index: number
+          template_id: string | null
+        }
+        Insert: {
+          campaign_id: string
+          channel_id: string
+          id?: string
+          order_index?: number
+          template_id?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          channel_id?: string
+          id?: string
+          order_index?: number
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_channels_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_channels_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          chatbot_enabled: boolean
+          completed_at: string | null
+          created_at: string
+          delivered_count: number
+          dispatch_interval: number
+          failed_count: number
+          id: string
+          name: string
+          scheduled_at: string | null
+          sent_count: number
+          started_at: string | null
+          status: string
+          team: string | null
+          total_recipients: number
+          unified_template_id: string | null
+          updated_at: string
+          use_unified_template: boolean
+          user_id: string
+        }
+        Insert: {
+          chatbot_enabled?: boolean
+          completed_at?: string | null
+          created_at?: string
+          delivered_count?: number
+          dispatch_interval?: number
+          failed_count?: number
+          id?: string
+          name: string
+          scheduled_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          team?: string | null
+          total_recipients?: number
+          unified_template_id?: string | null
+          updated_at?: string
+          use_unified_template?: boolean
+          user_id: string
+        }
+        Update: {
+          chatbot_enabled?: boolean
+          completed_at?: string | null
+          created_at?: string
+          delivered_count?: number
+          dispatch_interval?: number
+          failed_count?: number
+          id?: string
+          name?: string
+          scheduled_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          team?: string | null
+          total_recipients?: number
+          unified_template_id?: string | null
+          updated_at?: string
+          use_unified_template?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_unified_template_id_fkey"
+            columns: ["unified_template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_templates: {
+        Row: {
+          approved_at: string
+          channel_id: string
+          id: string
+          template_id: string
+        }
+        Insert: {
+          approved_at?: string
+          channel_id: string
+          id?: string
+          template_id: string
+        }
+        Update: {
+          approved_at?: string
+          channel_id?: string
+          id?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_templates_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          access_token: string | null
+          app_name: string | null
+          connected: boolean
+          created_at: string
+          id: string
+          name: string
+          phone: string
+          provider: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          app_name?: string | null
+          connected?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          phone: string
+          provider?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          app_name?: string | null
+          connected?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string
+          provider?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string
+          status: string
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone: string
+          status?: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string
+          status?: string
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      message_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          name: string
+          status: string
+          updated_at: string
+          user_id: string
+          variables: string[] | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          variables?: string[] | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          variables?: string[] | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -6,7 +6,8 @@ import {
   Users, 
   MessageSquare, 
   Send,
-  Menu
+  Menu,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ const menuItems = [
   { icon: Users, label: "Leads", path: "/leads" },
   { icon: MessageSquare, label: "Atendimento", path: "/atendimento" },
   { icon: Send, label: "Disparos", path: "/disparos" },
+  { icon: FileText, label: "Templates", path: "/templates" },
 ];
 
 export function Sidebar() {
