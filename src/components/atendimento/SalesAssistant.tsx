@@ -20,10 +20,10 @@ interface SalesAssistantProps {
 }
 
 const quickPrompts = [
+  { icon: MessageCircle, label: "Analisar conversa", prompt: "__ANALYZE__", isAnalyze: true },
   { icon: Target, label: "Fechar venda", prompt: "Me ajude a fechar essa venda agora." },
   { icon: RefreshCw, label: "Reverter objeção", prompt: "Como posso reverter a objeção do cliente?" },
   { icon: Lightbulb, label: "Nova abordagem", prompt: "Sugira uma nova abordagem de vendas." },
-  { icon: MessageCircle, label: "Script follow-up", prompt: "Crie um script de follow-up." },
 ];
 
 export const SalesAssistant = ({ isOpen, onClose, customerName, conversationContext }: SalesAssistantProps) => {
@@ -31,9 +31,7 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastContextRef = useRef<string>("");
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -41,26 +39,10 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
     }
   }, [messages]);
 
-  // Auto-analyze conversation when opened with context
-  useEffect(() => {
-    if (isOpen && conversationContext && conversationContext !== lastContextRef.current && !hasAnalyzed) {
-      lastContextRef.current = conversationContext;
-      analyzeConversation();
-    }
-  }, [isOpen, conversationContext]);
-
-  // Reset when closed
-  useEffect(() => {
-    if (!isOpen) {
-      setHasAnalyzed(false);
-    }
-  }, [isOpen]);
-
   const analyzeConversation = async () => {
     if (!conversationContext || isAnalyzing) return;
     
     setIsAnalyzing(true);
-    setHasAnalyzed(true);
 
     try {
       const analysisPrompt = `Analise esta conversa de atendimento e forneça:
@@ -83,7 +65,7 @@ ${conversationContext}`;
         role: "assistant",
         content: data.message || "Não consegui analisar a conversa."
       };
-      setMessages([assistantMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
       console.error("Erro ao analisar conversa:", error);
       toast.error("Erro ao analisar conversa");
@@ -93,6 +75,11 @@ ${conversationContext}`;
   };
 
   const handleSend = async (customPrompt?: string) => {
+    if (customPrompt === "__ANALYZE__") {
+      analyzeConversation();
+      return;
+    }
+
     const messageText = customPrompt || input.trim();
     if (!messageText || isLoading) return;
 
@@ -136,7 +123,6 @@ ${conversationContext}`;
 
   const clearChat = () => {
     setMessages([]);
-    setHasAnalyzed(false);
   };
 
   if (!isOpen) return null;
