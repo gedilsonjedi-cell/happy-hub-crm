@@ -5,7 +5,14 @@ import {
   Send, 
   Paperclip, 
   CheckCheck,
-  Sparkles
+  Sparkles,
+  Archive,
+  Clock,
+  Play,
+  Trash2,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -23,7 +30,7 @@ interface Conversation {
   phone: string;
   lastMessage: string;
   time: string;
-  status: "pending" | "in_progress" | "resolved";
+  status: "pending" | "in_progress" | "resolved" | "archived";
   unread?: number;
   messages: Message[];
 }
@@ -74,32 +81,101 @@ const mockConversations: Conversation[] = [
       { id: "1", content: "Muito obrigada!", time: "08:00", isFromCustomer: true },
     ]
   },
+  {
+    id: "4",
+    name: "Pedro Oliveira",
+    phone: "+55 41 96666-3456",
+    lastMessage: "Ok, entendi.",
+    time: "2h",
+    status: "archived",
+    messages: [
+      { id: "1", content: "Preciso cancelar meu pedido", time: "07:00", isFromCustomer: true },
+      { id: "2", content: "Pedido cancelado com sucesso.", time: "07:15", isFromCustomer: false, status: "read" },
+      { id: "3", content: "Ok, entendi.", time: "07:16", isFromCustomer: true },
+    ]
+  },
+  {
+    id: "5",
+    name: "Carla Mendes",
+    phone: "+55 51 95555-7890",
+    lastMessage: "Não tenho mais interesse.",
+    time: "1 dia",
+    status: "archived",
+    messages: [
+      { id: "1", content: "Não tenho mais interesse.", time: "Ontem", isFromCustomer: true },
+    ]
+  },
 ];
 
 const statusConfig = {
   pending: { label: "Pendente", className: "bg-warning/10 text-warning border-warning/30" },
   in_progress: { label: "Em atendimento", className: "bg-primary/10 text-primary border-primary/30" },
-  resolved: { label: "Resolvido", className: "bg-muted text-muted-foreground border-border" }
+  resolved: { label: "Resolvido", className: "bg-muted text-muted-foreground border-border" },
+  archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
 };
 
+type FilterStatus = "all" | "pending" | "in_progress";
+
 const Atendimento = () => {
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(mockConversations[0]);
+  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(
+    mockConversations.find(c => c.status !== "archived") || null
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [message, setMessage] = useState("");
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [showArchived, setShowArchived] = useState(false);
 
-  const filteredConversations = mockConversations.filter(conv => 
+  // Active conversations (not archived)
+  const activeConversations = conversations.filter(conv => conv.status !== "archived");
+  
+  // Archived conversations
+  const archivedConversations = conversations.filter(conv => conv.status === "archived");
+
+  // Filter active conversations by search and status
+  const filteredConversations = activeConversations.filter(conv => {
+    const matchesSearch = conv.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      conv.phone.includes(searchTerm);
+    const matchesStatus = filterStatus === "all" || conv.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Filter archived conversations by search
+  const filteredArchived = archivedConversations.filter(conv =>
     conv.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     conv.phone.includes(searchTerm)
   );
+
+  // Archive a conversation
+  const handleArchive = (convId: string) => {
+    setConversations(prev => prev.map(conv => 
+      conv.id === convId ? { ...conv, status: "archived" as const } : conv
+    ));
+    if (selectedConversation?.id === convId) {
+      const nextConv = activeConversations.find(c => c.id !== convId && c.status !== "archived");
+      setSelectedConversation(nextConv || null);
+    }
+  };
+
+  // Restore a conversation from archive
+  const handleRestore = (convId: string) => {
+    setConversations(prev => prev.map(conv => 
+      conv.id === convId ? { ...conv, status: "pending" as const } : conv
+    ));
+  };
+
+  // Get counts for filter badges
+  const pendingCount = activeConversations.filter(c => c.status === "pending").length;
+  const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
 
   return (
     <MainLayout>
       <div className="flex h-[calc(100vh-7rem)] gap-4 animate-fade-in">
         {/* Conversations List */}
         <div className="w-80 bg-card rounded-lg border border-border flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h2 className="font-semibold text-foreground mb-3">Conversas</h2>
+          <div className="p-4 border-b border-border space-y-3">
+            <h2 className="font-semibold text-foreground">Conversas</h2>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -109,51 +185,173 @@ const Atendimento = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            
+            {/* Status Filter Buttons */}
+            <div className="flex gap-2">
+              <Button
+                variant={filterStatus === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("all")}
+                className="flex-1 text-xs"
+              >
+                Todos
+              </Button>
+              <Button
+                variant={filterStatus === "pending" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("pending")}
+                className="flex-1 text-xs gap-1"
+              >
+                <Clock className="w-3 h-3" />
+                Pendentes
+                {pendingCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {pendingCount}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant={filterStatus === "in_progress" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("in_progress")}
+                className="flex-1 text-xs gap-1"
+              >
+                <Play className="w-3 h-3" />
+                Andamento
+                {inProgressCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {inProgressCount}
+                  </Badge>
+                )}
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1">
             <div className="divide-y divide-border">
-              {filteredConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedConversation(conv)}
-                  className={cn(
-                    "w-full p-4 text-left hover:bg-muted/30 transition-colors",
-                    selectedConversation?.id === conv.id && "bg-muted/30 border-l-2 border-l-primary"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
-                        {conv.name.split(" ").map(n => n[0]).join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-foreground text-sm truncate">
-                          {conv.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{conv.time}</span>
+              {filteredConversations.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  Nenhuma conversa encontrada
+                </div>
+              ) : (
+                filteredConversations.map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={cn(
+                      "group relative",
+                      selectedConversation?.id === conv.id && "bg-muted/30 border-l-2 border-l-primary"
+                    )}
+                  >
+                    <button
+                      onClick={() => setSelectedConversation(conv)}
+                      className="w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+                            {conv.name.split(" ").map(n => n[0]).join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-foreground text-sm truncate">
+                              {conv.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{conv.time}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mb-2">
+                            {conv.lastMessage}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <Badge variant="outline" className={cn("text-xs", statusConfig[conv.status].className)}>
+                              {statusConfig[conv.status].label}
+                            </Badge>
+                            {conv.unread && conv.unread > 0 && (
+                              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
+                                {conv.unread}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mb-2">
-                        {conv.lastMessage}
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className={cn("text-xs", statusConfig[conv.status].className)}>
-                          {statusConfig[conv.status].label}
-                        </Badge>
-                        {conv.unread && conv.unread > 0 && (
-                          <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
-                            {conv.unread}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    </button>
+                    {/* Archive button */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleArchive(conv.id);
+                      }}
+                      title="Arquivar conversa"
+                    >
+                      <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                    </Button>
                   </div>
-                </button>
-              ))}
+                ))
+              )}
             </div>
           </ScrollArea>
+
+          {/* Archived Section */}
+          {archivedConversations.length > 0 && (
+            <div className="border-t border-border">
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className="w-full p-3 flex items-center justify-between text-sm text-muted-foreground hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Archive className="w-4 h-4" />
+                  <span>Arquivados</span>
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                    {archivedConversations.length}
+                  </Badge>
+                </div>
+                {showArchived ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+              
+              {showArchived && (
+                <ScrollArea className="max-h-48">
+                  <div className="divide-y divide-border bg-muted/20">
+                    {filteredArchived.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className="group relative p-3 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
+                              {conv.name.split(" ").map(n => n[0]).join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-muted-foreground text-sm truncate block">
+                              {conv.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground/70">{conv.time}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleRestore(conv.id)}
+                            title="Restaurar conversa"
+                          >
+                            <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Chat Area */}
