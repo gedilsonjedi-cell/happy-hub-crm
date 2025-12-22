@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Plus, 
   FileText, 
@@ -11,7 +11,11 @@ import {
   Smartphone,
   Search,
   RefreshCw,
-  Archive
+  Camera,
+  Video,
+  File,
+  Smile,
+  Type
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -23,10 +27,8 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -62,9 +64,11 @@ interface Channel {
   phone: string;
 }
 
-interface ChannelTemplateRelation {
-  channel_id: string;
-  template_id: string;
+interface DetectedVariable {
+  name: string;
+  type: string;
+  variable: string;
+  example: string;
 }
 
 const statusConfig = {
@@ -87,11 +91,41 @@ const Templates = () => {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  
+  // New template form state
   const [formData, setFormData] = useState({
     name: "",
     content: "",
-    variables: "",
+    footerMessage: "",
+    channel: "",
+    availableFor: "all",
+    category: "utility",
+    isDraft: false,
+    isArchived: false,
   });
+  const [variableExamples, setVariableExamples] = useState<Record<string, string>>({});
+
+  // Detect variables from content
+  const detectedVariables = useMemo(() => {
+    const regex = /\*?\[([A-Z_]+)\]\*?/g;
+    const matches = formData.content.matchAll(regex);
+    const vars: DetectedVariable[] = [];
+    const seen = new Set<string>();
+    
+    for (const match of matches) {
+      const name = match[1];
+      if (!seen.has(name)) {
+        seen.add(name);
+        vars.push({
+          name,
+          type: "text",
+          variable: "manual",
+          example: variableExamples[name] || "",
+        });
+      }
+    }
+    return vars;
+  }, [formData.content, variableExamples]);
 
   useEffect(() => {
     if (user) {
@@ -141,33 +175,70 @@ const Templates = () => {
     }
   };
 
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      content: "",
+      footerMessage: "",
+      channel: "",
+      availableFor: "all",
+      category: "utility",
+      isDraft: false,
+      isArchived: false,
+    });
+    setVariableExamples({});
+  };
+
   const handleCreateTemplate = async () => {
-    if (!formData.name || !formData.content) {
-      toast.error("Preencha todos os campos obrigatórios");
+    if (!formData.name.trim()) {
+      toast.error("Preencha o nome do template");
+      return;
+    }
+    if (!formData.content.trim()) {
+      toast.error("Preencha o conteúdo da mensagem");
+      return;
+    }
+    if (formData.name.length > 100) {
+      toast.error("Nome deve ter no máximo 100 caracteres");
+      return;
+    }
+    if (formData.content.length > 1000) {
+      toast.error("Conteúdo deve ter no máximo 1000 caracteres");
       return;
     }
 
-    const variables = formData.variables
-      .split(",")
-      .map(v => v.trim())
-      .filter(v => v);
+    const variables = detectedVariables.map(v => v.name);
 
-    const { error } = await supabase.from("message_templates").insert({
-      user_id: user?.id,
-      name: formData.name,
-      content: formData.content,
-      variables,
-    });
+    const { data: template, error } = await supabase
+      .from("message_templates")
+      .insert({
+        user_id: user?.id,
+        name: formData.name.trim(),
+        content: formData.content.trim(),
+        variables,
+        status: formData.isDraft ? "pending" : "pending",
+      })
+      .select()
+      .single();
 
     if (error) {
       toast.error("Erro ao criar template");
       return;
     }
 
+    // If channel selected, create channel_template relation
+    if (formData.channel && template) {
+      await supabase.from("channel_templates").insert({
+        channel_id: formData.channel,
+        template_id: template.id,
+      });
+    }
+
     toast.success("Template criado com sucesso!");
     setDialogOpen(false);
-    setFormData({ name: "", content: "", variables: "" });
+    resetForm();
     fetchTemplates();
+    fetchChannels();
   };
 
   const handleDeleteTemplate = async (id: string) => {
@@ -230,7 +301,6 @@ const Templates = () => {
     );
   };
 
-  // Get type based on availability
   const getTemplateType = (templateId: string) => {
     const approvedChannels = channelTemplates[templateId] || [];
     if (approvedChannels.length === 0) return "Resposta rápida";
@@ -238,28 +308,11 @@ const Templates = () => {
     return "Atendimento\nCampanha\nSequência";
   };
 
-  // Get availability text
-  const getAvailability = (templateId: string) => {
-    const approvedChannels = channelTemplates[templateId] || [];
-    if (approvedChannels.length === 0) return "Somente para meu usuário";
-    
-    const channelPhones = approvedChannels.map(chId => {
-      const ch = channels.find(c => c.id === chId);
-      return ch?.phone || "";
-    }).filter(Boolean);
-    
-    if (channelPhones.length > 0) {
-      return channelPhones.slice(0, 1).join("\n") + (channelPhones.length > 1 ? `\n+${channelPhones.length - 1} mais` : "") + "\nToda a empresa";
-    }
-    return "Toda a empresa";
-  };
-
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.content.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || t.status === statusFilter;
     
-    // Channel filter
     let matchesChannel = true;
     if (channelFilter !== "all") {
       const templateChannels = channelTemplates[t.id] || [];
@@ -282,62 +335,10 @@ const Templates = () => {
             <RefreshCw className="w-4 h-4" />
             Sincronizar
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="w-4 h-4" />
-                Novo
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-card border-border">
-              <DialogHeader>
-                <DialogTitle className="text-foreground">Criar Template</DialogTitle>
-                <DialogDescription>
-                  Crie um novo modelo de mensagem para suas campanhas
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label className="text-foreground">Nome do Template</Label>
-                  <Input
-                    placeholder="Ex: Boas-vindas"
-                    className="bg-muted/50 border-border"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-foreground">Conteúdo da Mensagem</Label>
-                  <Textarea
-                    placeholder="Olá {nome}! Seja bem-vindo..."
-                    className="bg-muted/50 border-border min-h-32"
-                    value={formData.content}
-                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use {"{variavel}"} para campos dinâmicos
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-foreground">Variáveis (separadas por vírgula)</Label>
-                  <Input
-                    placeholder="nome, telefone, empresa"
-                    className="bg-muted/50 border-border"
-                    value={formData.variables}
-                    onChange={(e) => setFormData({ ...formData, variables: e.target.value })}
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleCreateTemplate}>
-                    Criar Template
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button className="gap-2" onClick={() => { resetForm(); setDialogOpen(true); }}>
+            <Plus className="w-4 h-4" />
+            Novo
+          </Button>
         </div>
       </div>
 
@@ -356,7 +357,7 @@ const Templates = () => {
           <SelectTrigger className="w-[160px] bg-card border-border">
             <SelectValue placeholder="Todos os tipos" />
           </SelectTrigger>
-          <SelectContent className="bg-card border-border">
+          <SelectContent className="bg-card border-border z-50">
             <SelectItem value="all">Todos os tipos</SelectItem>
             <SelectItem value="approved">Ativos</SelectItem>
             <SelectItem value="pending">Pendentes</SelectItem>
@@ -367,7 +368,7 @@ const Templates = () => {
           <SelectTrigger className="w-[180px] bg-card border-border">
             <SelectValue placeholder="Todos os canais" />
           </SelectTrigger>
-          <SelectContent className="bg-card border-border">
+          <SelectContent className="bg-card border-border z-50">
             <SelectItem value="all">Todos os canais</SelectItem>
             {channels.map(channel => (
               <SelectItem key={channel.id} value={channel.id}>
@@ -388,7 +389,6 @@ const Templates = () => {
 
       {/* Table */}
       <div className="bg-card rounded-lg border border-border overflow-hidden animate-slide-up">
-        {/* Table Header */}
         <div className="grid grid-cols-[1fr_150px_200px_100px] gap-4 px-6 py-3 border-b border-border bg-muted/30">
           <span className="text-sm font-medium text-muted-foreground">Modelo</span>
           <span className="text-sm font-medium text-muted-foreground">Tipo</span>
@@ -396,7 +396,6 @@ const Templates = () => {
           <span className="text-sm font-medium text-muted-foreground text-right">Status</span>
         </div>
 
-        {/* Table Body */}
         {loading ? (
           <div className="p-8 text-center text-muted-foreground">Carregando...</div>
         ) : filteredTemplates.length === 0 ? (
@@ -413,7 +412,6 @@ const Templates = () => {
               const config = statusConfig[template.status];
               const approvedChannels = channelTemplates[template.id] || [];
               const templateType = getTemplateType(template.id);
-              const availability = getAvailability(template.id);
 
               return (
                 <div
@@ -421,7 +419,6 @@ const Templates = () => {
                   className="grid grid-cols-[1fr_150px_200px_100px] gap-4 px-6 py-4 hover:bg-muted/20 transition-colors group cursor-pointer"
                   onClick={() => openApprovalDialog(template)}
                 >
-                  {/* Template Name & Content */}
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5">
                       <FileText className="w-5 h-5 text-muted-foreground" />
@@ -441,14 +438,12 @@ const Templates = () => {
                     </div>
                   </div>
 
-                  {/* Type */}
                   <div className="flex items-center">
                     <span className="text-sm text-muted-foreground whitespace-pre-line leading-tight">
                       {templateType}
                     </span>
                   </div>
 
-                  {/* Availability */}
                   <div className="flex items-center">
                     {approvedChannels.length > 0 ? (
                       <div className="space-y-1">
@@ -473,7 +468,6 @@ const Templates = () => {
                     )}
                   </div>
 
-                  {/* Status */}
                   <div className="flex items-center justify-end">
                     <Badge 
                       variant="outline" 
@@ -494,15 +488,287 @@ const Templates = () => {
         )}
       </div>
 
+      {/* Create Template Dialog - New Design */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-card border-border max-w-4xl max-h-[90vh] overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle className="text-foreground text-xl">Modelo de mensagem</DialogTitle>
+            <p className="text-sm text-muted-foreground">Campanha</p>
+          </DialogHeader>
+          
+          <div className="flex flex-col lg:flex-row gap-6 p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+            {/* Left Column - Message Preview */}
+            <div className="lg:w-[340px] flex-shrink-0">
+              <div className="bg-muted/30 rounded-xl border border-border p-4">
+                {/* Media Buttons */}
+                <div className="flex justify-center gap-3 mb-4">
+                  <button className="w-12 h-12 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors border border-primary/20">
+                    <Camera className="w-5 h-5 text-primary" />
+                  </button>
+                  <button className="w-12 h-12 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors border border-primary/20">
+                    <Video className="w-5 h-5 text-primary" />
+                  </button>
+                  <button className="w-12 h-12 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors border border-primary/20">
+                    <File className="w-5 h-5 text-primary" />
+                  </button>
+                </div>
+
+                {/* Message Text Area */}
+                <div className="relative">
+                  <Textarea
+                    placeholder="Digite sua mensagem aqui...&#10;Use *[VARIAVEL]* para adicionar parâmetros dinâmicos"
+                    className="bg-background border-border min-h-[180px] resize-none pr-10 text-sm"
+                    value={formData.content}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 1000) {
+                        setFormData({ ...formData, content: e.target.value });
+                      }
+                    }}
+                    maxLength={1000}
+                  />
+                  <button className="absolute right-3 bottom-3 text-muted-foreground hover:text-foreground transition-colors">
+                    <Smile className="w-5 h-5" />
+                  </button>
+                  <span className="absolute right-3 top-3 text-xs text-muted-foreground">
+                    {formData.content.length}/1000
+                  </span>
+                </div>
+
+                {/* Footer Message */}
+                <div className="mt-3">
+                  <Input
+                    placeholder="Mensagem de rodapé"
+                    className="bg-background border-border text-sm"
+                    value={formData.footerMessage}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 60) {
+                        setFormData({ ...formData, footerMessage: e.target.value });
+                      }
+                    }}
+                    maxLength={60}
+                  />
+                  <span className="text-xs text-muted-foreground mt-1 block text-right">
+                    {formData.footerMessage.length}/60
+                  </span>
+                </div>
+
+                {/* Add Button */}
+                <Button 
+                  variant="ghost" 
+                  className="w-full mt-3 text-primary hover:text-primary hover:bg-primary/10 border border-dashed border-primary/30"
+                >
+                  Adicionar botão
+                </Button>
+              </div>
+            </div>
+
+            {/* Right Column - Form Fields */}
+            <div className="flex-1 space-y-5">
+              {/* Name and Channel Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-foreground">
+                    Nome <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      placeholder="Nome do template"
+                      className="bg-background border-border pr-16"
+                      value={formData.name}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 100) {
+                          setFormData({ ...formData, name: e.target.value });
+                        }
+                      }}
+                      maxLength={100}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      {formData.name.length}/100
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground">
+                    Canal <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={formData.channel} onValueChange={(v) => setFormData({ ...formData, channel: v })}>
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue placeholder="Selecione o canal" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border z-50">
+                      {channels.length === 0 ? (
+                        <div className="p-3 text-center text-muted-foreground text-sm">
+                          Nenhum canal disponível
+                        </div>
+                      ) : (
+                        channels.map(channel => (
+                          <SelectItem key={channel.id} value={channel.id}>
+                            {channel.phone}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Available For and Category Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-foreground">
+                    Disponível para <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={formData.availableFor} onValueChange={(v) => setFormData({ ...formData, availableFor: v })}>
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border z-50">
+                      <SelectItem value="all">Todas as equipes</SelectItem>
+                      <SelectItem value="sales">Vendas</SelectItem>
+                      <SelectItem value="support">Suporte</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground flex items-center gap-1">
+                    Categoria <span className="text-destructive">*</span>
+                    <span className="text-muted-foreground text-xs">ⓘ</span>
+                  </Label>
+                  <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border z-50">
+                      <SelectItem value="utility">Utilidade</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                      <SelectItem value="authentication">Autenticação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Parameters Section */}
+              <div className="border-t border-border pt-5">
+                <div className="mb-4">
+                  <h3 className="font-medium text-foreground">Parâmetros</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Defina abaixo como os parâmetros serão tratados
+                  </p>
+                </div>
+
+                {detectedVariables.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-sm bg-muted/20 rounded-lg border border-border">
+                    Use *[VARIAVEL]* no conteúdo para adicionar parâmetros
+                  </div>
+                ) : (
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-2 bg-muted/30 border-b border-border">
+                      <span className="text-xs font-medium text-muted-foreground">Nome</span>
+                      <span className="text-xs font-medium text-muted-foreground">Tipo</span>
+                      <span className="text-xs font-medium text-muted-foreground">Variável</span>
+                      <span className="text-xs font-medium text-muted-foreground">Exemplo de uso</span>
+                    </div>
+                    
+                    {/* Table Body */}
+                    <div className="divide-y divide-border">
+                      {detectedVariables.map((variable) => (
+                        <div key={variable.name} className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-3 items-center">
+                          <span className="text-sm font-medium text-foreground">{variable.name}</span>
+                          <div>
+                            <Select defaultValue="text">
+                              <SelectTrigger className="h-8 bg-background border-border text-xs">
+                                <div className="flex items-center gap-1">
+                                  <Type className="w-3 h-3" />
+                                </div>
+                              </SelectTrigger>
+                              <SelectContent className="bg-card border-border z-50">
+                                <SelectItem value="text">Texto</SelectItem>
+                                <SelectItem value="number">Número</SelectItem>
+                                <SelectItem value="date">Data</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Select defaultValue="manual">
+                            <SelectTrigger className="h-8 bg-background border-border text-xs">
+                              <SelectValue placeholder="Informar no momento do envio" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-card border-border z-50">
+                              <SelectItem value="manual">Informar no momento do envio</SelectItem>
+                              <SelectItem value="contact_name">Nome do contato</SelectItem>
+                              <SelectItem value="contact_phone">Telefone do contato</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="relative">
+                            <Input
+                              placeholder="Exemplo de uso"
+                              className="h-8 bg-background border-border text-xs pr-12"
+                              value={variableExamples[variable.name] || ""}
+                              onChange={(e) => {
+                                if (e.target.value.length <= 100) {
+                                  setVariableExamples(prev => ({
+                                    ...prev,
+                                    [variable.name]: e.target.value
+                                  }));
+                                }
+                              }}
+                              maxLength={100}
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                              {(variableExamples[variable.name] || "").length}/100
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.isArchived}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isArchived: checked })}
+                  className="data-[state=checked]:bg-primary"
+                />
+                <span className="text-sm text-muted-foreground">Arquivado</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.isDraft}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isDraft: checked })}
+                  className="data-[state=checked]:bg-primary"
+                />
+                <span className="text-sm text-muted-foreground">Rascunho</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Voltar
+              </Button>
+              <Button onClick={handleCreateTemplate}>
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Approval Dialog */}
       <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
         <DialogContent className="bg-card border-border max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-foreground">Gerenciar Aprovações por Canal</DialogTitle>
-            <DialogDescription>
+            <p className="text-sm text-muted-foreground mt-1">
               Selecione em quais canais o template "{selectedTemplate?.name}" está aprovado.
               Templates aprovados no mesmo WABA são compartilhados automaticamente.
-            </DialogDescription>
+            </p>
           </DialogHeader>
           <div className="space-y-3 mt-4 max-h-64 overflow-y-auto">
             {channels.length === 0 ? (
@@ -547,7 +813,7 @@ const Templates = () => {
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="bg-card border-border">
+                <DropdownMenuContent align="start" className="bg-card border-border z-50">
                   <DropdownMenuItem className="gap-2 cursor-pointer">
                     <Edit className="w-4 h-4" />
                     Editar Template
