@@ -10,6 +10,8 @@ import Leads from "./pages/Leads";
 import Atendimento from "./pages/Atendimento";
 import Disparos from "./pages/Disparos";
 import Templates from "./pages/Templates";
+import Pipeline from "./pages/Pipeline";
+import Chatbot from "./pages/Chatbot";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -47,6 +49,8 @@ const App = () => (
           <Route path="/atendimento" element={<ProtectedRoute><Atendimento /></ProtectedRoute>} />
           <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
+          <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
+          <Route path="/chatbot" element={<ProtectedRoute><Chatbot /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
