@@ -26,8 +26,8 @@ const menuItems = [
   { icon: MessageSquare, label: "Atendimento", path: "/atendimento", permission: null },
   { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
-  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
-  { icon: Building2, label: "Setores", path: "/setores", permission: "canAccessSetores" },
+  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: null }, // Temporarily public
+  { icon: Building2, label: "Setores", path: "/setores", permission: null }, // Temporarily public
 ];
 
 export function Sidebar() {
