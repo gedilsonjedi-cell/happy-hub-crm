@@ -8,7 +8,8 @@ import {
   Building2,
   Package,
   HelpCircle,
-  Loader2
+  Loader2,
+  Eye
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,17 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { DocumentUpload } from "@/components/chatbot/DocumentUpload";
+import { AgentPreview } from "@/components/chatbot/AgentPreview";
+
+interface KnowledgeDocument {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  file_type: string;
+  created_at: string;
+}
 
 interface AgentConfig {
   id?: string;
@@ -69,12 +81,23 @@ const Chatbot = () => {
     products_services: "",
     faq: "",
   });
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadAgentConfig();
+      loadDocuments();
     }
   }, [user]);
+
+  const loadDocuments = async () => {
+    const { data } = await supabase
+      .from('knowledge_documents')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setDocuments(data || []);
+  };
 
   const loadAgentConfig = async () => {
     try {
@@ -452,6 +475,16 @@ const Chatbot = () => {
                       />
                     </CardContent>
                   </Card>
+
+                  {/* Document Upload */}
+                  {user && (
+                    <DocumentUpload
+                      userId={user.id}
+                      agentId={config.id}
+                      documents={documents}
+                      onDocumentsChange={loadDocuments}
+                    />
+                  )}
                 </div>
               )}
 
@@ -490,7 +523,15 @@ const Chatbot = () => {
               )}
 
               {/* Save Button */}
-              <div className="flex justify-end mt-8 pt-6 border-t border-border">
+              <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-border">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowPreview(!showPreview)} 
+                  className="gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  {showPreview ? "Ocultar Preview" : "Testar Agente"}
+                </Button>
                 <Button onClick={handleSave} disabled={isSaving} className="gap-2">
                   {isSaving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -503,6 +544,20 @@ const Chatbot = () => {
             </div>
           </ScrollArea>
         </div>
+
+        {/* Agent Preview Panel */}
+        {showPreview && (
+          <div className="w-96">
+            <AgentPreview
+              agentName={config.name}
+              nickname={config.nickname}
+              communicationStyle={config.communication_style}
+              agentProfile={config.agent_profile}
+              objective={config.objective}
+              companyInfo={config.company_info}
+            />
+          </div>
+        )}
       </div>
     </MainLayout>
   );
