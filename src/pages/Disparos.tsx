@@ -115,6 +115,38 @@ const Disparos = () => {
     }
   }, [user]);
 
+  // Demo data for presentation
+  const demoChannel: Channel = {
+    id: "demo-channel-1",
+    name: "WhatsApp Vendas (Demo)",
+    phone: "+5511999999999",
+    connected: true
+  };
+
+  const demoTemplates: MessageTemplate[] = [
+    {
+      id: "demo-template-1",
+      name: "Boas-vindas",
+      content: "Olá {{nome}}! 👋 Seja bem-vindo(a) à nossa empresa. Estamos felizes em tê-lo conosco!"
+    },
+    {
+      id: "demo-template-2", 
+      name: "Promoção Especial",
+      content: "🎉 {{nome}}, temos uma oferta exclusiva para você! Aproveite 20% de desconto usando o cupom PROMO20."
+    },
+    {
+      id: "demo-template-3",
+      name: "Lembrete de Agendamento",
+      content: "📅 Olá {{nome}}, lembrando do seu agendamento amanhã às {{horario}}. Confirme sua presença!"
+    }
+  ];
+
+  const demoChannelTemplateRelations: ChannelTemplate[] = [
+    { channel_id: "demo-channel-1", template_id: "demo-template-1" },
+    { channel_id: "demo-channel-1", template_id: "demo-template-2" },
+    { channel_id: "demo-channel-1", template_id: "demo-template-3" }
+  ];
+
   const fetchData = async () => {
     setLoading(true);
 
@@ -141,9 +173,14 @@ const Disparos = () => {
       .select("*")
       .order("created_at", { ascending: false });
 
-    setChannels(channelsData || []);
-    setTemplates(templatesData || []);
-    setChannelTemplateRelations(ctData || []);
+    // Combine real data with demo data
+    const realChannels = channelsData || [];
+    const realTemplates = templatesData || [];
+    const realRelations = ctData || [];
+
+    setChannels([demoChannel, ...realChannels]);
+    setTemplates([...demoTemplates, ...realTemplates]);
+    setChannelTemplateRelations([...demoChannelTemplateRelations, ...realRelations]);
     setCampaigns((campaignsData || []).map(c => ({
       ...c,
       status: c.status as Campaign["status"]
