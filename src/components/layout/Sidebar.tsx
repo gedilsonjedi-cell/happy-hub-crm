@@ -7,7 +7,9 @@ import {
   MessageSquare, 
   Send,
   Menu,
-  FileText
+  FileText,
+  GitBranch,
+  Bot
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,8 @@ const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/" },
   { icon: Link2, label: "Conexões", path: "/conexoes" },
   { icon: Users, label: "Leads", path: "/leads" },
+  { icon: GitBranch, label: "Pipeline", path: "/pipeline" },
+  { icon: Bot, label: "Chatbot IA", path: "/chatbot" },
   { icon: MessageSquare, label: "Atendimento", path: "/atendimento" },
   { icon: Send, label: "Disparos", path: "/disparos" },
   { icon: FileText, label: "Templates", path: "/templates" },
