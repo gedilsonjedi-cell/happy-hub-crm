@@ -300,12 +300,12 @@ const Atendimento = () => {
             </div>
             
             {/* Status Filter Buttons */}
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-1.5">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("all")}
-                className="text-xs px-3 h-8"
+                className="text-xs px-2.5 h-7"
               >
                 Todos
               </Button>
@@ -313,10 +313,11 @@ const Atendimento = () => {
                 variant={filterStatus === "pending" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("pending")}
-                className="text-xs px-3 h-8 gap-1 whitespace-nowrap"
+                className="text-xs px-2 h-7 gap-1"
               >
                 <Clock className="w-3 h-3 shrink-0" />
-                <span>Pendentes</span>
+                <span className="hidden sm:inline">Pendentes</span>
+                <span className="sm:hidden">Pend.</span>
                 {pendingCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {pendingCount}
@@ -327,10 +328,11 @@ const Atendimento = () => {
                 variant={filterStatus === "in_progress" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("in_progress")}
-                className="text-xs px-3 h-8 gap-1 whitespace-nowrap"
+                className="text-xs px-2 h-7 gap-1"
               >
                 <Play className="w-3 h-3 shrink-0" />
-                <span>Andamento</span>
+                <span className="hidden sm:inline">Andamento</span>
+                <span className="sm:hidden">And.</span>
                 {inProgressCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {inProgressCount}
