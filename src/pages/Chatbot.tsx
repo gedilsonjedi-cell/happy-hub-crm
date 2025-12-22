@@ -1,348 +1,507 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { 
-  Send, 
   Bot, 
-  User, 
-  Loader2,
-  RefreshCw,
-  ArrowRight,
-  Sparkles
+  MessageCircle, 
+  Settings, 
+  BookOpen, 
+  Save,
+  Building2,
+  Package,
+  HelpCircle,
+  Loader2
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  detectedStage?: string;
-  stageName?: string;
-  created_at: string;
-}
-
-interface Lead {
-  id: string;
+interface AgentConfig {
+  id?: string;
   name: string;
-  phone: string;
+  nickname: string;
+  sign_conversations: boolean;
+  communication_style: string;
+  agent_profile: string;
+  objective: string;
+  company_info: string;
+  products_services: string;
+  faq: string;
 }
 
-interface PipelineStage {
-  id: string;
-  name: string;
-  color: string;
-}
+const communicationStyles = [
+  { value: "consultivo", label: "Consultivo e Acolhedor", example: "Oi! Que bom falar com você. Me conta um pouco sobre o que você está buscando, vou te guiar da melhor forma possível para encontrar a solução ideal." },
+  { value: "neutro", label: "Neutro e Equilibrado", example: "Olá! Estou à disposição para ajudá-lo. Como posso auxiliar?" },
+  { value: "formal", label: "Formal e Institucional", example: "Prezado(a), seja bem-vindo(a). Em que posso ser útil?" },
+];
 
-const STAGE_COLORS: Record<string, string> = {
-  "pre-atendimento": "#3b82f6",
-  "vendas": "#22c55e",
-  "nao-finalizou": "#ef4444",
-  "follow-up": "#f59e0b",
-  "cliente": "#8b5cf6",
-};
+const agentProfiles = [
+  { value: "vendedor", label: "Vendedor" },
+  { value: "sdr", label: "SDR" },
+  { value: "suporte", label: "Suporte" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "recepcionista", label: "Recepcionista" },
+  { value: "outro", label: "Outro" },
+];
+
+const objectiveSuggestions = ["Captar Leads", "Suporte Técnico", "Realizar Follow-ups", "Qualificar Leads", "Agendar Reuniões"];
 
 const Chatbot = () => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [selectedLead, setSelectedLead] = useState<string>("");
-  const [stages, setStages] = useState<PipelineStage[]>([]);
-  const [currentStage, setCurrentStage] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState("perfil");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [config, setConfig] = useState<AgentConfig>({
+    name: "",
+    nickname: "",
+    sign_conversations: true,
+    communication_style: "consultivo",
+    agent_profile: "vendedor",
+    objective: "",
+    company_info: "",
+    products_services: "",
+    faq: "",
+  });
 
   useEffect(() => {
     if (user) {
-      fetchLeads();
-      fetchStages();
+      loadAgentConfig();
     }
   }, [user]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const fetchLeads = async () => {
-    const { data } = await supabase
-      .from("leads")
-      .select("id, name, phone")
-      .order("created_at", { ascending: false });
-    setLeads(data || []);
-  };
-
-  const fetchStages = async () => {
-    const { data } = await supabase
-      .from("pipeline_stages")
-      .select("id, name, color")
-      .order("order_index");
-    setStages(data || []);
-  };
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: inputValue.trim(),
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue("");
-    setIsLoading(true);
-
+  const loadAgentConfig = async () => {
     try {
-      const conversationMessages = [
-        ...messages.map(m => ({ role: m.role, content: m.content })),
-        { role: "user", content: userMessage.content }
-      ];
+      const { data, error } = await supabase
+        .from('ai_agents')
+        .select('*')
+        .eq('is_active', true)
+        .maybeSingle();
 
-      const { data, error } = await supabase.functions.invoke("chatbot", {
-        body: { 
-          messages: conversationMessages,
-          leadId: selectedLead || null,
-        },
-      });
+      if (error) throw error;
 
-      if (error) {
-        throw new Error(error.message);
+      if (data) {
+        setConfig({
+          id: data.id,
+          name: data.name || "",
+          nickname: data.nickname || "",
+          sign_conversations: data.sign_conversations ?? true,
+          communication_style: data.communication_style || "consultivo",
+          agent_profile: data.agent_profile || "vendedor",
+          objective: data.objective || "",
+          company_info: data.company_info || "",
+          products_services: data.products_services || "",
+          faq: data.faq || "",
+        });
       }
-
-      if (data.error) {
-        if (data.error.includes("Rate limit")) {
-          toast.error("Limite de requisições atingido. Tente novamente em alguns segundos.");
-        } else if (data.error.includes("credits")) {
-          toast.error("Créditos de IA esgotados. Adicione créditos para continuar.");
-        } else {
-          throw new Error(data.error);
-        }
-        return;
-      }
-
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.message,
-        detectedStage: data.detectedStage,
-        stageName: data.stageName,
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-
-      if (data.detectedStage) {
-        setCurrentStage(data.detectedStage);
-        if (selectedLead && data.stageName) {
-          toast.success(`Lead movido para: ${data.stageName}`);
-        }
-      }
-
     } catch (error) {
-      console.error("Chat error:", error);
-      toast.error("Erro ao enviar mensagem. Tente novamente.");
+      console.error("Erro ao carregar configuração:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const handleSave = async () => {
+    if (!user) return;
+    if (!config.name.trim()) {
+      toast.error("Nome do agente é obrigatório");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const agentData = {
+        user_id: user.id,
+        name: config.name,
+        nickname: config.nickname,
+        sign_conversations: config.sign_conversations,
+        communication_style: config.communication_style,
+        agent_profile: config.agent_profile,
+        objective: config.objective,
+        company_info: config.company_info,
+        products_services: config.products_services,
+        faq: config.faq,
+        is_active: true,
+      };
+
+      if (config.id) {
+        const { error } = await supabase
+          .from('ai_agents')
+          .update(agentData)
+          .eq('id', config.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('ai_agents')
+          .insert(agentData)
+          .select()
+          .single();
+        if (error) throw error;
+        setConfig(prev => ({ ...prev, id: data.id }));
+      }
+
+      toast.success("Configurações salvas com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao salvar:", error);
+      toast.error("Erro ao salvar configurações");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const clearChat = () => {
-    setMessages([]);
-    setCurrentStage(null);
+  const updateConfig = (key: keyof AgentConfig, value: any) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
   };
 
-  const getStageColor = (stage: string | undefined) => {
-    if (!stage) return "#6b7280";
-    return STAGE_COLORS[stage] || "#6b7280";
+  const addObjectiveSuggestion = (suggestion: string) => {
+    const current = config.objective.trim();
+    const newValue = current ? `${current}\n• ${suggestion}` : `• ${suggestion}`;
+    updateConfig("objective", newValue);
   };
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-[calc(100vh-7rem)]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </MainLayout>
+    );
+  }
+
+  const currentStyle = communicationStyles.find(s => s.value === config.communication_style);
 
   return (
     <MainLayout>
-      <div className="flex flex-col h-[calc(100vh-120px)] animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground mb-1">Chatbot IA</h1>
-            <p className="text-muted-foreground text-sm">
-              Converse com a IA que identifica automaticamente o estágio do lead
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {currentStage && (
-              <Badge 
-                className="gap-1 text-white"
-                style={{ backgroundColor: getStageColor(currentStage) }}
-              >
-                <Sparkles className="w-3 h-3" />
-                {currentStage.replace("-", " ")}
-              </Badge>
+      <div className="flex h-[calc(100vh-7rem)] gap-6 animate-fade-in">
+        {/* Sidebar */}
+        <div className="w-72 space-y-2">
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "perfil" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             )}
-            <Select value={selectedLead} onValueChange={setSelectedLead}>
-              <SelectTrigger className="w-[200px] bg-card border-border">
-                <SelectValue placeholder="Vincular a um lead" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border z-50">
-                <SelectItem value="none">Sem vínculo</SelectItem>
-                {leads.map(lead => (
-                  <SelectItem key={lead.id} value={lead.id}>
-                    {lead.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" onClick={clearChat}>
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Chat Container */}
-        <div className="flex-1 bg-card rounded-lg border border-border overflow-hidden flex flex-col">
-          {/* Messages */}
-          <ScrollArea className="flex-1 p-4">
-            {messages.length === 0 ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <Bot className="w-8 h-8 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-medium text-foreground mb-2">
-                    Assistente de Vendas IA
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-md">
-                    Simule uma conversa com um lead. A IA identificará automaticamente 
-                    o estágio do pipeline e atualizará o lead vinculado.
-                  </p>
-                  <div className="flex flex-wrap gap-2 justify-center mt-6">
-                    {[
-                      "Olá, quero saber mais sobre o produto",
-                      "Qual o preço?",
-                      "Preciso pensar antes de decidir"
-                    ].map((suggestion, i) => (
-                      <Button
-                        key={i}
-                        variant="outline"
-                        size="sm"
-                        className="gap-1"
-                        onClick={() => setInputValue(suggestion)}
-                      >
-                        <ArrowRight className="w-3 h-3" />
-                        {suggestion}
-                      </Button>
-                    ))}
-                  </div>
+            onClick={() => setActiveTab("perfil")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Bot className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm">Perfil</CardTitle>
+                  <CardDescription className="text-xs">Identidade e estilo do agente</CardDescription>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "flex gap-3",
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    )}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 text-primary" />
-                      </div>
-                    )}
-                    <div
-                      className={cn(
-                        "max-w-[70%] rounded-lg px-4 py-2",
-                        message.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      )}
-                    >
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      {message.stageName && (
-                        <div className="mt-2 pt-2 border-t border-border/50">
-                          <Badge 
-                            variant="outline" 
-                            className="text-xs gap-1"
-                            style={{ 
-                              borderColor: getStageColor(message.detectedStage),
-                              color: getStageColor(message.detectedStage)
-                            }}
-                          >
-                            <Sparkles className="w-2 h-2" />
-                            {message.stageName}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                    {message.role === "user" && (
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4 text-secondary-foreground" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="bg-muted rounded-lg px-4 py-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </ScrollArea>
+            </CardHeader>
+          </Card>
 
-          {/* Input */}
-          <div className="p-4 border-t border-border">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Digite uma mensagem como lead..."
-                className="bg-background border-border"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={isLoading}
-              />
-              <Button 
-                onClick={handleSendMessage} 
-                disabled={!inputValue.trim() || isLoading}
-                className="gap-2"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </Button>
+          <p className="text-xs text-muted-foreground px-2 pt-4">Configurações avançadas (Opcional)</p>
+
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "comportamento" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}
+            onClick={() => setActiveTab("comportamento")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <MessageCircle className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-sm">Comportamento</CardTitle>
+                  <CardDescription className="text-xs">Como o agente deve agir</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "conhecimento" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}
+            onClick={() => setActiveTab("conhecimento")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <BookOpen className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-sm">Conhecimento</CardTitle>
+                  <CardDescription className="text-xs">Informações do seu negócio</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "configuracoes" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}
+            onClick={() => setActiveTab("configuracoes")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <Settings className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-sm">Configurações</CardTitle>
+                  <CardDescription className="text-xs">Preferências avançadas</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 bg-card rounded-lg border border-border overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              {activeTab === "perfil" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Perfil</h2>
+
+                  <div className="grid gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nome do agente *</Label>
+                      <div className="relative">
+                        <Input
+                          id="name"
+                          placeholder="Ex: Assistente Virtual"
+                          value={config.name}
+                          onChange={(e) => updateConfig("name", e.target.value.slice(0, 50))}
+                          maxLength={50}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                          {config.name.length}/50
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="nickname">Apelido *</Label>
+                        <div className="relative">
+                          <Input
+                            id="nickname"
+                            placeholder="Ex: Lia"
+                            value={config.nickname}
+                            onChange={(e) => updateConfig("nickname", e.target.value.slice(0, 20))}
+                            maxLength={20}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                            {config.nickname.length}/20
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Assinar a conversa</Label>
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            variant={config.sign_conversations ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateConfig("sign_conversations", true)}
+                          >
+                            Sim
+                          </Button>
+                          <Button
+                            variant={!config.sign_conversations ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateConfig("sign_conversations", false)}
+                          >
+                            Não
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Forma de comunicação *</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {communicationStyles.map((style) => (
+                          <Button
+                            key={style.value}
+                            variant={config.communication_style === style.value ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateConfig("communication_style", style.value)}
+                          >
+                            {style.label}
+                          </Button>
+                        ))}
+                      </div>
+                      {currentStyle && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Exemplo: {currentStyle.example}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Perfil do agente *</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {agentProfiles.map((profile) => (
+                          <Button
+                            key={profile.value}
+                            variant={config.agent_profile === profile.value ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => updateConfig("agent_profile", profile.value)}
+                          >
+                            {profile.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="objective">Descreva o objetivo deste agente *</Label>
+                      <Textarea
+                        id="objective"
+                        placeholder="Descreva aqui..."
+                        value={config.objective}
+                        onChange={(e) => updateConfig("objective", e.target.value)}
+                        rows={4}
+                      />
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <span className="text-xs text-muted-foreground">Sugestões:</span>
+                        {objectiveSuggestions.map((suggestion) => (
+                          <Badge
+                            key={suggestion}
+                            variant="outline"
+                            className="cursor-pointer hover:bg-primary/10"
+                            onClick={() => addObjectiveSuggestion(suggestion)}
+                          >
+                            {suggestion}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "conhecimento" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Conhecimento</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Forneça detalhes sobre a empresa para que a IA possa representá-la com precisão.
+                  </p>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <Building2 className="w-5 h-5 text-primary" />
+                        <div>
+                          <CardTitle className="text-base">Informações sobre a Empresa</CardTitle>
+                          <CardDescription className="text-xs">Nome, segmento, história, valores</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        placeholder="Descreva sua empresa, história, missão e valores..."
+                        value={config.company_info}
+                        onChange={(e) => updateConfig("company_info", e.target.value)}
+                        rows={4}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <Package className="w-5 h-5 text-primary" />
+                        <div>
+                          <CardTitle className="text-base">Produtos e Serviços</CardTitle>
+                          <CardDescription className="text-xs">O que você oferece aos clientes</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        placeholder="Liste seus principais produtos/serviços, preços, diferenciais..."
+                        value={config.products_services}
+                        onChange={(e) => updateConfig("products_services", e.target.value)}
+                        rows={4}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <HelpCircle className="w-5 h-5 text-primary" />
+                        <div>
+                          <CardTitle className="text-base">Perguntas Frequentes (FAQ)</CardTitle>
+                          <CardDescription className="text-xs">Dúvidas comuns dos clientes</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        placeholder="Liste perguntas e respostas frequentes..."
+                        value={config.faq}
+                        onChange={(e) => updateConfig("faq", e.target.value)}
+                        rows={4}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {activeTab === "comportamento" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Comportamento</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Configure como o agente deve agir durante as conversas.
+                  </p>
+
+                  <Card className="p-6">
+                    <div className="text-center text-muted-foreground">
+                      <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p>Configurações de comportamento em breve</p>
+                      <p className="text-xs mt-1">Tempo de resposta, escalação, horários de atendimento</p>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {activeTab === "configuracoes" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Configurações</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Preferências avançadas que controlam o funcionamento da IA.
+                  </p>
+
+                  <Card className="p-6">
+                    <div className="text-center text-muted-foreground">
+                      <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p>Configurações avançadas em breve</p>
+                      <p className="text-xs mt-1">Integrações, webhooks, limites</p>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* Save Button */}
+              <div className="flex justify-end mt-8 pt-6 border-t border-border">
+                <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  Salvar Configurações
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              A IA identifica automaticamente: Pré-atendimento, Vendas, Não finalizou, Follow-up, Cliente
-            </p>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     </MainLayout>
