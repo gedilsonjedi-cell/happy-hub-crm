@@ -59,6 +59,7 @@ interface MessageTemplate {
   content: string;
   variables: string[];
   status: "pending" | "approved" | "rejected";
+  dispatch_type: "marketing" | "utility" | "service";
   created_at: string;
 }
 
@@ -171,7 +172,8 @@ const Templates = () => {
 
     setTemplates((data || []).map(t => ({
       ...t,
-      status: t.status as "pending" | "approved" | "rejected"
+      status: t.status as "pending" | "approved" | "rejected",
+      dispatch_type: (t.dispatch_type || "utility") as "marketing" | "utility" | "service"
     })));
     setLoading(false);
   };
@@ -276,6 +278,7 @@ const Templates = () => {
         name: formData.name.trim(),
         content: formData.content.trim(),
         variables,
+        dispatch_type: formData.category as "marketing" | "utility" | "service",
         status: formData.isDraft ? "pending" : "pending",
       })
       .select()
@@ -486,9 +489,19 @@ const Templates = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-foreground truncate">{template.name}</h3>
-                        {template.variables && template.variables.length > 0 && (
-                          <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-400/30">
+                        {template.dispatch_type === "marketing" && (
+                          <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-400 border-orange-400/30">
                             Marketing
+                          </Badge>
+                        )}
+                        {template.dispatch_type === "utility" && (
+                          <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-400/30">
+                            Utilidade
+                          </Badge>
+                        )}
+                        {template.dispatch_type === "service" && (
+                          <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-400/30">
+                            Serviço
                           </Badge>
                         )}
                       </div>
