@@ -25,7 +25,7 @@ const menuItems = [
   { icon: MessageSquare, label: "Atendimento", path: "/atendimento", permission: null },
   { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
-  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: null }, // Temporarily public
+  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
 ];
 
 export function Sidebar() {

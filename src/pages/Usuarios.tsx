@@ -485,10 +485,23 @@ const Usuarios = () => {
       u.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Temporarily disabled admin check for debugging
-  // TODO: Re-enable after fixing access issue
+  // Show loading while checking role
+  if (roleLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MainLayout>
+    );
+  }
 
-  if (roleLoading || loading) {
+  // Redirect non-admins
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (loading) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
