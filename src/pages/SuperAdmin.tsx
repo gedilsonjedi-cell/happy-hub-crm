@@ -398,7 +398,10 @@ export default function SuperAdmin() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2">
+                              <DropdownMenuItem 
+                                className="gap-2"
+                                onClick={() => navigate(`/super-admin/organizations/${org.id}`)}
+                              >
                                 <Eye className="w-4 h-4" />
                                 Ver detalhes
                               </DropdownMenuItem>

@@ -74,6 +74,7 @@ interface UserWithRole {
   sectors: string[];
   created_at: string;
   is_active: boolean;
+  organization_id: string | null;
 }
 
 interface Sector {
@@ -82,6 +83,11 @@ interface Sector {
   description: string | null;
   created_at: string;
   user_count?: number;
+}
+
+interface Organization {
+  id: string;
+  name: string;
 }
 
 const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; className: string }> = {
@@ -108,6 +114,8 @@ const Usuarios = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   
   // Dialog states
@@ -130,6 +138,23 @@ const Usuarios = () => {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  // Fetch organizations for super admin filter
+  const fetchOrganizations = async () => {
+    if (!isSuperAdmin) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name")
+        .order("name");
+      
+      if (error) throw error;
+      setOrganizations(data || []);
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
+    }
+  };
 
   // Fetch users with their roles
   const fetchUsers = async () => {
@@ -171,6 +196,7 @@ const Usuarios = () => {
           sectors: userSectorsList || [],
           created_at: profile.created_at,
           is_active: profile.is_active ?? true,
+          organization_id: profile.organization_id,
         };
       });
 
@@ -211,14 +237,14 @@ const Usuarios = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchUsers(), fetchSectors()]);
+      await Promise.all([fetchUsers(), fetchSectors(), fetchOrganizations()]);
       setLoading(false);
     };
     
-    if (isAdmin) {
+    if (isAdmin || isSuperAdmin) {
       loadData();
     }
-  }, [isAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   // Handle role update
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
@@ -478,12 +504,15 @@ const Usuarios = () => {
     }
   };
 
-  // Filter users by search term
-  const filteredUsers = users.filter(
-    (u) =>
-      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter users by search term and organization
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch = u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.display_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesOrg = selectedOrgFilter === "all" || u.organization_id === selectedOrgFilter;
+    
+    return matchesSearch && matchesOrg;
+  });
 
   // Show loading while checking role
   if (roleLoading) {
@@ -603,15 +632,33 @@ const Usuarios = () => {
 
           {/* Users Tab */}
           <TabsContent value="users" className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar usuários..."
-                  className="pl-10 bg-muted/30 border-border"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar usuários..."
+                    className="pl-10 bg-muted/30 border-border"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                {isSuperAdmin && organizations.length > 0 && (
+                  <Select value={selectedOrgFilter} onValueChange={setSelectedOrgFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <Building2 className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Filtrar por organização" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas organizações</SelectItem>
+                      {organizations.map((org) => (
+                        <SelectItem key={org.id} value={org.id}>
+                          {org.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
                 <Plus className="w-4 h-4" />
