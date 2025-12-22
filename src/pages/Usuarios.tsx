@@ -14,7 +14,8 @@ import {
   KeyRound,
   UserX,
   UserCheck,
-  Mail
+  Mail,
+  DollarSign
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Navigate } from "react-router-dom";
+import { DispatchPricingConfig } from "@/components/admin/DispatchPricingConfig";
 
 type AppRole = "admin" | "supervisor" | "atendente";
 
@@ -599,6 +601,10 @@ const Usuarios = () => {
               <Building2 className="w-4 h-4" />
               Setores
             </TabsTrigger>
+            <TabsTrigger value="pricing" className="gap-2">
+              <DollarSign className="w-4 h-4" />
+              Preços
+            </TabsTrigger>
           </TabsList>
 
           {/* Users Tab */}
@@ -854,6 +860,11 @@ const Usuarios = () => {
                 ))
               )}
             </div>
+          </TabsContent>
+
+          {/* Pricing Tab */}
+          <TabsContent value="pricing">
+            <DispatchPricingConfig />
           </TabsContent>
         </Tabs>
 

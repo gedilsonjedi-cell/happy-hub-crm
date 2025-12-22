@@ -324,6 +324,74 @@ export type Database = {
           },
         ]
       }
+      dispatch_costs: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          dispatch_date: string
+          dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          id: string
+          price_per_message: number
+          successful_count: number
+          total_cost: number
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          dispatch_date?: string
+          dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          id?: string
+          price_per_message: number
+          successful_count?: number
+          total_cost?: number
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          dispatch_date?: string
+          dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          id?: string
+          price_per_message?: number
+          successful_count?: number
+          total_cost?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_costs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_pricing: {
+        Row: {
+          dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          id: string
+          price_per_message: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          id?: string
+          price_per_message?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          id?: string
+          price_per_message?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       knowledge_documents: {
         Row: {
           agent_id: string | null
@@ -419,6 +487,7 @@ export type Database = {
         Row: {
           content: string
           created_at: string
+          dispatch_type: Database["public"]["Enums"]["dispatch_type"]
           id: string
           name: string
           status: string
@@ -429,6 +498,7 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string
+          dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
           id?: string
           name: string
           status?: string
@@ -439,6 +509,7 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string
+          dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
           id?: string
           name?: string
           status?: string
@@ -599,6 +670,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "supervisor" | "atendente"
+      dispatch_type: "marketing" | "utility" | "service"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -727,6 +799,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "supervisor", "atendente"],
+      dispatch_type: ["marketing", "utility", "service"],
     },
   },
 } as const
