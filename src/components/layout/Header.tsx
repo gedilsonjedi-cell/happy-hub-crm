@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, Wallet } from "lucide-react";
+import { MessageSquare, LogOut, Wallet, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -42,11 +42,17 @@ export function Header() {
           <span className="text-sm font-semibold">R$ 31.00</span>
         </div>
 
-        {/* User */}
+        {/* User Profile Link */}
         {user && (
-          <span className="text-sm text-muted-foreground hidden md:block">
-            {user.email?.substring(0, 20)}...
-          </span>
+          <Link 
+            to="/perfil" 
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="w-4 h-4 text-primary" />
+            </div>
+            <span className="hidden md:block">{user.email?.substring(0, 20)}...</span>
+          </Link>
         )}
 
         {/* Logout */}
