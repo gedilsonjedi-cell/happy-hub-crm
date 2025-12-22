@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { 
   MessageSquare, 
   Search, 
@@ -12,7 +12,9 @@ import {
   Trash2,
   RotateCcw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SalesAssistant } from "@/components/atendimento/SalesAssistant";
+import { toast } from "sonner";
 
 interface Conversation {
   id: string;
@@ -116,6 +119,39 @@ const statusConfig = {
 
 type FilterStatus = "all" | "pending" | "in_progress";
 
+// Audio notification using Web Audio API
+const useNotificationSound = () => {
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  const playNotificationSound = useCallback(() => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      const ctx = audioContextRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+      oscillator.frequency.setValueAtTime(1047, ctx.currentTime + 0.1); // C6 note
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.3);
+    } catch (error) {
+      console.log("Could not play notification sound:", error);
+    }
+  }, []);
+  
+  return playNotificationSound;
+};
+
 const Atendimento = () => {
   const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(
@@ -126,6 +162,9 @@ const Atendimento = () => {
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [showArchived, setShowArchived] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  
+  const playNotificationSound = useNotificationSound();
 
   // Active conversations (not archived)
   const activeConversations = conversations.filter(conv => conv.status !== "archived");
@@ -165,6 +204,65 @@ const Atendimento = () => {
     ));
   };
 
+  // Simulate receiving a new message (for demo purposes)
+  // In production, this would be triggered by real-time events
+  const handleNewCustomerMessage = useCallback((convId: string, messageContent: string) => {
+    setConversations(prev => prev.map(conv => {
+      if (conv.id !== convId) return conv;
+      
+      const newMessage: Message = {
+        id: `msg-${Date.now()}`,
+        content: messageContent,
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        isFromCustomer: true
+      };
+      
+      // If archived, move to in_progress
+      const newStatus = conv.status === "archived" ? "in_progress" as const : conv.status;
+      
+      // Play notification sound for pending or in_progress conversations
+      if (soundEnabled && (conv.status === "pending" || conv.status === "in_progress" || conv.status === "archived")) {
+        playNotificationSound();
+        
+        // Show toast notification
+        const statusLabel = conv.status === "archived" ? "restaurada" : "nova mensagem";
+        toast.info(`${conv.name}: ${statusLabel}`, {
+          description: messageContent.substring(0, 50) + (messageContent.length > 50 ? "..." : ""),
+        });
+      }
+      
+      return {
+        ...conv,
+        status: newStatus,
+        lastMessage: messageContent,
+        time: "Agora",
+        unread: (conv.unread || 0) + 1,
+        messages: [...conv.messages, newMessage]
+      };
+    }));
+  }, [soundEnabled, playNotificationSound]);
+
+  // Demo: Simulate incoming messages every 30 seconds (for presentation)
+  useEffect(() => {
+    const demoMessages = [
+      { convId: "4", message: "Olá, mudei de ideia! Gostaria de retomar o pedido." },
+      { convId: "1", message: "Vocês ainda estão aí?" },
+      { convId: "2", message: "Obrigado pela atenção!" },
+    ];
+    
+    let messageIndex = 0;
+    
+    const interval = setInterval(() => {
+      if (messageIndex < demoMessages.length) {
+        const { convId, message } = demoMessages[messageIndex];
+        handleNewCustomerMessage(convId, message);
+        messageIndex++;
+      }
+    }, 30000); // Every 30 seconds for demo
+    
+    return () => clearInterval(interval);
+  }, [handleNewCustomerMessage]);
+
   // Get counts for filter badges
   const pendingCount = activeConversations.filter(c => c.status === "pending").length;
   const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
@@ -175,7 +273,22 @@ const Atendimento = () => {
         {/* Conversations List */}
         <div className="w-80 bg-card rounded-lg border border-border flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border space-y-3">
-            <h2 className="font-semibold text-foreground">Conversas</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-foreground">Conversas</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                title={soundEnabled ? "Desativar notificações sonoras" : "Ativar notificações sonoras"}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="w-4 h-4 text-primary" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-muted-foreground" />
+                )}
+              </Button>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
