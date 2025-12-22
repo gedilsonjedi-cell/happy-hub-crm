@@ -34,11 +34,14 @@ export function useUserRole(): UserRoleState {
       }
 
       try {
+        console.log("Fetching role for user:", user.id);
         const { data, error } = await supabase
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)
           .maybeSingle();
+
+        console.log("Role fetch result:", { data, error });
 
         if (error) {
           console.error("Error fetching user role:", error);
@@ -47,6 +50,7 @@ export function useUserRole(): UserRoleState {
           setRole(data.role as AppRole);
         } else {
           // No role found - user might be new, default to null
+          console.log("No role found for user");
           setRole(null);
         }
       } catch (err) {
