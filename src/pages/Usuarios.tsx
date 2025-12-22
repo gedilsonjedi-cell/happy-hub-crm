@@ -341,12 +341,26 @@ const Usuarios = () => {
       u.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Redirect non-admins
-  if (!roleLoading && !isAdmin) {
+  console.log("Usuarios page - roleLoading:", roleLoading, "isAdmin:", isAdmin, "loading:", loading);
+
+  // Show loading while checking role
+  if (roleLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Redirect non-admins only after role is loaded
+  if (!isAdmin) {
+    console.log("Redirecting - not admin");
     return <Navigate to="/" replace />;
   }
 
-  if (roleLoading || loading) {
+  if (loading) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
