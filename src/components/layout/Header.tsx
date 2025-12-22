@@ -3,6 +3,7 @@ import { MessageSquare, LogOut, Wallet, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
+import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 import {
   Tooltip,
   TooltipContent,
@@ -50,6 +51,9 @@ export function Header() {
 
       {/* Right Section */}
       <div className="flex items-center gap-4">
+        {/* Client Switcher (Super Admin only) */}
+        <ClientSwitcher />
+
         {/* Investimento em Disparos */}
         <Tooltip>
           <TooltipTrigger asChild>

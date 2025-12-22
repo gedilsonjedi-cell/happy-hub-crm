@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
 import Leads from "./pages/Leads";
@@ -36,7 +37,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/auth" replace />;
   }
 
-  return <>{children}</>;
+  return <SuperAdminProvider>{children}</SuperAdminProvider>;
 };
 
 const App = () => (
