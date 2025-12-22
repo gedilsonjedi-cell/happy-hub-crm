@@ -116,6 +116,13 @@ const Usuarios = () => {
   const [selectedUserSectorIds, setSelectedUserSectorIds] = useState<string[]>([]);
   const [sectorName, setSectorName] = useState("");
   const [sectorDescription, setSectorDescription] = useState("");
+  
+  // New user form states
+  const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // Fetch users with their roles
   const fetchUsers = async () => {
@@ -285,6 +292,101 @@ const Usuarios = () => {
     }
   };
 
+  // Handle create new user
+  const handleCreateUser = async () => {
+    if (!newUserName.trim()) {
+      toast.error("Nome é obrigatório");
+      return;
+    }
+    if (!newUserEmail.trim()) {
+      toast.error("Email é obrigatório");
+      return;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUserEmail.trim())) {
+      toast.error("Email inválido");
+      return;
+    }
+
+    setIsCreatingUser(true);
+    
+    try {
+      // Generate a temporary password (user will need to reset)
+      const tempPassword = Math.random().toString(36).slice(-12) + "Aa1!";
+      
+      // Create user via Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUserEmail.trim(),
+        password: tempPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            display_name: newUserName.trim(),
+          }
+        }
+      });
+
+      if (authError) {
+        if (authError.message.includes("already registered")) {
+          toast.error("Este email já está cadastrado");
+        } else {
+          throw authError;
+        }
+        return;
+      }
+
+      if (!authData.user) {
+        toast.error("Erro ao criar usuário");
+        return;
+      }
+
+      // Create profile for the new user
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .insert({
+          user_id: authData.user.id,
+          email: newUserEmail.trim(),
+          display_name: newUserName.trim(),
+        });
+
+      if (profileError) {
+        console.error("Error creating profile:", profileError);
+        // Continue anyway - profile might be created by trigger
+      }
+
+      // Assign role to the new user
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .insert({
+          user_id: authData.user.id,
+          role: newUserRole,
+        });
+
+      if (roleError) {
+        console.error("Error assigning role:", roleError);
+        toast.error("Usuário criado, mas erro ao atribuir função");
+      }
+
+      toast.success(`Usuário ${newUserName} criado com sucesso! Um email de confirmação foi enviado.`);
+      
+      // Reset form
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserRole("atendente");
+      setIsNewUserDialogOpen(false);
+      
+      // Refresh user list
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+      toast.error(error.message || "Erro ao criar usuário");
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
   // Open user sector dialog
   const openUserSectorDialog = (userToEdit: UserWithRole) => {
     setEditingUser(userToEdit);
@@ -434,7 +536,7 @@ const Usuarios = () => {
 
           {/* Users Tab */}
           <TabsContent value="users" className="space-y-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between gap-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -444,6 +546,10 @@ const Usuarios = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
+              <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Novo Usuário
+              </Button>
             </div>
 
             <Card className="bg-card border-border">
@@ -648,6 +754,96 @@ const Usuarios = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* New User Dialog */}
+        <Dialog open={isNewUserDialogOpen} onOpenChange={setIsNewUserDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Novo Usuário</DialogTitle>
+              <DialogDescription>
+                Cadastre um novo usuário no sistema. Um email de confirmação será enviado.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-user-name">Nome</Label>
+                <Input
+                  id="new-user-name"
+                  placeholder="Nome do usuário"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  className="bg-muted/30 border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-user-email">Email</Label>
+                <Input
+                  id="new-user-email"
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  className="bg-muted/30 border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-user-role">Tipo de Usuário</Label>
+                <Select value={newUserRole} onValueChange={(value: AppRole) => setNewUserRole(value)}>
+                  <SelectTrigger className="bg-muted/30 border-border">
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-destructive" />
+                        Admin
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="supervisor">
+                      <div className="flex items-center gap-2">
+                        <UserCog className="w-4 h-4 text-warning" />
+                        Supervisor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="atendente">
+                      <div className="flex items-center gap-2">
+                        <Headphones className="w-4 h-4 text-primary" />
+                        Atendente
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsNewUserDialogOpen(false);
+                  setNewUserName("");
+                  setNewUserEmail("");
+                  setNewUserRole("atendente");
+                }}
+                disabled={isCreatingUser}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateUser} disabled={isCreatingUser}>
+                {isCreatingUser ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Usuário
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* User Sector Assignment Dialog */}
         <Dialog open={isUserSectorDialogOpen} onOpenChange={setIsUserSectorDialogOpen}>
