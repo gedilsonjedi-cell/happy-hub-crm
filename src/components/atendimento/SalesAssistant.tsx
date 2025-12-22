@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Bot, Send, Sparkles, X, Lightbulb, Target, MessageCircle, RefreshCw } from "lucide-react";
+import { Bot, Send, Sparkles, X, Lightbulb, Target, MessageCircle, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -21,23 +20,77 @@ interface SalesAssistantProps {
 }
 
 const quickPrompts = [
-  { icon: Target, label: "Fechar venda", prompt: "Me ajude a fechar essa venda. O cliente está interessado mas ainda não decidiu." },
-  { icon: RefreshCw, label: "Reverter objeção", prompt: "O cliente disse que está caro. Como posso reverter essa objeção?" },
-  { icon: Lightbulb, label: "Sugerir abordagem", prompt: "Sugira uma abordagem de vendas persuasiva para esse cliente." },
-  { icon: MessageCircle, label: "Script de follow-up", prompt: "Crie um script de follow-up para reengajar esse cliente." },
+  { icon: Target, label: "Fechar venda", prompt: "Me ajude a fechar essa venda agora." },
+  { icon: RefreshCw, label: "Reverter objeção", prompt: "Como posso reverter a objeção do cliente?" },
+  { icon: Lightbulb, label: "Nova abordagem", prompt: "Sugira uma nova abordagem de vendas." },
+  { icon: MessageCircle, label: "Script follow-up", prompt: "Crie um script de follow-up." },
 ];
 
 export const SalesAssistant = ({ isOpen, onClose, customerName, conversationContext }: SalesAssistantProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastContextRef = useRef<string>("");
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // Auto-analyze conversation when opened with context
+  useEffect(() => {
+    if (isOpen && conversationContext && conversationContext !== lastContextRef.current && !hasAnalyzed) {
+      lastContextRef.current = conversationContext;
+      analyzeConversation();
+    }
+  }, [isOpen, conversationContext]);
+
+  // Reset when closed
+  useEffect(() => {
+    if (!isOpen) {
+      setHasAnalyzed(false);
+    }
+  }, [isOpen]);
+
+  const analyzeConversation = async () => {
+    if (!conversationContext || isAnalyzing) return;
+    
+    setIsAnalyzing(true);
+    setHasAnalyzed(true);
+
+    try {
+      const analysisPrompt = `Analise esta conversa de atendimento e forneça:
+1. Um resumo rápido do que o cliente quer/precisa
+2. O estágio atual da negociação (início, interesse, objeção, decisão)
+3. 2-3 sugestões práticas de como o atendente deve proceder
+
+Conversa:
+${conversationContext}`;
+
+      const { data, error } = await supabase.functions.invoke('sales-assistant', {
+        body: { 
+          messages: [{ role: "user", content: analysisPrompt }]
+        }
+      });
+
+      if (error) throw error;
+
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.message || "Não consegui analisar a conversa."
+      };
+      setMessages([assistantMessage]);
+    } catch (error: any) {
+      console.error("Erro ao analisar conversa:", error);
+      toast.error("Erro ao analisar conversa");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleSend = async (customPrompt?: string) => {
     const messageText = customPrompt || input.trim();
@@ -50,7 +103,7 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
 
     try {
       const contextMessage = customerName 
-        ? `Contexto: Estou atendendo o cliente "${customerName}".${conversationContext ? ` Histórico da conversa: ${conversationContext}` : ""}\n\nMinha pergunta: ${messageText}`
+        ? `Contexto: Estou atendendo o cliente "${customerName}".${conversationContext ? ` Histórico: ${conversationContext}` : ""}\n\nPergunta: ${messageText}`
         : messageText;
 
       const { data, error } = await supabase.functions.invoke('sales-assistant', {
@@ -63,12 +116,12 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
 
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message || "Desculpe, não consegui processar sua solicitação."
+        content: data.message || "Não consegui processar."
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
-      console.error("Erro ao enviar mensagem:", error);
-      toast.error("Erro ao obter resposta da IA");
+      console.error("Erro:", error);
+      toast.error("Erro ao obter resposta");
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +136,7 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
 
   const clearChat = () => {
     setMessages([]);
+    setHasAnalyzed(false);
   };
 
   if (!isOpen) return null;
@@ -107,8 +161,18 @@ export const SalesAssistant = ({ isOpen, onClose, customerName, conversationCont
         </div>
       </div>
 
-      {/* Quick Prompts */}
-      {messages.length === 0 && (
+      {/* Analyzing State */}
+      {isAnalyzing && (
+        <div className="p-4 border-b border-border bg-muted/30">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-4 h-4 text-primary animate-spin" />
+            <span className="text-sm text-muted-foreground">Analisando conversa...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Prompts - only show if no messages and not analyzing */}
+      {messages.length === 0 && !isAnalyzing && (
         <div className="p-3 border-b border-border bg-muted/30">
           <p className="text-xs text-muted-foreground mb-2">Sugestões rápidas:</p>
           <div className="grid grid-cols-2 gap-2">
