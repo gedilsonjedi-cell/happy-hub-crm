@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.sales-assistant]
 verify_jwt = true
+
+[functions.agent-preview]
+verify_jwt = true

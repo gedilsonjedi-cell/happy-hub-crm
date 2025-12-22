@@ -1,13 +1,87 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `Você é um assistente especialista em vendas e negociação, focado em ajudar atendentes a fechar vendas e lidar com objeções de clientes.
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
-Suas responsabilidades:
+  try {
+    const { messages } = await req.json();
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY não configurada');
+    }
+
+    // Get user from auth header
+    const authHeader = req.headers.get('authorization');
+    let agentConfig = null;
+
+    if (authHeader) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const token = authHeader.replace('Bearer ', '');
+      
+      const { data: { user } } = await supabase.auth.getUser(token);
+      
+      if (user) {
+        // Fetch agent configuration
+        const { data: agent } = await supabase
+          .from('ai_agents')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (agent) {
+          agentConfig = agent;
+          console.log('Usando configurações do agente:', agent.name);
+        }
+      }
+    }
+
+    // Build dynamic system prompt based on agent config
+    let systemPrompt = `Você é um assistente especialista em vendas e negociação, focado em ajudar atendentes a fechar vendas e lidar com objeções de clientes.`;
+
+    if (agentConfig) {
+      const styleMap: Record<string, string> = {
+        consultivo: "consultivo, acolhedor e empático",
+        neutro: "neutro, equilibrado e profissional",
+        formal: "formal e institucional",
+      };
+
+      const profileMap: Record<string, string> = {
+        vendedor: "vendedor focado em fechar negócios",
+        sdr: "SDR focado em qualificar leads",
+        suporte: "agente de suporte",
+        onboarding: "especialista em onboarding",
+        recepcionista: "recepcionista virtual",
+        outro: "assistente virtual",
+      };
+
+      systemPrompt = `Você é ${agentConfig.name || "um assistente de vendas"}${agentConfig.nickname ? ` (${agentConfig.nickname})` : ""}, um ${profileMap[agentConfig.agent_profile] || "assistente de vendas"}.
+
+Estilo de comunicação: ${styleMap[agentConfig.communication_style] || "profissional"}.
+
+${agentConfig.objective ? `Objetivo principal: ${agentConfig.objective}` : ""}
+
+${agentConfig.company_info ? `SOBRE A EMPRESA:\n${agentConfig.company_info}\n` : ""}
+
+${agentConfig.products_services ? `PRODUTOS/SERVIÇOS:\n${agentConfig.products_services}\n` : ""}
+
+${agentConfig.faq ? `PERGUNTAS FREQUENTES:\n${agentConfig.faq}\n` : ""}`;
+    }
+
+    systemPrompt += `
+
+Suas responsabilidades como assistente de vendas:
 1. Fornecer scripts de vendas persuasivos e naturais
 2. Sugerir respostas para objeções comuns (preço alto, preciso pensar, etc.)
 3. Dar dicas de técnicas de fechamento de vendas
@@ -20,25 +94,12 @@ Diretrizes:
 - Forneça exemplos de frases prontas para usar
 - Adapte as sugestões ao contexto do cliente quando fornecido
 - Mantenha respostas concisas mas completas
-- Use emojis com moderação para tornar as mensagens mais amigáveis
+${agentConfig ? `- Use as informações da empresa para personalizar as respostas` : ""}
 
 Formato das respostas:
 - Para scripts: forneça a mensagem pronta entre aspas
 - Para técnicas: explique brevemente e dê exemplo prático
 - Para objeções: dê 2-3 opções de resposta`;
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY não configurada');
-    }
 
     console.log('Enviando mensagem para Lovable AI...');
 
@@ -51,7 +112,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           ...messages
         ],
         max_tokens: 1000,
