@@ -13,7 +13,6 @@ import Templates from "./pages/Templates";
 import Pipeline from "./pages/Pipeline";
 import Chatbot from "./pages/Chatbot";
 import Usuarios from "./pages/Usuarios";
-import Setores from "./pages/Setores";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -54,7 +53,6 @@ const App = () => (
           <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
           <Route path="/chatbot" element={<ProtectedRoute><Chatbot /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
-          <Route path="/setores" element={<ProtectedRoute><Setores /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
