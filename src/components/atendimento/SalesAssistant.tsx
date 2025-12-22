@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Bot, Send, Sparkles, X, Lightbulb, Target, MessageCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Bot, Send, Sparkles, X, Lightbulb, Target, MessageCircle, RefreshCw, Loader2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,6 +25,31 @@ const quickPrompts = [
   { icon: RefreshCw, label: "Reverter objeção", prompt: "Como posso reverter a objeção do cliente?" },
   { icon: Lightbulb, label: "Nova abordagem", prompt: "Sugira uma nova abordagem de vendas." },
 ];
+
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copiado!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-1 right-1 p-1 rounded hover:bg-background/50 opacity-0 group-hover:opacity-100 transition-opacity"
+      title="Copiar"
+    >
+      {copied ? (
+        <Check className="w-3 h-3 text-green-500" />
+      ) : (
+        <Copy className="w-3 h-3 text-muted-foreground" />
+      )}
+    </button>
+  );
+};
 
 export const SalesAssistant = ({ isOpen, onClose, customerName, conversationContext }: SalesAssistantProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -198,13 +223,16 @@ ${conversationContext}`;
             >
               <div
                 className={cn(
-                  "max-w-[90%] rounded-lg px-3 py-2 text-sm",
+                  "max-w-[90%] rounded-lg px-3 py-2 text-sm group relative",
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-foreground"
                 )}
               >
                 <p className="whitespace-pre-wrap">{msg.content}</p>
+                {msg.role === "assistant" && (
+                  <CopyButton text={msg.content} />
+                )}
               </div>
             </div>
           ))}
