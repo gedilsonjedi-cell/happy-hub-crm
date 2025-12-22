@@ -1,18 +1,21 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, Wallet, User } from "lucide-react";
+import { MessageSquare, LogOut, Wallet, User, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
+import { useUserRole } from "@/hooks/useUserRole";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const { summary, loading: costsLoading } = useDispatchCosts();
+  const { syncing } = useUserRole();
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString("pt-BR", {
@@ -51,6 +54,21 @@ export function Header() {
 
       {/* Right Section */}
       <div className="flex items-center gap-4">
+        {/* Sync Indicator */}
+        {syncing && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <RefreshCw className={cn("w-4 h-4 animate-spin")} />
+                <span className="text-xs hidden md:inline">Sincronizando...</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Atualizando permissões
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Client Switcher (Super Admin only) */}
         <ClientSwitcher />
 
