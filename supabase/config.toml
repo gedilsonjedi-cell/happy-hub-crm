@@ -11,3 +11,9 @@ verify_jwt = true
 
 [functions.gupshup-validate]
 verify_jwt = true
+
+[functions.gupshup-webhook]
+verify_jwt = false
+
+[functions.gupshup-templates]
+verify_jwt = true

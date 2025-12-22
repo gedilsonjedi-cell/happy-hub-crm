@@ -797,6 +797,72 @@ export type Database = {
           },
         ]
       }
+      whatsapp_messages: {
+        Row: {
+          channel_id: string | null
+          content: string | null
+          created_at: string
+          direction: string
+          id: string
+          media_url: string | null
+          message_id: string
+          message_type: string
+          metadata: Json | null
+          organization_id: string | null
+          sender_name: string | null
+          sender_phone: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          content?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          media_url?: string | null
+          message_id: string
+          message_type?: string
+          metadata?: Json | null
+          organization_id?: string | null
+          sender_name?: string | null
+          sender_phone: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          content?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          media_url?: string | null
+          message_id?: string
+          message_type?: string
+          metadata?: Json | null
+          organization_id?: string | null
+          sender_name?: string | null
+          sender_phone?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

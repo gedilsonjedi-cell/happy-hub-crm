@@ -10,7 +10,10 @@ import {
   PowerOff,
   RefreshCw,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Copy,
+  FileText,
+  Webhook
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -46,6 +49,8 @@ interface Channel {
   created_at: string;
 }
 
+const WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/gupshup-webhook`;
+
 const Conexoes = () => {
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -53,6 +58,7 @@ const Conexoes = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isValidated, setIsValidated] = useState(false);
+  const [isSyncingTemplates, setIsSyncingTemplates] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     appName: "",
@@ -213,6 +219,47 @@ const Conexoes = () => {
     fetchChannels();
   };
 
+  const handleSyncTemplates = async (channel: Channel) => {
+    if (!channel.access_token || !channel.app_name) {
+      toast.error("Canal não possui credenciais configuradas");
+      return;
+    }
+
+    setIsSyncingTemplates(channel.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('gupshup-templates', {
+        body: {
+          apiKey: channel.access_token,
+          appName: channel.app_name,
+          channelId: channel.id
+        }
+      });
+
+      if (error) {
+        console.error('Sync error:', error);
+        toast.error('Erro ao sincronizar templates');
+        return;
+      }
+
+      if (data.success) {
+        toast.success(data.message);
+      } else {
+        toast.error(data.error || 'Erro ao sincronizar templates');
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      toast.error('Erro ao sincronizar templates');
+    }
+
+    setIsSyncingTemplates(null);
+  };
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(WEBHOOK_URL);
+    toast.success("URL do webhook copiada!");
+  };
+
   return (
     <MainLayout>
       {/* Header */}
@@ -271,6 +318,28 @@ const Conexoes = () => {
           <li>No dashboard do app, copie a <strong>API Key</strong> e o <strong>App Name</strong></li>
           <li>Cole as informações no formulário de conexão</li>
         </ol>
+      </div>
+
+      {/* Webhook URL Section */}
+      <div className="mt-6 p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
+        <div className="flex items-start gap-3">
+          <Webhook className="w-5 h-5 text-emerald-500 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="font-medium text-foreground mb-1">URL do Webhook</h4>
+            <p className="text-sm text-muted-foreground mb-3">
+              Configure esta URL no painel do Gupshup para receber mensagens em tempo real.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-muted/50 px-3 py-2 rounded border border-border font-mono overflow-x-auto">
+                {WEBHOOK_URL}
+              </code>
+              <Button variant="outline" size="sm" onClick={copyWebhookUrl} className="gap-1.5">
+                <Copy className="w-3.5 h-3.5" />
+                Copiar
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Connected Numbers Section */}
@@ -344,6 +413,23 @@ const Conexoes = () => {
                           <>
                             <Power className="w-4 h-4" />
                             Reconectar
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="gap-2 cursor-pointer"
+                        onClick={() => handleSyncTemplates(channel)}
+                        disabled={isSyncingTemplates === channel.id}
+                      >
+                        {isSyncingTemplates === channel.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sincronizando...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4" />
+                            Sincronizar Templates
                           </>
                         )}
                       </DropdownMenuItem>
