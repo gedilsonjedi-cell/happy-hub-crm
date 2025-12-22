@@ -10,7 +10,8 @@ import {
   FileText,
   GitBranch,
   Bot,
-  UserCog
+  UserCog,
+  Building2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const menuItems = [
   { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
   { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
+  { icon: Building2, label: "Setores", path: "/setores", permission: "canAccessSetores" },
 ];
 
 export function Sidebar() {

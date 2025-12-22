@@ -50,6 +50,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -104,12 +106,14 @@ const Usuarios = () => {
   // Dialog states
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [isSectorDialogOpen, setIsSectorDialogOpen] = useState(false);
+  const [isUserSectorDialogOpen, setIsUserSectorDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [editingSector, setEditingSector] = useState<Sector | null>(null);
   
   // Form states
   const [selectedRole, setSelectedRole] = useState<AppRole>("atendente");
   const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
+  const [selectedUserSectorIds, setSelectedUserSectorIds] = useState<string[]>([]);
   const [sectorName, setSectorName] = useState("");
   const [sectorDescription, setSectorDescription] = useState("");
 
@@ -278,6 +282,55 @@ const Usuarios = () => {
     } catch (error) {
       console.error("Error deleting sector:", error);
       toast.error("Erro ao remover setor");
+    }
+  };
+
+  // Open user sector dialog
+  const openUserSectorDialog = (userToEdit: UserWithRole) => {
+    setEditingUser(userToEdit);
+    // Get sector IDs for this user
+    const userSectorIds = sectors
+      .filter((s) => userToEdit.sectors.includes(s.name))
+      .map((s) => s.id);
+    setSelectedUserSectorIds(userSectorIds);
+    setIsUserSectorDialogOpen(true);
+  };
+
+  // Save user sector assignments
+  const handleSaveUserSectors = async () => {
+    if (!editingUser) return;
+
+    try {
+      // First, delete all existing sector assignments for this user
+      const { error: deleteError } = await supabase
+        .from("user_sectors")
+        .delete()
+        .eq("user_id", editingUser.id);
+
+      if (deleteError) throw deleteError;
+
+      // Then insert new assignments
+      if (selectedUserSectorIds.length > 0) {
+        const { error: insertError } = await supabase
+          .from("user_sectors")
+          .insert(
+            selectedUserSectorIds.map((sectorId) => ({
+              user_id: editingUser.id,
+              sector_id: sectorId,
+            }))
+          );
+
+        if (insertError) throw insertError;
+      }
+
+      toast.success("Setores do usuário atualizados com sucesso");
+      setIsUserSectorDialogOpen(false);
+      setEditingUser(null);
+      setSelectedUserSectorIds([]);
+      fetchUsers();
+    } catch (error) {
+      console.error("Error updating user sectors:", error);
+      toast.error("Erro ao atualizar setores do usuário");
     }
   };
 
@@ -475,7 +528,12 @@ const Usuarios = () => {
                             {new Date(u.created_at).toLocaleDateString("pt-BR")}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8"
+                              onClick={() => openUserSectorDialog(u)}
+                            >
                               <Edit className="w-4 h-4" />
                             </Button>
                           </TableCell>
@@ -592,6 +650,74 @@ const Usuarios = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* User Sector Assignment Dialog */}
+        <Dialog open={isUserSectorDialogOpen} onOpenChange={setIsUserSectorDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Atribuir Setores</DialogTitle>
+              <DialogDescription>
+                Selecione os setores para {editingUser?.display_name || editingUser?.email}
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="h-[300px] pr-4">
+              <div className="space-y-2">
+                {sectors.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhum setor criado. Crie setores na aba "Setores" primeiro.
+                  </div>
+                ) : (
+                  sectors.map((sector) => (
+                    <div
+                      key={sector.id}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/30 border border-border"
+                    >
+                      <Checkbox
+                        id={`sector-${sector.id}`}
+                        checked={selectedUserSectorIds.includes(sector.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedUserSectorIds([...selectedUserSectorIds, sector.id]);
+                          } else {
+                            setSelectedUserSectorIds(
+                              selectedUserSectorIds.filter((id) => id !== sector.id)
+                            );
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`sector-${sector.id}`}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <div className="font-medium text-foreground">{sector.name}</div>
+                        {sector.description && (
+                          <div className="text-xs text-muted-foreground line-clamp-1">
+                            {sector.description}
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsUserSectorDialogOpen(false);
+                  setEditingUser(null);
+                  setSelectedUserSectorIds([]);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveUserSectors} disabled={sectors.length === 0}>
+                Salvar ({selectedUserSectorIds.length} setor{selectedUserSectorIds.length !== 1 ? "es" : ""})
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
