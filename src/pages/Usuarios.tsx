@@ -9,7 +9,12 @@ import {
   Trash2,
   Edit,
   Building2,
-  ChevronDown
+  ChevronDown,
+  MoreHorizontal,
+  KeyRound,
+  UserX,
+  UserCheck,
+  Mail
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -37,6 +42,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -67,6 +73,7 @@ interface UserWithRole {
   role: AppRole | null;
   sectors: string[];
   created_at: string;
+  is_active: boolean;
 }
 
 interface Sector {
@@ -163,6 +170,7 @@ const Usuarios = () => {
           role: userRole?.role as AppRole | null,
           sectors: userSectorsList || [],
           created_at: profile.created_at,
+          is_active: profile.is_active ?? true,
         };
       });
 
@@ -387,6 +395,40 @@ const Usuarios = () => {
     }
   };
 
+  // Toggle user active status
+  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_active: !currentStatus })
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      toast.success(currentStatus ? "Usuário desativado" : "Usuário ativado");
+      fetchUsers();
+    } catch (error) {
+      console.error("Error toggling user status:", error);
+      toast.error("Erro ao alterar status do usuário");
+    }
+  };
+
+  // Send password reset email
+  const handleSendPasswordReset = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth`,
+      });
+
+      if (error) throw error;
+
+      toast.success(`Email de redefinição de senha enviado para ${email}`);
+    } catch (error: any) {
+      console.error("Error sending password reset:", error);
+      toast.error(error.message || "Erro ao enviar email de redefinição");
+    }
+  };
+
   // Open user sector dialog
   const openUserSectorDialog = (userToEdit: UserWithRole) => {
     setEditingUser(userToEdit);
@@ -557,6 +599,7 @@ const Usuarios = () => {
                 <TableHeader>
                   <TableRow className="border-border hover:bg-transparent">
                     <TableHead>Usuário</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Função</TableHead>
                     <TableHead>Setores</TableHead>
                     <TableHead>Criado em</TableHead>
@@ -566,7 +609,7 @@ const Usuarios = () => {
                 <TableBody>
                   {filteredUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                         Nenhum usuário encontrado
                       </TableCell>
                     </TableRow>
@@ -574,21 +617,29 @@ const Usuarios = () => {
                     filteredUsers.map((u) => {
                       const RoleIcon = u.role ? roleConfig[u.role].icon : Users;
                       return (
-                        <TableRow key={u.id} className="border-border">
+                        <TableRow key={u.id} className={`border-border ${!u.is_active ? 'opacity-50' : ''}`}>
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="w-8 h-8">
-                                <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                <AvatarFallback className={`text-xs ${u.is_active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                                   {(u.display_name || u.email).slice(0, 2).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <div className="font-medium text-foreground">
+                                <div className="font-medium text-foreground flex items-center gap-2">
                                   {u.display_name || "Sem nome"}
                                 </div>
                                 <div className="text-xs text-muted-foreground">{u.email}</div>
                               </div>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={u.is_active ? "default" : "secondary"}
+                              className={u.is_active ? "bg-green-500/10 text-green-500 border-green-500/30" : "bg-muted text-muted-foreground"}
+                            >
+                              {u.is_active ? "Ativo" : "Inativo"}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
@@ -632,14 +683,40 @@ const Usuarios = () => {
                             {new Date(u.created_at).toLocaleDateString("pt-BR")}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => openUserSectorDialog(u)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openUserSectorDialog(u)}>
+                                  <Building2 className="w-4 h-4 mr-2" />
+                                  Gerenciar Setores
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSendPasswordReset(u.email)}>
+                                  <KeyRound className="w-4 h-4 mr-2" />
+                                  Redefinir Senha
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleToggleUserStatus(u.id, u.is_active)}
+                                  className={u.is_active ? "text-destructive focus:text-destructive" : "text-green-500 focus:text-green-500"}
+                                >
+                                  {u.is_active ? (
+                                    <>
+                                      <UserX className="w-4 h-4 mr-2" />
+                                      Desativar Usuário
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserCheck className="w-4 h-4 mr-2" />
+                                      Ativar Usuário
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       );
