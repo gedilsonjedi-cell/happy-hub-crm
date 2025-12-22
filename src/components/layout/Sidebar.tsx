@@ -9,25 +9,35 @@ import {
   Menu,
   FileText,
   GitBranch,
-  Bot
+  Bot,
+  UserCog
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const menuItems = [
-  { icon: LayoutGrid, label: "Dashboard", path: "/" },
-  { icon: Link2, label: "Conexões", path: "/conexoes" },
-  { icon: Users, label: "Leads", path: "/leads" },
-  { icon: GitBranch, label: "Pipeline", path: "/pipeline" },
-  { icon: Bot, label: "Chatbot IA", path: "/chatbot" },
-  { icon: MessageSquare, label: "Atendimento", path: "/atendimento" },
-  { icon: Send, label: "Disparos", path: "/disparos" },
-  { icon: FileText, label: "Templates", path: "/templates" },
+  { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
+  { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
+  { icon: Users, label: "Leads", path: "/leads", permission: "canAccessLeads" },
+  { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
+  { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
+  { icon: MessageSquare, label: "Atendimento", path: "/atendimento", permission: null },
+  { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
+  { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
+  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const userRole = useUserRole();
+
+  // Filter menu items based on permissions
+  const visibleMenuItems = menuItems.filter((item) => {
+    if (item.permission === null) return true;
+    return userRole[item.permission as keyof typeof userRole];
+  });
 
   return (
     <aside 
@@ -50,7 +60,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="p-2 space-y-1">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const isActive = location.pathname === item.path;
           const Icon = item.icon;
           
