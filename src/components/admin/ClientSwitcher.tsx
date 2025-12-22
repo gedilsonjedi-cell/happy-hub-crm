@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { 
   Building2, 
   ChevronDown, 
@@ -135,11 +135,12 @@ export function ClientSwitcher() {
             </DropdownMenuItem>
           )}
           
-          <DropdownMenuItem asChild>
-            <Link to="/super-admin" className="cursor-pointer">
-              <Settings className="w-4 h-4 mr-2" />
-              Painel Super Admin
-            </Link>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => navigate("/super-admin")}
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Painel Super Admin
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
