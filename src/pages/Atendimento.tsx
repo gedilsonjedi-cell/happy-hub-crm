@@ -2,13 +2,10 @@ import { useState } from "react";
 import { 
   MessageSquare, 
   Search, 
-  Phone, 
   Send, 
   Paperclip, 
-  Smile,
-  MoreVertical,
-  Clock,
-  CheckCheck
+  CheckCheck,
+  Sparkles
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -18,6 +15,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { SalesAssistant } from "@/components/atendimento/SalesAssistant";
 
 interface Conversation {
   id: string;
@@ -88,6 +86,7 @@ const Atendimento = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(mockConversations[0]);
   const [searchTerm, setSearchTerm] = useState("");
   const [message, setMessage] = useState("");
+  const [showSalesAssistant, setShowSalesAssistant] = useState(false);
 
   const filteredConversations = mockConversations.filter(conv => 
     conv.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -174,9 +173,20 @@ const Atendimento = () => {
                     <p className="text-xs text-muted-foreground">{selectedConversation.phone}</p>
                   </div>
                 </div>
-                <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
-                  {statusConfig[selectedConversation.status].label}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={showSalesAssistant ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowSalesAssistant(!showSalesAssistant)}
+                    className="gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Assistente IA
+                  </Button>
+                  <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
+                    {statusConfig[selectedConversation.status].label}
+                  </Badge>
+                </div>
               </div>
 
               {/* Messages */}
@@ -242,6 +252,16 @@ const Atendimento = () => {
             </div>
           )}
         </div>
+
+        {/* Sales Assistant Panel */}
+        <SalesAssistant
+          isOpen={showSalesAssistant}
+          onClose={() => setShowSalesAssistant(false)}
+          customerName={selectedConversation?.name}
+          conversationContext={selectedConversation?.messages.map(m => 
+            `${m.isFromCustomer ? 'Cliente' : 'Atendente'}: ${m.content}`
+          ).join('\n')}
+        />
       </div>
     </MainLayout>
   );

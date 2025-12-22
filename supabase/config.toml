@@ -2,3 +2,6 @@ project_id = "rcygvkfzqmakxoquywzg"
 
 [functions.chatbot]
 verify_jwt = true
+
+[functions.sales-assistant]
+verify_jwt = true
