@@ -11,7 +11,17 @@ import {
   Loader2,
   User,
   CheckCheck,
-  Clock
+  Clock,
+  Paperclip,
+  Sparkles,
+  Archive,
+  Play,
+  Trash2,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -26,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { SalesAssistant } from "@/components/atendimento/SalesAssistant";
 
 interface Message {
   id: string;
@@ -48,6 +59,7 @@ interface Conversation {
   lastMessageTime: string;
   unreadCount: number;
   channelId: string | null;
+  status: "pending" | "in_progress" | "resolved" | "archived";
 }
 
 interface Channel {
@@ -55,6 +67,48 @@ interface Channel {
   name: string;
   phone: string;
 }
+
+const statusConfig = {
+  pending: { label: "Pendente", className: "bg-warning/10 text-warning border-warning/30" },
+  in_progress: { label: "Em atendimento", className: "bg-primary/10 text-primary border-primary/30" },
+  resolved: { label: "Resolvido", className: "bg-muted text-muted-foreground border-border" },
+  archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
+};
+
+type FilterStatus = "all" | "pending" | "in_progress";
+
+// Audio notification using Web Audio API
+const useNotificationSound = () => {
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  const playNotificationSound = useCallback(() => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      const ctx = audioContextRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.setValueAtTime(1047, ctx.currentTime + 0.1);
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.3);
+    } catch (error) {
+      console.log("Could not play notification sound:", error);
+    }
+  }, []);
+  
+  return playNotificationSound;
+};
 
 const WhatsAppChat = () => {
   const { user } = useAuth();
@@ -68,8 +122,24 @@ const WhatsAppChat = () => {
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [showArchived, setShowArchived] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  const playNotificationSound = useNotificationSound();
+
+  // Stored conversation statuses (in localStorage to persist across sessions)
+  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>(() => {
+    const stored = localStorage.getItem("whatsapp-conversation-statuses");
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  // Save statuses to localStorage
+  useEffect(() => {
+    localStorage.setItem("whatsapp-conversation-statuses", JSON.stringify(conversationStatuses));
+  }, [conversationStatuses]);
 
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
@@ -95,11 +165,6 @@ const WhatsAppChat = () => {
         window.focus();
         notification.close();
       };
-
-      // Play notification sound
-      if (audioRef.current) {
-        audioRef.current.play().catch(() => {});
-      }
     }
   }, [notificationsEnabled]);
 
@@ -132,7 +197,6 @@ const WhatsAppChat = () => {
 
       setLoading(true);
 
-      // Get unique conversations from messages
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*")
@@ -146,18 +210,19 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Group by sender phone
       const conversationsMap = new Map<string, Conversation>();
       
       data?.forEach((msg) => {
         if (!conversationsMap.has(msg.sender_phone)) {
+          const storedStatus = conversationStatuses[msg.sender_phone];
           conversationsMap.set(msg.sender_phone, {
             phone: msg.sender_phone,
             name: msg.sender_name,
             lastMessage: msg.content || "",
             lastMessageTime: msg.created_at,
             unreadCount: msg.status === "received" ? 1 : 0,
-            channelId: msg.channel_id
+            channelId: msg.channel_id,
+            status: storedStatus || "pending"
           });
         } else {
           const existing = conversationsMap.get(msg.sender_phone)!;
@@ -172,7 +237,7 @@ const WhatsAppChat = () => {
     };
 
     fetchConversations();
-  }, [selectedChannel]);
+  }, [selectedChannel, conversationStatuses]);
 
   // Fetch messages for selected conversation
   useEffect(() => {
@@ -188,6 +253,11 @@ const WhatsAppChat = () => {
 
       if (!error && data) {
         setMessages(data as Message[]);
+      }
+
+      // Mark as in_progress when selected
+      if (selectedConversation.status === "pending") {
+        updateConversationStatus(selectedConversation.phone, "in_progress");
       }
     };
 
@@ -215,6 +285,14 @@ const WhatsAppChat = () => {
           // Show notification
           showNotification(newMsg);
           
+          // Play sound
+          if (soundEnabled && newMsg.direction === "inbound") {
+            playNotificationSound();
+            toast.info(`Nova mensagem de ${newMsg.sender_name || newMsg.sender_phone}`, {
+              description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
+            });
+          }
+          
           // Update messages if in current conversation
           if (selectedConversation?.phone === newMsg.sender_phone) {
             setMessages(prev => [...prev, newMsg]);
@@ -224,6 +302,11 @@ const WhatsAppChat = () => {
           setConversations(prev => {
             const existing = prev.find(c => c.phone === newMsg.sender_phone);
             if (existing) {
+              // If archived and new message comes, move to in_progress
+              const newStatus = existing.status === "archived" ? "in_progress" : existing.status;
+              if (existing.status === "archived") {
+                updateConversationStatus(newMsg.sender_phone, "in_progress");
+              }
               return prev.map(c => 
                 c.phone === newMsg.sender_phone 
                   ? { 
@@ -232,7 +315,8 @@ const WhatsAppChat = () => {
                       lastMessageTime: newMsg.created_at,
                       unreadCount: selectedConversation?.phone !== newMsg.sender_phone 
                         ? c.unreadCount + 1 
-                        : c.unreadCount
+                        : c.unreadCount,
+                      status: newStatus
                     }
                   : c
               ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
@@ -243,15 +327,11 @@ const WhatsAppChat = () => {
                 lastMessage: newMsg.content || "",
                 lastMessageTime: newMsg.created_at,
                 unreadCount: 1,
-                channelId: newMsg.channel_id
+                channelId: newMsg.channel_id,
+                status: "pending"
               }, ...prev];
             }
           });
-
-          // Play sound for new incoming messages
-          if (newMsg.direction === "inbound" && audioRef.current) {
-            audioRef.current.play().catch(() => {});
-          }
         }
       )
       .subscribe();
@@ -259,12 +339,38 @@ const WhatsAppChat = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChannel, selectedConversation, showNotification]);
+  }, [selectedChannel, selectedConversation, showNotification, soundEnabled, playNotificationSound]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const updateConversationStatus = (phone: string, status: Conversation["status"]) => {
+    setConversationStatuses(prev => ({ ...prev, [phone]: status }));
+    setConversations(prev => prev.map(c => 
+      c.phone === phone ? { ...c, status } : c
+    ));
+  };
+
+  const handleArchive = (phone: string) => {
+    updateConversationStatus(phone, "archived");
+    if (selectedConversation?.phone === phone) {
+      const nextConv = activeConversations.find(c => c.phone !== phone);
+      setSelectedConversation(nextConv || null);
+    }
+    toast.success("Conversa arquivada");
+  };
+
+  const handleRestore = (phone: string) => {
+    updateConversationStatus(phone, "in_progress");
+    toast.success("Conversa restaurada");
+  };
+
+  const handleResolve = (phone: string) => {
+    updateConversationStatus(phone, "resolved");
+    toast.success("Conversa marcada como resolvida");
+  };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || !selectedChannel) return;
@@ -289,9 +395,7 @@ const WhatsAppChat = () => {
 
       if (data.success) {
         setNewMessage("");
-        toast.success("Mensagem enviada!");
         
-        // Add message optimistically
         const optimisticMessage: Message = {
           id: `temp_${Date.now()}`,
           channel_id: selectedChannel.id,
@@ -329,52 +433,124 @@ const WhatsAppChat = () => {
     return format(date, "dd/MM", { locale: ptBR });
   };
 
-  const filteredConversations = conversations.filter(c => 
-    c.phone.includes(searchTerm) || 
-    c.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  // Active conversations (not archived)
+  const activeConversations = conversations.filter(conv => conv.status !== "archived");
+  
+  // Archived conversations
+  const archivedConversations = conversations.filter(conv => conv.status === "archived");
+
+  // Filter active conversations by search and status
+  const filteredConversations = activeConversations.filter(conv => {
+    const matchesSearch = conv.phone.includes(searchTerm) || 
+      conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === "all" || conv.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Filter archived conversations by search
+  const filteredArchived = archivedConversations.filter(conv =>
+    conv.phone.includes(searchTerm) || 
+    conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Get counts for filter badges
+  const pendingCount = activeConversations.filter(c => c.status === "pending").length;
+  const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
+
+  // Get conversation context for Sales Assistant
+  const conversationContext = messages.map(m => 
+    `${m.direction === 'inbound' ? 'Cliente' : 'Atendente'}: ${m.content}`
+  ).join('\n');
 
   return (
     <MainLayout>
-      {/* Hidden audio element for notifications */}
-      <audio ref={audioRef} preload="auto">
-        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleR0AT6jYzJxzKBJAn9/e04dXNzNpr+HOoXpTG0Si4d7PmXxXLz6r6eHCi2E9LGW07OPFkWg7KV235uS+hWAyI124" type="audio/wav"/>
-      </audio>
-
-      <div className="flex h-[calc(100vh-7rem)] bg-card rounded-lg border border-border overflow-hidden">
+      <div className="flex h-[calc(100vh-7rem)] gap-4 animate-fade-in">
         {/* Conversations List */}
         <div className={cn(
-          "w-80 border-r border-border flex flex-col",
+          "w-80 bg-card rounded-lg border border-border flex flex-col overflow-hidden",
           selectedConversation ? "hidden md:flex" : "flex"
         )}>
           {/* Header */}
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-foreground">Conversas</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : requestNotificationPermission}
-                className={cn(
-                  "h-8 w-8",
-                  notificationsEnabled ? "text-primary" : "text-muted-foreground"
-                )}
-              >
-                {notificationsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-              </Button>
+          <div className="p-4 border-b border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-foreground">WhatsApp</h2>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  title={soundEnabled ? "Desativar som" : "Ativar som"}
+                >
+                  {soundEnabled ? (
+                    <Volume2 className="w-4 h-4 text-primary" />
+                  ) : (
+                    <VolumeX className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : requestNotificationPermission}
+                  className={cn("h-8 w-8", notificationsEnabled ? "text-primary" : "text-muted-foreground")}
+                >
+                  {notificationsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar conversa..."
-                className="pl-9 bg-muted/30"
+                placeholder="Buscar..."
+                className="pl-10 bg-muted/30 border-border"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            
+            {/* Status Filter Buttons */}
+            <div className="flex gap-1.5">
+              <Button
+                variant={filterStatus === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("all")}
+                className="text-xs px-2.5 h-7"
+              >
+                Todos
+              </Button>
+              <Button
+                variant={filterStatus === "pending" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("pending")}
+                className="text-xs px-2 h-7 gap-1"
+              >
+                <Clock className="w-3 h-3 shrink-0" />
+                Pend.
+                {pendingCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
+                    {pendingCount}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant={filterStatus === "in_progress" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("in_progress")}
+                className="text-xs px-2 h-7 gap-1"
+              >
+                <Play className="w-3 h-3 shrink-0" />
+                And.
+                {inProgressCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
+                    {inProgressCount}
+                  </Badge>
+                )}
+              </Button>
+            </div>
+
             {channels.length > 1 && (
               <select
-                className="mt-3 w-full p-2 rounded-md bg-muted/30 border border-border text-sm"
+                className="w-full p-2 rounded-md bg-muted/30 border border-border text-sm"
                 value={selectedChannel?.id || ""}
                 onChange={(e) => setSelectedChannel(channels.find(c => c.id === e.target.value) || null)}
               >
@@ -389,92 +565,188 @@ const WhatsAppChat = () => {
 
           {/* Conversations */}
           <ScrollArea className="flex-1">
-            {loading ? (
-              <div className="p-4 text-center text-muted-foreground">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                Carregando...
-              </div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhuma conversa ainda</p>
-                <p className="text-sm mt-1">As mensagens recebidas aparecerão aqui</p>
-              </div>
-            ) : (
-              filteredConversations.map((conversation) => (
-                <div
-                  key={conversation.phone}
-                  onClick={() => setSelectedConversation(conversation)}
-                  className={cn(
-                    "flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors border-b border-border/50",
-                    selectedConversation?.phone === conversation.phone && "bg-muted/50"
-                  )}
-                >
-                  <Avatar className="w-12 h-12">
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      <User className="w-5 h-5" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-foreground truncate">
-                        {conversation.name || conversation.phone}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatConversationDate(conversation.lastMessageTime)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground truncate">
-                        {conversation.lastMessage}
-                      </p>
-                      {conversation.unreadCount > 0 && (
-                        <Badge className="ml-2 bg-primary text-primary-foreground text-xs px-1.5 min-w-[20px] justify-center">
-                          {conversation.unreadCount}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+            <div className="divide-y divide-border">
+              {loading ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  Carregando...
                 </div>
-              ))
-            )}
+              ) : filteredConversations.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Nenhuma conversa encontrada</p>
+                </div>
+              ) : (
+                filteredConversations.map((conversation) => (
+                  <div
+                    key={conversation.phone}
+                    className={cn(
+                      "group relative",
+                      selectedConversation?.phone === conversation.phone && "bg-muted/30 border-l-2 border-l-primary"
+                    )}
+                  >
+                    <button
+                      onClick={() => setSelectedConversation(conversation)}
+                      className="w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-sm font-semibold">
+                            {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-foreground text-sm truncate">
+                              {conversation.name || conversation.phone}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatConversationDate(conversation.lastMessageTime)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mb-2">
+                            {conversation.lastMessage}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <Badge variant="outline" className={cn("text-xs", statusConfig[conversation.status].className)}>
+                              {statusConfig[conversation.status].label}
+                            </Badge>
+                            {conversation.unreadCount > 0 && (
+                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center">
+                                {conversation.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                    {/* Archive button */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleArchive(conversation.phone);
+                      }}
+                      title="Arquivar conversa"
+                    >
+                      <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
           </ScrollArea>
+
+          {/* Archived Section */}
+          {archivedConversations.length > 0 && (
+            <div className="border-t border-border">
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className="w-full p-3 flex items-center justify-between text-sm text-muted-foreground hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Archive className="w-4 h-4" />
+                  <span>Arquivados</span>
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                    {archivedConversations.length}
+                  </Badge>
+                </div>
+                {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              
+              {showArchived && (
+                <ScrollArea className="max-h-48">
+                  <div className="divide-y divide-border bg-muted/20">
+                    {filteredArchived.map((conv) => (
+                      <div
+                        key={conv.phone}
+                        className="group relative p-3 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
+                              {conv.name ? conv.name.split(" ").map(n => n[0]).join("") : <User className="w-3 h-3" />}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-muted-foreground text-sm truncate block">
+                              {conv.name || conv.phone}
+                            </span>
+                            <span className="text-xs text-muted-foreground/70">
+                              {formatConversationDate(conv.lastMessageTime)}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleRestore(conv.phone)}
+                            title="Restaurar conversa"
+                          >
+                            <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Chat Area */}
         <div className={cn(
-          "flex-1 flex flex-col",
+          "flex-1 bg-card rounded-lg border border-border flex flex-col overflow-hidden",
           !selectedConversation ? "hidden md:flex" : "flex"
         )}>
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-border flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="md:hidden"
-                  onClick={() => setSelectedConversation(null)}
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <Avatar className="w-10 h-10">
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    <User className="w-4 h-4" />
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <h3 className="font-medium text-foreground">
-                    {selectedConversation.name || selectedConversation.phone}
-                  </h3>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Phone className="w-3 h-3" />
-                    {selectedConversation.phone}
-                  </p>
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden"
+                    onClick={() => setSelectedConversation(null)}
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </Button>
+                  <Avatar className="w-10 h-10">
+                    <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
+                      {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-foreground">
+                      {selectedConversation.name || selectedConversation.phone}
+                    </h3>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      {selectedConversation.phone}
+                    </p>
+                  </div>
                 </div>
-                <Button variant="ghost" size="icon">
-                  <MoreVertical className="w-5 h-5" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={showSalesAssistant ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowSalesAssistant(!showSalesAssistant)}
+                    className="gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    IA de Vendas
+                  </Button>
+                  <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
+                    {statusConfig[selectedConversation.status].label}
+                  </Badge>
+                  <Button variant="ghost" size="icon" onClick={() => handleResolve(selectedConversation.phone)}>
+                    <MoreVertical className="w-5 h-5" />
+                  </Button>
+                </div>
               </div>
 
               {/* Messages */}
@@ -492,14 +764,14 @@ const WhatsAppChat = () => {
                         className={cn(
                           "max-w-[70%] rounded-lg px-4 py-2",
                           message.direction === "outbound"
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-emerald-500 text-white"
                             : "bg-muted"
                         )}
                       >
                         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                         <div className={cn(
                           "flex items-center justify-end gap-1 mt-1",
-                          message.direction === "outbound" ? "text-primary-foreground/70" : "text-muted-foreground"
+                          message.direction === "outbound" ? "text-white/70" : "text-muted-foreground"
                         )}>
                           <span className="text-xs">{formatMessageTime(message.created_at)}</span>
                           {message.direction === "outbound" && (
@@ -517,9 +789,12 @@ const WhatsAppChat = () => {
                 </div>
               </ScrollArea>
 
-              {/* Input */}
+              {/* Message Input */}
               <div className="p-4 border-t border-border">
                 <div className="flex items-end gap-2">
+                  <Button variant="ghost" size="icon" className="shrink-0">
+                    <Paperclip className="w-5 h-5 text-muted-foreground" />
+                  </Button>
                   <Textarea
                     placeholder="Digite sua mensagem..."
                     className="min-h-[44px] max-h-32 resize-none bg-muted/30"
@@ -556,6 +831,14 @@ const WhatsAppChat = () => {
             </div>
           )}
         </div>
+
+        {/* Sales Assistant Panel */}
+        <SalesAssistant
+          isOpen={showSalesAssistant}
+          onClose={() => setShowSalesAssistant(false)}
+          customerName={selectedConversation?.name || selectedConversation?.phone}
+          conversationContext={conversationContext}
+        />
       </div>
     </MainLayout>
   );
