@@ -36,8 +36,10 @@ export function Sidebar() {
   const userRole = useUserRole();
 
   // Filter menu items based on permissions
+  // During loading, show only items without permission requirements
   const visibleMenuItems = menuItems.filter((item) => {
     if (item.permission === null) return true;
+    if (userRole.loading) return false; // Hide permission-based items while loading
     return userRole[item.permission as keyof typeof userRole];
   });
 
