@@ -12,6 +12,7 @@ import {
   Bot,
   UserCog,
   BarChart3,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
+  { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: "canAccessConexoes" },
   { icon: Users, label: "Leads", path: "/leads", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
