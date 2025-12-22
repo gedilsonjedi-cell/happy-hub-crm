@@ -104,7 +104,7 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 
 const Usuarios = () => {
   const { user } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -496,8 +496,8 @@ const Usuarios = () => {
     );
   }
 
-  // Show access denied for non-admins
-  if (!isAdmin) {
+  // Show access denied for non-admins (super_admin has full access)
+  if (!isAdmin && !isSuperAdmin) {
     return (
       <MainLayout>
         <div className="flex flex-col items-center justify-center h-64 gap-4">
