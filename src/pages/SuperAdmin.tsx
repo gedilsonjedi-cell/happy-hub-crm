@@ -103,6 +103,8 @@ export default function SuperAdmin() {
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgSlug, setNewOrgSlug] = useState("");
   const [newOrgPlan, setNewOrgPlan] = useState("free");
+  const [newOrgMaxUsers, setNewOrgMaxUsers] = useState(1);
+  const [newOrgMaxChannels, setNewOrgMaxChannels] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
   
   // New client admin fields
@@ -111,6 +113,14 @@ export default function SuperAdmin() {
   const [adminPhone, setAdminPhone] = useState("");
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState("");
+  
+  // Edit dialog
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [editOrgName, setEditOrgName] = useState("");
+  const [editOrgMaxUsers, setEditOrgMaxUsers] = useState(1);
+  const [editOrgMaxChannels, setEditOrgMaxChannels] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Subscription pricing
   const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing | null>(null);
@@ -220,6 +230,8 @@ export default function SuperAdmin() {
           name: newOrgName.trim(),
           slug: newOrgSlug.trim().toLowerCase().replace(/\s+/g, "-"),
           plan: newOrgPlan,
+          max_users: newOrgMaxUsers,
+          max_channels: newOrgMaxChannels,
         })
         .select()
         .single();
@@ -308,11 +320,60 @@ export default function SuperAdmin() {
     setNewOrgName("");
     setNewOrgSlug("");
     setNewOrgPlan("free");
+    setNewOrgMaxUsers(1);
+    setNewOrgMaxChannels(1);
     setAdminName("");
     setAdminEmail("");
     setAdminPhone("");
     setShowCredentials(false);
     setGeneratedPassword("");
+  };
+
+  const handleOpenEditDialog = (org: Organization) => {
+    setEditingOrg(org);
+    setEditOrgName(org.name);
+    setEditOrgMaxUsers(org.max_users);
+    setEditOrgMaxChannels(org.max_channels);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingOrg(null);
+    setEditOrgName("");
+    setEditOrgMaxUsers(1);
+    setEditOrgMaxChannels(1);
+  };
+
+  const handleSaveOrganization = async () => {
+    if (!editingOrg) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .update({
+          name: editOrgName.trim(),
+          max_users: editOrgMaxUsers,
+          max_channels: editOrgMaxChannels,
+        })
+        .eq("id", editingOrg.id);
+
+      if (error) {
+        toast.error("Erro ao salvar alterações");
+        console.error("Error updating organization:", error);
+        return;
+      }
+
+      toast.success("Organização atualizada com sucesso!");
+      fetchOrganizations();
+      handleCloseEditDialog();
+    } catch (err) {
+      console.error("Error saving organization:", err);
+      toast.error("Erro ao salvar alterações");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const copyCredentials = () => {
@@ -547,7 +608,10 @@ export default function SuperAdmin() {
                                 <Eye className="w-4 h-4" />
                                 Ver detalhes
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2">
+                              <DropdownMenuItem 
+                                className="gap-2"
+                                onClick={() => handleOpenEditDialog(org)}
+                              >
                                 <Edit className="w-4 h-4" />
                                 Editar
                               </DropdownMenuItem>
@@ -677,13 +741,38 @@ export default function SuperAdmin() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Qtd. Usuários</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={newOrgMaxUsers}
+                      onChange={(e) => setNewOrgMaxUsers(Math.max(1, parseInt(e.target.value) || 1))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Qtd. WhatsApps</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={newOrgMaxChannels}
+                      onChange={(e) => setNewOrgMaxChannels(Math.max(1, parseInt(e.target.value) || 1))}
+                    />
+                  </div>
+                </div>
+
                 {subscriptionPricing && (
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      Plano base: <span className="font-medium text-foreground">R$ {subscriptionPricing.base_price.toFixed(2)}/mês</span>
+                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                    <p className="text-sm font-medium text-primary">
+                      Valor mensal: R$ {calculateMonthlyCost(newOrgMaxUsers, newOrgMaxChannels).toFixed(2)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Inclui {subscriptionPricing.included_users} usuário(s) e {subscriptionPricing.included_channels} WhatsApp(s)
+                      Base R$ {subscriptionPricing.base_price.toFixed(2)} 
+                      {newOrgMaxUsers > subscriptionPricing.included_users && 
+                        ` + ${newOrgMaxUsers - subscriptionPricing.included_users} usuário(s) extra × R$ ${subscriptionPricing.price_per_user.toFixed(2)}`}
+                      {newOrgMaxChannels > subscriptionPricing.included_channels && 
+                        ` + ${newOrgMaxChannels - subscriptionPricing.included_channels} WhatsApp(s) extra × R$ ${subscriptionPricing.price_per_channel.toFixed(2)}`}
                     </p>
                   </div>
                 )}
@@ -742,6 +831,74 @@ export default function SuperAdmin() {
                   </Button>
                 </>
               )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Organization Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={handleCloseEditDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Cliente</DialogTitle>
+              <DialogDescription>
+                Altere os dados da organização
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Nome da Empresa</Label>
+                <Input
+                  value={editOrgName}
+                  onChange={(e) => setEditOrgName(e.target.value)}
+                  placeholder="Nome da empresa"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Qtd. Usuários</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editOrgMaxUsers}
+                    onChange={(e) => setEditOrgMaxUsers(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Qtd. WhatsApps</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editOrgMaxChannels}
+                    onChange={(e) => setEditOrgMaxChannels(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+              </div>
+
+              {subscriptionPricing && (
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <p className="text-sm font-medium text-primary">
+                    Valor mensal: R$ {calculateMonthlyCost(editOrgMaxUsers, editOrgMaxChannels).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Base R$ {subscriptionPricing.base_price.toFixed(2)} 
+                    {editOrgMaxUsers > subscriptionPricing.included_users && 
+                      ` + ${editOrgMaxUsers - subscriptionPricing.included_users} usuário(s) extra × R$ ${subscriptionPricing.price_per_user.toFixed(2)}`}
+                    {editOrgMaxChannels > subscriptionPricing.included_channels && 
+                      ` + ${editOrgMaxChannels - subscriptionPricing.included_channels} WhatsApp(s) extra × R$ ${subscriptionPricing.price_per_channel.toFixed(2)}`}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCloseEditDialog}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveOrganization} disabled={isSaving}>
+                {isSaving ? "Salvando..." : "Salvar"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
