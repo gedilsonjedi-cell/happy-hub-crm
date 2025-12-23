@@ -22,25 +22,49 @@ const ResetPassword = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isValidSession, setIsValidSession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [formData, setFormData] = useState({
     password: "",
     confirmPassword: "",
   });
 
   useEffect(() => {
-    // Check if we have a valid session from the reset link
+    // Set up auth state listener to catch PASSWORD_RECOVERY event
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "PASSWORD_RECOVERY") {
+          // User clicked the password reset link and it's valid
+          setIsValidSession(true);
+          setCheckingSession(false);
+        } else if (event === "SIGNED_IN" && session) {
+          // Also valid if already signed in (e.g., from the recovery token)
+          setIsValidSession(true);
+          setCheckingSession(false);
+        }
+      }
+    );
+
+    // Check for existing session (in case the event already fired)
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
-      if (!session) {
-        // No session means the link might be invalid or expired
-        toast.error("Link inválido ou expirado. Solicite um novo link de redefinição.");
-        navigate("/auth");
+      if (session) {
+        setIsValidSession(true);
       }
+      setCheckingSession(false);
     };
 
-    checkSession();
-  }, [navigate]);
+    // Give a small delay to allow auth state to settle from URL hash
+    const timeout = setTimeout(() => {
+      checkSession();
+    }, 500);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +100,40 @@ const ResetPassword = () => {
       setLoading(false);
     }
   };
+
+  // Show loading while checking session
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <Loader2 className="w-8 h-8 text-primary mx-auto animate-spin" />
+          <p className="text-muted-foreground mt-4">Verificando link...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if session is not valid
+  if (!isValidSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
+            <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-destructive" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Link inválido ou expirado</h2>
+            <p className="text-muted-foreground mb-6">
+              O link de redefinição de senha é inválido ou já foi utilizado. Solicite um novo link.
+            </p>
+            <Button onClick={() => navigate("/auth")} className="w-full">
+              Voltar para o login
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (
