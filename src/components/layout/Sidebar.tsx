@@ -19,7 +19,9 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useUnreadMessagesCount } from "@/hooks/useUnreadMessagesCount";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
@@ -40,6 +42,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const userRole = useUserRole();
+  const unreadCount = useUnreadMessagesCount();
 
   const handleNavClick = (e: React.MouseEvent, item: typeof menuItems[0]) => {
     // If no permission required or still loading, allow navigation
@@ -113,6 +116,11 @@ export function Sidebar() {
               <Icon className="w-5 h-5 shrink-0" />
               {!collapsed && (
                 <span className="text-sm font-medium flex-1">{item.label}</span>
+              )}
+              {!collapsed && item.path === "/whatsapp-chat" && unreadCount > 0 && (
+                <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs font-semibold">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
               )}
               {!collapsed && isLocked && (
                 <Lock className="w-3.5 h-3.5 text-muted-foreground" />

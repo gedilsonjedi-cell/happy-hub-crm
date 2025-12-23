@@ -1062,6 +1062,7 @@ export type Database = {
           created_at: string
           direction: string
           id: string
+          is_read: boolean | null
           media_url: string | null
           message_id: string
           message_type: string
@@ -1078,6 +1079,7 @@ export type Database = {
           created_at?: string
           direction?: string
           id?: string
+          is_read?: boolean | null
           media_url?: string | null
           message_id: string
           message_type?: string
@@ -1094,6 +1096,7 @@ export type Database = {
           created_at?: string
           direction?: string
           id?: string
+          is_read?: boolean | null
           media_url?: string | null
           message_id?: string
           message_type?: string
