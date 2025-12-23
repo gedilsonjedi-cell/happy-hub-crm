@@ -15,7 +15,8 @@ import {
   CheckCircle,
   XCircle,
   TrendingUp,
-  Activity
+  Activity,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +100,13 @@ export default function SuperAdmin() {
   const [newOrgSlug, setNewOrgSlug] = useState("");
   const [newOrgPlan, setNewOrgPlan] = useState("free");
   const [isCreating, setIsCreating] = useState(false);
+  
+  // New client admin fields
+  const [adminName, setAdminName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPhone, setAdminPhone] = useState("");
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState("");
 
   useEffect(() => {
     // Only redirect after role has been fully loaded and confirmed not super_admin
@@ -150,34 +158,114 @@ export default function SuperAdmin() {
     }
   };
 
+  const generateSecurePassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
+    const array = new Uint32Array(12);
+    crypto.getRandomValues(array);
+    return Array.from(array, (x) => chars[x % chars.length]).join("");
+  };
+
   const handleCreateOrganization = async () => {
     if (!newOrgName.trim() || !newOrgSlug.trim()) {
-      toast.error("Preencha todos os campos");
+      toast.error("Preencha o nome e slug da empresa");
+      return;
+    }
+
+    if (!adminName.trim() || !adminEmail.trim()) {
+      toast.error("Preencha o nome e email do administrador");
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(adminEmail)) {
+      toast.error("Email inválido");
       return;
     }
 
     setIsCreating(true);
     try {
-      const { error } = await supabase.from("organizations").insert({
-        name: newOrgName.trim(),
-        slug: newOrgSlug.trim().toLowerCase().replace(/\s+/g, "-"),
-        plan: newOrgPlan,
-      });
+      // 1. Create organization first
+      const { data: orgData, error: orgError } = await supabase
+        .from("organizations")
+        .insert({
+          name: newOrgName.trim(),
+          slug: newOrgSlug.trim().toLowerCase().replace(/\s+/g, "-"),
+          plan: newOrgPlan,
+        })
+        .select()
+        .single();
 
-      if (error) {
-        if (error.code === "23505") {
+      if (orgError) {
+        if (orgError.code === "23505") {
           toast.error("Já existe uma organização com esse slug");
         } else {
           toast.error("Erro ao criar organização");
+          console.error("Error creating organization:", orgError);
         }
         return;
       }
 
-      toast.success("Organização criada com sucesso!");
-      setIsNewOrgDialogOpen(false);
-      setNewOrgName("");
-      setNewOrgSlug("");
-      setNewOrgPlan("free");
+      // 2. Generate temporary password
+      const tempPassword = generateSecurePassword();
+
+      // 3. Create admin user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: adminEmail.trim(),
+        password: tempPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            display_name: adminName.trim(),
+          },
+        },
+      });
+
+      if (authError) {
+        // Rollback: delete the organization
+        await supabase.from("organizations").delete().eq("id", orgData.id);
+        toast.error(`Erro ao criar usuário: ${authError.message}`);
+        return;
+      }
+
+      if (!authData.user) {
+        await supabase.from("organizations").delete().eq("id", orgData.id);
+        toast.error("Erro ao criar usuário");
+        return;
+      }
+
+      // 4. Wait a moment for the profile trigger to run
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 5. Update profile with organization_id and additional data
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          organization_id: orgData.id,
+          display_name: adminName.trim(),
+        })
+        .eq("user_id", authData.user.id);
+
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+      }
+
+      // 6. Create admin role for the user
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .insert({
+          user_id: authData.user.id,
+          role: "admin",
+        });
+
+      if (roleError) {
+        console.error("Error creating role:", roleError);
+      }
+
+      // Show success with credentials
+      setGeneratedPassword(tempPassword);
+      setShowCredentials(true);
+      toast.success("Cliente e usuário admin criados com sucesso!");
       fetchOrganizations();
     } catch (err) {
       console.error("Error creating organization:", err);
@@ -185,6 +273,24 @@ export default function SuperAdmin() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleCloseDialog = () => {
+    setIsNewOrgDialogOpen(false);
+    setNewOrgName("");
+    setNewOrgSlug("");
+    setNewOrgPlan("free");
+    setAdminName("");
+    setAdminEmail("");
+    setAdminPhone("");
+    setShowCredentials(false);
+    setGeneratedPassword("");
+  };
+
+  const copyCredentials = () => {
+    const text = `Email: ${adminEmail}\nSenha temporária: ${generatedPassword}`;
+    navigator.clipboard.writeText(text);
+    toast.success("Credenciais copiadas!");
   };
 
   const handleToggleOrgStatus = async (org: Organization) => {
@@ -470,56 +576,140 @@ export default function SuperAdmin() {
         </Tabs>
 
         {/* New Organization Dialog */}
-        <Dialog open={isNewOrgDialogOpen} onOpenChange={setIsNewOrgDialogOpen}>
-          <DialogContent>
+        <Dialog open={isNewOrgDialogOpen} onOpenChange={handleCloseDialog}>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Novo Cliente</DialogTitle>
               <DialogDescription>
-                Cadastre uma nova organização/cliente no sistema
+                Cadastre uma nova organização e crie o usuário administrador
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nome da Empresa</Label>
-                <Input
-                  value={newOrgName}
-                  onChange={(e) => setNewOrgName(e.target.value)}
-                  placeholder="Empresa XYZ"
-                />
+            
+            {showCredentials ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <p className="text-sm font-medium text-green-600 mb-2">
+                    ✓ Cliente criado com sucesso!
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Compartilhe as credenciais abaixo com o cliente:
+                  </p>
+                </div>
+                
+                <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    <p className="font-mono text-sm">{adminEmail}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Senha Temporária</Label>
+                    <p className="font-mono text-sm">{generatedPassword}</p>
+                  </div>
+                </div>
+                
+                <Button onClick={copyCredentials} className="w-full gap-2">
+                  <Copy className="w-4 h-4" />
+                  Copiar Credenciais
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label>Slug (identificador único)</Label>
-                <Input
-                  value={newOrgSlug}
-                  onChange={(e) => setNewOrgSlug(e.target.value)}
-                  placeholder="empresa-xyz"
-                />
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Dados da Empresa</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nome da Empresa *</Label>
+                    <Input
+                      value={newOrgName}
+                      onChange={(e) => {
+                        setNewOrgName(e.target.value);
+                        // Auto-generate slug
+                        setNewOrgSlug(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
+                      }}
+                      placeholder="Empresa XYZ"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slug *</Label>
+                    <Input
+                      value={newOrgSlug}
+                      onChange={(e) => setNewOrgSlug(e.target.value)}
+                      placeholder="empresa-xyz"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Plano</Label>
+                  <Select value={newOrgPlan} onValueChange={setNewOrgPlan}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="free">Free</SelectItem>
+                      <SelectItem value="starter">Starter</SelectItem>
+                      <SelectItem value="professional">Professional</SelectItem>
+                      <SelectItem value="enterprise">Enterprise</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="pt-2 space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Dados do Administrador</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Nome Completo *</Label>
+                  <Input
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                    placeholder="João Silva"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Email *</Label>
+                    <Input
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="joao@empresa.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Telefone</Label>
+                    <Input
+                      value={adminPhone}
+                      onChange={(e) => setAdminPhone(e.target.value)}
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
+                </div>
+                
                 <p className="text-xs text-muted-foreground">
-                  Usado para identificar a organização no sistema
+                  * Uma senha temporária será gerada automaticamente. O cliente poderá alterá-la após o primeiro acesso.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label>Plano</Label>
-                <Select value={newOrgPlan} onValueChange={setNewOrgPlan}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="free">Free</SelectItem>
-                    <SelectItem value="starter">Starter</SelectItem>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="enterprise">Enterprise</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
+            
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsNewOrgDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateOrganization} disabled={isCreating}>
-                {isCreating ? "Criando..." : "Criar Cliente"}
-              </Button>
+              {showCredentials ? (
+                <Button onClick={handleCloseDialog}>
+                  Fechar
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={handleCloseDialog}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleCreateOrganization} disabled={isCreating}>
+                    {isCreating ? "Criando..." : "Criar Cliente"}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
