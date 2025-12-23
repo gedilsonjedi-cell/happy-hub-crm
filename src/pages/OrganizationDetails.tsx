@@ -15,7 +15,10 @@ import {
   XCircle,
   Shield,
   UserCog,
-  Headphones
+  Headphones,
+  Plus,
+  Loader2,
+  Copy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +53,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
+import type { Database } from "@/integrations/supabase/types";
+
+type AppRole = Database["public"]["Enums"]["app_role"];
 
 interface Organization {
   id: string;
@@ -108,12 +114,20 @@ export default function OrganizationDetails() {
   const [dispatchCosts, setDispatchCosts] = useState<DispatchCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [createdUserCredentials, setCreatedUserCredentials] = useState<{ email: string; password: string } | null>(null);
   
   // Edit form
   const [editName, setEditName] = useState("");
   const [editPlan, setEditPlan] = useState("");
   const [editMaxUsers, setEditMaxUsers] = useState(5);
   const [editMaxChannels, setEditMaxChannels] = useState(2);
+
+  // New user form
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserRole, setNewUserRole] = useState<AppRole>("admin");
 
   useEffect(() => {
     if (!roleLoading && !isSuperAdmin) {
@@ -227,6 +241,113 @@ export default function OrganizationDetails() {
       console.error("Error toggling org status:", error);
       toast.error("Erro ao atualizar status");
     }
+  };
+
+  // Generate cryptographically secure password
+  const generateSecurePassword = (): string => {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+      password += chars[array[i] % chars.length];
+    }
+    return password;
+  };
+
+  const handleCreateUser = async () => {
+    if (!organization || !newUserEmail.trim()) {
+      toast.error("Preencha o email do usuário");
+      return;
+    }
+
+    setIsCreatingUser(true);
+    const tempPassword = generateSecurePassword();
+
+    try {
+      // Create user via Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUserEmail.trim(),
+        password: tempPassword,
+        options: {
+          data: {
+            display_name: newUserName.trim() || undefined,
+          },
+        },
+      });
+
+      if (authError) {
+        console.error("Error creating user:", authError);
+        toast.error(`Erro ao criar usuário: ${authError.message}`);
+        return;
+      }
+
+      if (!authData.user) {
+        toast.error("Erro ao criar usuário: usuário não retornado");
+        return;
+      }
+
+      const newUserId = authData.user.id;
+
+      // Update profile with organization_id and display_name
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          organization_id: organization.id,
+          display_name: newUserName.trim() || null,
+        })
+        .eq("user_id", newUserId);
+
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+        // Profile might not exist yet, try insert
+      }
+
+      // Create user role
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .insert({
+          user_id: newUserId,
+          role: newUserRole,
+        });
+
+      if (roleError) {
+        console.error("Error creating role:", roleError);
+        toast.error("Usuário criado, mas erro ao definir função");
+      }
+
+      // Show credentials
+      setCreatedUserCredentials({
+        email: newUserEmail.trim(),
+        password: tempPassword,
+      });
+
+      toast.success("Usuário criado com sucesso!");
+      fetchOrganizationData();
+
+      // Reset form
+      setNewUserEmail("");
+      setNewUserName("");
+      setNewUserRole("admin");
+    } catch (err) {
+      console.error("Error creating user:", err);
+      toast.error("Erro ao criar usuário");
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  const handleCopyCredentials = () => {
+    if (createdUserCredentials) {
+      const text = `Email: ${createdUserCredentials.email}\nSenha: ${createdUserCredentials.password}`;
+      navigator.clipboard.writeText(text);
+      toast.success("Credenciais copiadas!");
+    }
+  };
+
+  const handleCloseCredentialsDialog = () => {
+    setCreatedUserCredentials(null);
+    setIsNewUserDialogOpen(false);
   };
 
   // Metrics calculations
@@ -373,6 +494,16 @@ export default function OrganizationDetails() {
           {/* Users Tab */}
           <TabsContent value="users">
             <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Usuários</CardTitle>
+                  <CardDescription>Gerencie os usuários desta organização</CardDescription>
+                </div>
+                <Button onClick={() => setIsNewUserDialogOpen(true)} size="sm" className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Novo Usuário
+                </Button>
+              </CardHeader>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -582,6 +713,116 @@ export default function OrganizationDetails() {
               Salvar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New User Dialog */}
+      <Dialog open={isNewUserDialogOpen} onOpenChange={(open) => {
+        if (!open && !createdUserCredentials) {
+          setIsNewUserDialogOpen(false);
+        } else if (!open && createdUserCredentials) {
+          handleCloseCredentialsDialog();
+        } else {
+          setIsNewUserDialogOpen(true);
+        }
+      }}>
+        <DialogContent>
+          {createdUserCredentials ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-green-500">
+                  <CheckCircle className="w-5 h-5" />
+                  Usuário Criado com Sucesso!
+                </DialogTitle>
+                <DialogDescription>
+                  Copie e guarde as credenciais abaixo. A senha não será exibida novamente.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="p-4 bg-muted rounded-lg space-y-3">
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Email</Label>
+                    <p className="font-mono font-medium">{createdUserCredentials.email}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Senha Temporária</Label>
+                    <p className="font-mono font-medium">{createdUserCredentials.password}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  O usuário deve alterar a senha no primeiro acesso.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCopyCredentials} className="gap-2">
+                  <Copy className="w-4 h-4" />
+                  Copiar Credenciais
+                </Button>
+                <Button onClick={handleCloseCredentialsDialog}>
+                  Fechar
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Novo Usuário</DialogTitle>
+                <DialogDescription>
+                  Crie um novo usuário para {organization?.name}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Email *</Label>
+                  <Input
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="usuario@email.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="Nome do usuário"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Função</Label>
+                  <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as AppRole)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="atendente">Atendente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    O Administrador terá acesso total ao sistema
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsNewUserDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleCreateUser} disabled={isCreatingUser}>
+                  {isCreatingUser ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Criando...
+                    </>
+                  ) : (
+                    "Criar Usuário"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
