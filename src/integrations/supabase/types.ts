@@ -76,6 +76,47 @@ export type Database = {
           },
         ]
       }
+      attendant_availability: {
+        Row: {
+          current_conversations: number | null
+          id: string
+          is_available: boolean | null
+          last_assignment_at: string | null
+          max_conversations: number | null
+          organization_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          current_conversations?: number | null
+          id?: string
+          is_available?: boolean | null
+          last_assignment_at?: string | null
+          max_conversations?: number | null
+          organization_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          current_conversations?: number | null
+          id?: string
+          is_available?: boolean | null
+          last_assignment_at?: string | null
+          max_conversations?: number | null
+          organization_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendant_availability_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_channels: {
         Row: {
           campaign_id: string
@@ -352,6 +393,143 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_config: {
+        Row: {
+          auto_qualify_enabled: boolean | null
+          auto_reply_when_unavailable: boolean | null
+          away_message: string | null
+          channel_id: string | null
+          created_at: string
+          id: string
+          initial_stage_id: string | null
+          is_enabled: boolean | null
+          organization_id: string | null
+          qualification_keywords: string[] | null
+          qualified_stage_id: string | null
+          transfer_message: string | null
+          updated_at: string
+          user_id: string
+          welcome_message: string | null
+        }
+        Insert: {
+          auto_qualify_enabled?: boolean | null
+          auto_reply_when_unavailable?: boolean | null
+          away_message?: string | null
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          initial_stage_id?: string | null
+          is_enabled?: boolean | null
+          organization_id?: string | null
+          qualification_keywords?: string[] | null
+          qualified_stage_id?: string | null
+          transfer_message?: string | null
+          updated_at?: string
+          user_id: string
+          welcome_message?: string | null
+        }
+        Update: {
+          auto_qualify_enabled?: boolean | null
+          auto_reply_when_unavailable?: boolean | null
+          away_message?: string | null
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          initial_stage_id?: string | null
+          is_enabled?: boolean | null
+          organization_id?: string | null
+          qualification_keywords?: string[] | null
+          qualified_stage_id?: string | null
+          transfer_message?: string | null
+          updated_at?: string
+          user_id?: string
+          welcome_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_initial_stage_id_fkey"
+            columns: ["initial_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_qualified_stage_id_fkey"
+            columns: ["qualified_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_to: string | null
+          channel_id: string | null
+          conversation_phone: string
+          created_at: string
+          id: string
+          is_bot_handling: boolean | null
+          lead_id: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_to?: string | null
+          channel_id?: string | null
+          conversation_phone: string
+          created_at?: string
+          id?: string
+          is_bot_handling?: boolean | null
+          lead_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_to?: string | null
+          channel_id?: string | null
+          conversation_phone?: string
+          created_at?: string
+          id?: string
+          is_bot_handling?: boolean | null
+          lead_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_assignments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]

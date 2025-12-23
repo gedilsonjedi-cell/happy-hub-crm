@@ -9,7 +9,9 @@ import {
   Package,
   HelpCircle,
   Loader2,
-  Eye
+  Eye,
+  Zap,
+  Users
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { DocumentUpload } from "@/components/chatbot/DocumentUpload";
 import { AgentPreview } from "@/components/chatbot/AgentPreview";
+import { ChatbotConfigPanel } from "@/components/chatbot/ChatbotConfigPanel";
+import { AttendantAvailabilityPanel } from "@/components/chatbot/AttendantAvailabilityPanel";
 
 interface KnowledgeDocument {
   id: string;
@@ -280,6 +284,44 @@ const Chatbot = () => {
               </div>
             </CardHeader>
           </Card>
+
+          <p className="text-xs text-muted-foreground px-2 pt-4">Automação WhatsApp</p>
+
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "chatbot-auto" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}
+            onClick={() => setActiveTab("chatbot-auto")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <Zap className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-sm">Chatbot Automático</CardTitle>
+                  <CardDescription className="text-xs">Respostas e distribuição</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card 
+            className={cn(
+              "cursor-pointer transition-all",
+              activeTab === "disponibilidade" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            )}
+            onClick={() => setActiveTab("disponibilidade")}
+          >
+            <CardHeader className="p-4">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-sm">Disponibilidade</CardTitle>
+                  <CardDescription className="text-xs">Seu status de atendimento</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
         </div>
 
         {/* Main Content */}
@@ -519,6 +561,26 @@ const Chatbot = () => {
                       <p className="text-xs mt-1">Integrações, webhooks, limites</p>
                     </div>
                   </Card>
+                </div>
+              )}
+
+              {activeTab === "chatbot-auto" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Chatbot Automático</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Configure respostas automáticas, distribuição de atendimentos e qualificação de leads.
+                  </p>
+                  <ChatbotConfigPanel />
+                </div>
+              )}
+
+              {activeTab === "disponibilidade" && (
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold">Minha Disponibilidade</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Controle seu status para receber novos atendimentos via WhatsApp.
+                  </p>
+                  <AttendantAvailabilityPanel />
                 </div>
               )}
 
