@@ -62,7 +62,8 @@ Deno.serve(async (req) => {
       });
 
       // Find the channel by app_name
-      const { data: channel, error: channelError } = await supabase
+      let channel = null;
+      const { data: channelByApp } = await supabase
         .from('channels')
         .select('id, organization_id')
         .eq('app_name', appName)
@@ -70,7 +71,9 @@ Deno.serve(async (req) => {
         .eq('connected', true)
         .single();
 
-      if (channelError || !channel) {
+      channel = channelByApp;
+
+      if (!channel) {
         console.log('Channel not found for app:', appName);
         // Try to find by phone number
         const { data: channelByPhone } = await supabase
@@ -81,7 +84,9 @@ Deno.serve(async (req) => {
           .limit(1)
           .single();
         
-        if (!channelByPhone) {
+        channel = channelByPhone;
+        
+        if (!channel) {
           console.log('No matching channel found');
           return new Response(
             JSON.stringify({ status: 'ok', message: 'No channel configured' }),
@@ -90,8 +95,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      const channelId = channel?.id;
-      const organizationId = channel?.organization_id;
+      const channelId = channel.id;
+      const organizationId = channel.organization_id;
 
       // Store the incoming message
       const { error: insertError } = await supabase
@@ -132,6 +137,13 @@ Deno.serve(async (req) => {
           .single();
 
         if (adminProfile) {
+          // Get initial stage for chatbot
+          const { data: chatbotConfig } = await supabase
+            .from('chatbot_config')
+            .select('initial_stage_id')
+            .eq('channel_id', channelId)
+            .single();
+
           const { error: leadError } = await supabase
             .from('leads')
             .insert({
@@ -140,6 +152,7 @@ Deno.serve(async (req) => {
               name: senderName || `Lead ${senderPhone.slice(-4)}`,
               phone: senderPhone,
               status: 'new',
+              stage_id: chatbotConfig?.initial_stage_id || null,
               notes: 'Lead criado automaticamente via WhatsApp'
             });
 
@@ -149,6 +162,32 @@ Deno.serve(async (req) => {
             console.log('New lead created for:', senderPhone);
           }
         }
+      }
+
+      // Trigger chatbot processing
+      const chatbotUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-chatbot`;
+      
+      try {
+        const chatbotResponse = await fetch(chatbotUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({
+            channelId,
+            senderPhone,
+            senderName,
+            messageContent,
+            messageId,
+            organizationId
+          })
+        });
+
+        const chatbotResult = await chatbotResponse.json();
+        console.log('Chatbot result:', chatbotResult);
+      } catch (chatbotError) {
+        console.error('Error calling chatbot:', chatbotError);
       }
     }
 

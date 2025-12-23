@@ -20,3 +20,6 @@ verify_jwt = true
 
 [functions.gupshup-send]
 verify_jwt = true
+
+[functions.whatsapp-chatbot]
+verify_jwt = false
