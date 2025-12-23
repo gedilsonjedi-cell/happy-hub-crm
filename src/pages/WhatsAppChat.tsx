@@ -25,7 +25,8 @@ import {
   Zap,
   FileText,
   Image,
-  Bot
+  Bot,
+  CheckCircle2
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,7 @@ const statusConfig = {
   archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
 };
 
-type FilterStatus = "all" | "pending" | "in_progress";
+type FilterStatus = "all" | "pending" | "in_progress" | "resolved";
 
 // Audio notification using Web Audio API
 const useNotificationSound = () => {
@@ -677,6 +678,7 @@ const WhatsAppChat = () => {
   // Get counts for filter badges
   const pendingCount = activeConversations.filter(c => c.status === "pending").length;
   const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
+  const resolvedCount = activeConversations.filter(c => c.status === "resolved").length;
 
   // Get conversation context for Sales Assistant
   const conversationContext = messages.map(m => 
@@ -685,10 +687,10 @@ const WhatsAppChat = () => {
 
   return (
     <MainLayout>
-      <div className="flex h-[calc(100vh-7rem)] gap-4 animate-fade-in">
+      <div className="flex h-[calc(100vh-4rem)] gap-4 animate-fade-in w-full">
         {/* Conversations List */}
         <div className={cn(
-          "w-80 bg-card rounded-lg border border-border flex flex-col overflow-hidden",
+          "w-full md:w-80 lg:w-96 shrink-0 bg-card rounded-lg border border-border flex flex-col overflow-hidden",
           selectedConversation ? "hidden md:flex" : "flex"
         )}>
           {/* Header */}
@@ -730,12 +732,12 @@ const WhatsAppChat = () => {
             </div>
             
             {/* Status Filter Buttons */}
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("all")}
-                className="text-xs px-2.5 h-7"
+                className="text-xs px-3 h-7"
               >
                 Todos
               </Button>
@@ -743,10 +745,10 @@ const WhatsAppChat = () => {
                 variant={filterStatus === "pending" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("pending")}
-                className="text-xs px-2 h-7 gap-1"
+                className="text-xs px-3 h-7 gap-1.5"
               >
                 <Clock className="w-3 h-3 shrink-0" />
-                Pend.
+                Pendentes
                 {pendingCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {pendingCount}
@@ -757,10 +759,10 @@ const WhatsAppChat = () => {
                 variant={filterStatus === "in_progress" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("in_progress")}
-                className="text-xs px-2 h-7 gap-1"
+                className="text-xs px-3 h-7 gap-1.5"
               >
                 <Play className="w-3 h-3 shrink-0" />
-                And.
+                Em Andamento
                 {inProgressCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {inProgressCount}
@@ -768,6 +770,22 @@ const WhatsAppChat = () => {
                 )}
               </Button>
             </div>
+            
+            {/* Atendimentos Fechados */}
+            <Button
+              variant={filterStatus === "resolved" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setFilterStatus("resolved")}
+              className="w-full text-xs h-7 gap-1.5 justify-start text-muted-foreground hover:text-foreground"
+            >
+              <CheckCircle2 className="w-3 h-3 shrink-0" />
+              Atendimentos Fechados
+              {resolvedCount > 0 && (
+                <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0 ml-auto">
+                  {resolvedCount}
+                </Badge>
+              )}
+            </Button>
 
             {channels.length > 1 && (
               <select
