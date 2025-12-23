@@ -14,11 +14,12 @@ import {
   BarChart3,
   MessageCircle,
   Shield,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
@@ -40,13 +41,22 @@ export function Sidebar() {
   const location = useLocation();
   const userRole = useUserRole();
 
-  // Filter menu items based on permissions
-  // Show all items while loading (will filter after permissions load)
-  const visibleMenuItems = menuItems.filter((item) => {
-    if (item.permission === null) return true;
-    if (userRole.loading) return true; // Show all items while loading for smoother UX
-    return userRole[item.permission as keyof typeof userRole];
-  });
+  const handleNavClick = (e: React.MouseEvent, item: typeof menuItems[0]) => {
+    // If no permission required or still loading, allow navigation
+    if (item.permission === null || userRole.loading) {
+      return;
+    }
+
+    // Check if user has permission
+    const hasPermission = userRole[item.permission as keyof typeof userRole];
+    
+    if (!hasPermission) {
+      e.preventDefault();
+      toast.error("Acesso negado", {
+        description: "Seu usuário não tem permissão para acessar este recurso.",
+      });
+    }
+  };
 
   return (
     <aside 
@@ -69,40 +79,47 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="p-2 space-y-1">
-        {userRole.loading ? (
-          // Show skeleton while loading
-          <>
-            {[...Array(10)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                <Skeleton className="w-5 h-5 rounded" />
-                {!collapsed && <Skeleton className="h-4 w-24" />}
-              </div>
-            ))}
-          </>
-        ) : (
-          visibleMenuItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const Icon = item.icon;
-            
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
-                  isActive 
-                    ? "bg-primary text-primary-foreground" 
+        {menuItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          const Icon = item.icon;
+          
+          // Check permission (only hide Super Admin for non-super-admins after loading)
+          const hasPermission = item.permission === null || 
+            userRole.loading || 
+            userRole[item.permission as keyof typeof userRole];
+          
+          // Hide Super Admin completely for non-super-admins
+          if (item.permission === "canAccessSuperAdmin" && !userRole.loading && !userRole.canAccessSuperAdmin) {
+            return null;
+          }
+          
+          // For other items, show them but with locked indicator if no permission
+          const isLocked = !userRole.loading && item.permission !== null && !hasPermission;
+          
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={(e) => handleNavClick(e, item)}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                isActive 
+                  ? "bg-primary text-primary-foreground" 
+                  : isLocked
+                    ? "text-sidebar-muted cursor-not-allowed opacity-60"
                     : "text-sidebar-foreground hover:bg-muted/30"
-                )}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                {!collapsed && (
-                  <span className="text-sm font-medium">{item.label}</span>
-                )}
-              </Link>
-            );
-          })
-        )}
+              )}
+            >
+              <Icon className="w-5 h-5 shrink-0" />
+              {!collapsed && (
+                <span className="text-sm font-medium flex-1">{item.label}</span>
+              )}
+              {!collapsed && isLocked && (
+                <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </Link>
+          );
+        })}
       </nav>
     </aside>
   );
