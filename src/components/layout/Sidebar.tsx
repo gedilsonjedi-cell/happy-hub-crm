@@ -26,7 +26,7 @@ const menuItems = [
   { icon: Users, label: "Leads", path: "/leads", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
-  { icon: MessageSquare, label: "Atendimento", path: "/atendimento", permission: null },
+  
   { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: null },

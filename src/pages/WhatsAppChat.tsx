@@ -13,7 +13,6 @@ import {
   CheckCheck,
   Clock,
   Paperclip,
-  Sparkles,
   Archive,
   Play,
   Trash2,
@@ -41,7 +40,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { SalesAssistant } from "@/components/atendimento/SalesAssistant";
+
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
@@ -146,7 +145,7 @@ const WhatsAppChat = () => {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showSalesAssistant, setShowSalesAssistant] = useState(false);
+  
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -979,15 +978,6 @@ const WhatsAppChat = () => {
                     <Zap className="w-4 h-4" />
                     <span className="hidden sm:inline">Rápidas</span>
                   </Button>
-                  <Button
-                    variant={showSalesAssistant ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowSalesAssistant(!showSalesAssistant)}
-                    className="gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span className="hidden sm:inline">IA</span>
-                  </Button>
                   <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
                     {statusConfig[selectedConversation.status].label}
                   </Badge>
@@ -1115,13 +1105,6 @@ const WhatsAppChat = () => {
           onSelectResponse={(content) => setNewMessage(content)}
         />
 
-        {/* Sales Assistant Panel */}
-        <SalesAssistant
-          isOpen={showSalesAssistant}
-          onClose={() => setShowSalesAssistant(false)}
-          customerName={selectedConversation?.name || selectedConversation?.phone}
-          conversationContext={conversationContext}
-        />
 
         {/* Media Upload Dialog */}
         <MediaUploadDialog
