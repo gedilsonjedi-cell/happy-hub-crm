@@ -58,6 +58,7 @@ const Conexoes = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isValidated, setIsValidated] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncingTemplates, setIsSyncingTemplates] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -171,25 +172,44 @@ const Conexoes = () => {
       return;
     }
 
-    const { error } = await supabase.from("channels").insert({
-      user_id: user?.id,
-      name: formData.name.trim(),
-      phone: cleanPhone,
-      provider: "gupshup",
-      app_name: formData.appName.trim(),
-      access_token: formData.apiKey.trim(),
-      connected: true,
-    });
+    setIsConnecting(true);
 
-    if (error) {
+    try {
+      const { error } = await supabase.from("channels").insert({
+        user_id: user?.id,
+        name: formData.name.trim(),
+        phone: cleanPhone,
+        provider: "gupshup",
+        app_name: formData.appName.trim(),
+        access_token: formData.apiKey.trim(),
+        connected: true,
+      });
+
+      if (error) {
+        toast.error("Erro ao conectar canal");
+        setIsConnecting(false);
+        return;
+      }
+
+      toast.success("Canal conectado com sucesso!");
+      
+      // Close dialog first
+      setIsDialogOpen(false);
+      
+      // Reset form after dialog closes
+      setTimeout(() => {
+        resetForm();
+        setIsConnecting(false);
+      }, 100);
+      
+      // Refresh the channels list
+      await fetchChannels();
+      
+    } catch (err) {
+      console.error('Connection error:', err);
       toast.error("Erro ao conectar canal");
-      return;
+      setIsConnecting(false);
     }
-
-    toast.success("Canal conectado com sucesso!");
-    setIsDialogOpen(false);
-    resetForm();
-    fetchChannels();
   };
 
   const handleToggleConnection = async (channel: Channel) => {
@@ -476,8 +496,16 @@ const Conexoes = () => {
       </div>
 
       {/* Connect Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
+      <Dialog 
+        open={isDialogOpen} 
+        onOpenChange={(open) => { 
+          if (!isConnecting) {
+            setIsDialogOpen(open); 
+            if (!open) resetForm(); 
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-card border-border" onInteractOutside={(e) => isConnecting && e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-foreground">Conectar Gupshup</DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -569,8 +597,19 @@ const Conexoes = () => {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleConnect} disabled={!isValidated}>
-              Conectar
+            <Button 
+              onClick={handleConnect} 
+              disabled={!isValidated || isConnecting}
+              className="gap-2"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Conectando...
+                </>
+              ) : (
+                "Conectar"
+              )}
             </Button>
           </div>
         </DialogContent>
