@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { User, Mail, Shield, Save, Loader2 } from "lucide-react";
+import { User, Mail, Shield, Save, Loader2, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function Perfil() {
@@ -68,8 +68,23 @@ export default function Perfil() {
     }
   };
 
+  const handleClearRoleCache = () => {
+    try {
+      localStorage.removeItem("user_role_cache");
+      toast.success("Cache limpo! Recarregando a página...");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err) {
+      console.error("Error clearing cache:", err);
+      toast.error("Erro ao limpar cache");
+    }
+  };
+
   const getRoleLabel = (role: string | null) => {
     switch (role) {
+      case "super_admin":
+        return "Super Admin";
       case "admin":
         return "Administrador";
       case "supervisor":
@@ -83,6 +98,8 @@ export default function Perfil() {
 
   const getRoleVariant = (role: string | null) => {
     switch (role) {
+      case "super_admin":
+        return "destructive";
       case "admin":
         return "default";
       case "supervisor":
@@ -155,13 +172,22 @@ export default function Perfil() {
                 <Shield className="w-4 h-4" />
                 Função
               </Label>
-              <div>
+              <div className="flex items-center gap-3">
                 <Badge variant={getRoleVariant(role) as any}>
                   {getRoleLabel(role)}
                 </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleClearRoleCache}
+                  className="gap-2"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Atualizar Permissões
+                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Sua função é definida por um administrador
+                Sua função é definida por um administrador. Use "Atualizar Permissões" se suas permissões foram alteradas recentemente.
               </p>
             </div>
 
