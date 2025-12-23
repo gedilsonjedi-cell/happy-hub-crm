@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { format, addMonths } from "date-fns";
 import { 
   Building2, 
   Users, 
@@ -18,6 +19,7 @@ import {
   Activity,
   Copy,
   AlertTriangle,
+  CalendarIcon,
   Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -110,6 +114,7 @@ export default function SuperAdmin() {
   const [newOrgPlan, setNewOrgPlan] = useState("free");
   const [newOrgMaxUsers, setNewOrgMaxUsers] = useState(1);
   const [newOrgMaxChannels, setNewOrgMaxChannels] = useState(1);
+  const [newOrgExpiryDate, setNewOrgExpiryDate] = useState<Date | undefined>(addMonths(new Date(), 1));
   const [isCreating, setIsCreating] = useState(false);
   
   // New client admin fields
@@ -125,6 +130,7 @@ export default function SuperAdmin() {
   const [editOrgName, setEditOrgName] = useState("");
   const [editOrgMaxUsers, setEditOrgMaxUsers] = useState(1);
   const [editOrgMaxChannels, setEditOrgMaxChannels] = useState(1);
+  const [editOrgExpiryDate, setEditOrgExpiryDate] = useState<Date | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   
   // Subscription pricing
@@ -246,6 +252,8 @@ export default function SuperAdmin() {
           plan: newOrgPlan,
           max_users: newOrgMaxUsers,
           max_channels: newOrgMaxChannels,
+          subscription_ends_at: newOrgExpiryDate ? newOrgExpiryDate.toISOString() : null,
+          subscription_started_at: new Date().toISOString(),
         })
         .select()
         .single();
@@ -336,6 +344,7 @@ export default function SuperAdmin() {
     setNewOrgPlan("free");
     setNewOrgMaxUsers(1);
     setNewOrgMaxChannels(1);
+    setNewOrgExpiryDate(addMonths(new Date(), 1));
     setAdminName("");
     setAdminEmail("");
     setAdminPhone("");
@@ -348,6 +357,7 @@ export default function SuperAdmin() {
     setEditOrgName(org.name);
     setEditOrgMaxUsers(org.max_users);
     setEditOrgMaxChannels(org.max_channels);
+    setEditOrgExpiryDate(org.subscription_ends_at ? new Date(org.subscription_ends_at) : undefined);
     setIsEditDialogOpen(true);
   };
 
@@ -357,6 +367,7 @@ export default function SuperAdmin() {
     setEditOrgName("");
     setEditOrgMaxUsers(1);
     setEditOrgMaxChannels(1);
+    setEditOrgExpiryDate(undefined);
   };
 
   const handleSaveOrganization = async () => {
@@ -370,6 +381,7 @@ export default function SuperAdmin() {
           name: editOrgName.trim(),
           max_users: editOrgMaxUsers,
           max_channels: editOrgMaxChannels,
+          subscription_ends_at: editOrgExpiryDate ? editOrgExpiryDate.toISOString() : null,
         })
         .eq("id", editingOrg.id);
 
@@ -886,6 +898,29 @@ export default function SuperAdmin() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Data de Vencimento</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {newOrgExpiryDate ? format(newOrgExpiryDate, "dd/MM/yyyy") : "Selecione uma data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={newOrgExpiryDate}
+                        onSelect={setNewOrgExpiryDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
                 {subscriptionPricing && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                     <p className="text-sm font-medium text-primary">
@@ -998,6 +1033,29 @@ export default function SuperAdmin() {
                     onChange={(e) => setEditOrgMaxChannels(Math.max(1, parseInt(e.target.value) || 1))}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data de Vencimento</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editOrgExpiryDate ? format(editOrgExpiryDate, "dd/MM/yyyy") : "Sem vencimento definido"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editOrgExpiryDate}
+                      onSelect={setEditOrgExpiryDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {subscriptionPricing && (
