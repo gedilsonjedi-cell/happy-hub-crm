@@ -184,8 +184,16 @@ const Conexoes = () => {
     setIsConnecting(true);
 
     try {
+      // Get user's organization_id from their profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user?.id)
+        .maybeSingle();
+
       const { error } = await supabase.from("channels").insert({
         user_id: user?.id,
+        organization_id: profileData?.organization_id || null,
         name: formData.name.trim(),
         phone: cleanPhone,
         provider: "gupshup",
@@ -195,6 +203,7 @@ const Conexoes = () => {
       });
 
       if (error) {
+        console.error('Error creating channel:', error);
         toast.error("Erro ao conectar canal");
         setIsConnecting(false);
         return;
