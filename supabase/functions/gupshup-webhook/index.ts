@@ -143,34 +143,51 @@ Deno.serve(async (req) => {
       // Handle message events
       if (payload.type === 'message' || (payload.payload as Record<string, unknown>)?.type === 'message') {
         const innerPayload = (payload.payload || payload) as Record<string, unknown>;
-        const messageData = (innerPayload.payload || innerPayload) as Record<string, unknown>;
         
+        // The message text is nested in innerPayload.payload.text
+        const messagePayload = (innerPayload.payload || innerPayload) as Record<string, unknown>;
+        
+        // Extract sender phone - it can be in different places
+        // For Gupshup v2: payload.payload.source or payload.payload.sender.phone
         const senderPhone = sanitizePhone(
-          messageData.source || 
-          (messageData.sender as Record<string, unknown>)?.phone || 
+          innerPayload.source || 
+          (innerPayload.sender as Record<string, unknown>)?.phone ||
+          messagePayload.source ||
+          (messagePayload.sender as Record<string, unknown>)?.phone || 
           payload.mobile
         );
         
+        console.log('Extracting sender phone from:', {
+          innerPayloadSource: innerPayload.source,
+          senderPhone: (innerPayload.sender as Record<string, unknown>)?.phone,
+          messagePayloadSource: messagePayload.source,
+          extracted: senderPhone
+        });
+        
         if (!senderPhone) {
-          console.error('Missing sender phone');
+          console.error('Missing sender phone - full payload:', JSON.stringify(payload));
           return new Response(
             JSON.stringify({ status: 'error', message: 'Missing sender phone' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
+        // Extract message content - can be in different places
         const messageContent = sanitizeString(
-          messageData.text || 
-          (messageData.payload as Record<string, unknown>)?.text || 
-          messageData.body,
+          messagePayload.text || 
+          (messagePayload as Record<string, unknown>)?.text ||
+          innerPayload.text ||
+          innerPayload.body,
           5000
         );
-        const messageType = sanitizeString(messageData.type, 50) || 'text';
-        const messageId = sanitizeString(payload.messageId || payload.id, 100) || `msg_${Date.now()}`;
+        
+        const messageType = sanitizeString(innerPayload.type || messagePayload.type, 50) || 'text';
+        const messageId = sanitizeString(innerPayload.id || payload.messageId || payload.id, 100) || `msg_${Date.now()}`;
         const appName = sanitizeString(payload.app || payload.appName, 100);
         const senderName = sanitizeString(
-          (messageData.sender as Record<string, unknown>)?.name || 
-          messageData.name,
+          (innerPayload.sender as Record<string, unknown>)?.name || 
+          (messagePayload.sender as Record<string, unknown>)?.name ||
+          innerPayload.name,
           100
         );
 
