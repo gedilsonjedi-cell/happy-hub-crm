@@ -59,6 +59,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { DispatchPricingConfig } from "@/components/admin/DispatchPricingConfig";
+import { SubscriptionPricingConfig } from "@/components/admin/SubscriptionPricingConfig";
+
+interface SubscriptionPricing {
+  base_price: number;
+  price_per_user: number;
+  price_per_channel: number;
+  included_users: number;
+  included_channels: number;
+}
 
 interface Organization {
   id: string;
@@ -71,14 +80,9 @@ interface Organization {
   max_channels: number;
   created_at: string;
   user_count?: number;
+  channel_count?: number;
+  monthly_cost?: number;
 }
-
-const planConfig: Record<string, { label: string; className: string }> = {
-  free: { label: "Free", className: "bg-muted text-muted-foreground" },
-  starter: { label: "Starter", className: "bg-blue-500/10 text-blue-500" },
-  professional: { label: "Professional", className: "bg-primary/10 text-primary" },
-  enterprise: { label: "Enterprise", className: "bg-warning/10 text-warning" },
-};
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   active: { label: "Ativa", className: "bg-green-500/10 text-green-500" },
@@ -107,6 +111,9 @@ export default function SuperAdmin() {
   const [adminPhone, setAdminPhone] = useState("");
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState("");
+  
+  // Subscription pricing
+  const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing | null>(null);
 
   useEffect(() => {
     // Only redirect after role has been fully loaded and confirmed not super_admin
@@ -119,8 +126,29 @@ export default function SuperAdmin() {
   useEffect(() => {
     if (user && isSuperAdmin) {
       fetchOrganizations();
+      fetchSubscriptionPricing();
     }
   }, [user, isSuperAdmin]);
+
+  const fetchSubscriptionPricing = async () => {
+    const { data, error } = await supabase
+      .from("subscription_pricing")
+      .select("*")
+      .single();
+    
+    if (!error && data) {
+      setSubscriptionPricing(data);
+    }
+  };
+
+  const calculateMonthlyCost = (maxUsers: number, maxChannels: number) => {
+    if (!subscriptionPricing) return 0;
+    const extraUsers = Math.max(0, maxUsers - subscriptionPricing.included_users);
+    const extraChannels = Math.max(0, maxChannels - subscriptionPricing.included_channels);
+    return subscriptionPricing.base_price + 
+      (extraUsers * subscriptionPricing.price_per_user) + 
+      (extraChannels * subscriptionPricing.price_per_channel);
+  };
 
   const fetchOrganizations = async () => {
     try {
@@ -428,7 +456,7 @@ export default function SuperAdmin() {
             </TabsTrigger>
             <TabsTrigger value="pricing" className="gap-2">
               <DollarSign className="w-4 h-4" />
-              Preços de Disparo
+              Precificação
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2">
               <Settings className="w-4 h-4" />
@@ -459,9 +487,10 @@ export default function SuperAdmin() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Plano</TableHead>
+                    <TableHead>Valor Mensal</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Usuários</TableHead>
+                    <TableHead>WhatsApps</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -469,35 +498,40 @@ export default function SuperAdmin() {
                 <TableBody>
                   {filteredOrganizations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Nenhum cliente encontrado
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredOrganizations.map((org) => (
-                      <TableRow key={org.id} className={!org.is_active ? "opacity-50" : ""}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{org.name}</p>
-                            <p className="text-sm text-muted-foreground">{org.slug}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={planConfig[org.plan]?.className || ""}>
-                            {planConfig[org.plan]?.label || org.plan}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={statusConfig[org.subscription_status]?.className || ""}>
-                            {statusConfig[org.subscription_status]?.label || org.subscription_status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {org.user_count} / {org.max_users}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(org.created_at).toLocaleDateString("pt-BR")}
-                        </TableCell>
+                    filteredOrganizations.map((org) => {
+                      const monthlyCost = calculateMonthlyCost(org.max_users, org.max_channels);
+                      return (
+                        <TableRow key={org.id} className={!org.is_active ? "opacity-50" : ""}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{org.name}</p>
+                              <p className="text-sm text-muted-foreground">{org.slug}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium text-primary">
+                              R$ {monthlyCost.toFixed(2)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={statusConfig[org.subscription_status]?.className || ""}>
+                              {statusConfig[org.subscription_status]?.label || org.subscription_status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {org.user_count || 0} / {org.max_users}
+                          </TableCell>
+                          <TableCell>
+                            {org.max_channels}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(org.created_at).toLocaleDateString("pt-BR")}
+                          </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -545,7 +579,8 @@ export default function SuperAdmin() {
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                    ))
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -553,7 +588,8 @@ export default function SuperAdmin() {
           </TabsContent>
 
           {/* Pricing Tab */}
-          <TabsContent value="pricing">
+          <TabsContent value="pricing" className="space-y-6">
+            <SubscriptionPricingConfig />
             <DispatchPricingConfig />
           </TabsContent>
 
@@ -640,21 +676,17 @@ export default function SuperAdmin() {
                     />
                   </div>
                 </div>
-                
-                <div className="space-y-2">
-                  <Label>Plano</Label>
-                  <Select value={newOrgPlan} onValueChange={setNewOrgPlan}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="free">Free</SelectItem>
-                      <SelectItem value="starter">Starter</SelectItem>
-                      <SelectItem value="professional">Professional</SelectItem>
-                      <SelectItem value="enterprise">Enterprise</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                {subscriptionPricing && (
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Plano base: <span className="font-medium text-foreground">R$ {subscriptionPricing.base_price.toFixed(2)}/mês</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Inclui {subscriptionPricing.included_users} usuário(s) e {subscriptionPricing.included_channels} WhatsApp(s)
+                    </p>
+                  </div>
+                )}
 
                 <div className="pt-2 space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Dados do Administrador</p>
