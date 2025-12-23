@@ -6,7 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PIPELINE_STAGES = {
+// Valid pipeline stages (whitelist)
+const VALID_STAGES = ["pre-atendimento", "vendas", "nao-finalizou", "follow-up", "cliente"];
+
+const PIPELINE_STAGES: Record<string, string> = {
   "pre-atendimento": "Pré-atendimento",
   "vendas": "Vendas",
   "nao-finalizou": "Não finalizou venda",
@@ -35,6 +38,93 @@ Exemplo de resposta:
 [STAGE:pre-atendimento]"
 
 Sempre inclua a tag [STAGE:] mesmo que a etapa não mude.`;
+
+// Input validation
+interface Message {
+  role: string;
+  content: string;
+}
+
+function validateInput(body: unknown): { valid: boolean; error?: string; data?: { messages: Message[]; leadId?: string; conversationId?: string } } {
+  if (!body || typeof body !== 'object') {
+    return { valid: false, error: 'Request body must be an object' };
+  }
+
+  const { messages, leadId, conversationId } = body as Record<string, unknown>;
+
+  // Validate messages
+  if (!Array.isArray(messages)) {
+    return { valid: false, error: 'messages must be an array' };
+  }
+
+  if (messages.length === 0) {
+    return { valid: false, error: 'messages cannot be empty' };
+  }
+
+  if (messages.length > 30) {
+    return { valid: false, error: 'messages cannot exceed 30 items' };
+  }
+
+  const validRoles = ['user', 'assistant', 'system'];
+  const validatedMessages: Message[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    if (!msg || typeof msg !== 'object') {
+      return { valid: false, error: `message at index ${i} is invalid` };
+    }
+
+    const m = msg as Record<string, unknown>;
+
+    if (!m.role || typeof m.role !== 'string' || !validRoles.includes(m.role)) {
+      return { valid: false, error: `message at index ${i} has invalid role` };
+    }
+
+    if (typeof m.content !== 'string') {
+      return { valid: false, error: `message at index ${i} has invalid content` };
+    }
+
+    // Limit content length
+    const content = m.content.trim().slice(0, 3000);
+    if (content.length === 0 && m.role === 'user') {
+      return { valid: false, error: `message at index ${i} has empty content` };
+    }
+
+    validatedMessages.push({
+      role: m.role,
+      content: content
+    });
+  }
+
+  // Validate optional UUIDs
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  
+  let validatedLeadId: string | undefined;
+  if (leadId !== undefined) {
+    if (typeof leadId !== 'string' || !uuidRegex.test(leadId)) {
+      return { valid: false, error: 'leadId must be a valid UUID' };
+    }
+    validatedLeadId = leadId;
+  }
+
+  let validatedConversationId: string | undefined;
+  if (conversationId !== undefined) {
+    if (typeof conversationId !== 'string' || !uuidRegex.test(conversationId)) {
+      return { valid: false, error: 'conversationId must be a valid UUID' };
+    }
+    validatedConversationId = conversationId;
+  }
+
+  return {
+    valid: true,
+    data: {
+      messages: validatedMessages,
+      leadId: validatedLeadId,
+      conversationId: validatedConversationId
+    }
+  };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -69,7 +159,26 @@ serve(async (req) => {
 
     console.log("Authenticated user:", user.id);
 
-    const { messages, leadId, conversationId } = await req.json();
+    // Parse and validate input
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const validation = validateInput(body);
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { messages, leadId, conversationId } = validation.data!;
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -119,9 +228,15 @@ serve(async (req) => {
     
     console.log("AI response received:", assistantMessage.substring(0, 100) + "...");
 
-    // Extract stage from response
+    // Extract stage from response with whitelist validation
     const stageMatch = assistantMessage.match(/\[STAGE:([a-z-]+)\]/i);
-    let detectedStage = stageMatch ? stageMatch[1].toLowerCase() : null;
+    let detectedStage: string | null = stageMatch ? stageMatch[1].toLowerCase() : null;
+    
+    // Whitelist validation - reject invalid stages
+    if (detectedStage && !VALID_STAGES.includes(detectedStage)) {
+      console.warn("Invalid stage detected, ignoring:", detectedStage);
+      detectedStage = null;
+    }
     
     // Clean message (remove stage tag for display)
     const cleanMessage = assistantMessage.replace(/\[STAGE:[a-z-]+\]/gi, "").trim();
@@ -129,9 +244,9 @@ serve(async (req) => {
     console.log("Detected stage:", detectedStage);
 
     // Update lead's pipeline stage if we have a leadId and detected stage
-    if (leadId && detectedStage && PIPELINE_STAGES[detectedStage as keyof typeof PIPELINE_STAGES]) {
+    if (leadId && detectedStage && PIPELINE_STAGES[detectedStage]) {
       // First, get or create the stage
-      const stageName = PIPELINE_STAGES[detectedStage as keyof typeof PIPELINE_STAGES];
+      const stageName = PIPELINE_STAGES[detectedStage];
       
       // Get user_id from lead
       const { data: lead } = await supabase
@@ -171,7 +286,7 @@ serve(async (req) => {
       JSON.stringify({ 
         message: cleanMessage,
         detectedStage: detectedStage,
-        stageName: detectedStage ? PIPELINE_STAGES[detectedStage as keyof typeof PIPELINE_STAGES] : null
+        stageName: detectedStage ? PIPELINE_STAGES[detectedStage] : null
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

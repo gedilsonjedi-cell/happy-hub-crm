@@ -6,6 +6,97 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Input validation
+interface Message {
+  role: string;
+  content: string;
+}
+
+interface AgentConfig {
+  name?: string;
+  nickname?: string;
+  communication_style?: string;
+  agent_profile?: string;
+  objective?: string;
+  company_info?: string;
+}
+
+function validateInput(body: unknown): { valid: boolean; error?: string; data?: { message: string; agentConfig: AgentConfig; conversationHistory: Message[] } } {
+  if (!body || typeof body !== 'object') {
+    return { valid: false, error: 'Request body must be an object' };
+  }
+
+  const { message, agentConfig, conversationHistory } = body as Record<string, unknown>;
+
+  // Validate message
+  if (typeof message !== 'string' || message.trim().length === 0) {
+    return { valid: false, error: 'message must be a non-empty string' };
+  }
+
+  if (message.length > 5000) {
+    return { valid: false, error: 'message cannot exceed 5000 characters' };
+  }
+
+  // Validate agentConfig
+  if (!agentConfig || typeof agentConfig !== 'object') {
+    return { valid: false, error: 'agentConfig must be an object' };
+  }
+
+  const config = agentConfig as Record<string, unknown>;
+  const validatedConfig: AgentConfig = {
+    name: typeof config.name === 'string' ? config.name.slice(0, 100) : undefined,
+    nickname: typeof config.nickname === 'string' ? config.nickname.slice(0, 50) : undefined,
+    communication_style: typeof config.communication_style === 'string' ? config.communication_style.slice(0, 50) : undefined,
+    agent_profile: typeof config.agent_profile === 'string' ? config.agent_profile.slice(0, 50) : undefined,
+    objective: typeof config.objective === 'string' ? config.objective.slice(0, 500) : undefined,
+    company_info: typeof config.company_info === 'string' ? config.company_info.slice(0, 2000) : undefined,
+  };
+
+  // Validate conversationHistory
+  if (!Array.isArray(conversationHistory)) {
+    return { valid: false, error: 'conversationHistory must be an array' };
+  }
+
+  if (conversationHistory.length > 20) {
+    return { valid: false, error: 'conversationHistory cannot exceed 20 messages' };
+  }
+
+  const validRoles = ['user', 'assistant'];
+  const validatedHistory: Message[] = [];
+
+  for (let i = 0; i < conversationHistory.length; i++) {
+    const msg = conversationHistory[i];
+    
+    if (!msg || typeof msg !== 'object') {
+      return { valid: false, error: `conversationHistory[${i}] is invalid` };
+    }
+
+    const m = msg as Record<string, unknown>;
+    
+    if (!m.role || typeof m.role !== 'string' || !validRoles.includes(m.role)) {
+      return { valid: false, error: `conversationHistory[${i}] has invalid role` };
+    }
+
+    if (typeof m.content !== 'string') {
+      return { valid: false, error: `conversationHistory[${i}] has invalid content` };
+    }
+
+    validatedHistory.push({
+      role: m.role,
+      content: m.content.slice(0, 2000)
+    });
+  }
+
+  return {
+    valid: true,
+    data: {
+      message: message.trim().slice(0, 5000),
+      agentConfig: validatedConfig,
+      conversationHistory: validatedHistory
+    }
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -39,7 +130,26 @@ serve(async (req) => {
 
     console.log('Authenticated user:', user.id);
 
-    const { message, agentConfig, conversationHistory } = await req.json();
+    // Parse and validate input
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const validation = validateInput(body);
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { message, agentConfig, conversationHistory } = validation.data!;
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -64,8 +174,8 @@ serve(async (req) => {
 
     const systemPrompt = `Você é ${agentConfig.name || "um assistente virtual"}${agentConfig.nickname ? ` (pode se apresentar como ${agentConfig.nickname})` : ""}.
 
-${styleMap[agentConfig.communication_style] || styleMap.consultivo}
-${profileMap[agentConfig.agent_profile] || profileMap.outro}
+${styleMap[agentConfig.communication_style || ''] || styleMap.consultivo}
+${profileMap[agentConfig.agent_profile || ''] || profileMap.outro}
 
 ${agentConfig.objective ? `Seu objetivo: ${agentConfig.objective}` : ""}
 
@@ -79,7 +189,7 @@ Diretrizes:
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...conversationHistory.map((m: any) => ({ role: m.role, content: m.content })),
+      ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: message }
     ];
 
