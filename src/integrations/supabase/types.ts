@@ -709,6 +709,53 @@ export type Database = {
           },
         ]
       }
+      quick_responses: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          is_global: boolean | null
+          organization_id: string | null
+          shortcut: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_global?: boolean | null
+          organization_id?: string | null
+          shortcut?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_global?: boolean | null
+          organization_id?: string | null
+          shortcut?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sectors: {
         Row: {
           created_at: string

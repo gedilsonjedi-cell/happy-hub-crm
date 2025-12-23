@@ -21,7 +21,11 @@ import {
   ChevronDown,
   ChevronUp,
   Volume2,
-  VolumeX
+  VolumeX,
+  Zap,
+  FileText,
+  Image,
+  Bot
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -37,6 +41,16 @@ import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { SalesAssistant } from "@/components/atendimento/SalesAssistant";
+import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
+import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
+import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Message {
   id: string;
@@ -46,6 +60,7 @@ interface Message {
   sender_name: string | null;
   message_type: string;
   content: string | null;
+  media_url: string | null;
   direction: string;
   status: string | null;
   created_at: string;
@@ -66,6 +81,11 @@ interface Channel {
   id: string;
   name: string;
   phone: string;
+}
+
+interface QuickResponse {
+  shortcut: string | null;
+  content: string;
 }
 
 const statusConfig = {
@@ -126,6 +146,10 @@ const WhatsAppChat = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
+  const [showQuickResponses, setShowQuickResponses] = useState(false);
+  const [showMediaDialog, setShowMediaDialog] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const playNotificationSound = useNotificationSound();
@@ -140,6 +164,24 @@ const WhatsAppChat = () => {
   useEffect(() => {
     localStorage.setItem("whatsapp-conversation-statuses", JSON.stringify(conversationStatuses));
   }, [conversationStatuses]);
+
+  // Fetch quick responses for shortcut detection
+  useEffect(() => {
+    const fetchQuickResponses = async () => {
+      const { data } = await supabase
+        .from("quick_responses")
+        .select("shortcut, content")
+        .not("shortcut", "is", null);
+      
+      if (data) {
+        setQuickResponses(data);
+      }
+    };
+    
+    if (user) {
+      fetchQuickResponses();
+    }
+  }, [user]);
 
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
@@ -346,6 +388,20 @@ const WhatsAppChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Check for quick response shortcuts
+  useEffect(() => {
+    if (newMessage.startsWith("/")) {
+      const shortcut = newMessage.slice(1).toLowerCase();
+      const match = quickResponses.find(qr => 
+        qr.shortcut?.toLowerCase() === shortcut
+      );
+      if (match) {
+        setNewMessage(match.content);
+        toast.success("Resposta rápida aplicada!");
+      }
+    }
+  }, [newMessage, quickResponses]);
+
   const updateConversationStatus = (phone: string, status: Conversation["status"]) => {
     setConversationStatuses(prev => ({ ...prev, [phone]: status }));
     setConversations(prev => prev.map(c => 
@@ -404,6 +460,7 @@ const WhatsAppChat = () => {
           sender_name: null,
           message_type: "text",
           content: newMessage.trim(),
+          media_url: null,
           direction: "outbound",
           status: "sent",
           created_at: new Date().toISOString(),
@@ -421,6 +478,113 @@ const WhatsAppChat = () => {
     setSendingMessage(false);
   };
 
+  const handleSendMedia = async (mediaData: {
+    mediaType: string;
+    mediaUrl: string;
+    mediaCaption?: string;
+    fileName?: string;
+  }) => {
+    if (!selectedConversation || !selectedChannel) return;
+
+    setSendingMessage(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('gupshup-send', {
+        body: {
+          channelId: selectedChannel.id,
+          destination: selectedConversation.phone,
+          mediaType: mediaData.mediaType,
+          mediaUrl: mediaData.mediaUrl,
+          mediaCaption: mediaData.mediaCaption,
+          fileName: mediaData.fileName
+        }
+      });
+
+      if (error) {
+        console.error('Send media error:', error);
+        toast.error('Erro ao enviar mídia');
+        setSendingMessage(false);
+        return;
+      }
+
+      if (data.success) {
+        const optimisticMessage: Message = {
+          id: `temp_${Date.now()}`,
+          channel_id: selectedChannel.id,
+          message_id: data.messageId,
+          sender_phone: selectedChannel.phone,
+          sender_name: null,
+          message_type: mediaData.mediaType,
+          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "sent",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone }
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        toast.success("Mídia enviada!");
+      } else {
+        toast.error(data.error || 'Erro ao enviar mídia');
+      }
+    } catch (err) {
+      console.error('Send media error:', err);
+      toast.error('Erro ao enviar mídia');
+    }
+
+    setSendingMessage(false);
+  };
+
+  const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
+    if (!selectedConversation || !selectedChannel) return;
+
+    setSendingMessage(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('gupshup-send', {
+        body: {
+          channelId: selectedChannel.id,
+          destination: selectedConversation.phone,
+          templateName,
+          templateParams
+        }
+      });
+
+      if (error) {
+        console.error('Send template error:', error);
+        toast.error('Erro ao enviar template');
+        setSendingMessage(false);
+        return;
+      }
+
+      if (data.success) {
+        const optimisticMessage: Message = {
+          id: `temp_${Date.now()}`,
+          channel_id: selectedChannel.id,
+          message_id: data.messageId,
+          sender_phone: selectedChannel.phone,
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "sent",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams }
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        toast.success("Template enviado!");
+      } else {
+        toast.error(data.error || 'Erro ao enviar template');
+      }
+    } catch (err) {
+      console.error('Send template error:', err);
+      toast.error('Erro ao enviar template');
+    }
+
+    setSendingMessage(false);
+  };
+
   const formatMessageTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return format(date, "HH:mm");
@@ -431,6 +595,63 @@ const WhatsAppChat = () => {
     if (isToday(date)) return format(date, "HH:mm");
     if (isYesterday(date)) return "Ontem";
     return format(date, "dd/MM", { locale: ptBR });
+  };
+
+  const renderMessageContent = (message: Message) => {
+    const isMedia = ["image", "video", "audio", "document", "file", "sticker"].includes(message.message_type);
+    
+    if (isMedia && message.media_url) {
+      switch (message.message_type) {
+        case "image":
+        case "sticker":
+          return (
+            <div className="space-y-1">
+              <img 
+                src={message.media_url} 
+                alt="Media" 
+                className="max-w-full rounded-lg max-h-60 object-cover"
+              />
+              {message.content && message.content !== `[${message.message_type}]` && (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
+            </div>
+          );
+        case "video":
+          return (
+            <div className="space-y-1">
+              <video 
+                src={message.media_url} 
+                controls 
+                className="max-w-full rounded-lg max-h-60"
+              />
+              {message.content && message.content !== "[video]" && (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
+            </div>
+          );
+        case "audio":
+          return (
+            <audio src={message.media_url} controls className="max-w-full" />
+          );
+        case "document":
+        case "file":
+          return (
+            <a 
+              href={message.media_url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm underline"
+            >
+              <FileText className="w-4 h-4" />
+              {message.content || "Documento"}
+            </a>
+          );
+        default:
+          return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+      }
+    }
+
+    return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   };
 
   // Active conversations (not archived)
@@ -732,20 +953,43 @@ const WhatsAppChat = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
+                    variant={showQuickResponses ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowQuickResponses(!showQuickResponses)}
+                    className="gap-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span className="hidden sm:inline">Rápidas</span>
+                  </Button>
+                  <Button
                     variant={showSalesAssistant ? "default" : "outline"}
                     size="sm"
                     onClick={() => setShowSalesAssistant(!showSalesAssistant)}
                     className="gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
-                    IA de Vendas
+                    <span className="hidden sm:inline">IA</span>
                   </Button>
                   <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
                     {statusConfig[selectedConversation.status].label}
                   </Badge>
-                  <Button variant="ghost" size="icon" onClick={() => handleResolve(selectedConversation.phone)}>
-                    <MoreVertical className="w-5 h-5" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="w-5 h-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleResolve(selectedConversation.phone)}>
+                        <CheckCheck className="w-4 h-4 mr-2" />
+                        Marcar como resolvido
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleArchive(selectedConversation.phone)}>
+                        <Archive className="w-4 h-4 mr-2" />
+                        Arquivar conversa
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
@@ -768,7 +1012,7 @@ const WhatsAppChat = () => {
                             : "bg-muted"
                         )}
                       >
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                        {renderMessageContent(message)}
                         <div className={cn(
                           "flex items-center justify-end gap-1 mt-1",
                           message.direction === "outbound" ? "text-white/70" : "text-muted-foreground"
@@ -792,11 +1036,25 @@ const WhatsAppChat = () => {
               {/* Message Input */}
               <div className="p-4 border-t border-border">
                 <div className="flex items-end gap-2">
-                  <Button variant="ghost" size="icon" className="shrink-0">
-                    <Paperclip className="w-5 h-5 text-muted-foreground" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="shrink-0">
+                        <Paperclip className="w-5 h-5 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => setShowMediaDialog(true)}>
+                        <Image className="w-4 h-4 mr-2" />
+                        Enviar mídia
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowTemplateSelector(true)}>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Enviar template
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Textarea
-                    placeholder="Digite sua mensagem..."
+                    placeholder="Digite sua mensagem... (use /atalho para respostas rápidas)"
                     className="min-h-[44px] max-h-32 resize-none bg-muted/30"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
@@ -832,12 +1090,34 @@ const WhatsAppChat = () => {
           )}
         </div>
 
+        {/* Quick Responses Panel */}
+        <QuickResponsesPanel
+          isOpen={showQuickResponses}
+          onClose={() => setShowQuickResponses(false)}
+          onSelectResponse={(content) => setNewMessage(content)}
+        />
+
         {/* Sales Assistant Panel */}
         <SalesAssistant
           isOpen={showSalesAssistant}
           onClose={() => setShowSalesAssistant(false)}
           customerName={selectedConversation?.name || selectedConversation?.phone}
           conversationContext={conversationContext}
+        />
+
+        {/* Media Upload Dialog */}
+        <MediaUploadDialog
+          isOpen={showMediaDialog}
+          onClose={() => setShowMediaDialog(false)}
+          onSend={handleSendMedia}
+        />
+
+        {/* Template Selector */}
+        <TemplateSelector
+          isOpen={showTemplateSelector}
+          onClose={() => setShowTemplateSelector(false)}
+          onSend={handleSendTemplate}
+          channelId={selectedChannel?.id || null}
         />
       </div>
     </MainLayout>
