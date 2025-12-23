@@ -48,10 +48,10 @@ Deno.serve(async (req) => {
 
     console.log('Validating Gupshup credentials for app:', appName);
 
-    // Call Gupshup API to validate credentials
-    // Using the settings endpoint which uses the apikey header correctly
-    const gupshupResponse = await fetch(
-      `https://api.gupshup.io/wa/app/${encodeURIComponent(appName)}/settings`,
+    // Use the templates list endpoint to validate credentials
+    // This endpoint is documented and should work with the apikey header
+    const templatesResponse = await fetch(
+      `https://api.gupshup.io/wa/app/${encodeURIComponent(appName)}/template/list`,
       {
         method: 'GET',
         headers: {
@@ -61,20 +61,20 @@ Deno.serve(async (req) => {
       }
     );
 
-    console.log('Gupshup API response status:', gupshupResponse.status);
-    const responseText = await gupshupResponse.text();
-    console.log('Gupshup API response body:', responseText);
+    console.log('Templates API response status:', templatesResponse.status);
+    const templatesText = await templatesResponse.text();
+    console.log('Templates API response body:', templatesText);
 
     // Try to parse as JSON
-    let responseData;
+    let templatesData;
     try {
-      responseData = JSON.parse(responseText);
+      templatesData = JSON.parse(templatesText);
     } catch {
-      responseData = { raw: responseText };
+      templatesData = { raw: templatesText };
     }
 
-    // Check for various error conditions
-    if (gupshupResponse.status === 401 || gupshupResponse.status === 403) {
+    // Check for authentication errors
+    if (templatesResponse.status === 401 || templatesResponse.status === 403) {
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -84,26 +84,38 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (gupshupResponse.status === 404) {
-      // For 404, the app name might be wrong, but let's check the response
-      if (responseData?.status === 'error' || responseData?.message) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: responseData.message || 'App não encontrado. Verifique o nome do app no Gupshup.' 
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // Check for app not found
+    if (templatesResponse.status === 404) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'App não encontrado. Verifique o nome do app no Gupshup.' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // If we get a successful response or even a 404 with no error message,
-    // try an alternative validation by attempting to get templates
-    if (!gupshupResponse.ok) {
-      // Try alternative endpoint - list templates
-      console.log('Trying alternative validation endpoint...');
-      const templatesResponse = await fetch(
-        `https://api.gupshup.io/wa/app/${encodeURIComponent(appName)}/template`,
+    // Check for error in response body
+    if (templatesData?.status === 'error') {
+      const errorMessage = typeof templatesData.message === 'object' 
+        ? templatesData.message?.message 
+        : templatesData.message;
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: errorMessage || 'Erro ao validar credenciais com Gupshup.' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If we get here with any other non-success status, try wallet balance endpoint
+    if (!templatesResponse.ok) {
+      console.log('Templates endpoint failed, trying wallet balance...');
+      
+      const walletResponse = await fetch(
+        `https://api.gupshup.io/wa/app/${encodeURIComponent(appName)}/wallet/balance`,
         {
           method: 'GET',
           headers: {
@@ -113,11 +125,9 @@ Deno.serve(async (req) => {
         }
       );
 
-      console.log('Templates API response status:', templatesResponse.status);
-      const templatesText = await templatesResponse.text();
-      console.log('Templates API response body:', templatesText);
-
-      if (templatesResponse.status === 401 || templatesResponse.status === 403) {
+      console.log('Wallet API response status:', walletResponse.status);
+      
+      if (walletResponse.status === 401 || walletResponse.status === 403) {
         return new Response(
           JSON.stringify({ 
             success: false, 
@@ -127,19 +137,11 @@ Deno.serve(async (req) => {
         );
       }
 
-      // If templates endpoint also fails, credentials are likely wrong
-      if (!templatesResponse.ok) {
-        let templatesData;
-        try {
-          templatesData = JSON.parse(templatesText);
-        } catch {
-          templatesData = {};
-        }
-        
+      if (!walletResponse.ok) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: templatesData?.message || 'Erro ao validar credenciais. Verifique o App Name e API Key.' 
+            error: 'Erro ao validar credenciais. Verifique o App Name e API Key.' 
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
