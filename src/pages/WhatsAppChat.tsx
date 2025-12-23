@@ -413,51 +413,83 @@ const WhatsAppChat = () => {
             }
           }
           
-          // Update messages if in current conversation
+          // Update messages if in current conversation - avoid duplicates
           if (normalizedSelectedPhone === normalizedContactPhone) {
-            setMessages(prev => [...prev, newMsg]);
+            setMessages(prev => {
+              // Check if message already exists (by message_id or exact content+time match for optimistic updates)
+              const exists = prev.some(m => 
+                m.message_id === newMsg.message_id || 
+                m.id === newMsg.id ||
+                // For outbound messages, check if we already have an optimistic version
+                (newMsg.direction === "outbound" && 
+                 m.direction === "outbound" && 
+                 m.content === newMsg.content &&
+                 m.id.startsWith('temp_'))
+              );
+              
+              if (exists) {
+                // Update the optimistic message with real data instead of adding duplicate
+                return prev.map(m => {
+                  if (m.id.startsWith('temp_') && 
+                      m.direction === "outbound" && 
+                      m.content === newMsg.content) {
+                    return { ...newMsg };
+                  }
+                  return m;
+                });
+              }
+              
+              return [...prev, newMsg];
+            });
           }
 
-          // Update conversations list
-          setConversations(prev => {
-            const existing = prev.find(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
-            if (existing) {
-              // If archived and new inbound message comes, move to in_progress
-              let newStatus = existing.status;
-              if (existing.status === "archived" && newMsg.direction === "inbound") {
-                newStatus = "in_progress";
-                updateConversationStatus(existing.phone, "in_progress");
+          // Update conversations list - only for inbound messages to avoid flickering
+          if (newMsg.direction === "inbound") {
+            setConversations(prev => {
+              const existing = prev.find(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
+              if (existing) {
+                // If archived and new inbound message comes, move to in_progress
+                let newStatus = existing.status;
+                if (existing.status === "archived") {
+                  newStatus = "in_progress";
+                  updateConversationStatus(existing.phone, "in_progress");
+                }
+                const updated = prev.map(c => 
+                  c.phone.replace(/\D/g, '') === normalizedContactPhone 
+                    ? { 
+                        ...c, 
+                        lastMessage: newMsg.content || "", 
+                        lastMessageTime: newMsg.created_at,
+                        lastInboundTime: newMsg.created_at,
+                        unreadCount: normalizedSelectedPhone !== normalizedContactPhone
+                          ? c.unreadCount + 1 
+                          : c.unreadCount,
+                        status: newStatus,
+                        name: contactName || c.name
+                      }
+                    : c
+                );
+                // Only sort if the updated conversation isn't already at the top
+                const updatedIndex = updated.findIndex(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
+                if (updatedIndex > 0) {
+                  return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+                }
+                return updated;
+              } else {
+                // Create new conversation for inbound messages
+                return [{
+                  phone: contactPhone,
+                  name: contactName,
+                  lastMessage: newMsg.content || "",
+                  lastMessageTime: newMsg.created_at,
+                  lastInboundTime: newMsg.created_at,
+                  unreadCount: 1,
+                  channelId: newMsg.channel_id,
+                  status: "pending" as const
+                }, ...prev];
               }
-              return prev.map(c => 
-                c.phone.replace(/\D/g, '') === normalizedContactPhone 
-                  ? { 
-                      ...c, 
-                      lastMessage: newMsg.content || "", 
-                      lastMessageTime: newMsg.created_at,
-                      lastInboundTime: newMsg.direction === "inbound" ? newMsg.created_at : c.lastInboundTime,
-                      unreadCount: normalizedSelectedPhone !== normalizedContactPhone && newMsg.direction === "inbound"
-                        ? c.unreadCount + 1 
-                        : c.unreadCount,
-                      status: newStatus,
-                      name: contactName || c.name
-                    }
-                  : c
-              ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
-            } else if (newMsg.direction === "inbound") {
-              // Only create new conversation for inbound messages
-              return [{
-                phone: contactPhone,
-                name: contactName,
-                lastMessage: newMsg.content || "",
-                lastMessageTime: newMsg.created_at,
-                lastInboundTime: newMsg.created_at,
-                unreadCount: 1,
-                channelId: newMsg.channel_id,
-                status: "pending"
-              }, ...prev];
-            }
-            return prev;
-          });
+            });
+          }
         }
       )
       .subscribe();
@@ -513,50 +545,68 @@ const WhatsAppChat = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !selectedChannel) return;
+    if (!newMessage.trim() || !selectedConversation || !selectedChannel || sendingMessage) return;
 
+    const messageToSend = newMessage.trim();
+    setNewMessage(""); // Clear immediately to prevent duplicates
     setSendingMessage(true);
+
+    // Create optimistic message right away for better UX
+    const tempId = `temp_${Date.now()}_${Math.random()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      channel_id: selectedChannel.id,
+      message_id: tempId,
+      sender_phone: selectedChannel.phone,
+      sender_name: null,
+      message_type: "text",
+      content: messageToSend,
+      media_url: null,
+      direction: "outbound",
+      status: "sending",
+      created_at: new Date().toISOString(),
+      metadata: { destination: selectedConversation.phone }
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
 
     try {
       const { data, error } = await supabase.functions.invoke('gupshup-send', {
         body: {
           channelId: selectedChannel.id,
           destination: selectedConversation.phone,
-          message: newMessage.trim()
+          message: messageToSend
         }
       });
 
       if (error) {
         console.error('Send error:', error);
         toast.error('Erro ao enviar mensagem');
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(messageToSend); // Restore the message
         setSendingMessage(false);
         return;
       }
 
       if (data.success) {
-        setNewMessage("");
-        
-        const optimisticMessage: Message = {
-          id: `temp_${Date.now()}`,
-          channel_id: selectedChannel.id,
-          message_id: data.messageId,
-          sender_phone: selectedChannel.phone,
-          sender_name: null,
-          message_type: "text",
-          content: newMessage.trim(),
-          media_url: null,
-          direction: "outbound",
-          status: "sent",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone }
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
+        // Update optimistic message with real ID and status
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, message_id: data.messageId, status: "sent" }
+            : m
+        ));
       } else {
         toast.error(data.error || 'Erro ao enviar mensagem');
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(messageToSend); // Restore the message
       }
     } catch (err) {
       console.error('Send error:', err);
       toast.error('Erro ao enviar mensagem');
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setNewMessage(messageToSend); // Restore the message
     }
 
     setSendingMessage(false);
