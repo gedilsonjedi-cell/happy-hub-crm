@@ -88,7 +88,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export default function SuperAdmin() {
   const { user } = useAuth();
-  const { isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { isSuperAdmin, loading: roleLoading, role } = useUserRole();
   const navigate = useNavigate();
   
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -101,10 +101,12 @@ export default function SuperAdmin() {
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    if (!roleLoading && !isSuperAdmin) {
+    // Only redirect after role has been fully loaded and confirmed not super_admin
+    // Also check that role is explicitly not super_admin (not just null during loading)
+    if (!roleLoading && role !== null && !isSuperAdmin) {
       navigate("/");
     }
-  }, [roleLoading, isSuperAdmin, navigate]);
+  }, [roleLoading, isSuperAdmin, role, navigate]);
 
   useEffect(() => {
     if (user && isSuperAdmin) {
