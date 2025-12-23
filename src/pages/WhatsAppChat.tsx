@@ -284,7 +284,7 @@ const WhatsAppChat = () => {
     fetchConversations();
   }, [selectedChannel, conversationStatuses]);
 
-  // Fetch messages for selected conversation
+  // Fetch messages for selected conversation and mark as read
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedConversation || !selectedChannel) return;
@@ -298,6 +298,18 @@ const WhatsAppChat = () => {
 
       if (!error && data) {
         setMessages(data as Message[]);
+        
+        // Mark inbound messages as read
+        const unreadMessageIds = data
+          .filter((msg) => msg.direction === "inbound" && msg.is_read === false)
+          .map((msg) => msg.id);
+        
+        if (unreadMessageIds.length > 0) {
+          await supabase
+            .from("whatsapp_messages")
+            .update({ is_read: true })
+            .in("id", unreadMessageIds);
+        }
       }
 
       // Mark as in_progress when selected
