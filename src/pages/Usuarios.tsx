@@ -352,8 +352,18 @@ const Usuarios = () => {
     setIsCreatingUser(true);
     
     try {
-      // Generate a temporary password (user will need to reset)
-      const tempPassword = Math.random().toString(36).slice(-12) + "Aa1!";
+      // Generate a cryptographically secure temporary password
+      const generateSecurePassword = (): string => {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+        let password = '';
+        for (let i = 0; i < 16; i++) {
+          password += chars[array[i] % chars.length];
+        }
+        return password;
+      };
+      const tempPassword = generateSecurePassword();
       
       // Create user via Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
