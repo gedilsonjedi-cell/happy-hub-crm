@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { 
   MessageSquare, 
   Send, 
@@ -26,7 +26,8 @@ import {
   Image,
   Bot,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ interface Conversation {
   name: string | null;
   lastMessage: string;
   lastMessageTime: string;
+  lastInboundTime: string | null;
   unreadCount: number;
   channelId: string | null;
   status: "pending" | "in_progress" | "resolved" | "archived";
@@ -280,6 +282,7 @@ const WhatsAppChat = () => {
             name: contactName,
             lastMessage: msg.content || "",
             lastMessageTime: msg.created_at,
+            lastInboundTime: msg.direction === "inbound" ? msg.created_at : null,
             unreadCount: msg.direction === "inbound" && msg.is_read === false ? 1 : 0,
             channelId: msg.channel_id,
             status: storedStatus || "pending"
@@ -289,6 +292,10 @@ const WhatsAppChat = () => {
           // Update name if we get it from an inbound message
           if (msg.direction === "inbound" && msg.sender_name && !existing.name) {
             existing.name = msg.sender_name;
+          }
+          // Track the most recent inbound message time
+          if (msg.direction === "inbound" && (!existing.lastInboundTime || new Date(msg.created_at) > new Date(existing.lastInboundTime))) {
+            existing.lastInboundTime = msg.created_at;
           }
           // Count unread inbound messages
           if (msg.direction === "inbound" && msg.is_read === false) {
@@ -427,6 +434,7 @@ const WhatsAppChat = () => {
                       ...c, 
                       lastMessage: newMsg.content || "", 
                       lastMessageTime: newMsg.created_at,
+                      lastInboundTime: newMsg.direction === "inbound" ? newMsg.created_at : c.lastInboundTime,
                       unreadCount: normalizedSelectedPhone !== normalizedContactPhone && newMsg.direction === "inbound"
                         ? c.unreadCount + 1 
                         : c.unreadCount,
@@ -442,6 +450,7 @@ const WhatsAppChat = () => {
                 name: contactName,
                 lastMessage: newMsg.content || "",
                 lastMessageTime: newMsg.created_at,
+                lastInboundTime: newMsg.created_at,
                 unreadCount: 1,
                 channelId: newMsg.channel_id,
                 status: "pending"
@@ -758,6 +767,28 @@ const WhatsAppChat = () => {
   const conversationContext = messages.map(m => 
     `${m.direction === 'inbound' ? 'Cliente' : 'Atendente'}: ${m.content}`
   ).join('\n');
+
+  // Check if 24-hour window has expired
+  const isWindowExpired = useMemo(() => {
+    if (!selectedConversation?.lastInboundTime) return true;
+    const lastInbound = new Date(selectedConversation.lastInboundTime);
+    const now = new Date();
+    const hoursDiff = (now.getTime() - lastInbound.getTime()) / (1000 * 60 * 60);
+    return hoursDiff > 24;
+  }, [selectedConversation?.lastInboundTime]);
+
+  // Calculate time remaining in window
+  const windowTimeRemaining = useMemo(() => {
+    if (!selectedConversation?.lastInboundTime) return null;
+    const lastInbound = new Date(selectedConversation.lastInboundTime);
+    const expiresAt = new Date(lastInbound.getTime() + 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const diff = expiresAt.getTime() - now.getTime();
+    if (diff <= 0) return null;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  }, [selectedConversation?.lastInboundTime]);
 
   return (
     <MainLayout>
@@ -1126,7 +1157,25 @@ const WhatsAppChat = () => {
               </ScrollArea>
 
               {/* Message Input */}
-              <div className="p-4 border-t border-border">
+              <div className="p-4 border-t border-border space-y-2">
+                {/* 24-hour window indicator */}
+                {isWindowExpired ? (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <p className="text-sm">
+                      Janela de 24h expirada. Use um <button 
+                        onClick={() => setShowTemplateSelector(true)}
+                        className="font-semibold underline hover:no-underline"
+                      >template aprovado</button> para iniciar uma nova conversa.
+                    </p>
+                  </div>
+                ) : windowTimeRemaining && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="w-3 h-3" />
+                    <span>Janela de resposta expira em {windowTimeRemaining}</span>
+                  </div>
+                )}
+
                 <div className="flex items-end gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1135,7 +1184,7 @@ const WhatsAppChat = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={() => setShowMediaDialog(true)}>
+                      <DropdownMenuItem onClick={() => setShowMediaDialog(true)} disabled={isWindowExpired}>
                         <Image className="w-4 h-4 mr-2" />
                         Enviar mídia
                       </DropdownMenuItem>
@@ -1146,28 +1195,41 @@ const WhatsAppChat = () => {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Textarea
-                    placeholder="Digite sua mensagem... (use /atalho para respostas rápidas)"
-                    className="min-h-[44px] max-h-32 resize-none bg-muted/30"
+                    placeholder={isWindowExpired ? "Use um template para iniciar a conversa..." : "Digite sua mensagem... (use /atalho para respostas rápidas)"}
+                    className={cn(
+                      "min-h-[44px] max-h-32 resize-none bg-muted/30",
+                      isWindowExpired && "opacity-50 cursor-not-allowed"
+                    )}
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => !isWindowExpired && setNewMessage(e.target.value)}
+                    disabled={isWindowExpired}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
+                      if (e.key === "Enter" && !e.shiftKey && !isWindowExpired) {
                         e.preventDefault();
                         handleSendMessage();
                       }
                     }}
                   />
-                  <Button 
-                    onClick={handleSendMessage} 
-                    disabled={!newMessage.trim() || sendingMessage}
-                    className="h-11 px-4"
-                  >
-                    {sendingMessage ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Send className="w-5 h-5" />
-                    )}
-                  </Button>
+                  {isWindowExpired ? (
+                    <Button 
+                      onClick={() => setShowTemplateSelector(true)}
+                      className="h-11 px-4"
+                    >
+                      <FileText className="w-5 h-5" />
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={handleSendMessage} 
+                      disabled={!newMessage.trim() || sendingMessage}
+                      className="h-11 px-4"
+                    >
+                      {sendingMessage ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
