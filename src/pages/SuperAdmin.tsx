@@ -17,6 +17,8 @@ import {
   TrendingUp,
   Activity,
   Copy,
+  AlertTriangle,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,9 +81,12 @@ interface Organization {
   max_users: number;
   max_channels: number;
   created_at: string;
+  subscription_ends_at: string | null;
+  subscription_started_at: string | null;
   user_count?: number;
   channel_count?: number;
   monthly_cost?: number;
+  days_until_expiry?: number;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -185,10 +190,19 @@ export default function SuperAdmin() {
         }
       });
 
-      setOrganizations((data || []).map((org) => ({
-        ...org,
-        user_count: countMap[org.id] || 0,
-      })));
+      const now = new Date();
+      setOrganizations((data || []).map((org) => {
+        let daysUntilExpiry: number | undefined;
+        if (org.subscription_ends_at) {
+          const expiryDate = new Date(org.subscription_ends_at);
+          daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        }
+        return {
+          ...org,
+          user_count: countMap[org.id] || 0,
+          days_until_expiry: daysUntilExpiry,
+        };
+      }));
     } catch (err) {
       console.error("Error fetching organizations:", err);
     } finally {
@@ -431,6 +445,20 @@ export default function SuperAdmin() {
   const totalMonthlyRevenue = organizations
     .filter((o) => o.is_active)
     .reduce((acc, o) => acc + calculateMonthlyCost(o.max_users, o.max_channels), 0);
+  
+  // Organizations close to expiry (within 15 days)
+  const expiringOrgs = organizations.filter((o) => 
+    o.is_active && 
+    o.days_until_expiry !== undefined && 
+    o.days_until_expiry <= 15 && 
+    o.days_until_expiry >= 0
+  ).sort((a, b) => (a.days_until_expiry || 0) - (b.days_until_expiry || 0));
+  
+  // Expired organizations
+  const expiredOrgs = organizations.filter((o) => 
+    o.days_until_expiry !== undefined && 
+    o.days_until_expiry < 0
+  );
 
   if (roleLoading || loading) {
     return (
@@ -511,6 +539,77 @@ export default function SuperAdmin() {
           </Card>
         </div>
 
+        {/* Expiring Soon Alert */}
+        {(expiringOrgs.length > 0 || expiredOrgs.length > 0) && (
+          <Card className="border-warning/50 bg-warning/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-warning">
+                <AlertTriangle className="w-5 h-5" />
+                Planos Próximos do Vencimento
+              </CardTitle>
+              <CardDescription>
+                Clientes que precisam de atenção para renovação
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {expiredOrgs.map((org) => (
+                  <div 
+                    key={org.id} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-destructive/10 border border-destructive/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center">
+                        <XCircle className="w-4 h-4 text-destructive" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{org.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Venceu há {Math.abs(org.days_until_expiry || 0)} dia(s)
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => navigate(`/super-admin/organizations/${org.id}`)}
+                    >
+                      Ver detalhes
+                    </Button>
+                  </div>
+                ))}
+                {expiringOrgs.map((org) => (
+                  <div 
+                    key={org.id} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-warning/10 border border-warning/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-warning" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{org.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {org.days_until_expiry === 0 
+                            ? "Vence hoje!" 
+                            : `Vence em ${org.days_until_expiry} dia(s)`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => navigate(`/super-admin/organizations/${org.id}`)}
+                    >
+                      Ver detalhes
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tabs */}
         <Tabs defaultValue="clients" className="space-y-4">
           <TabsList>
@@ -555,6 +654,7 @@ export default function SuperAdmin() {
                     <TableHead>Status</TableHead>
                     <TableHead>Usuários</TableHead>
                     <TableHead>WhatsApps</TableHead>
+                    <TableHead>Vencimento</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -562,7 +662,7 @@ export default function SuperAdmin() {
                 <TableBody>
                   {filteredOrganizations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         Nenhum cliente encontrado
                       </TableCell>
                     </TableRow>
@@ -592,6 +692,27 @@ export default function SuperAdmin() {
                           </TableCell>
                           <TableCell>
                             {org.max_channels}
+                          </TableCell>
+                          <TableCell>
+                            {org.subscription_ends_at ? (
+                              <div className="flex items-center gap-1">
+                                {org.days_until_expiry !== undefined && org.days_until_expiry < 0 ? (
+                                  <Badge className="bg-destructive/10 text-destructive">
+                                    Vencido
+                                  </Badge>
+                                ) : org.days_until_expiry !== undefined && org.days_until_expiry <= 7 ? (
+                                  <Badge className="bg-warning/10 text-warning">
+                                    {org.days_until_expiry}d
+                                  </Badge>
+                                ) : (
+                                  <span className="text-sm">
+                                    {new Date(org.subscription_ends_at).toLocaleDateString("pt-BR")}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">-</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {new Date(org.created_at).toLocaleDateString("pt-BR")}
