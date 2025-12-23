@@ -113,6 +113,15 @@ const Conexoes = () => {
     setIsValidating(true);
 
     try {
+      // Refresh session to ensure valid token
+      const { error: sessionError } = await supabase.auth.refreshSession();
+      if (sessionError) {
+        console.error('Session refresh error:', sessionError);
+        toast.error('Sessão expirada. Por favor, faça login novamente.');
+        setIsValidating(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('gupshup-validate', {
         body: {
           apiKey: formData.apiKey.trim(),
