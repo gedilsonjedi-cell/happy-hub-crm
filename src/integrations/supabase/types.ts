@@ -972,6 +972,39 @@ export type Database = {
           },
         ]
       }
+      subscription_pricing: {
+        Row: {
+          base_price: number
+          id: string
+          included_channels: number
+          included_users: number
+          price_per_channel: number
+          price_per_user: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          base_price?: number
+          id?: string
+          included_channels?: number
+          included_users?: number
+          price_per_channel?: number
+          price_per_user?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          base_price?: number
+          id?: string
+          included_channels?: number
+          included_users?: number
+          price_per_channel?: number
+          price_per_user?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
