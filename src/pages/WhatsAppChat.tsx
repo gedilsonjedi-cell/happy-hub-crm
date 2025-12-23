@@ -242,11 +242,11 @@ const WhatsAppChat = () => {
 
       setLoading(true);
 
+      // Fetch all messages (inbound and outbound) to build conversations
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", selectedChannel.id)
-        .eq("direction", "inbound")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -258,20 +258,40 @@ const WhatsAppChat = () => {
       const conversationsMap = new Map<string, Conversation>();
       
       data?.forEach((msg) => {
-        if (!conversationsMap.has(msg.sender_phone)) {
-          const storedStatus = conversationStatuses[msg.sender_phone];
-          conversationsMap.set(msg.sender_phone, {
-            phone: msg.sender_phone,
-            name: msg.sender_name,
+        // Determine the contact phone - for inbound it's sender_phone, for outbound it's in metadata.destination
+        let contactPhone: string;
+        let contactName: string | null = null;
+        
+        if (msg.direction === "inbound") {
+          contactPhone = msg.sender_phone;
+          contactName = msg.sender_name;
+        } else {
+          // For outbound messages, the contact is in metadata.destination
+          const metadata = msg.metadata as { destination?: string } | null;
+          contactPhone = metadata?.destination || msg.sender_phone;
+          // Skip if no destination metadata (shouldn't happen but just in case)
+          if (!metadata?.destination) return;
+        }
+
+        if (!conversationsMap.has(contactPhone)) {
+          const storedStatus = conversationStatuses[contactPhone];
+          conversationsMap.set(contactPhone, {
+            phone: contactPhone,
+            name: contactName,
             lastMessage: msg.content || "",
             lastMessageTime: msg.created_at,
-            unreadCount: msg.status === "received" ? 1 : 0,
+            unreadCount: msg.direction === "inbound" && msg.is_read === false ? 1 : 0,
             channelId: msg.channel_id,
             status: storedStatus || "pending"
           });
         } else {
-          const existing = conversationsMap.get(msg.sender_phone)!;
-          if (msg.status === "received") {
+          const existing = conversationsMap.get(contactPhone)!;
+          // Update name if we get it from an inbound message
+          if (msg.direction === "inbound" && msg.sender_name && !existing.name) {
+            existing.name = msg.sender_name;
+          }
+          // Count unread inbound messages
+          if (msg.direction === "inbound" && msg.is_read === false) {
             existing.unreadCount++;
           }
         }
@@ -289,18 +309,35 @@ const WhatsAppChat = () => {
     const fetchMessages = async () => {
       if (!selectedConversation || !selectedChannel) return;
 
+      // Normalize the phone number for queries (remove non-digits)
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+
+      // Fetch all messages for the channel, then filter client-side for more accurate matching
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", selectedChannel.id)
-        .or(`sender_phone.eq.${selectedConversation.phone},and(direction.eq.outbound,metadata->>destination.eq.${selectedConversation.phone.replace(/\D/g, '')})`)
         .order("created_at", { ascending: true });
 
       if (!error && data) {
-        setMessages(data as Message[]);
+        // Filter messages that belong to this conversation
+        const conversationMessages = data.filter((msg) => {
+          if (msg.direction === "inbound") {
+            // For inbound, match sender_phone (normalized)
+            const msgPhone = msg.sender_phone.replace(/\D/g, '');
+            return msgPhone === normalizedPhone;
+          } else {
+            // For outbound, match metadata.destination (normalized)
+            const metadata = msg.metadata as { destination?: string } | null;
+            const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
+            return destPhone === normalizedPhone;
+          }
+        });
+
+        setMessages(conversationMessages as Message[]);
         
         // Mark inbound messages as read
-        const unreadMessageIds = data
+        const unreadMessageIds = conversationMessages
           .filter((msg) => msg.direction === "inbound" && msg.is_read === false)
           .map((msg) => msg.id);
         
@@ -339,48 +376,70 @@ const WhatsAppChat = () => {
           console.log('New message received:', payload);
           const newMsg = payload.new as Message;
           
-          // Show notification
-          showNotification(newMsg);
+          // Determine the contact phone for this message
+          let contactPhone: string;
+          let contactName: string | null = null;
           
-          // Play sound
-          if (soundEnabled && newMsg.direction === "inbound") {
-            playNotificationSound();
-            toast.info(`Nova mensagem de ${newMsg.sender_name || newMsg.sender_phone}`, {
-              description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
-            });
+          if (newMsg.direction === "inbound") {
+            contactPhone = newMsg.sender_phone;
+            contactName = newMsg.sender_name;
+          } else {
+            const metadata = newMsg.metadata as { destination?: string } | null;
+            contactPhone = metadata?.destination || '';
+            if (!contactPhone) return; // Skip outbound without destination
+          }
+          
+          // Normalize phone for comparison
+          const normalizedContactPhone = contactPhone.replace(/\D/g, '');
+          const normalizedSelectedPhone = selectedConversation?.phone.replace(/\D/g, '') || '';
+          
+          // Show notification only for inbound
+          if (newMsg.direction === "inbound") {
+            showNotification(newMsg);
+            
+            // Play sound
+            if (soundEnabled) {
+              playNotificationSound();
+              toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
+                description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
+              });
+            }
           }
           
           // Update messages if in current conversation
-          if (selectedConversation?.phone === newMsg.sender_phone) {
+          if (normalizedSelectedPhone === normalizedContactPhone) {
             setMessages(prev => [...prev, newMsg]);
           }
 
           // Update conversations list
           setConversations(prev => {
-            const existing = prev.find(c => c.phone === newMsg.sender_phone);
+            const existing = prev.find(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
             if (existing) {
-              // If archived and new message comes, move to in_progress
-              const newStatus = existing.status === "archived" ? "in_progress" : existing.status;
-              if (existing.status === "archived") {
-                updateConversationStatus(newMsg.sender_phone, "in_progress");
+              // If archived and new inbound message comes, move to in_progress
+              let newStatus = existing.status;
+              if (existing.status === "archived" && newMsg.direction === "inbound") {
+                newStatus = "in_progress";
+                updateConversationStatus(existing.phone, "in_progress");
               }
               return prev.map(c => 
-                c.phone === newMsg.sender_phone 
+                c.phone.replace(/\D/g, '') === normalizedContactPhone 
                   ? { 
                       ...c, 
                       lastMessage: newMsg.content || "", 
                       lastMessageTime: newMsg.created_at,
-                      unreadCount: selectedConversation?.phone !== newMsg.sender_phone 
+                      unreadCount: normalizedSelectedPhone !== normalizedContactPhone && newMsg.direction === "inbound"
                         ? c.unreadCount + 1 
                         : c.unreadCount,
-                      status: newStatus
+                      status: newStatus,
+                      name: contactName || c.name
                     }
                   : c
               ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
-            } else {
+            } else if (newMsg.direction === "inbound") {
+              // Only create new conversation for inbound messages
               return [{
-                phone: newMsg.sender_phone,
-                name: newMsg.sender_name,
+                phone: contactPhone,
+                name: contactName,
                 lastMessage: newMsg.content || "",
                 lastMessageTime: newMsg.created_at,
                 unreadCount: 1,
@@ -388,6 +447,7 @@ const WhatsAppChat = () => {
                 status: "pending"
               }, ...prev];
             }
+            return prev;
           });
         }
       )
