@@ -428,6 +428,9 @@ export default function SuperAdmin() {
 
   const activeOrgs = organizations.filter((o) => o.is_active).length;
   const totalUsers = organizations.reduce((acc, o) => acc + (o.user_count || 0), 0);
+  const totalMonthlyRevenue = organizations
+    .filter((o) => o.is_active)
+    .reduce((acc, o) => acc + calculateMonthlyCost(o.max_users, o.max_channels), 0);
 
   if (roleLoading || loading) {
     return (
@@ -503,7 +506,7 @@ export default function SuperAdmin() {
               <TrendingUp className="w-4 h-4 text-warning" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">R$ 0,00</div>
+              <div className="text-2xl font-bold">R$ {totalMonthlyRevenue.toFixed(2)}</div>
             </CardContent>
           </Card>
         </div>
