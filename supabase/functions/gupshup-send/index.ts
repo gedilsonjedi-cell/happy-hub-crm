@@ -37,7 +37,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { channelId, destination, message, templateName, templateParams } = await req.json();
+    const { 
+      channelId, 
+      destination, 
+      message, 
+      templateName, 
+      templateParams,
+      mediaType,
+      mediaUrl,
+      mediaCaption,
+      fileName
+    } = await req.json();
 
     if (!channelId || !destination) {
       return new Response(
@@ -46,9 +56,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!message && !templateName) {
+    if (!message && !templateName && !mediaUrl) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Mensagem ou template são obrigatórios' }),
+        JSON.stringify({ success: false, error: 'Mensagem, template ou mídia são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -78,17 +88,20 @@ Deno.serve(async (req) => {
     console.log('Sending WhatsApp message via Gupshup:', {
       appName: channel.app_name,
       destination,
-      hasTemplate: !!templateName
+      hasTemplate: !!templateName,
+      hasMedia: !!mediaUrl,
+      mediaType
     });
 
     let gupshupResponse;
     const cleanDestination = destination.replace(/\D/g, '');
+    const cleanSource = channel.phone.replace(/\D/g, '');
 
     if (templateName) {
       // Send template message
       const formData = new URLSearchParams();
       formData.append('channel', 'whatsapp');
-      formData.append('source', channel.phone.replace(/\D/g, ''));
+      formData.append('source', cleanSource);
       formData.append('destination', cleanDestination);
       formData.append('src.name', channel.app_name);
       formData.append('template', JSON.stringify({
@@ -107,11 +120,78 @@ Deno.serve(async (req) => {
           body: formData.toString()
         }
       );
-    } else {
-      // Send session message (text)
+    } else if (mediaUrl) {
+      // Send media message
       const formData = new URLSearchParams();
       formData.append('channel', 'whatsapp');
-      formData.append('source', channel.phone.replace(/\D/g, ''));
+      formData.append('source', cleanSource);
+      formData.append('destination', cleanDestination);
+      formData.append('src.name', channel.app_name);
+
+      let messagePayload: Record<string, unknown> = {};
+
+      switch (mediaType) {
+        case 'image':
+          messagePayload = {
+            type: 'image',
+            originalUrl: mediaUrl,
+            previewUrl: mediaUrl,
+            caption: mediaCaption || ''
+          };
+          break;
+        case 'video':
+          messagePayload = {
+            type: 'video',
+            url: mediaUrl,
+            caption: mediaCaption || ''
+          };
+          break;
+        case 'audio':
+          messagePayload = {
+            type: 'audio',
+            url: mediaUrl
+          };
+          break;
+        case 'document':
+        case 'file':
+          messagePayload = {
+            type: 'file',
+            url: mediaUrl,
+            filename: fileName || 'document'
+          };
+          break;
+        case 'sticker':
+          messagePayload = {
+            type: 'sticker',
+            url: mediaUrl
+          };
+          break;
+        default:
+          messagePayload = {
+            type: 'file',
+            url: mediaUrl,
+            filename: fileName || 'file'
+          };
+      }
+
+      formData.append('message', JSON.stringify(messagePayload));
+
+      gupshupResponse = await fetch(
+        'https://api.gupshup.io/wa/api/v1/msg',
+        {
+          method: 'POST',
+          headers: {
+            'apikey': channel.access_token,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: formData.toString()
+        }
+      );
+    } else {
+      // Send text message
+      const formData = new URLSearchParams();
+      formData.append('channel', 'whatsapp');
+      formData.append('source', cleanSource);
       formData.append('destination', cleanDestination);
       formData.append('src.name', channel.app_name);
       formData.append('message', JSON.stringify({
@@ -160,6 +240,18 @@ Deno.serve(async (req) => {
 
     const messageId = responseData.messageId || `out_${Date.now()}`;
 
+    // Determine content and message type for storage
+    let storedContent = message || '';
+    let storedMessageType = 'text';
+
+    if (templateName) {
+      storedContent = `Template: ${templateName}`;
+      storedMessageType = 'template';
+    } else if (mediaUrl) {
+      storedContent = mediaCaption || `[${mediaType || 'file'}]`;
+      storedMessageType = mediaType || 'file';
+    }
+
     await serviceRoleClient
       .from('whatsapp_messages')
       .insert({
@@ -167,11 +259,18 @@ Deno.serve(async (req) => {
         organization_id: channel.organization_id,
         message_id: messageId,
         sender_phone: channel.phone,
-        message_type: templateName ? 'template' : 'text',
-        content: message || `Template: ${templateName}`,
+        message_type: storedMessageType,
+        content: storedContent,
+        media_url: mediaUrl || null,
         direction: 'outbound',
         status: 'sent',
-        metadata: { destination: cleanDestination, templateName, templateParams }
+        metadata: { 
+          destination: cleanDestination, 
+          templateName, 
+          templateParams,
+          mediaType,
+          fileName
+        }
       });
 
     return new Response(
