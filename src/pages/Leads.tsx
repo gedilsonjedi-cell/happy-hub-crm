@@ -8,8 +8,13 @@ import {
   Phone, 
   Mail,
   Upload,
-  Download
+  Download,
+  Ban
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +63,41 @@ const statusConfig = {
 };
 
 const Leads = () => {
+  const { user } = useAuth();
+  const { organizationId } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
+
+  const handleAddToBlacklist = async (lead: Lead) => {
+    if (!user || !organizationId) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("blacklist")
+        .insert({
+          organization_id: organizationId,
+          phone: lead.phone.replace(/\D/g, ''),
+          name: lead.name,
+          reason: "Adicionado da página de Leads",
+          blocked_by: user.id
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error("Este contato já está na lista negra");
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success(`${lead.name} adicionado à lista negra`);
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar à lista negra:", error);
+      toast.error("Erro ao adicionar à lista negra");
+    }
+  };
 
   const filteredLeads = mockLeads.filter(lead => 
     lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -183,6 +222,13 @@ const Leads = () => {
                       <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
                       <DropdownMenuItem>Editar</DropdownMenuItem>
                       <DropdownMenuItem>Iniciar conversa</DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => handleAddToBlacklist(lead)}
+                        className="text-warning"
+                      >
+                        <Ban className="w-4 h-4 mr-2" />
+                        Adicionar à Lista Negra
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

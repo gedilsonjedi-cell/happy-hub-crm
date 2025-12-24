@@ -27,7 +27,8 @@ import {
   Bot,
   CheckCircle2,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Ban
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -543,6 +544,50 @@ const WhatsAppChat = () => {
   const handleResolve = (phone: string) => {
     updateConversationStatus(phone, "resolved");
     toast.success("Conversa marcada como resolvida");
+  };
+
+  const handleAddToBlacklist = async (conversation: Conversation) => {
+    if (!user) {
+      toast.error("Erro ao identificar usuário");
+      return;
+    }
+
+    // Get organization_id from the profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("blacklist")
+        .insert({
+          organization_id: profile.organization_id,
+          phone: conversation.phone.replace(/\D/g, ''),
+          name: conversation.name,
+          reason: "Adicionado do WhatsApp Chat",
+          blocked_by: user.id
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error("Este contato já está na lista negra");
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success(`${conversation.name || conversation.phone} adicionado à lista negra`);
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar à lista negra:", error);
+      toast.error("Erro ao adicionar à lista negra");
+    }
   };
 
   const handleSendMessage = async () => {
@@ -1163,6 +1208,14 @@ const WhatsAppChat = () => {
                       <DropdownMenuItem onClick={() => handleArchive(selectedConversation.phone)}>
                         <Archive className="w-4 h-4 mr-2" />
                         Arquivar conversa
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={() => handleAddToBlacklist(selectedConversation)}
+                        className="text-warning"
+                      >
+                        <Ban className="w-4 h-4 mr-2" />
+                        Adicionar à Lista Negra
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
