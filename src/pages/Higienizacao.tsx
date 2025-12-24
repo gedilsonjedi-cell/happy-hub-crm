@@ -118,6 +118,16 @@ export default function Higienizacao() {
   const [currentSource, setCurrentSource] = useState<"csv" | "leads">("csv");
   const [isValidatingZapi, setIsValidatingZapi] = useState(false);
   const [zapiProgress, setZapiProgress] = useState(0);
+  
+  // Column mapping states
+  const [showColumnMapping, setShowColumnMapping] = useState(false);
+  const [parsedFileData, setParsedFileData] = useState<{
+    headers: string[];
+    rows: string[][];
+    fileName: string;
+  } | null>(null);
+  const [selectedPhoneColumn, setSelectedPhoneColumn] = useState<number | null>(null);
+  const [selectedNameColumn, setSelectedNameColumn] = useState<number | null>(null);
 
   // Fetch user's organization
   const { data: profile } = useQuery({
@@ -227,7 +237,7 @@ export default function Higienizacao() {
     }
   };
 
-  // Parse CSV file
+  // Parse CSV file - Step 1: Read and detect columns
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -242,48 +252,107 @@ export default function Higienizacao() {
       const content = event.target?.result as string;
       const lines = content.split(/\r?\n/).filter((line) => line.trim());
       
-      const entries: PhoneEntry[] = [];
-      const seenPhones = new Set<string>();
+      if (lines.length === 0) {
+        toast.error("Arquivo vazio");
+        return;
+      }
+
+      // Parse all lines to detect columns
+      const allRows = lines.map((line) => 
+        line.split(/[,;|\t]/).map((p) => p.trim().replace(/"/g, ""))
+      );
+
+      // Detect if first row is header (contains text like "phone", "telefone", "nome", etc.)
+      const firstRow = allRows[0];
+      const hasHeader = firstRow.some((cell) => 
+        /phone|telefone|nome|name|email|celular|whatsapp|numero|número/i.test(cell)
+      );
+
+      const headers = hasHeader 
+        ? firstRow.map((h, i) => h || `Coluna ${i + 1}`)
+        : firstRow.map((_, i) => `Coluna ${i + 1}`);
       
-      lines.forEach((line, index) => {
-        if (index === 0 && (line.toLowerCase().includes("phone") || line.toLowerCase().includes("telefone"))) {
-          return;
-        }
-        
-        const parts = line.split(/[,;|\t]/).map((p) => p.trim().replace(/"/g, ""));
-        const phone = parts[0];
-        const name = parts[1] || undefined;
-        
-        if (!phone) return;
-        
-        const formattedPhone = formatPhoneNumber(phone);
-        const isDuplicate = seenPhones.has(formattedPhone);
-        const isBlacklisted = blacklist.includes(formattedPhone);
-        
-        seenPhones.add(formattedPhone);
-        
-        entries.push({
-          id: `csv-${index}-${Date.now()}`,
-          phone,
-          originalPhone: phone,
-          name,
-          status: isDuplicate ? "duplicate" : isBlacklisted ? "blacklisted" : "pending",
-          formattedPhone,
-          source: "csv",
-        });
+      const dataRows = hasHeader ? allRows.slice(1) : allRows;
+
+      // Store parsed data and show column mapping dialog
+      setParsedFileData({
+        headers,
+        rows: dataRows,
+        fileName: file.name,
       });
       
-      setPhoneEntries(entries);
-      setCurrentSource("csv");
-      setLeadsSavedCount(0);
-      setLeadsDeletedCount(0);
-      toast.success(`${entries.length} números carregados do arquivo`);
+      // Auto-detect phone column (look for column with phone-like data)
+      const phoneColumnIndex = headers.findIndex((h) => 
+        /phone|telefone|celular|whatsapp|numero|número/i.test(h)
+      );
+      setSelectedPhoneColumn(phoneColumnIndex >= 0 ? phoneColumnIndex : null);
+      
+      // Auto-detect name column
+      const nameColumnIndex = headers.findIndex((h) => 
+        /nome|name/i.test(h)
+      );
+      setSelectedNameColumn(nameColumnIndex >= 0 ? nameColumnIndex : null);
+      
+      setShowColumnMapping(true);
+      toast.success(`Arquivo carregado: ${dataRows.length} linhas detectadas`);
     };
     reader.readAsText(file);
     
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  // Process file after column selection
+  const processFileWithColumns = () => {
+    if (!parsedFileData || selectedPhoneColumn === null) {
+      toast.error("Selecione a coluna de telefone");
+      return;
+    }
+
+    const entries: PhoneEntry[] = [];
+    const seenPhones = new Set<string>();
+
+    parsedFileData.rows.forEach((row, index) => {
+      const phone = row[selectedPhoneColumn];
+      const name = selectedNameColumn !== null ? row[selectedNameColumn] : undefined;
+
+      if (!phone) return;
+
+      const formattedPhone = formatPhoneNumber(phone);
+      const isDuplicate = seenPhones.has(formattedPhone);
+      const isBlacklisted = blacklist.includes(formattedPhone);
+
+      seenPhones.add(formattedPhone);
+
+      entries.push({
+        id: `csv-${index}-${Date.now()}`,
+        phone,
+        originalPhone: phone,
+        name: name || undefined,
+        status: isDuplicate ? "duplicate" : isBlacklisted ? "blacklisted" : "pending",
+        formattedPhone,
+        source: "csv",
+      });
+    });
+
+    setPhoneEntries(entries);
+    setCurrentSource("csv");
+    setLeadsSavedCount(0);
+    setLeadsDeletedCount(0);
+    setShowColumnMapping(false);
+    setParsedFileData(null);
+    setSelectedPhoneColumn(null);
+    setSelectedNameColumn(null);
+    toast.success(`${entries.length} números carregados do arquivo`);
+  };
+
+  // Cancel column mapping
+  const cancelColumnMapping = () => {
+    setShowColumnMapping(false);
+    setParsedFileData(null);
+    setSelectedPhoneColumn(null);
+    setSelectedNameColumn(null);
   };
 
   // Load selected leads
@@ -1034,7 +1103,132 @@ export default function Higienizacao() {
           </TabsList>
 
           <TabsContent value="upload" className="space-y-4">
-            {phoneEntries.length === 0 ? (
+            {/* Column Mapping Dialog */}
+            {showColumnMapping && parsedFileData && (
+              <Card className="border-primary">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5" />
+                    Mapeamento de Colunas
+                  </CardTitle>
+                  <CardDescription>
+                    Arquivo: <span className="font-medium">{parsedFileData.fileName}</span> • {parsedFileData.rows.length} linhas detectadas
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Phone Column Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-primary" />
+                        Coluna de Telefone <span className="text-destructive">*</span>
+                      </label>
+                      <select
+                        value={selectedPhoneColumn ?? ""}
+                        onChange={(e) => setSelectedPhoneColumn(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Selecione a coluna...</option>
+                        {parsedFileData.headers.map((header, index) => (
+                          <option key={index} value={index}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Name Column Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                        Coluna de Nome <span className="text-muted-foreground">(opcional)</span>
+                      </label>
+                      <select
+                        value={selectedNameColumn ?? ""}
+                        onChange={(e) => setSelectedNameColumn(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Nenhuma coluna selecionada</option>
+                        {parsedFileData.headers.map((header, index) => (
+                          <option key={index} value={index} disabled={index === selectedPhoneColumn}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Preview Table */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Prévia dos dados (primeiras 5 linhas)</label>
+                    <div className="rounded-md border overflow-auto max-h-48">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {parsedFileData.headers.map((header, index) => (
+                              <TableHead 
+                                key={index}
+                                className={
+                                  index === selectedPhoneColumn 
+                                    ? "bg-primary/10 text-primary font-bold" 
+                                    : index === selectedNameColumn 
+                                      ? "bg-blue-500/10 text-blue-600 font-bold"
+                                      : ""
+                                }
+                              >
+                                {header}
+                                {index === selectedPhoneColumn && (
+                                  <Badge className="ml-2 text-xs" variant="default">Telefone</Badge>
+                                )}
+                                {index === selectedNameColumn && (
+                                  <Badge className="ml-2 text-xs" variant="secondary">Nome</Badge>
+                                )}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {parsedFileData.rows.slice(0, 5).map((row, rowIndex) => (
+                            <TableRow key={rowIndex}>
+                              {row.map((cell, cellIndex) => (
+                                <TableCell 
+                                  key={cellIndex}
+                                  className={
+                                    cellIndex === selectedPhoneColumn 
+                                      ? "bg-primary/5 font-mono" 
+                                      : cellIndex === selectedNameColumn 
+                                        ? "bg-blue-500/5"
+                                        : ""
+                                  }
+                                >
+                                  {cell || <span className="text-muted-foreground italic">vazio</span>}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={cancelColumnMapping}>
+                      Cancelar
+                    </Button>
+                    <Button 
+                      onClick={processFileWithColumns}
+                      disabled={selectedPhoneColumn === null}
+                      className="gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Confirmar e Processar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!showColumnMapping && phoneEntries.length === 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Importar Números</CardTitle>
@@ -1052,7 +1246,7 @@ export default function Higienizacao() {
                       Arraste um arquivo ou clique para selecionar
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Formato: CSV ou TXT com uma coluna de telefone (opcionalmente nome na segunda coluna)
+                      Formato: CSV ou TXT • Você poderá selecionar qual coluna contém os telefones
                     </p>
                     <input
                       ref={fileInputRef}
@@ -1064,7 +1258,7 @@ export default function Higienizacao() {
                   </div>
                 </CardContent>
               </Card>
-            ) : (
+            ) : !showColumnMapping && (
               <div className="space-y-4">
                 {/* Actions */}
                 <Card>
