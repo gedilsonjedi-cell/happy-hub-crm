@@ -813,6 +813,57 @@ export type Database = {
           },
         ]
       }
+      organization_addons: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          price_per_unit: number
+          product_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          price_per_unit: number
+          product_id: string
+          quantity?: number
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          price_per_unit?: number
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_addons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_addons_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "store_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_balance: {
         Row: {
           balance: number
@@ -1363,6 +1414,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_subscription_total: {
+        Args: { _organization_id: string }
+        Returns: number
+      }
+      cancel_addon: { Args: { _addon_id: string }; Returns: boolean }
       check_organization_balance: {
         Args: { _amount: number; _organization_id: string }
         Returns: boolean

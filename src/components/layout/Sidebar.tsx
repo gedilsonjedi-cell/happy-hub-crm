@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Link2,
   ShoppingBag,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ const disparosSubmenu = [
 
 const bottomMenuItems = [
   { icon: ShoppingBag, label: "Loja", path: "/loja", permission: null },
+  { icon: CreditCard, label: "Minha Assinatura", path: "/minha-assinatura", permission: null },
   { icon: Wallet, label: "Saldo", path: "/saldo", permission: null },
   { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
   { icon: Shield, label: "Super Admin", path: "/super-admin", permission: "canAccessSuperAdmin" },

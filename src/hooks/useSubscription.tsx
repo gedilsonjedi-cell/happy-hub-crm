@@ -31,7 +31,7 @@ export function useSubscription() {
       // Then get organization details
       const { data: org, error } = await supabase
         .from("organizations")
-        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at")
+        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at, max_users, max_channels")
         .eq("id", profile.organization_id)
         .maybeSingle();
 
