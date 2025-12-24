@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Users, 
   Search, 
@@ -10,7 +10,9 @@ import {
   Upload,
   Download,
   Ban,
-  Tag
+  Tag,
+  X,
+  Check
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,6 +39,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
 import { ImportLeadsDialog } from "@/components/leads/ImportLeadsDialog";
@@ -49,6 +56,12 @@ interface Lead {
   status: string;
   tags: string[] | null;
   created_at: string;
+}
+
+interface LeadTag {
+  id: string;
+  name: string;
+  color: string;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -67,6 +80,26 @@ const Leads = () => {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
+  const [showTagFilterPopover, setShowTagFilterPopover] = useState(false);
+
+  // Fetch available tags
+  const { data: availableTags = [] } = useQuery({
+    queryKey: ["lead-tags", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await supabase
+        .from("lead_tags")
+        .select("id, name, color")
+        .eq("organization_id", organizationId)
+        .order("name");
+
+      if (error) throw error;
+      return (data || []) as LeadTag[];
+    },
+    enabled: !!organizationId,
+  });
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["leads", organizationId],
@@ -130,11 +163,66 @@ const Leads = () => {
     queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
   };
 
-  const filteredLeads = leads.filter(lead => 
-    lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.phone.includes(searchTerm) ||
-    (lead.email && lead.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const handleExportCSV = () => {
+    if (filteredLeads.length === 0) {
+      toast.error("Nenhum lead para exportar");
+      return;
+    }
+
+    const headers = ["Nome", "Telefone", "Email", "Status", "Tags", "Data de Criação"];
+    const rows = filteredLeads.map(lead => [
+      lead.name,
+      lead.phone,
+      lead.email || "",
+      statusConfig[lead.status || "new"]?.label || lead.status || "Novo",
+      (lead.tags || []).join("; "),
+      new Date(lead.created_at).toLocaleDateString("pt-BR")
+    ]);
+
+    const csvContent = [
+      headers.join(";"),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(";"))
+    ].join("\n");
+
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `leads_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(`${filteredLeads.length} leads exportados`);
+  };
+
+  const toggleTagFilter = (tagName: string) => {
+    if (selectedTagFilters.includes(tagName)) {
+      setSelectedTagFilters(selectedTagFilters.filter(t => t !== tagName));
+    } else {
+      setSelectedTagFilters([...selectedTagFilters, tagName]);
+    }
+  };
+
+  const clearTagFilters = () => {
+    setSelectedTagFilters([]);
+  };
+
+  // Filter leads by search term and tags
+  const filteredLeads = leads.filter(lead => {
+    // Search filter
+    const matchesSearch = 
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.phone.includes(searchTerm) ||
+      (lead.email && lead.email.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    // Tag filter - lead must have ALL selected tags
+    const matchesTags = selectedTagFilters.length === 0 || 
+      selectedTagFilters.every(tag => lead.tags?.includes(tag));
+
+    return matchesSearch && matchesTags;
+  });
 
   const getStatusCounts = () => {
     const counts: Record<string, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
@@ -167,7 +255,12 @@ const Leads = () => {
             <Upload className="w-4 h-4" />
             Importar
           </Button>
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2"
+            onClick={handleExportCSV}
+          >
             <Download className="w-4 h-4" />
             Exportar
           </Button>
@@ -189,11 +282,116 @@ const Leads = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          Filtros
-        </Button>
+        <Popover open={showTagFilterPopover} onOpenChange={setShowTagFilterPopover}>
+          <PopoverTrigger asChild>
+            <Button 
+              variant="outline" 
+              className={cn(
+                "gap-2",
+                selectedTagFilters.length > 0 && "border-primary text-primary"
+              )}
+            >
+              <Tag className="w-4 h-4" />
+              Filtrar por Tags
+              {selectedTagFilters.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                  {selectedTagFilters.length}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="end">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Filtrar por tags</span>
+                {selectedTagFilters.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-7 px-2 text-xs"
+                    onClick={clearTagFilters}
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              {availableTags.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma tag criada ainda.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableTags.map((tag) => {
+                    const isSelected = selectedTagFilters.includes(tag.name);
+                    return (
+                      <Button
+                        key={tag.id}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleTagFilter(tag.name)}
+                        className={cn(
+                          "h-7 gap-1.5 transition-all",
+                          isSelected && "ring-2 ring-primary ring-offset-1"
+                        )}
+                        style={{
+                          backgroundColor: isSelected ? tag.color + "20" : "transparent",
+                          borderColor: tag.color,
+                        }}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        <span className="text-xs">{tag.name}</span>
+                        {isSelected && <Check className="w-3 h-3 text-primary" />}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
+
+      {/* Active Tag Filters */}
+      {selectedTagFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="text-sm text-muted-foreground">Filtrando por:</span>
+          {selectedTagFilters.map((tagName) => {
+            const tag = availableTags.find(t => t.name === tagName);
+            return (
+              <Badge
+                key={tagName}
+                variant="secondary"
+                className="gap-1 cursor-pointer hover:bg-secondary/80"
+                onClick={() => toggleTagFilter(tagName)}
+                style={{
+                  backgroundColor: tag ? tag.color + "20" : undefined,
+                  borderColor: tag?.color,
+                }}
+              >
+                {tag && (
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                )}
+                {tagName}
+                <X className="w-3 h-3" />
+              </Badge>
+            );
+          })}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 px-2 text-xs text-muted-foreground"
+            onClick={clearTagFilters}
+          >
+            Limpar todos
+          </Button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
@@ -270,15 +468,28 @@ const Leads = () => {
                   <TableCell>
                     <div className="flex flex-wrap gap-1 max-w-48">
                       {lead.tags && lead.tags.length > 0 ? (
-                        lead.tags.map((tag) => (
-                          <Badge 
-                            key={tag} 
-                            variant="outline" 
-                            className="text-xs bg-muted/50"
-                          >
-                            {tag}
-                          </Badge>
-                        ))
+                        lead.tags.map((tag) => {
+                          const tagInfo = availableTags.find(t => t.name === tag);
+                          return (
+                            <Badge 
+                              key={tag} 
+                              variant="outline" 
+                              className="text-xs"
+                              style={{
+                                backgroundColor: tagInfo ? tagInfo.color + "15" : undefined,
+                                borderColor: tagInfo?.color,
+                              }}
+                            >
+                              {tagInfo && (
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full mr-1"
+                                  style={{ backgroundColor: tagInfo.color }}
+                                />
+                              )}
+                              {tag}
+                            </Badge>
+                          );
+                        })
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}

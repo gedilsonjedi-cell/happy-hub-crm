@@ -162,6 +162,7 @@ const WhatsAppChat = () => {
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -372,6 +373,32 @@ const WhatsAppChat = () => {
 
     fetchMessages();
   }, [selectedConversation, selectedChannel]);
+
+  // Fetch contact tags when conversation is selected
+  useEffect(() => {
+    const fetchContactTags = async () => {
+      if (!selectedConversation) {
+        setContactTags([]);
+        return;
+      }
+
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+
+      const { data } = await supabase
+        .from("leads")
+        .select("tags")
+        .eq("phone", normalizedPhone)
+        .single();
+
+      if (data?.tags) {
+        setContactTags(data.tags);
+      } else {
+        setContactTags([]);
+      }
+    };
+
+    fetchContactTags();
+  }, [selectedConversation?.phone]);
 
   // Real-time subscription for new messages
   useEffect(() => {
@@ -1168,7 +1195,7 @@ const WhatsAppChat = () => {
                       {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground">
                       {selectedConversation.name || selectedConversation.phone}
                     </h3>
@@ -1176,6 +1203,24 @@ const WhatsAppChat = () => {
                       <Phone className="w-3 h-3" />
                       {selectedConversation.phone}
                     </p>
+                    {contactTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {contactTags.slice(0, 3).map((tag) => (
+                          <Badge 
+                            key={tag} 
+                            variant="outline" 
+                            className="text-[10px] h-4 px-1.5 bg-muted/50"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                        {contactTags.length > 3 && (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
+                            +{contactTags.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1415,6 +1460,20 @@ const WhatsAppChat = () => {
             onOpenChange={setShowTagsDialog}
             contactPhone={selectedConversation.phone}
             contactName={selectedConversation.name}
+            onSuccess={() => {
+              // Refresh contact tags
+              const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+              supabase
+                .from("leads")
+                .select("tags")
+                .eq("phone", normalizedPhone)
+                .single()
+                .then(({ data }) => {
+                  if (data?.tags) {
+                    setContactTags(data.tags);
+                  }
+                });
+            }}
           />
         )}
       </div>
