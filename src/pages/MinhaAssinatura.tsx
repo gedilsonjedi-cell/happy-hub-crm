@@ -60,12 +60,12 @@ export default function MinhaAssinatura() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscription_pricing")
-        .select("*")
+        .select("base_price, promotional_price")
         .limit(1)
         .maybeSingle();
       
       if (error) throw error;
-      return data;
+      return data as { base_price: number; promotional_price: number } | null;
     },
   });
 
@@ -113,10 +113,13 @@ export default function MinhaAssinatura() {
     },
   });
 
-  // Calculate totals
-  const basePrice = pricing?.base_price || 299;
+  // Calculate totals - check if first subscription
+  const isFirstSubscription = !organization?.has_paid_first_subscription;
+  const basePrice = pricing?.base_price || 229.90;
+  const promotionalPrice = pricing?.promotional_price || 129.90;
+  const currentPrice = isFirstSubscription ? promotionalPrice : basePrice;
   const addonsTotal = addons?.reduce((sum, addon) => sum + (addon.quantity * addon.price_per_unit), 0) || 0;
-  const totalMonthly = basePrice + addonsTotal;
+  const totalMonthly = currentPrice + addonsTotal;
 
   const getStatusBadge = () => {
     if (needsPayment) {
@@ -171,11 +174,18 @@ export default function MinhaAssinatura() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">Valor Base</p>
-                <p className="text-2xl font-bold">
-                  R$ {basePrice.toFixed(2).replace(".", ",")}
+                <p className="text-sm text-muted-foreground">
+                  {isFirstSubscription ? "Primeiro Mês (Promocional)" : "Valor Base"}
                 </p>
-                <p className="text-xs text-muted-foreground">por mês</p>
+                <p className="text-2xl font-bold">
+                  R$ {currentPrice.toFixed(2).replace(".", ",")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {isFirstSubscription && (
+                    <span className="text-primary">Depois: R$ {basePrice.toFixed(2).replace(".", ",")}/mês</span>
+                  )}
+                  {!isFirstSubscription && "por mês"}
+                </p>
               </div>
               
               <div className="bg-muted/50 rounded-lg p-4">
@@ -298,8 +308,10 @@ export default function MinhaAssinatura() {
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Plano Base</span>
-                <span>R$ {basePrice.toFixed(2).replace(".", ",")}</span>
+                <span className="text-muted-foreground">
+                  {isFirstSubscription ? "Primeiro Mês (Promocional)" : "Plano Base"}
+                </span>
+                <span>R$ {currentPrice.toFixed(2).replace(".", ",")}</span>
               </div>
               
               {addons && addons.length > 0 && (

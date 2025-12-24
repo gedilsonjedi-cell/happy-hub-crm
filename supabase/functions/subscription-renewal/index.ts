@@ -21,8 +21,26 @@ interface OrganizationAddon {
   } | null;
 }
 
+interface Organization {
+  id: string;
+  name: string;
+  subscription_paid_until: string | null;
+  subscription_status: string;
+  has_paid_first_subscription: boolean;
+}
+
+interface OrganizationAddon {
+  id: string;
+  quantity: number;
+  price_per_unit: number;
+  store_products: {
+    name: string;
+  } | null;
+}
+
 interface SubscriptionPricing {
   base_price: number;
+  promotional_price: number;
 }
 
 interface RenewalResult {
@@ -47,10 +65,10 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get base subscription price
+    // Get subscription pricing
     const { data: pricing, error: pricingError } = await supabase
       .from("subscription_pricing")
-      .select("base_price")
+      .select("base_price, promotional_price")
       .limit(1)
       .single();
 
@@ -59,15 +77,16 @@ Deno.serve(async (req) => {
       throw new Error("Could not fetch subscription pricing");
     }
 
-    const basePrice = (pricing as SubscriptionPricing)?.base_price || 299;
-    console.log(`Base subscription price: R$ ${basePrice}`);
+    const basePrice = (pricing as SubscriptionPricing)?.base_price || 229.90;
+    const promotionalPrice = (pricing as SubscriptionPricing)?.promotional_price || 129.90;
+    console.log(`Subscription prices - Base: R$ ${basePrice}, Promotional: R$ ${promotionalPrice}`);
 
     // Find organizations with expired or expiring today subscriptions
     const today = new Date().toISOString().split("T")[0];
     
     const { data: organizations, error: orgsError } = await supabase
       .from("organizations")
-      .select("id, name, subscription_paid_until, subscription_status")
+      .select("id, name, subscription_paid_until, subscription_status, has_paid_first_subscription")
       .lte("subscription_paid_until", today)
       .eq("subscription_status", "active");
 
@@ -101,15 +120,19 @@ Deno.serve(async (req) => {
           throw new Error("Could not fetch add-ons");
         }
 
-        // Calculate total: base price + add-ons
+        // Determine subscription price based on whether it's first subscription
+        const isFirstSubscription = !org.has_paid_first_subscription;
+        const subscriptionPrice = isFirstSubscription ? promotionalPrice : basePrice;
+
+        // Calculate total: subscription price + add-ons
         const typedAddons = (addons || []) as unknown as OrganizationAddon[];
         const addonsTotal = typedAddons.reduce(
           (sum, addon) => sum + addon.quantity * addon.price_per_unit,
           0
         );
-        const totalAmount = basePrice + addonsTotal;
+        const totalAmount = subscriptionPrice + addonsTotal;
 
-        console.log(`Organization ${org.name}: Base R$ ${basePrice} + Add-ons R$ ${addonsTotal} = Total R$ ${totalAmount}`);
+        console.log(`Organization ${org.name}: ${isFirstSubscription ? 'PROMOTIONAL' : 'REGULAR'} R$ ${subscriptionPrice} + Add-ons R$ ${addonsTotal} = Total R$ ${totalAmount}`);
 
         // Check if organization has enough balance
         const { data: balanceCheck, error: balanceError } = await supabase
@@ -145,8 +168,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Build description with add-ons detail
-        let description = `Renovação mensal: Plano Base R$ ${basePrice.toFixed(2)}`;
+        // Build description with pricing detail
+        let description = isFirstSubscription 
+          ? `Primeira mensalidade (promocional): R$ ${subscriptionPrice.toFixed(2)}`
+          : `Renovação mensal: Plano Base R$ ${subscriptionPrice.toFixed(2)}`;
+        
         if (typedAddons.length > 0) {
           const addonsList = typedAddons
             .map((a) => `${a.store_products?.name || 'Add-on'} x${a.quantity}`)
@@ -173,13 +199,21 @@ Deno.serve(async (req) => {
         const newPaidUntil = new Date();
         newPaidUntil.setDate(newPaidUntil.getDate() + 30);
 
+        // Build update object
+        const updateData: Record<string, unknown> = {
+          subscription_paid_until: newPaidUntil.toISOString(),
+          subscription_status: "active",
+          updated_at: new Date().toISOString(),
+        };
+
+        // Mark as having paid first subscription if this was promotional
+        if (isFirstSubscription) {
+          updateData.has_paid_first_subscription = true;
+        }
+
         const { error: updateError } = await supabase
           .from("organizations")
-          .update({
-            subscription_paid_until: newPaidUntil.toISOString(),
-            subscription_status: "active",
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq("id", org.id);
 
         if (updateError) {

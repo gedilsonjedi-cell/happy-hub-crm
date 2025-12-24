@@ -952,6 +952,7 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          has_paid_first_subscription: boolean
           id: string
           is_active: boolean
           logo_url: string | null
@@ -968,6 +969,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
           logo_url?: string | null
@@ -984,6 +986,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
           logo_url?: string | null
@@ -1312,6 +1315,7 @@ export type Database = {
           included_users: number
           price_per_channel: number
           price_per_user: number
+          promotional_price: number
           updated_at: string
           updated_by: string | null
         }
@@ -1322,6 +1326,7 @@ export type Database = {
           included_users?: number
           price_per_channel?: number
           price_per_user?: number
+          promotional_price?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -1332,6 +1337,7 @@ export type Database = {
           included_users?: number
           price_per_channel?: number
           price_per_user?: number
+          promotional_price?: number
           updated_at?: string
           updated_by?: string | null
         }
