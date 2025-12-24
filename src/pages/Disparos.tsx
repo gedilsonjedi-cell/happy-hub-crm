@@ -106,7 +106,8 @@ const Disparos = () => {
     chatbot: "disabled",
     startTime: "now",
     unifiedTemplate: "",
-    dispatchInterval: "60"
+    minInterval: "5",
+    maxInterval: "120"
   });
 
   useEffect(() => {
@@ -297,7 +298,8 @@ const Disparos = () => {
       }
     }
 
-    // Create campaign
+    // Create campaign - using average of min/max for dispatch_interval
+    const avgInterval = Math.round((parseInt(formData.minInterval) + parseInt(formData.maxInterval)) / 2);
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
       .insert({
@@ -305,7 +307,7 @@ const Disparos = () => {
         name: formData.campaignName,
         team: formData.team || null,
         chatbot_enabled: formData.chatbot === "enabled",
-        dispatch_interval: parseInt(formData.dispatchInterval),
+        dispatch_interval: avgInterval,
         use_unified_template: useUnifiedTemplate,
         unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
         status: formData.startTime === "now" ? "running" : "scheduled",
@@ -351,7 +353,8 @@ const Disparos = () => {
       chatbot: "disabled",
       startTime: "now",
       unifiedTemplate: "",
-      dispatchInterval: "60"
+      minInterval: "5",
+      maxInterval: "120"
     });
   };
 
@@ -491,41 +494,107 @@ const Disparos = () => {
                 )}
               </div>
 
-              {/* Interleaved Dispatch */}
-              {selectedChannels.length > 1 && (
-                <div className="space-y-3 p-4 bg-primary/5 rounded-lg border border-primary/20">
-                  <div className="flex items-center gap-2">
-                    <Shuffle className="w-5 h-5 text-primary" />
-                    <Label className="text-foreground font-medium">Disparo Intercalado</Label>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    As mensagens serão alternadas entre os {selectedChannels.length} canais selecionados.
-                  </p>
-                  
+              {/* Random Cadence Dispatch */}
+              <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                <div className="flex items-center gap-2">
+                  <Shuffle className="w-5 h-5 text-primary" />
+                  <Label className="text-foreground font-medium">Cadência Aleatória</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Os disparos serão realizados com intervalos aleatórios entre o mínimo e máximo definidos, 
+                  evitando padrões detectáveis.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground flex items-center gap-2">
                       <Timer className="w-4 h-4" />
-                      Intervalo entre disparos
+                      Intervalo mínimo
                     </Label>
                     <Select 
-                      value={formData.dispatchInterval} 
-                      onValueChange={(value) => setFormData({ ...formData, dispatchInterval: value })}
+                      value={formData.minInterval} 
+                      onValueChange={(value) => {
+                        const newMin = parseInt(value);
+                        const currentMax = parseInt(formData.maxInterval);
+                        if (newMin > currentMax) {
+                          setFormData({ ...formData, minInterval: value, maxInterval: value });
+                        } else {
+                          setFormData({ ...formData, minInterval: value });
+                        }
+                      }}
                     >
                       <SelectTrigger className="bg-card border-border">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-card border-border">
+                        <SelectItem value="5">5 segundos</SelectItem>
+                        <SelectItem value="10">10 segundos</SelectItem>
                         <SelectItem value="15">15 segundos</SelectItem>
                         <SelectItem value="30">30 segundos</SelectItem>
+                        <SelectItem value="45">45 segundos</SelectItem>
                         <SelectItem value="60">1 minuto</SelectItem>
+                        <SelectItem value="90">1 min 30 seg</SelectItem>
                         <SelectItem value="120">2 minutos</SelectItem>
                         <SelectItem value="180">3 minutos</SelectItem>
+                        <SelectItem value="240">4 minutos</SelectItem>
+                        <SelectItem value="300">5 minutos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Timer className="w-4 h-4" />
+                      Intervalo máximo
+                    </Label>
+                    <Select 
+                      value={formData.maxInterval} 
+                      onValueChange={(value) => {
+                        const newMax = parseInt(value);
+                        const currentMin = parseInt(formData.minInterval);
+                        if (newMax < currentMin) {
+                          setFormData({ ...formData, maxInterval: value, minInterval: value });
+                        } else {
+                          setFormData({ ...formData, maxInterval: value });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="bg-card border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        <SelectItem value="5">5 segundos</SelectItem>
+                        <SelectItem value="10">10 segundos</SelectItem>
+                        <SelectItem value="15">15 segundos</SelectItem>
+                        <SelectItem value="30">30 segundos</SelectItem>
+                        <SelectItem value="45">45 segundos</SelectItem>
+                        <SelectItem value="60">1 minuto</SelectItem>
+                        <SelectItem value="90">1 min 30 seg</SelectItem>
+                        <SelectItem value="120">2 minutos</SelectItem>
+                        <SelectItem value="180">3 minutos</SelectItem>
+                        <SelectItem value="240">4 minutos</SelectItem>
                         <SelectItem value="300">5 minutos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-              )}
+
+                <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
+                  <Shuffle className="w-4 h-4 text-primary" />
+                  <p className="text-xs text-primary">
+                    Exemplo: disparos entre {formData.minInterval}s e {formData.maxInterval}s → 
+                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s, 
+                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s, 
+                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s...
+                  </p>
+                </div>
+
+                {selectedChannels.length > 1 && (
+                  <p className="text-xs text-muted-foreground border-t border-border/50 pt-3 mt-2">
+                    As mensagens também serão alternadas entre os {selectedChannels.length} canais selecionados.
+                  </p>
+                )}
+              </div>
 
               <div className="space-y-2">
                 <Label className="text-foreground">Habilitar chatbot</Label>
@@ -566,11 +635,10 @@ const Disparos = () => {
                   <span className="text-foreground">{selectedChannels.length}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-primary font-medium">Intervalo:</span>
-                  <span className="text-foreground">
-                    {parseInt(formData.dispatchInterval) >= 60 
-                      ? `${parseInt(formData.dispatchInterval) / 60} min` 
-                      : `${formData.dispatchInterval}s`}
+                  <span className="text-primary font-medium">Cadência:</span>
+                  <span className="text-foreground flex items-center gap-1">
+                    <Shuffle className="w-3 h-3" />
+                    {formData.minInterval}s - {formData.maxInterval}s (aleatório)
                   </span>
                 </div>
               </div>
