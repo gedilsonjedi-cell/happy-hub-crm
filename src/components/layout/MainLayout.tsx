@@ -4,27 +4,36 @@ import { Sidebar } from "./Sidebar";
 import { SubscriptionAlert } from "@/components/subscription/SubscriptionAlert";
 import { SidebarProvider, useSidebarState } from "@/hooks/useSidebarState";
 import { cn } from "@/lib/utils";
+import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 
 interface MainLayoutProps {
   children: ReactNode;
 }
 
 function LayoutContent({ children }: MainLayoutProps) {
-  const { collapsed, isMobile, mobileOpen } = useSidebarState();
+  const { collapsed, isMobile, mobileOpen, setMobileOpen } = useSidebarState();
+
+  // Swipe gestures for mobile
+  useSwipeGesture({
+    onSwipeRight: () => {
+      if (isMobile && !mobileOpen) {
+        setMobileOpen(true);
+      }
+    },
+    onSwipeLeft: () => {
+      if (isMobile && mobileOpen) {
+        setMobileOpen(false);
+      }
+    },
+    threshold: 60,
+    edgeThreshold: 40,
+  });
 
   return (
     <div className="min-h-screen bg-background">
       <SubscriptionAlert />
       <Header />
       <Sidebar />
-      
-      {/* Mobile overlay */}
-      {isMobile && mobileOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={() => {}}
-        />
-      )}
       
       <main 
         className={cn(

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, User, RefreshCw, Menu } from "lucide-react";
+import { MessageSquare, LogOut, User, RefreshCw, Menu, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -12,11 +12,17 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useSidebarState } from "@/hooks/useSidebarState";
+import { useTheme } from "next-themes";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const { syncing } = useUserRole();
   const { isMobile, setMobileOpen } = useSidebarState();
+  const { theme, setTheme } = useTheme();
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   return (
     <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
@@ -47,7 +53,7 @@ export function Header() {
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
         {/* Sync Indicator */}
         {syncing && (
           <Tooltip>
@@ -62,6 +68,27 @@ export function Header() {
             </TooltipContent>
           </Tooltip>
         )}
+
+        {/* Theme Toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+            >
+              {theme === "dark" ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {theme === "dark" ? "Modo claro" : "Modo escuro"}
+          </TooltipContent>
+        </Tooltip>
 
         {/* Client Switcher (Super Admin only) */}
         <ClientSwitcher />
