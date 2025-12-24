@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.mercadopago-webhook]
 verify_jwt = false
+
+[functions.subscription-renewal]
+verify_jwt = false
