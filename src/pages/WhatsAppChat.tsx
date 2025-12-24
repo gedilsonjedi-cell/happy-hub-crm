@@ -216,13 +216,13 @@ const WhatsAppChat = () => {
     }
   }, [notificationsEnabled]);
 
-  // Fetch channels
+  // Fetch channels (Meta Cloud API only)
   useEffect(() => {
     const fetchChannels = async () => {
       const { data, error } = await supabase
         .from("channels")
         .select("id, name, phone")
-        .eq("provider", "gupshup")
+        .eq("provider", "meta")
         .eq("connected", true);
 
       if (!error && data) {
@@ -571,11 +571,12 @@ const WhatsAppChat = () => {
     setMessages(prev => [...prev, optimisticMessage]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('gupshup-send', {
+      const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
           channelId: selectedChannel.id,
           destination: selectedConversation.phone,
-          message: messageToSend
+          message: messageToSend,
+          messageType: 'text'
         }
       });
 
@@ -624,14 +625,13 @@ const WhatsAppChat = () => {
     setSendingMessage(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('gupshup-send', {
+      const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
           channelId: selectedChannel.id,
           destination: selectedConversation.phone,
-          mediaType: mediaData.mediaType,
+          messageType: mediaData.mediaType,
           mediaUrl: mediaData.mediaUrl,
-          mediaCaption: mediaData.mediaCaption,
-          fileName: mediaData.fileName
+          caption: mediaData.mediaCaption
         }
       });
 
@@ -676,10 +676,11 @@ const WhatsAppChat = () => {
     setSendingMessage(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('gupshup-send', {
+      const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
           channelId: selectedChannel.id,
           destination: selectedConversation.phone,
+          messageType: 'template',
           templateName,
           templateParams
         }
