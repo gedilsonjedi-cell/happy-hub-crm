@@ -1242,6 +1242,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      debit_organization_balance_allow_negative: {
+        Args: {
+          _amount: number
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

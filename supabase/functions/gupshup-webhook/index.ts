@@ -261,6 +261,35 @@ Deno.serve(async (req) => {
           console.log('Message stored successfully');
         }
 
+        // Debit balance for incoming message (allows negative balance)
+        if (organizationId) {
+          // Get message pricing
+          const { data: pricing } = await supabase
+            .from('dispatch_pricing')
+            .select('price_per_message')
+            .eq('dispatch_type', 'service')
+            .single();
+
+          const pricePerMessage = pricing?.price_per_message ?? 0.009;
+
+          const { data: debitSuccess, error: debitError } = await supabase.rpc(
+            'debit_organization_balance_allow_negative',
+            {
+              _organization_id: organizationId,
+              _amount: pricePerMessage,
+              _description: `Mensagem WhatsApp recebida de ${senderPhone}`,
+              _reference_type: 'message_received',
+              _reference_id: messageId
+            }
+          );
+
+          if (debitError) {
+            console.error('Error debiting balance for incoming message:', debitError);
+          } else {
+            console.log('Balance debited for incoming message:', debitSuccess, 'Amount:', pricePerMessage);
+          }
+        }
+
         // Check if sender is a lead, if not create one
         const { data: existingLead } = await supabase
           .from('leads')
