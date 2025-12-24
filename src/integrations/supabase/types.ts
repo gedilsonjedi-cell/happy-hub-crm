@@ -167,6 +167,47 @@ export type Database = {
           },
         ]
       }
+      blacklist: {
+        Row: {
+          blocked_by: string | null
+          created_at: string
+          id: string
+          name: string | null
+          organization_id: string
+          phone: string
+          reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          name?: string | null
+          organization_id: string
+          phone: string
+          reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          name?: string | null
+          organization_id?: string
+          phone?: string
+          reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blacklist_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_channels: {
         Row: {
           campaign_id: string
@@ -1464,6 +1505,10 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
+      is_phone_blacklisted: {
+        Args: { _organization_id: string; _phone: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       purchase_product:
         | {
