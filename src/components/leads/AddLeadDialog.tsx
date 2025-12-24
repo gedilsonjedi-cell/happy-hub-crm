@@ -1,0 +1,387 @@
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+
+interface AddLeadDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
+}
+
+interface CustomFieldDefinition {
+  id: string;
+  field_name: string;
+  field_label: string;
+  field_type: string;
+  field_options: string[] | null;
+  is_required: boolean | null;
+  display_order: number | null;
+}
+
+export function AddLeadDialog({ open, onOpenChange, onSuccess }: AddLeadDialogProps) {
+  const { user } = useAuth();
+  const { organizationId } = useUserRole();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form state
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [document, setDocument] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [notes, setNotes] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+
+  // Fetch custom field definitions
+  const { data: customFields = [] } = useQuery({
+    queryKey: ["custom-field-definitions", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await supabase
+        .from("lead_custom_field_definitions")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("display_order", { ascending: true });
+
+      if (error) throw error;
+      return (data || []) as CustomFieldDefinition[];
+    },
+    enabled: !!organizationId,
+  });
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setPhone("");
+      setEmail("");
+      setDocument("");
+      setCity("");
+      setState("");
+      setNotes("");
+      setCustomFieldValues({});
+    }
+  }, [open]);
+
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhone(formatPhone(e.target.value));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user || !organizationId) {
+      toast.error("Erro de autenticação");
+      return;
+    }
+
+    if (!name.trim() || !phone.trim()) {
+      toast.error("Nome e telefone são obrigatórios");
+      return;
+    }
+
+    // Validate required custom fields
+    const missingRequired = customFields.filter(
+      f => f.is_required && !customFieldValues[f.field_name]?.trim()
+    );
+    if (missingRequired.length > 0) {
+      toast.error(`Campo obrigatório: ${missingRequired[0].field_label}`);
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const cleanPhone = phone.replace(/\D/g, "");
+
+      const { error } = await supabase.from("leads").insert({
+        name: name.trim(),
+        phone: cleanPhone,
+        email: email.trim() || null,
+        document: document.trim() || null,
+        city: city.trim() || null,
+        state: state.trim() || null,
+        notes: notes.trim() || null,
+        custom_fields: Object.keys(customFieldValues).length > 0 ? customFieldValues : null,
+        user_id: user.id,
+        organization_id: organizationId,
+        status: "new",
+      });
+
+      if (error) {
+        if (error.code === "23505") {
+          toast.error("Já existe um contato com este telefone");
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success("Contato adicionado com sucesso");
+        onSuccess?.();
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar contato:", error);
+      toast.error("Erro ao adicionar contato");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCustomFieldChange = (fieldName: string, value: string) => {
+    setCustomFieldValues(prev => ({
+      ...prev,
+      [fieldName]: value,
+    }));
+  };
+
+  const renderCustomField = (field: CustomFieldDefinition) => {
+    const value = customFieldValues[field.field_name] || "";
+
+    switch (field.field_type) {
+      case "textarea":
+        return (
+          <Textarea
+            id={field.field_name}
+            value={value}
+            onChange={(e) => handleCustomFieldChange(field.field_name, e.target.value)}
+            placeholder={field.field_label}
+            rows={2}
+          />
+        );
+      case "select":
+        return (
+          <Select
+            value={value}
+            onValueChange={(v) => handleCustomFieldChange(field.field_name, v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={`Selecione ${field.field_label}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {field.field_options?.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      case "boolean":
+        return (
+          <Select
+            value={value}
+            onValueChange={(v) => handleCustomFieldChange(field.field_name, v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="true">Sim</SelectItem>
+              <SelectItem value="false">Não</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+      case "number":
+        return (
+          <Input
+            id={field.field_name}
+            type="number"
+            value={value}
+            onChange={(e) => handleCustomFieldChange(field.field_name, e.target.value)}
+            placeholder={field.field_label}
+          />
+        );
+      case "date":
+        return (
+          <Input
+            id={field.field_name}
+            type="date"
+            value={value}
+            onChange={(e) => handleCustomFieldChange(field.field_name, e.target.value)}
+          />
+        );
+      default:
+        return (
+          <Input
+            id={field.field_name}
+            value={value}
+            onChange={(e) => handleCustomFieldChange(field.field_name, e.target.value)}
+            placeholder={field.field_label}
+          />
+        );
+    }
+  };
+
+  const estados = [
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", 
+    "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", 
+    "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Novo Contato</DialogTitle>
+          <DialogDescription>
+            Adicione um novo contato manualmente
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Required fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nome do contato"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone *</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={handlePhoneChange}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Optional standard fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="document">CPF/CNPJ</Label>
+              <Input
+                id="document"
+                value={document}
+                onChange={(e) => setDocument(e.target.value)}
+                placeholder="000.000.000-00"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="state">Estado</Label>
+              <Select value={state} onValueChange={setState}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {estados.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">Cidade</Label>
+              <Input
+                id="city"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Nome da cidade"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Observações</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notas sobre o contato..."
+              rows={2}
+            />
+          </div>
+
+          {/* Custom fields */}
+          {customFields.length > 0 && (
+            <div className="border-t pt-4 mt-4">
+              <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                Campos Personalizados
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {customFields.map((field) => (
+                  <div key={field.id} className="space-y-2">
+                    <Label htmlFor={field.field_name}>
+                      {field.field_label}
+                      {field.is_required && " *"}
+                    </Label>
+                    {renderCustomField(field)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Adicionar Contato
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

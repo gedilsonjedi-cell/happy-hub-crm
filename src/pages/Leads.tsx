@@ -47,6 +47,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
 import { ImportLeadsDialog } from "@/components/leads/ImportLeadsDialog";
+import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
 
 interface Lead {
   id: string;
@@ -78,6 +79,7 @@ const Leads = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
@@ -242,7 +244,7 @@ const Leads = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Leads</h1>
+          <h1 className="text-2xl font-bold text-foreground mb-1">Contatos</h1>
           <p className="text-muted-foreground">Gerencie seus contatos</p>
         </div>
         <div className="flex gap-3">
@@ -264,9 +266,13 @@ const Leads = () => {
             <Download className="w-4 h-4" />
             Exportar
           </Button>
-          <Button size="sm" className="gap-2">
+          <Button 
+            size="sm" 
+            className="gap-2"
+            onClick={() => setShowAddDialog(true)}
+          >
             <Plus className="w-4 h-4" />
-            Novo Lead
+            Novo Contato
           </Button>
         </div>
       </div>
@@ -545,6 +551,12 @@ const Leads = () => {
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         onSuccess={handleImportSuccess}
+      />
+
+      <AddLeadDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["leads", organizationId] })}
       />
 
       <AssignTagsDialog
