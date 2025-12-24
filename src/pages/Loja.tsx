@@ -62,25 +62,46 @@ interface Purchase {
 export default function Loja() {
   const { user } = useAuth();
   const { currentBalance, organizationId } = useOrganizationBalance();
-  const { isActive, paidUntil, daysRemaining, needsPayment } = useSubscription();
+  const { isActive, paidUntil, daysRemaining, needsPayment, organization } = useSubscription();
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [subscriptionPricing, setSubscriptionPricing] = useState<{ base_price: number; promotional_price: number } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; product: Product | null; quantity: number }>({
     open: false,
     product: null,
     quantity: 1,
   });
 
+  // Check if user is on first subscription
+  const isFirstSubscription = !organization?.has_paid_first_subscription;
+
   useEffect(() => {
     fetchProducts();
+    fetchSubscriptionPricing();
     if (organizationId) {
       fetchPurchases();
     }
   }, [organizationId]);
+
+  const fetchSubscriptionPricing = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("subscription_pricing")
+        .select("base_price, promotional_price")
+        .limit(1)
+        .maybeSingle();
+      
+      if (!error && data) {
+        setSubscriptionPricing(data as { base_price: number; promotional_price: number });
+      }
+    } catch (error) {
+      console.error("Error fetching subscription pricing:", error);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -349,7 +370,12 @@ export default function Loja() {
               {products.map((product) => {
                 const isSubscription = product.product_type === "subscription";
                 const quantity = isSubscription ? 1 : (quantities[product.id] || 1);
-                const totalPrice = product.price * quantity;
+                
+                // For subscription, use promotional price if first subscription
+                const displayPrice = isSubscription && isFirstSubscription && subscriptionPricing
+                  ? subscriptionPricing.promotional_price
+                  : product.price;
+                const totalPrice = displayPrice * quantity;
                 const canAfford = currentBalance >= totalPrice;
                 
                 return (
@@ -357,7 +383,10 @@ export default function Loja() {
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         {getProductIcon(product.product_type, product.name)}
-                        {isSubscription && (
+                        {isSubscription && isFirstSubscription && (
+                          <Badge variant="default" className="bg-green-600">Promoção!</Badge>
+                        )}
+                        {isSubscription && !isFirstSubscription && (
                           <Badge variant="secondary">Mensal</Badge>
                         )}
                       </div>
@@ -366,13 +395,29 @@ export default function Loja() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <div className="text-3xl font-bold text-primary">
-                          {formatCurrency(product.price)}
-                        </div>
-                        {isSubscription && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Renovação mensal usando saldo
-                          </p>
+                        {isSubscription && isFirstSubscription && subscriptionPricing ? (
+                          <>
+                            <div className="text-3xl font-bold text-green-600">
+                              {formatCurrency(subscriptionPricing.promotional_price)}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1 line-through">
+                              {formatCurrency(subscriptionPricing.base_price)}
+                            </p>
+                            <p className="text-xs text-primary mt-1">
+                              Primeiro mês promocional! Depois R$ {subscriptionPricing.base_price.toFixed(2).replace(".", ",")}/mês
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-3xl font-bold text-primary">
+                              {formatCurrency(displayPrice)}
+                            </div>
+                            {isSubscription && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Renovação mensal usando saldo
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
 
