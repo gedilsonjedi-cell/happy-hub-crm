@@ -38,18 +38,6 @@ export function Header() {
           </span>
         </Link>
 
-        {/* Main Navigation */}
-        <nav className="hidden md:flex items-center gap-6">
-          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Início
-          </Link>
-          <Link to="/templates" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Templates
-          </Link>
-          <Link to="/conexoes" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Conexões
-          </Link>
-        </nav>
       </div>
 
       {/* Right Section */}
