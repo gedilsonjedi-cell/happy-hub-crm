@@ -22,6 +22,7 @@ import OrganizationDetails from "./pages/OrganizationDetails";
 import WhatsAppChat from "./pages/WhatsAppChat";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import Saldo from "./pages/Saldo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -71,6 +72,7 @@ const App = () => (
           <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
+          <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
