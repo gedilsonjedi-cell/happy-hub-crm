@@ -117,6 +117,56 @@ export type Database = {
           },
         ]
       }
+      balance_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          balance_before: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          organization_id: string
+          reference_id: string | null
+          reference_type: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          balance_before: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          organization_id: string
+          reference_id?: string | null
+          reference_type?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          balance_before?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          organization_id?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balance_transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_channels: {
         Row: {
           campaign_id: string
@@ -760,6 +810,44 @@ export type Database = {
           },
         ]
       }
+      organization_balance: {
+        Row: {
+          balance: number
+          created_at: string
+          id: string
+          organization_id: string
+          total_credits_added: number
+          total_spent: number
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          id?: string
+          organization_id: string
+          total_credits_added?: number
+          total_spent?: number
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          id?: string
+          organization_id?: string
+          total_credits_added?: number
+          total_spent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_balance_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           created_at: string
@@ -1129,6 +1217,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_organization_balance: {
+        Args: { _amount: number; _organization_id: string }
+        Returns: boolean
+      }
+      credit_organization_balance: {
+        Args: {
+          _amount: number
+          _created_by?: string
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
+      debit_organization_balance: {
+        Args: {
+          _amount: number
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

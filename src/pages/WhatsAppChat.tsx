@@ -47,6 +47,7 @@ import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
+import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -852,7 +853,8 @@ const WhatsAppChat = () => {
           <div className="p-4 border-b border-border space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-foreground">WhatsApp</h2>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
+                <BalanceIndicator />
                 <Button
                   variant="ghost"
                   size="icon"

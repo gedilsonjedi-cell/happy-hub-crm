@@ -18,7 +18,8 @@ import {
   Headphones,
   Plus,
   Loader2,
-  Copy
+  Copy,
+  Wallet
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
+import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -481,6 +483,10 @@ export default function OrganizationDetails() {
               <Users className="w-4 h-4" />
               Usuários ({users.length})
             </TabsTrigger>
+            <TabsTrigger value="balance" className="gap-2">
+              <Wallet className="w-4 h-4" />
+              Saldo
+            </TabsTrigger>
             <TabsTrigger value="consumption" className="gap-2">
               <DollarSign className="w-4 h-4" />
               Consumo
@@ -564,6 +570,15 @@ export default function OrganizationDetails() {
                 </TableBody>
               </Table>
             </Card>
+          </TabsContent>
+
+          {/* Balance Tab */}
+          <TabsContent value="balance">
+            <OrganizationBalancePanel 
+              organizationId={organization.id} 
+              organizationName={organization.name}
+              showAddCredits={true}
+            />
           </TabsContent>
 
           {/* Consumption Tab */}
