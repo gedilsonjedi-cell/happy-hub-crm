@@ -114,10 +114,23 @@ export function EditLeadDialog({ open, onOpenChange, lead, onSuccess }: EditLead
   }, [lead, open]);
 
   const formatPhone = (value: string) => {
-    const digits = value.replace(/\D/g, "");
+    let digits = value.replace(/\D/g, "");
+    
+    // Remove DDI 55 if present for formatting purposes
+    const hasDDI = digits.startsWith("55") && digits.length > 11;
+    if (hasDDI) {
+      digits = digits.slice(2);
+    }
+    
+    // Limit to 11 digits (DDD + 9 digits mobile)
+    if (digits.length > 11) {
+      digits = digits.slice(0, 11);
+    }
+    
+    // Format: (XX) XXXXX-XXXX for mobile (11 digits) or (XX) XXXX-XXXX for landline (10 digits)
     if (digits.length <= 2) return digits;
-    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
   };
 
