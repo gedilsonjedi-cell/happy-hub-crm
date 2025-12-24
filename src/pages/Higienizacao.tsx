@@ -21,6 +21,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Upload,
   FileSpreadsheet,
   CheckCircle2,
@@ -40,6 +46,8 @@ import {
   Tag,
   Filter,
   X,
+  Smartphone,
+  PhoneCall,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,17 +55,20 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
 
 interface PhoneEntry {
   id: string;
   phone: string;
   originalPhone: string;
   name?: string;
-  status: "pending" | "valid" | "invalid" | "duplicate" | "blacklisted";
+  status: "pending" | "valid" | "invalid" | "duplicate" | "blacklisted" | "landline";
   formattedPhone: string;
   source: "csv" | "leads";
   leadId?: string;
   tags?: string[];
+  validationResult?: PhoneValidationResult;
+  validationMessage?: string;
 }
 
 interface ValidationStats {
@@ -67,6 +78,7 @@ interface ValidationStats {
   duplicates: number;
   blacklisted: number;
   pending: number;
+  landline: number;
 }
 
 interface HygieneHistoryRecord {
@@ -177,26 +189,9 @@ export default function Higienizacao() {
     enabled: !!profile?.organization_id,
   });
 
-  // Format phone number to standard format
+  // Format phone number to standard format (usa a função do utilitário)
   const formatPhoneNumber = (phone: string): string => {
-    const digits = phone.replace(/\D/g, "");
-    
-    // Brazilian numbers
-    if (digits.length === 11) {
-      return `+55${digits}`;
-    } else if (digits.length === 13 && digits.startsWith("55")) {
-      return `+${digits}`;
-    } else if (digits.length === 12 && digits.startsWith("55")) {
-      const ddd = digits.slice(2, 4);
-      const number = digits.slice(4);
-      return `+55${ddd}9${number}`;
-    }
-    
-    if (digits.startsWith("55") && digits.length >= 12) {
-      return `+${digits}`;
-    }
-    
-    return `+55${digits}`;
+    return formatBrazilianPhone(phone);
   };
 
   // Save history record
@@ -365,7 +360,7 @@ export default function Higienizacao() {
     setSelectedLeadIds([]);
   };
 
-  // Validate WhatsApp numbers
+  // Validate WhatsApp numbers using local Brazilian phone validation
   const validateNumbers = async () => {
     if (phoneEntries.length === 0) {
       toast.error("Nenhum número para validar");
@@ -376,22 +371,67 @@ export default function Higienizacao() {
     setValidationProgress(0);
     
     const pendingEntries = phoneEntries.filter((e) => e.status === "pending");
+    const totalPending = pendingEntries.length;
     
-    for (let i = 0; i < pendingEntries.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    // Process in batches for better UX
+    const batchSize = 50;
+    const batches = Math.ceil(totalPending / batchSize);
+    
+    for (let batch = 0; batch < batches; batch++) {
+      const start = batch * batchSize;
+      const end = Math.min(start + batchSize, totalPending);
+      const batchEntries = pendingEntries.slice(start, end);
       
-      const entry = pendingEntries[i];
-      const isValid = entry.formattedPhone.length >= 13 && Math.random() > 0.15;
+      // Process batch
+      const updates: { id: string; status: PhoneEntry["status"]; validationResult: PhoneValidationResult; validationMessage: string; formattedPhone: string }[] = [];
       
+      for (const entry of batchEntries) {
+        const result = validateBrazilianPhone(entry.formattedPhone);
+        const message = getValidationMessage(result);
+        
+        let status: PhoneEntry["status"];
+        if (result.isValid) {
+          if (result.isLandline) {
+            status = "landline";
+          } else {
+            status = "valid";
+          }
+        } else {
+          status = "invalid";
+        }
+        
+        updates.push({
+          id: entry.id,
+          status,
+          validationResult: result,
+          validationMessage: message,
+          formattedPhone: result.formattedNumber || entry.formattedPhone,
+        });
+      }
+      
+      // Apply batch updates
       setPhoneEntries((prev) =>
-        prev.map((e) =>
-          e.id === entry.id
-            ? { ...e, status: isValid ? "valid" : "invalid" }
-            : e
-        )
+        prev.map((e) => {
+          const update = updates.find((u) => u.id === e.id);
+          if (update) {
+            return {
+              ...e,
+              status: update.status,
+              validationResult: update.validationResult,
+              validationMessage: update.validationMessage,
+              formattedPhone: update.formattedPhone,
+            };
+          }
+          return e;
+        })
       );
       
-      setValidationProgress(Math.round(((i + 1) / pendingEntries.length) * 100));
+      setValidationProgress(Math.round((end / totalPending) * 100));
+      
+      // Small delay between batches for UI responsiveness
+      if (batch < batches - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
     }
     
     setIsValidating(false);
@@ -407,6 +447,7 @@ export default function Higienizacao() {
       duplicates: phoneEntries.filter((e) => e.status === "duplicate").length,
       blacklisted: phoneEntries.filter((e) => e.status === "blacklisted").length,
       pending: phoneEntries.filter((e) => e.status === "pending").length,
+      landline: phoneEntries.filter((e) => e.status === "landline").length,
     };
   }, [phoneEntries]);
 
@@ -530,40 +571,65 @@ export default function Higienizacao() {
     setLeadsDeletedCount(0);
   };
 
-  // Get status badge
-  const getStatusBadge = (status: PhoneEntry["status"]) => {
-    switch (status) {
-      case "valid":
-        return (
-          <Badge className="bg-success text-success-foreground gap-1">
-            <CheckCircle2 className="w-3 h-3" /> Válido
-          </Badge>
-        );
-      case "invalid":
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <XCircle className="w-3 h-3" /> Inválido
-          </Badge>
-        );
-      case "duplicate":
-        return (
-          <Badge variant="secondary" className="gap-1 bg-warning text-warning-foreground">
-            <Copy className="w-3 h-3" /> Duplicado
-          </Badge>
-        );
-      case "blacklisted":
-        return (
-          <Badge variant="outline" className="gap-1 border-destructive text-destructive">
-            <Ban className="w-3 h-3" /> Na Lista Negra
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="outline" className="gap-1">
-            <RefreshCw className="w-3 h-3" /> Pendente
-          </Badge>
-        );
+  // Get status badge with validation message tooltip
+  const getStatusBadge = (status: PhoneEntry["status"], validationMessage?: string) => {
+    const badge = (() => {
+      switch (status) {
+        case "valid":
+          return (
+            <Badge className="bg-success text-success-foreground gap-1">
+              <Smartphone className="w-3 h-3" /> Celular Válido
+            </Badge>
+          );
+        case "landline":
+          return (
+            <Badge variant="secondary" className="gap-1 bg-warning text-warning-foreground">
+              <PhoneCall className="w-3 h-3" /> Fixo
+            </Badge>
+          );
+        case "invalid":
+          return (
+            <Badge variant="destructive" className="gap-1">
+              <XCircle className="w-3 h-3" /> Inválido
+            </Badge>
+          );
+        case "duplicate":
+          return (
+            <Badge variant="secondary" className="gap-1 bg-orange-500 text-white">
+              <Copy className="w-3 h-3" /> Duplicado
+            </Badge>
+          );
+        case "blacklisted":
+          return (
+            <Badge variant="outline" className="gap-1 border-destructive text-destructive">
+              <Ban className="w-3 h-3" /> Na Lista Negra
+            </Badge>
+          );
+        default:
+          return (
+            <Badge variant="outline" className="gap-1">
+              <RefreshCw className="w-3 h-3" /> Pendente
+            </Badge>
+          );
+      }
+    })();
+
+    if (validationMessage && status !== "pending") {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {badge}
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">{validationMessage}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
     }
+
+    return badge;
   };
 
   // Calculate history statistics
@@ -601,7 +667,7 @@ export default function Higienizacao() {
 
         {/* Statistics */}
         {phoneEntries.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="text-center">
@@ -613,8 +679,22 @@ export default function Higienizacao() {
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-success">{stats.valid}</p>
-                  <p className="text-xs text-muted-foreground">Válidos</p>
+                  <div className="flex items-center justify-center gap-1">
+                    <Smartphone className="w-4 h-4 text-success" />
+                    <p className="text-2xl font-bold text-success">{stats.valid}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Celulares Válidos</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <PhoneCall className="w-4 h-4 text-warning" />
+                    <p className="text-2xl font-bold text-warning">{stats.landline}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Fixos</p>
                 </div>
               </CardContent>
             </Card>
@@ -629,7 +709,7 @@ export default function Higienizacao() {
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-warning">{stats.duplicates}</p>
+                  <p className="text-2xl font-bold text-orange-500">{stats.duplicates}</p>
                   <p className="text-xs text-muted-foreground">Duplicados</p>
                 </div>
               </CardContent>
@@ -830,7 +910,7 @@ export default function Higienizacao() {
                               <TableCell className="font-mono text-sm">
                                 {entry.formattedPhone}
                               </TableCell>
-                              <TableCell>{getStatusBadge(entry.status)}</TableCell>
+                              <TableCell>{getStatusBadge(entry.status, entry.validationMessage)}</TableCell>
                               <TableCell>
                                 <Badge variant="outline">
                                   {entry.source === "csv" ? "Arquivo" : "Lead"}
@@ -1193,25 +1273,37 @@ export default function Higienizacao() {
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <span>
+                  <strong>DDDs Brasileiros Válidos:</strong> Verificamos se o DDD é um código válido do Brasil (todos os 67 DDDs)
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                <span>
+                  <strong>Celular vs Fixo:</strong> Identificamos automaticamente se o número é celular ou telefone fixo. Fixos não funcionam com WhatsApp!
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                <span>
+                  <strong>Formato de Celular:</strong> Celulares devem ter 11 dígitos, começar com 9, e o segundo dígito ser 6, 7, 8 ou 9
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                <span>
                   <strong>Detecção de Duplicados:</strong> Números repetidos são automaticamente identificados
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <span>
-                  <strong>Formatação Automática:</strong> Números são padronizados para formato internacional (+55...)
+                  <strong>Formatação Automática:</strong> Números são padronizados para formato internacional (+55...) e o 9 é adicionado se necessário
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <span>
                   <strong>Lista Negra:</strong> Números na sua lista negra são identificados automaticamente
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                <span>
-                  <strong>Validação WhatsApp:</strong> Verifique se os números possuem conta ativa no WhatsApp
                 </span>
               </li>
               <li className="flex items-start gap-2">
