@@ -6,7 +6,12 @@ import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+    <ThemeProvider 
+      attribute="class" 
+      defaultTheme="dark" 
+      storageKey="whatscode-theme"
+      enableSystem={false}
+    >
       <App />
     </ThemeProvider>
   </React.StrictMode>
