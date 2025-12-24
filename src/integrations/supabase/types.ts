@@ -868,6 +868,59 @@ export type Database = {
           },
         ]
       }
+      hygiene_history: {
+        Row: {
+          blacklisted_count: number
+          created_at: string
+          duplicate_count: number
+          id: string
+          invalid_count: number
+          leads_deleted: number
+          leads_saved: number
+          organization_id: string | null
+          source_type: string
+          total_numbers: number
+          user_id: string
+          valid_count: number
+        }
+        Insert: {
+          blacklisted_count?: number
+          created_at?: string
+          duplicate_count?: number
+          id?: string
+          invalid_count?: number
+          leads_deleted?: number
+          leads_saved?: number
+          organization_id?: string | null
+          source_type: string
+          total_numbers?: number
+          user_id: string
+          valid_count?: number
+        }
+        Update: {
+          blacklisted_count?: number
+          created_at?: string
+          duplicate_count?: number
+          id?: string
+          invalid_count?: number
+          leads_deleted?: number
+          leads_saved?: number
+          organization_id?: string | null
+          source_type?: string
+          total_numbers?: number
+          user_id?: string
+          valid_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hygiene_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_documents: {
         Row: {
           agent_id: string | null
