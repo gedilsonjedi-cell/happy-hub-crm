@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -16,6 +15,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Upload,
   FileSpreadsheet,
@@ -32,11 +36,17 @@ import {
   Users,
   RefreshCw,
   Loader2,
+  History,
+  Tag,
+  Filter,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface PhoneEntry {
   id: string;
@@ -47,6 +57,7 @@ interface PhoneEntry {
   formattedPhone: string;
   source: "csv" | "leads";
   leadId?: string;
+  tags?: string[];
 }
 
 interface ValidationStats {
@@ -58,15 +69,33 @@ interface ValidationStats {
   pending: number;
 }
 
+interface HygieneHistoryRecord {
+  id: string;
+  created_at: string;
+  source_type: string;
+  total_numbers: number;
+  valid_count: number;
+  invalid_count: number;
+  duplicate_count: number;
+  blacklisted_count: number;
+  leads_saved: number;
+  leads_deleted: number;
+}
+
 export default function Higienizacao() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<"upload" | "leads">("upload");
+  const [activeTab, setActiveTab] = useState<"upload" | "leads" | "history">("upload");
   const [phoneEntries, setPhoneEntries] = useState<PhoneEntry[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [validationProgress, setValidationProgress] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
+  const [leadsSavedCount, setLeadsSavedCount] = useState(0);
+  const [leadsDeletedCount, setLeadsDeletedCount] = useState(0);
+  const [currentSource, setCurrentSource] = useState<"csv" | "leads">("csv");
 
   // Fetch user's organization
   const { data: profile } = useQuery({
@@ -84,14 +113,30 @@ export default function Higienizacao() {
     enabled: !!user?.id,
   });
 
-  // Fetch leads for selection
+  // Fetch leads for selection with tags
   const { data: leads = [], refetch: refetchLeads } = useQuery({
     queryKey: ["leads-for-hygiene", profile?.organization_id],
     queryFn: async () => {
       if (!profile?.organization_id) return [];
       const { data, error } = await supabase
         .from("leads")
-        .select("id, name, phone, email")
+        .select("id, name, phone, email, tags")
+        .eq("organization_id", profile.organization_id)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  // Fetch available tags
+  const { data: availableTags = [] } = useQuery({
+    queryKey: ["lead-tags", profile?.organization_id],
+    queryFn: async () => {
+      if (!profile?.organization_id) return [];
+      const { data, error } = await supabase
+        .from("lead_tags")
+        .select("id, name, color")
         .eq("organization_id", profile.organization_id)
         .order("name");
       if (error) throw error;
@@ -115,6 +160,23 @@ export default function Higienizacao() {
     enabled: !!profile?.organization_id,
   });
 
+  // Fetch hygiene history
+  const { data: hygieneHistory = [], refetch: refetchHistory } = useQuery({
+    queryKey: ["hygiene-history", profile?.organization_id],
+    queryFn: async () => {
+      if (!profile?.organization_id) return [];
+      const { data, error } = await supabase
+        .from("hygiene_history")
+        .select("*")
+        .eq("organization_id", profile.organization_id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data as HygieneHistoryRecord[];
+    },
+    enabled: !!profile?.organization_id,
+  });
+
   // Format phone number to standard format
   const formatPhoneNumber = (phone: string): string => {
     const digits = phone.replace(/\D/g, "");
@@ -125,19 +187,39 @@ export default function Higienizacao() {
     } else if (digits.length === 13 && digits.startsWith("55")) {
       return `+${digits}`;
     } else if (digits.length === 12 && digits.startsWith("55")) {
-      // Missing 9 in mobile
       const ddd = digits.slice(2, 4);
       const number = digits.slice(4);
       return `+55${ddd}9${number}`;
     }
     
-    // If already has country code
     if (digits.startsWith("55") && digits.length >= 12) {
       return `+${digits}`;
     }
     
-    // Default: add Brazil code
     return `+55${digits}`;
+  };
+
+  // Save history record
+  const saveHistoryRecord = async (stats: ValidationStats, leadsSaved: number, leadsDeleted: number) => {
+    if (!profile?.organization_id || !user?.id) return;
+
+    try {
+      await supabase.from("hygiene_history").insert({
+        organization_id: profile.organization_id,
+        user_id: user.id,
+        source_type: currentSource,
+        total_numbers: stats.total,
+        valid_count: stats.valid,
+        invalid_count: stats.invalid,
+        duplicate_count: stats.duplicates,
+        blacklisted_count: stats.blacklisted,
+        leads_saved: leadsSaved,
+        leads_deleted: leadsDeleted,
+      });
+      refetchHistory();
+    } catch (error) {
+      console.error("Error saving history:", error);
+    }
   };
 
   // Parse CSV file
@@ -159,12 +241,10 @@ export default function Higienizacao() {
       const seenPhones = new Set<string>();
       
       lines.forEach((line, index) => {
-        // Skip header if it looks like a header
         if (index === 0 && (line.toLowerCase().includes("phone") || line.toLowerCase().includes("telefone"))) {
           return;
         }
         
-        // Parse CSV line
         const parts = line.split(/[,;|\t]/).map((p) => p.trim().replace(/"/g, ""));
         const phone = parts[0];
         const name = parts[1] || undefined;
@@ -189,11 +269,13 @@ export default function Higienizacao() {
       });
       
       setPhoneEntries(entries);
+      setCurrentSource("csv");
+      setLeadsSavedCount(0);
+      setLeadsDeletedCount(0);
       toast.success(`${entries.length} números carregados do arquivo`);
     };
     reader.readAsText(file);
     
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -228,10 +310,14 @@ export default function Higienizacao() {
         formattedPhone,
         source: "leads",
         leadId: lead.id,
+        tags: lead.tags || [],
       });
     });
     
     setPhoneEntries(entries);
+    setCurrentSource("leads");
+    setLeadsSavedCount(0);
+    setLeadsDeletedCount(0);
     setActiveTab("upload");
     toast.success(`${entries.length} leads carregados para higienização`);
   };
@@ -245,13 +331,32 @@ export default function Higienizacao() {
     );
   };
 
-  // Select all leads
-  const selectAllLeads = () => {
-    const filteredLeads = leads.filter(
-      (l) =>
-        l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        l.phone.includes(searchTerm)
+  // Toggle tag filter
+  const toggleTagFilter = (tagName: string) => {
+    setSelectedTagFilters((prev) =>
+      prev.includes(tagName)
+        ? prev.filter((t) => t !== tagName)
+        : [...prev, tagName]
     );
+  };
+
+  // Filter leads by search and tags
+  const filteredLeads = useMemo(() => {
+    return leads.filter((l) => {
+      const matchesSearch =
+        l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        l.phone.includes(searchTerm);
+      
+      const matchesTags =
+        selectedTagFilters.length === 0 ||
+        (l.tags && selectedTagFilters.some((tag) => l.tags?.includes(tag)));
+      
+      return matchesSearch && matchesTags;
+    });
+  }, [leads, searchTerm, selectedTagFilters]);
+
+  // Select all filtered leads
+  const selectAllLeads = () => {
     setSelectedLeadIds(filteredLeads.map((l) => l.id));
   };
 
@@ -260,7 +365,7 @@ export default function Higienizacao() {
     setSelectedLeadIds([]);
   };
 
-  // Validate WhatsApp numbers (simulated - in production would use WhatsApp Business API)
+  // Validate WhatsApp numbers
   const validateNumbers = async () => {
     if (phoneEntries.length === 0) {
       toast.error("Nenhum número para validar");
@@ -270,16 +375,12 @@ export default function Higienizacao() {
     setIsValidating(true);
     setValidationProgress(0);
     
-    const pendingEntries = phoneEntries.filter(
-      (e) => e.status === "pending"
-    );
+    const pendingEntries = phoneEntries.filter((e) => e.status === "pending");
     
-    // Simulate validation (in production, this would call WhatsApp Business API)
     for (let i = 0; i < pendingEntries.length; i++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
       
       const entry = pendingEntries[i];
-      // Simulate: 85% chance of being valid for proper formatted numbers
       const isValid = entry.formattedPhone.length >= 13 && Math.random() > 0.15;
       
       setPhoneEntries((prev) =>
@@ -372,6 +473,7 @@ export default function Higienizacao() {
       return;
     }
     
+    setLeadsSavedCount((prev) => prev + validEntries.length);
     toast.success(`${validEntries.length} leads salvos com sucesso!`);
     refetchLeads();
   };
@@ -406,8 +508,17 @@ export default function Higienizacao() {
       prev.filter((e) => !invalidLeadIds.includes(e.leadId || ""))
     );
     
+    setLeadsDeletedCount((prev) => prev + invalidLeadIds.length);
     toast.success(`${invalidLeadIds.length} leads inválidos excluídos!`);
     refetchLeads();
+  };
+
+  // Finalize and save history
+  const finalizeHygiene = async () => {
+    await saveHistoryRecord(stats, leadsSavedCount, leadsDeletedCount);
+    clearEntries();
+    toast.success("Higienização finalizada e histórico salvo!");
+    setActiveTab("history");
   };
 
   // Clear all entries
@@ -415,6 +526,8 @@ export default function Higienizacao() {
     setPhoneEntries([]);
     setSelectedLeadIds([]);
     setValidationProgress(0);
+    setLeadsSavedCount(0);
+    setLeadsDeletedCount(0);
   };
 
   // Get status badge
@@ -453,11 +566,25 @@ export default function Higienizacao() {
     }
   };
 
-  const filteredLeads = leads.filter(
-    (l) =>
-      l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.phone.includes(searchTerm)
-  );
+  // Calculate history statistics
+  const historyStats = useMemo(() => {
+    if (hygieneHistory.length === 0) return null;
+    
+    const totalProcessed = hygieneHistory.reduce((acc, h) => acc + h.total_numbers, 0);
+    const totalValid = hygieneHistory.reduce((acc, h) => acc + h.valid_count, 0);
+    const totalInvalid = hygieneHistory.reduce((acc, h) => acc + h.invalid_count, 0);
+    const totalSaved = hygieneHistory.reduce((acc, h) => acc + h.leads_saved, 0);
+    const totalDeleted = hygieneHistory.reduce((acc, h) => acc + h.leads_deleted, 0);
+    
+    return {
+      totalProcessed,
+      totalValid,
+      totalInvalid,
+      totalSaved,
+      totalDeleted,
+      avgValidRate: totalProcessed > 0 ? Math.round((totalValid / totalProcessed) * 100) : 0,
+    };
+  }, [hygieneHistory]);
 
   return (
     <MainLayout>
@@ -527,15 +654,19 @@ export default function Higienizacao() {
         )}
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upload" | "leads")}>
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upload" | "leads" | "history")}>
+          <TabsList className="grid w-full grid-cols-3 max-w-lg">
             <TabsTrigger value="upload" className="gap-2">
               <Upload className="w-4 h-4" />
-              Upload de Arquivo
+              Upload / Resultados
             </TabsTrigger>
             <TabsTrigger value="leads" className="gap-2">
               <Users className="w-4 h-4" />
               Leads Existentes
+            </TabsTrigger>
+            <TabsTrigger value="history" className="gap-2">
+              <History className="w-4 h-4" />
+              Histórico
             </TabsTrigger>
           </TabsList>
 
@@ -648,6 +779,16 @@ export default function Higienizacao() {
                         <RefreshCw className="w-4 h-4" />
                         Limpar
                       </Button>
+
+                      {stats.pending === 0 && stats.total > 0 && (
+                        <Button
+                          onClick={finalizeHygiene}
+                          className="gap-2 ml-auto"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Finalizar e Salvar Histórico
+                        </Button>
+                      )}
                     </div>
                     
                     {isValidating && (
@@ -711,12 +852,12 @@ export default function Higienizacao() {
               <CardHeader>
                 <CardTitle>Selecionar Leads</CardTitle>
                 <CardDescription>
-                  Selecione os leads da sua base para higienização
+                  Selecione os leads da sua base para higienização. Use os filtros para refinar a seleção.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+                <div className="flex flex-wrap gap-2">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
                       placeholder="Buscar por nome ou telefone..."
@@ -725,6 +866,60 @@ export default function Higienizacao() {
                       className="pl-10"
                     />
                   </div>
+                  
+                  {/* Tag Filter */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <Tag className="w-4 h-4" />
+                        Filtrar por Tags
+                        {selectedTagFilters.length > 0 && (
+                          <Badge variant="secondary" className="ml-1">
+                            {selectedTagFilters.length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2">
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Selecione as tags:</p>
+                        {availableTags.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Nenhuma tag disponível</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {availableTags.map((tag) => (
+                              <Badge
+                                key={tag.id}
+                                variant={selectedTagFilters.includes(tag.name) ? "default" : "outline"}
+                                className="cursor-pointer"
+                                style={
+                                  selectedTagFilters.includes(tag.name) && tag.color
+                                    ? { backgroundColor: tag.color, borderColor: tag.color }
+                                    : tag.color
+                                    ? { borderColor: tag.color, color: tag.color }
+                                    : {}
+                                }
+                                onClick={() => toggleTagFilter(tag.name)}
+                              >
+                                {tag.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {selectedTagFilters.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full mt-2"
+                            onClick={() => setSelectedTagFilters([])}
+                          >
+                            Limpar filtros
+                          </Button>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  
                   <Button variant="outline" size="sm" onClick={selectAllLeads}>
                     Selecionar Todos
                   </Button>
@@ -733,8 +928,31 @@ export default function Higienizacao() {
                   </Button>
                 </div>
 
+                {/* Active tag filters */}
+                {selectedTagFilters.length > 0 && (
+                  <div className="flex flex-wrap gap-1 items-center">
+                    <span className="text-sm text-muted-foreground">Filtros ativos:</span>
+                    {selectedTagFilters.map((tag) => {
+                      const tagData = availableTags.find((t) => t.name === tag);
+                      return (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="gap-1 cursor-pointer"
+                          style={tagData?.color ? { backgroundColor: tagData.color } : {}}
+                          onClick={() => toggleTagFilter(tag)}
+                        >
+                          {tag}
+                          <X className="w-3 h-3" />
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <p className="text-sm text-muted-foreground">
-                  {selectedLeadIds.length} de {leads.length} leads selecionados
+                  {selectedLeadIds.length} de {filteredLeads.length} leads selecionados
+                  {selectedTagFilters.length > 0 && ` (filtrado de ${leads.length} total)`}
                 </p>
 
                 <div className="rounded-md border max-h-96 overflow-auto">
@@ -758,7 +976,7 @@ export default function Higienizacao() {
                         </TableHead>
                         <TableHead>Nome</TableHead>
                         <TableHead>Telefone</TableHead>
-                        <TableHead>Email</TableHead>
+                        <TableHead>Tags</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -778,7 +996,32 @@ export default function Higienizacao() {
                           <TableCell className="font-mono text-sm">
                             {lead.phone}
                           </TableCell>
-                          <TableCell>{lead.email || "-"}</TableCell>
+                          <TableCell>
+                            {lead.tags && lead.tags.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {lead.tags.slice(0, 3).map((tag) => {
+                                  const tagData = availableTags.find((t) => t.name === tag);
+                                  return (
+                                    <Badge
+                                      key={tag}
+                                      variant="outline"
+                                      className="text-xs"
+                                      style={tagData?.color ? { borderColor: tagData.color, color: tagData.color } : {}}
+                                    >
+                                      {tag}
+                                    </Badge>
+                                  );
+                                })}
+                                {lead.tags.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{lead.tags.length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       {filteredLeads.length === 0 && (
@@ -800,6 +1043,138 @@ export default function Higienizacao() {
                   <CheckCircle2 className="w-4 h-4" />
                   Carregar {selectedLeadIds.length} Leads para Higienização
                 </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            {/* Summary Statistics */}
+            {historyStats && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold">{historyStats.totalProcessed}</p>
+                      <p className="text-xs text-muted-foreground">Total Processados</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-success">{historyStats.totalValid}</p>
+                      <p className="text-xs text-muted-foreground">Total Válidos</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-destructive">{historyStats.totalInvalid}</p>
+                      <p className="text-xs text-muted-foreground">Total Inválidos</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-primary">{historyStats.avgValidRate}%</p>
+                      <p className="text-xs text-muted-foreground">Taxa de Validação</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold">{hygieneHistory.length}</p>
+                      <p className="text-xs text-muted-foreground">Higienizações</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* History Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Histórico de Higienizações</CardTitle>
+                <CardDescription>
+                  Últimas 50 higienizações realizadas
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {hygieneHistory.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Nenhuma higienização realizada ainda</p>
+                    <p className="text-sm">Faça sua primeira higienização para ver o histórico aqui</p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border max-h-96 overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Origem</TableHead>
+                          <TableHead className="text-center">Total</TableHead>
+                          <TableHead className="text-center">Válidos</TableHead>
+                          <TableHead className="text-center">Inválidos</TableHead>
+                          <TableHead className="text-center">Duplicados</TableHead>
+                          <TableHead className="text-center">Lista Negra</TableHead>
+                          <TableHead className="text-center">Salvos</TableHead>
+                          <TableHead className="text-center">Excluídos</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {hygieneHistory.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>
+                              {format(new Date(record.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {record.source_type === "csv" ? "Arquivo" : "Leads"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center font-medium">
+                              {record.total_numbers}
+                            </TableCell>
+                            <TableCell className="text-center text-success">
+                              {record.valid_count}
+                            </TableCell>
+                            <TableCell className="text-center text-destructive">
+                              {record.invalid_count}
+                            </TableCell>
+                            <TableCell className="text-center text-warning">
+                              {record.duplicate_count}
+                            </TableCell>
+                            <TableCell className="text-center text-muted-foreground">
+                              {record.blacklisted_count}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {record.leads_saved > 0 ? (
+                                <Badge variant="outline" className="bg-success/10 text-success border-success/30">
+                                  +{record.leads_saved}
+                                </Badge>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {record.leads_deleted > 0 ? (
+                                <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                                  -{record.leads_deleted}
+                                </Badge>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -837,6 +1212,12 @@ export default function Higienizacao() {
                 <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <span>
                   <strong>Validação WhatsApp:</strong> Verifique se os números possuem conta ativa no WhatsApp
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                <span>
+                  <strong>Filtro por Tags:</strong> Selecione leads específicos filtrando por tags para uma higienização mais direcionada
                 </span>
               </li>
             </ul>
