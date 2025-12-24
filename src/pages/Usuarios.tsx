@@ -289,7 +289,7 @@ const Usuarios = () => {
   // Handle sector creation
   const handleCreateSector = async () => {
     if (!sectorName.trim()) {
-      toast.error("Nome do setor é obrigatório");
+      toast.error("Nome do departamento é obrigatório");
       return;
     }
 
@@ -302,14 +302,14 @@ const Usuarios = () => {
 
       if (error) throw error;
 
-      toast.success("Setor criado com sucesso");
+      toast.success("Departamento criado com sucesso");
       setSectorName("");
       setSectorDescription("");
       setIsSectorDialogOpen(false);
       fetchSectors();
     } catch (error) {
       console.error("Error creating sector:", error);
-      toast.error("Erro ao criar setor");
+      toast.error("Erro ao criar departamento");
     }
   };
 
@@ -323,11 +323,11 @@ const Usuarios = () => {
 
       if (error) throw error;
 
-      toast.success("Setor removido com sucesso");
+      toast.success("Departamento removido com sucesso");
       fetchSectors();
     } catch (error) {
       console.error("Error deleting sector:", error);
-      toast.error("Erro ao remover setor");
+      toast.error("Erro ao remover departamento");
     }
   };
 
@@ -508,14 +508,14 @@ const Usuarios = () => {
         if (insertError) throw insertError;
       }
 
-      toast.success("Setores do usuário atualizados com sucesso");
+      toast.success("Departamentos do usuário atualizados com sucesso");
       setIsUserSectorDialogOpen(false);
       setEditingUser(null);
       setSelectedUserSectorIds([]);
       fetchUsers();
     } catch (error) {
       console.error("Error updating user sectors:", error);
-      toast.error("Erro ao atualizar setores do usuário");
+      toast.error("Erro ao atualizar departamentos do usuário");
     }
   };
 
@@ -575,7 +575,7 @@ const Usuarios = () => {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Usuários</h1>
             <p className="text-muted-foreground">
-              Gerencie usuários, funções e setores
+              Gerencie usuários, funções e departamentos
             </p>
           </div>
         </div>
@@ -622,7 +622,7 @@ const Usuarios = () => {
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Setores
+                Departamentos
               </CardTitle>
               <Building2 className="w-4 h-4 text-primary" />
             </CardHeader>
@@ -641,7 +641,7 @@ const Usuarios = () => {
             </TabsTrigger>
             <TabsTrigger value="sectors" className="gap-2">
               <Building2 className="w-4 h-4" />
-              Setores
+              Departamentos
             </TabsTrigger>
           </TabsList>
 
@@ -688,7 +688,7 @@ const Usuarios = () => {
                     <TableHead>Usuário</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Função</TableHead>
-                    <TableHead>Setores</TableHead>
+                    <TableHead>Departamentos</TableHead>
                     <TableHead>Criado em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -779,7 +779,7 @@ const Usuarios = () => {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => openUserSectorDialog(u)}>
                                   <Building2 className="w-4 h-4 mr-2" />
-                                  Gerenciar Setores
+                                  Gerenciar Departamentos
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleSendPasswordReset(u.email)}>
                                   <KeyRound className="w-4 h-4 mr-2" />
@@ -820,7 +820,7 @@ const Usuarios = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar setores..."
+                  placeholder="Buscar departamentos..."
                   className="pl-10 bg-muted/30 border-border"
                 />
               </div>
@@ -828,19 +828,19 @@ const Usuarios = () => {
                 <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="w-4 h-4" />
-                    Novo Setor
+                    Novo Departamento
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Criar Novo Setor</DialogTitle>
+                    <DialogTitle>Criar Novo Departamento</DialogTitle>
                     <DialogDescription>
-                      Crie um setor para organizar seus usuários
+                      Crie um departamento para organizar seus usuários
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                      <Label htmlFor="sectorName">Nome do Setor</Label>
+                      <Label htmlFor="sectorName">Nome do Departamento</Label>
                       <Input
                         id="sectorName"
                         placeholder="Ex: Vendas, Suporte, Financeiro"
@@ -852,7 +852,7 @@ const Usuarios = () => {
                       <Label htmlFor="sectorDescription">Descrição (opcional)</Label>
                       <Textarea
                         id="sectorDescription"
-                        placeholder="Descreva as responsabilidades deste setor"
+                        placeholder="Descreva as responsabilidades deste departamento"
                         value={sectorDescription}
                         onChange={(e) => setSectorDescription(e.target.value)}
                       />
@@ -862,7 +862,7 @@ const Usuarios = () => {
                     <Button variant="outline" onClick={() => setIsSectorDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleCreateSector}>Criar Setor</Button>
+                    <Button onClick={handleCreateSector}>Criar Departamento</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -874,14 +874,14 @@ const Usuarios = () => {
                   <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                     <Building2 className="w-12 h-12 text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium text-foreground mb-2">
-                      Nenhum setor criado
+                      Nenhum departamento criado
                     </h3>
                     <p className="text-muted-foreground mb-4">
-                      Crie setores para organizar seus usuários
+                      Crie departamentos para organizar seus usuários
                     </p>
                     <Button onClick={() => setIsSectorDialogOpen(true)} className="gap-2">
                       <Plus className="w-4 h-4" />
-                      Criar primeiro setor
+                      Criar primeiro departamento
                     </Button>
                   </CardContent>
                 </Card>
@@ -1013,16 +1013,16 @@ const Usuarios = () => {
         <Dialog open={isUserSectorDialogOpen} onOpenChange={setIsUserSectorDialogOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Atribuir Setores</DialogTitle>
+              <DialogTitle>Atribuir Departamentos</DialogTitle>
               <DialogDescription>
-                Selecione os setores para {editingUser?.display_name || editingUser?.email}
+                Selecione os departamentos para {editingUser?.display_name || editingUser?.email}
               </DialogDescription>
             </DialogHeader>
             <ScrollArea className="h-[300px] pr-4">
               <div className="space-y-2">
                 {sectors.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    Nenhum setor criado. Crie setores na aba "Setores" primeiro.
+                    Nenhum departamento criado. Crie departamentos na aba "Departamentos" primeiro.
                   </div>
                 ) : (
                   sectors.map((sector) => (
@@ -1071,7 +1071,7 @@ const Usuarios = () => {
                 Cancelar
               </Button>
               <Button onClick={handleSaveUserSectors} disabled={sectors.length === 0}>
-                Salvar ({selectedUserSectorIds.length} setor{selectedUserSectorIds.length !== 1 ? "es" : ""})
+                Salvar ({selectedUserSectorIds.length} departamento{selectedUserSectorIds.length !== 1 ? "s" : ""})
               </Button>
             </DialogFooter>
           </DialogContent>

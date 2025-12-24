@@ -67,6 +67,7 @@ const disparosSubmenu = [
 ];
 
 const personalizacaoSubmenu = [
+  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
   { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: "canAccessUsuarios" },
   { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessUsuarios" },
   { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessUsuarios" },
@@ -77,7 +78,6 @@ const bottomMenuItems = [
   { icon: ShoppingBag, label: "Loja", path: "/loja", permission: null },
   { icon: CreditCard, label: "Minha Assinatura", path: "/minha-assinatura", permission: null },
   { icon: Wallet, label: "Saldo", path: "/saldo", permission: null },
-  { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
   { icon: Shield, label: "Super Admin", path: "/super-admin", permission: "canAccessSuperAdmin" },
 ];
 
@@ -92,7 +92,7 @@ export function Sidebar() {
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
-  const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path);
+  const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
 
   // Close mobile menu on route change
   useEffect(() => {
