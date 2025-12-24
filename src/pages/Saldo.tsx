@@ -375,15 +375,15 @@ export default function Saldo() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg bg-muted/50">
                 <p className="text-sm text-muted-foreground">Marketing</p>
-                <p className="text-lg font-semibold">R$ 0,009 / mensagem</p>
+                <p className="text-lg font-semibold">R$ 0,007 / mensagem</p>
               </div>
               <div className="p-4 rounded-lg bg-muted/50">
                 <p className="text-sm text-muted-foreground">Utilitário</p>
-                <p className="text-lg font-semibold">R$ 0,009 / mensagem</p>
+                <p className="text-lg font-semibold">R$ 0,007 / mensagem</p>
               </div>
               <div className="p-4 rounded-lg bg-muted/50">
                 <p className="text-sm text-muted-foreground">Serviço</p>
-                <p className="text-lg font-semibold">R$ 0,009 / mensagem</p>
+                <p className="text-lg font-semibold">R$ 0,007 / mensagem</p>
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-4">
