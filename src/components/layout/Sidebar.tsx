@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutGrid, 
@@ -21,18 +21,24 @@ import {
   CreditCard,
   Ban,
   BookUser,
+  X,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useUnreadMessagesCount } from "@/hooks/useUnreadMessagesCount";
+import { useSidebarState } from "@/hooks/useSidebarState";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
@@ -62,7 +68,7 @@ const bottomMenuItems = [
 ];
 
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
   const [crmOpen, setCrmOpen] = useState(true);
   const [disparosOpen, setDisparosOpen] = useState(true);
   const location = useLocation();
@@ -71,6 +77,13 @@ export function Sidebar() {
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    if (isMobile) {
+      setMobileOpen(false);
+    }
+  }, [location.pathname, isMobile, setMobileOpen]);
 
   const handleNavClick = (e: React.MouseEvent, permission: string | null) => {
     if (permission === null || userRole.loading) {
@@ -86,6 +99,10 @@ export function Sidebar() {
       });
     }
   };
+
+  // In mobile, always show text (menu is full width when open)
+  // In desktop, show text only when not collapsed
+  const showText = isMobile || !collapsed;
 
   const renderMenuItem = (item: typeof menuItems[0], showBadge = false) => {
     const isActive = location.pathname === item.path;
@@ -116,15 +133,15 @@ export function Sidebar() {
         )}
       >
         <Icon className="w-5 h-5 shrink-0" />
-        {!collapsed && (
+        {showText && (
           <span className="text-sm font-medium flex-1">{item.label}</span>
         )}
-        {!collapsed && showBadge && item.path === "/whatsapp-chat" && unreadCount > 0 && (
+        {showText && showBadge && item.path === "/whatsapp-chat" && unreadCount > 0 && (
           <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs font-semibold">
             {unreadCount > 99 ? "99+" : unreadCount}
           </Badge>
         )}
-        {!collapsed && isLocked && (
+        {showText && isLocked && (
           <Lock className="w-3.5 h-3.5 text-muted-foreground" />
         )}
       </Link>
@@ -139,7 +156,7 @@ export function Sidebar() {
     Icon: React.ElementType,
     isActive: boolean
   ) => (
-    <Collapsible open={isOpen && !collapsed} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen && showText} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
         <button
           className={cn(
@@ -150,7 +167,7 @@ export function Sidebar() {
           )}
         >
           <Icon className="w-5 h-5 shrink-0" />
-          {!collapsed && (
+          {showText && (
             <>
               <span className="text-sm font-medium flex-1 text-left">{label}</span>
               {isOpen ? (
@@ -186,10 +203,10 @@ export function Sidebar() {
               )}
             >
               <ItemIcon className="w-4 h-4 shrink-0" />
-              {!collapsed && (
+              {showText && (
                 <span className="text-sm font-medium flex-1">{item.label}</span>
               )}
-              {!collapsed && isLocked && (
+              {showText && isLocked && (
                 <Lock className="w-3.5 h-3.5 text-muted-foreground" />
               )}
             </Link>
@@ -199,39 +216,73 @@ export function Sidebar() {
     </Collapsible>
   );
 
+  // Show sidebar based on mobile/desktop state
+  const showSidebar = isMobile ? mobileOpen : true;
+
   return (
-    <aside 
-      className={cn(
-        "fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-sidebar border-r border-sidebar-border transition-all duration-300 z-40",
-        collapsed ? "w-16" : "w-56"
+    <>
+      {/* Mobile overlay */}
+      {isMobile && mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden animate-fade-in"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
-    >
-      {/* Toggle */}
-      <div className="p-3 border-b border-sidebar-border">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full h-9 text-sidebar-muted hover:text-sidebar-foreground hover:bg-muted/30"
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
-      </div>
 
-      {/* Navigation */}
-      <nav className="p-2 space-y-1">
-        {/* Main menu items */}
-        {menuItems.map((item) => renderMenuItem(item, item.path === "/whatsapp-chat"))}
+      <aside 
+        className={cn(
+          "fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-sidebar border-r border-sidebar-border transition-all duration-300 z-50 flex flex-col",
+          // Desktop/tablet
+          !isMobile && (collapsed ? "w-16" : "w-56"),
+          // Mobile
+          isMobile && "w-64",
+          isMobile && (mobileOpen ? "translate-x-0" : "-translate-x-full")
+        )}
+      >
+        {/* Toggle */}
+        <div className="p-3 border-b border-sidebar-border flex items-center justify-between">
+          {isMobile ? (
+            <>
+              <span className="text-sm font-semibold text-sidebar-foreground">Menu</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileOpen(false)}
+                className="h-8 w-8 text-sidebar-muted hover:text-sidebar-foreground hover:bg-muted/30"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setCollapsed(!collapsed)}
+              className="w-full h-9 text-sidebar-muted hover:text-sidebar-foreground hover:bg-muted/30"
+              title={collapsed ? "Expandir menu" : "Recolher menu"}
+            >
+              {collapsed ? <PanelLeft className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
+            </Button>
+          )}
+        </div>
 
-        {/* CRM submenu */}
-        {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
+        {/* Navigation with scroll */}
+        <ScrollArea className="flex-1">
+          <nav className="p-2 space-y-1">
+            {/* Main menu items */}
+            {menuItems.map((item) => renderMenuItem(item, item.path === "/whatsapp-chat"))}
 
-        {/* Disparos submenu */}
-        {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
+            {/* CRM submenu */}
+            {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
 
-        {/* Bottom menu items */}
-        {bottomMenuItems.map((item) => renderMenuItem(item))}
-      </nav>
-    </aside>
+            {/* Disparos submenu */}
+            {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
+
+            {/* Bottom menu items */}
+            {bottomMenuItems.map((item) => renderMenuItem(item))}
+          </nav>
+        </ScrollArea>
+      </aside>
+    </>
   );
 }
