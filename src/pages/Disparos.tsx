@@ -16,7 +16,8 @@ import {
   Check,
   Shuffle,
   Timer,
-  Smartphone
+  Smartphone,
+  Eye
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
+import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
 
 interface Channel {
   id: string;
@@ -78,6 +81,12 @@ interface Campaign {
   failed_count: number;
   scheduled_at?: string | null;
   created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  min_interval?: number;
+  max_interval?: number;
+  team?: string | null;
+  chatbot_enabled?: boolean;
 }
 
 const statusConfig = {
@@ -96,6 +105,8 @@ const Disparos = () => {
   const [channelTemplateRelations, setChannelTemplateRelations] = useState<ChannelTemplate[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
@@ -389,6 +400,14 @@ const Disparos = () => {
     }
     toast.success("Campanha excluída");
     fetchData();
+  };
+
+  const handleViewDetails = (campaignId: string) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (campaign) {
+      setSelectedCampaign(campaign);
+      setShowDetailsDialog(true);
+    }
   };
 
   const stats = {
@@ -894,6 +913,9 @@ const Disparos = () => {
         </div>
       </div>
 
+      {/* Real-time Progress Bar */}
+      <CampaignProgressBar onViewDetails={handleViewDetails} />
+
       {/* Table */}
       <div className="bg-card rounded-lg border border-border overflow-hidden animate-slide-up">
         {loading ? (
@@ -965,7 +987,10 @@ const Disparos = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-card border-border">
-                          <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleViewDetails(campaign.id)}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            Ver detalhes
+                          </DropdownMenuItem>
                           <DropdownMenuItem>Duplicar</DropdownMenuItem>
                           {campaign.status === "running" && (
                             <DropdownMenuItem>Pausar</DropdownMenuItem>
@@ -986,6 +1011,13 @@ const Disparos = () => {
           </Table>
         )}
       </div>
+
+      {/* Campaign Details Dialog */}
+      <CampaignDetailsDialog
+        campaign={selectedCampaign}
+        open={showDetailsDialog}
+        onOpenChange={setShowDetailsDialog}
+      />
     </MainLayout>
   );
 };
