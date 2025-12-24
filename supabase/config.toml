@@ -17,3 +17,9 @@ verify_jwt = true
 
 [functions.meta-webhook]
 verify_jwt = false
+
+[functions.mercadopago-pix]
+verify_jwt = true
+
+[functions.mercadopago-webhook]
+verify_jwt = false
