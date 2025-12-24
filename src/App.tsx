@@ -35,6 +35,7 @@ import Feriados from "./pages/personalizacao/Feriados";
 import Departamentos from "./pages/personalizacao/Departamentos";
 import Tags from "./pages/personalizacao/Tags";
 import CamposPersonalizados from "./pages/personalizacao/CamposPersonalizados";
+import ContatoDetalhes from "./pages/ContatoDetalhes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -113,6 +114,7 @@ const App = () => (
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
           <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
+          <Route path="/leads/:id" element={<ProtectedRoute><ContatoDetalhes /></ProtectedRoute>} />
           <Route path="/carteira-clientes" element={<ProtectedRoute><CarteiraClientes /></ProtectedRoute>} />
           <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />

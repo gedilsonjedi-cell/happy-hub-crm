@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Users, 
   Search, 
@@ -12,7 +13,10 @@ import {
   Ban,
   Tag,
   X,
-  Check
+  Check,
+  Eye,
+  Edit,
+  Trash2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,14 +52,21 @@ import { cn } from "@/lib/utils";
 import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
 import { ImportLeadsDialog } from "@/components/leads/ImportLeadsDialog";
 import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
+import { EditLeadDialog } from "@/components/leads/EditLeadDialog";
+import { DeleteLeadDialog } from "@/components/leads/DeleteLeadDialog";
 
 interface Lead {
   id: string;
   name: string;
   phone: string;
   email: string | null;
+  document: string | null;
+  city: string | null;
+  state: string | null;
+  notes: string | null;
   status: string;
   tags: string[] | null;
+  custom_fields: Record<string, string> | null;
   created_at: string;
 }
 
@@ -77,10 +88,13 @@ const Leads = () => {
   const { user } = useAuth();
   const { organizationId } = useUserRole();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
   const [showTagFilterPopover, setShowTagFilterPopover] = useState(false);
@@ -110,7 +124,7 @@ const Leads = () => {
 
       const { data, error } = await supabase
         .from("leads")
-        .select("id, name, phone, email, status, tags, created_at")
+        .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
 
@@ -155,6 +169,20 @@ const Leads = () => {
   const handleOpenTagsDialog = (lead: Lead) => {
     setSelectedLead(lead);
     setShowTagsDialog(true);
+  };
+
+  const handleOpenEditDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowEditDialog(true);
+  };
+
+  const handleOpenDeleteDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowDeleteDialog(true);
+  };
+
+  const handleViewDetails = (lead: Lead) => {
+    navigate(`/leads/${lead.id}`);
   };
 
   const handleTagsUpdated = () => {
@@ -520,13 +548,18 @@ const Leads = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                        <DropdownMenuItem>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewDetails(lead)}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          Ver detalhes
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleOpenEditDialog(lead)}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleOpenTagsDialog(lead)}>
                           <Tag className="w-4 h-4 mr-2" />
                           Atribuir Tags
                         </DropdownMenuItem>
-                        <DropdownMenuItem>Iniciar conversa</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
                           onClick={() => handleAddToBlacklist(lead)}
@@ -535,7 +568,13 @@ const Leads = () => {
                           <Ban className="w-4 h-4 mr-2" />
                           Adicionar à Lista Negra
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleOpenDeleteDialog(lead)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -566,6 +605,21 @@ const Leads = () => {
         leadName={selectedLead?.name}
         leadPhone={selectedLead?.phone}
         currentTags={selectedLead?.tags || []}
+        onSuccess={handleTagsUpdated}
+      />
+
+      <EditLeadDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        lead={selectedLead}
+        onSuccess={handleTagsUpdated}
+      />
+
+      <DeleteLeadDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        leadId={selectedLead?.id || null}
+        leadName={selectedLead?.name || null}
         onSuccess={handleTagsUpdated}
       />
     </MainLayout>
