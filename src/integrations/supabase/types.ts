@@ -863,6 +863,7 @@ export type Database = {
           plan: string
           slug: string
           subscription_ends_at: string | null
+          subscription_paid_until: string | null
           subscription_started_at: string | null
           subscription_status: string
           updated_at: string
@@ -878,6 +879,7 @@ export type Database = {
           plan?: string
           slug: string
           subscription_ends_at?: string | null
+          subscription_paid_until?: string | null
           subscription_started_at?: string | null
           subscription_status?: string
           updated_at?: string
@@ -893,6 +895,7 @@ export type Database = {
           plan?: string
           slug?: string
           subscription_ends_at?: string | null
+          subscription_paid_until?: string | null
           subscription_started_at?: string | null
           subscription_status?: string
           updated_at?: string
@@ -1119,6 +1122,87 @@ export type Database = {
           },
         ]
       }
+      store_products: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number
+          product_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price?: number
+          product_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          product_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      store_purchases: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          organization_id: string
+          product_id: string
+          purchased_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          organization_id: string
+          product_id: string
+          purchased_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          organization_id?: string
+          product_id?: string
+          purchased_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_purchases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_purchases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "store_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_pricing: {
         Row: {
           base_price: number
@@ -1322,6 +1406,10 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      purchase_product: {
+        Args: { _organization_id: string; _product_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "supervisor" | "atendente" | "super_admin"
