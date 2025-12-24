@@ -9,11 +9,13 @@ import {
   Mail,
   Upload,
   Download,
-  Ban
+  Ban,
+  Tag
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -32,29 +34,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
+import { ImportLeadsDialog } from "@/components/leads/ImportLeadsDialog";
 
 interface Lead {
   id: string;
   name: string;
   phone: string;
-  email: string;
-  status: "new" | "contacted" | "qualified" | "converted" | "lost";
-  source: string;
-  createdAt: string;
+  email: string | null;
+  status: string;
+  tags: string[] | null;
+  created_at: string;
 }
 
-const mockLeads: Lead[] = [
-  { id: "1", name: "Maria Silva", phone: "+55 11 99999-1234", email: "maria@email.com", status: "new", source: "WhatsApp", createdAt: "2024-01-15" },
-  { id: "2", name: "João Santos", phone: "+55 21 98888-5678", email: "joao@email.com", status: "contacted", source: "Site", createdAt: "2024-01-14" },
-  { id: "3", name: "Ana Costa", phone: "+55 31 97777-9012", email: "ana@email.com", status: "qualified", source: "Indicação", createdAt: "2024-01-13" },
-  { id: "4", name: "Pedro Lima", phone: "+55 41 96666-3456", email: "pedro@email.com", status: "converted", source: "WhatsApp", createdAt: "2024-01-12" },
-  { id: "5", name: "Carla Mendes", phone: "+55 51 95555-7890", email: "carla@email.com", status: "lost", source: "Facebook", createdAt: "2024-01-11" },
-];
-
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
   new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/30" },
   contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/30" },
   qualified: { label: "Qualificado", className: "bg-blue-500/10 text-blue-400 border-blue-400/30" },
@@ -65,7 +62,28 @@ const statusConfig = {
 const Leads = () => {
   const { user } = useAuth();
   const { organizationId } = useUserRole();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ["leads", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, name, phone, email, status, tags, created_at")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as Lead[];
+    },
+    enabled: !!organizationId,
+  });
 
   const handleAddToBlacklist = async (lead: Lead) => {
     if (!user || !organizationId) {
@@ -99,11 +117,37 @@ const Leads = () => {
     }
   };
 
-  const filteredLeads = mockLeads.filter(lead => 
+  const handleOpenTagsDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowTagsDialog(true);
+  };
+
+  const handleTagsUpdated = () => {
+    queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+  };
+
+  const handleImportSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+  };
+
+  const filteredLeads = leads.filter(lead => 
     lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     lead.phone.includes(searchTerm) ||
-    lead.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (lead.email && lead.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const getStatusCounts = () => {
+    const counts: Record<string, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
+    leads.forEach(lead => {
+      const status = lead.status || "new";
+      if (counts[status] !== undefined) {
+        counts[status]++;
+      }
+    });
+    return counts;
+  };
+
+  const statusCounts = getStatusCounts();
 
   return (
     <MainLayout>
@@ -114,7 +158,12 @@ const Leads = () => {
           <p className="text-muted-foreground">Gerencie seus contatos</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2"
+            onClick={() => setShowImportDialog(true)}
+          >
             <Upload className="w-4 h-4" />
             Importar
           </Button>
@@ -154,7 +203,7 @@ const Leads = () => {
             className="bg-card rounded-lg p-4 border border-border text-center"
           >
             <p className="text-xl font-bold text-foreground">
-              {mockLeads.filter(l => l.status === key).length}
+              {statusCounts[key] || 0}
             </p>
             <Badge variant="outline" className={cn("text-xs mt-1", config.className)}>
               {config.label}
@@ -170,74 +219,132 @@ const Leads = () => {
             <TableRow className="border-border hover:bg-muted/30">
               <TableHead className="text-muted-foreground">Lead</TableHead>
               <TableHead className="text-muted-foreground">Contato</TableHead>
+              <TableHead className="text-muted-foreground">Tags</TableHead>
               <TableHead className="text-muted-foreground">Status</TableHead>
-              <TableHead className="text-muted-foreground">Origem</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredLeads.map((lead) => (
-              <TableRow 
-                key={lead.id}
-                className="border-border hover:bg-muted/20"
-              >
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="w-9 h-9">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
-                        {lead.name.split(" ").map(n => n[0]).join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium text-foreground">{lead.name}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Phone className="w-3 h-3" />
-                      {lead.phone}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Mail className="w-3 h-3" />
-                      {lead.email}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={cn("text-xs", statusConfig[lead.status].className)}>
-                    {statusConfig[lead.status].label}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-muted-foreground">{lead.source}</span>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                      <DropdownMenuItem>Editar</DropdownMenuItem>
-                      <DropdownMenuItem>Iniciar conversa</DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => handleAddToBlacklist(lead)}
-                        className="text-warning"
-                      >
-                        <Ban className="w-4 h-4 mr-2" />
-                        Adicionar à Lista Negra
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  Carregando...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : filteredLeads.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  {leads.length === 0 ? "Nenhum lead cadastrado" : "Nenhum lead encontrado"}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredLeads.map((lead) => (
+                <TableRow 
+                  key={lead.id}
+                  className="border-border hover:bg-muted/20"
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="w-9 h-9">
+                        <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+                          {lead.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium text-foreground">{lead.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Phone className="w-3 h-3" />
+                        {lead.phone}
+                      </div>
+                      {lead.email && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Mail className="w-3 h-3" />
+                          {lead.email}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1 max-w-48">
+                      {lead.tags && lead.tags.length > 0 ? (
+                        lead.tags.map((tag) => (
+                          <Badge 
+                            key={tag} 
+                            variant="outline" 
+                            className="text-xs bg-muted/50"
+                          >
+                            {tag}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "text-xs", 
+                        statusConfig[lead.status || "new"]?.className
+                      )}
+                    >
+                      {statusConfig[lead.status || "new"]?.label || lead.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
+                        <DropdownMenuItem>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleOpenTagsDialog(lead)}>
+                          <Tag className="w-4 h-4 mr-2" />
+                          Atribuir Tags
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>Iniciar conversa</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => handleAddToBlacklist(lead)}
+                          className="text-warning"
+                        >
+                          <Ban className="w-4 h-4 mr-2" />
+                          Adicionar à Lista Negra
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
+
+      {/* Dialogs */}
+      <ImportLeadsDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onSuccess={handleImportSuccess}
+      />
+
+      <AssignTagsDialog
+        open={showTagsDialog}
+        onOpenChange={setShowTagsDialog}
+        leadId={selectedLead?.id}
+        leadName={selectedLead?.name}
+        leadPhone={selectedLead?.phone}
+        currentTags={selectedLead?.tags || []}
+        onSuccess={handleTagsUpdated}
+      />
     </MainLayout>
   );
 };

@@ -29,7 +29,8 @@ import {
   Sparkles,
   AlertTriangle,
   Ban,
-  Briefcase
+  Briefcase,
+  Tag
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
 import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
+import { AssignTagsFromChatDialog } from "@/components/whatsapp/AssignTagsFromChatDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -159,6 +161,7 @@ const WhatsAppChat = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
+  const [showTagsDialog, setShowTagsDialog] = useState(false);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -1208,6 +1211,10 @@ const WhatsAppChat = () => {
                         <Briefcase className="w-4 h-4 mr-2" />
                         Adicionar à Carteira
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowTagsDialog(true)}>
+                        <Tag className="w-4 h-4 mr-2" />
+                        Atribuir Tags
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleResolve(selectedConversation.phone)}>
                         <CheckCheck className="w-4 h-4 mr-2" />
@@ -1396,6 +1403,16 @@ const WhatsAppChat = () => {
           <AddToPortfolioDialog
             open={showPortfolioDialog}
             onOpenChange={setShowPortfolioDialog}
+            contactPhone={selectedConversation.phone}
+            contactName={selectedConversation.name}
+          />
+        )}
+
+        {/* Tags Dialog */}
+        {selectedConversation && (
+          <AssignTagsFromChatDialog
+            open={showTagsDialog}
+            onOpenChange={setShowTagsDialog}
             contactPhone={selectedConversation.phone}
             contactName={selectedConversation.name}
           />
