@@ -231,7 +231,7 @@ export default function Saldo() {
                   <p className="text-3xl font-bold text-red-500">
                     {formatCurrency(balance?.total_spent || 0)}
                   </p>
-                  <p className="text-sm text-muted-foreground">Em disparos</p>
+                  <p className="text-sm text-muted-foreground">Em mensagens</p>
                 </div>
               )}
             </CardContent>
@@ -247,7 +247,7 @@ export default function Saldo() {
                 <div>
                   <p className="font-medium text-yellow-600">Saldo baixo</p>
                   <p className="text-sm text-muted-foreground">
-                    Seu saldo está baixo. Considere adicionar mais créditos para continuar enviando mensagens.
+                    Seu saldo está baixo. Considere adicionar mais créditos para continuar trocando mensagens.
                   </p>
                 </div>
               </div>
@@ -264,7 +264,7 @@ export default function Saldo() {
                 <div>
                   <p className="font-medium text-destructive">Saldo insuficiente</p>
                   <p className="text-sm text-muted-foreground">
-                    Você não possui saldo para enviar mensagens. Adicione créditos para continuar.
+                    Você não possui saldo para trocar mensagens. Adicione créditos para continuar.
                   </p>
                 </div>
               </div>
@@ -294,7 +294,7 @@ export default function Saldo() {
               <div className="text-center py-8 text-muted-foreground">
                 <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>Nenhuma transação encontrada</p>
-                <p className="text-sm">As transações aparecerão aqui quando você adicionar créditos ou enviar mensagens</p>
+                <p className="text-sm">As transações aparecerão aqui quando você adicionar créditos ou trocar mensagens</p>
               </div>
             ) : (
               <div className="rounded-md border">
@@ -320,7 +320,7 @@ export default function Saldo() {
                         <TableCell>
                           <span className="text-sm">
                             {transaction.description || 
-                              (transaction.type === "credit" ? "Adição de créditos" : "Envio de mensagens")}
+                              (transaction.type === "credit" ? "Adição de créditos" : "Troca de mensagens")}
                           </span>
                           {transaction.reference_type && (
                             <span className="text-xs text-muted-foreground block">
@@ -373,7 +373,7 @@ export default function Saldo() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-4">
-              * O valor é debitado automaticamente do seu saldo a cada mensagem enviada com sucesso.
+              * O valor é debitado automaticamente do seu saldo a cada mensagem enviada ou recebida com sucesso.
             </p>
           </CardContent>
         </Card>
