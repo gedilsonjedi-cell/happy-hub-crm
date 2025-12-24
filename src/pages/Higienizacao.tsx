@@ -8,6 +8,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -128,6 +136,12 @@ export default function Higienizacao() {
   } | null>(null);
   const [selectedPhoneColumn, setSelectedPhoneColumn] = useState<number | null>(null);
   const [selectedNameColumn, setSelectedNameColumn] = useState<number | null>(null);
+  
+  // Save leads dialog states
+  const [showSaveLeadsDialog, setShowSaveLeadsDialog] = useState(false);
+  const [selectedTagsForSave, setSelectedTagsForSave] = useState<string[]>([]);
+  const [isSavingLeads, setIsSavingLeads] = useState(false);
+  const [saveOnlyWhatsApp, setSaveOnlyWhatsApp] = useState(false);
 
   // Fetch user's organization
   const { data: profile } = useQuery({
@@ -678,39 +692,72 @@ export default function Higienizacao() {
     toast.success("Arquivo exportado com sucesso!");
   };
 
-  // Save valid numbers as leads
+  // Count valid entries for saving (including whatsapp_valid)
+  const validEntriesForSave = useMemo(() => {
+    return phoneEntries.filter(
+      (e) => (e.status === "valid" || e.status === "whatsapp_valid") && e.source === "csv"
+    );
+  }, [phoneEntries]);
+
+  const whatsappValidEntriesForSave = useMemo(() => {
+    return phoneEntries.filter(
+      (e) => e.status === "whatsapp_valid" && e.source === "csv"
+    );
+  }, [phoneEntries]);
+
+  // Open save leads dialog
+  const openSaveLeadsDialog = (onlyWhatsApp: boolean = false) => {
+    setSaveOnlyWhatsApp(onlyWhatsApp);
+    setSelectedTagsForSave([]);
+    setShowSaveLeadsDialog(true);
+  };
+
+  // Save valid numbers as leads with optional tags
   const saveValidAsLeads = async () => {
     if (!profile?.organization_id || !user?.id) {
       toast.error("Erro: usuário não autenticado");
       return;
     }
     
-    const validEntries = phoneEntries.filter(
-      (e) => e.status === "valid" && e.source === "csv"
-    );
+    setIsSavingLeads(true);
     
-    if (validEntries.length === 0) {
+    // Filter based on save mode
+    const entriesToSave = saveOnlyWhatsApp 
+      ? whatsappValidEntriesForSave 
+      : validEntriesForSave;
+    
+    if (entriesToSave.length === 0) {
       toast.error("Nenhum número válido para salvar");
+      setIsSavingLeads(false);
       return;
     }
     
-    const leadsToInsert = validEntries.map((e) => ({
+    const leadsToInsert = entriesToSave.map((e) => ({
       phone: e.formattedPhone,
       name: e.name || `Lead ${e.formattedPhone}`,
       user_id: user.id,
       organization_id: profile.organization_id,
       status: "novo",
+      tags: selectedTagsForSave.length > 0 ? selectedTagsForSave : null,
     }));
     
     const { error } = await supabase.from("leads").insert(leadsToInsert);
     
     if (error) {
       toast.error("Erro ao salvar leads: " + error.message);
+      setIsSavingLeads(false);
       return;
     }
     
-    setLeadsSavedCount((prev) => prev + validEntries.length);
-    toast.success(`${validEntries.length} leads salvos com sucesso!`);
+    setLeadsSavedCount((prev) => prev + entriesToSave.length);
+    setShowSaveLeadsDialog(false);
+    setSelectedTagsForSave([]);
+    setIsSavingLeads(false);
+    
+    const tagInfo = selectedTagsForSave.length > 0 
+      ? ` com ${selectedTagsForSave.length} tag(s)` 
+      : "";
+    toast.success(`${entriesToSave.length} leads salvos com sucesso${tagInfo}!`);
     refetchLeads();
   };
 
@@ -1332,13 +1379,24 @@ export default function Higienizacao() {
                       
                       <Button
                         variant="outline"
-                        onClick={saveValidAsLeads}
-                        disabled={stats.valid === 0 || phoneEntries.every((e) => e.source === "leads")}
+                        onClick={() => openSaveLeadsDialog(false)}
+                        disabled={validEntriesForSave.length === 0}
                         className="gap-2"
                       >
                         <UserPlus className="w-4 h-4" />
-                        Salvar Válidos como Leads
+                        Salvar Válidos ({validEntriesForSave.length})
                       </Button>
+                      
+                      {whatsappValidEntriesForSave.length > 0 && (
+                        <Button
+                          variant="outline"
+                          onClick={() => openSaveLeadsDialog(true)}
+                          className="gap-2 border-green-500 text-green-600 hover:bg-green-50"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          Salvar só WhatsApp ({whatsappValidEntriesForSave.length})
+                        </Button>
+                      )}
                       
                       <Button
                         variant="destructive"
@@ -1933,6 +1991,92 @@ export default function Higienizacao() {
             </ul>
           </CardContent>
         </Card>
+
+        {/* Save Leads Dialog with Tag Selection */}
+        <Dialog open={showSaveLeadsDialog} onOpenChange={setShowSaveLeadsDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5" />
+                Salvar Leads
+              </DialogTitle>
+              <DialogDescription>
+                {saveOnlyWhatsApp 
+                  ? `Você está salvando ${whatsappValidEntriesForSave.length} leads com WhatsApp verificado.`
+                  : `Você está salvando ${validEntriesForSave.length} leads válidos.`
+                }
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Deseja adicionar tags aos leads? (opcional)
+                </label>
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-auto p-2 border rounded-md">
+                  {availableTags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma tag disponível</p>
+                  ) : (
+                    availableTags.map((tag) => (
+                      <Badge
+                        key={tag.id}
+                        variant={selectedTagsForSave.includes(tag.name) ? "default" : "outline"}
+                        className="cursor-pointer transition-colors"
+                        style={
+                          selectedTagsForSave.includes(tag.name)
+                            ? { backgroundColor: tag.color || undefined }
+                            : { borderColor: tag.color || undefined, color: tag.color || undefined }
+                        }
+                        onClick={() => {
+                          setSelectedTagsForSave((prev) =>
+                            prev.includes(tag.name)
+                              ? prev.filter((t) => t !== tag.name)
+                              : [...prev, tag.name]
+                          );
+                        }}
+                      >
+                        <Tag className="w-3 h-3 mr-1" />
+                        {tag.name}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+                {selectedTagsForSave.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {selectedTagsForSave.length} tag(s) selecionada(s): {selectedTagsForSave.join(", ")}
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowSaveLeadsDialog(false)}
+                disabled={isSavingLeads}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={saveValidAsLeads}
+                disabled={isSavingLeads}
+                className="gap-2"
+              >
+                {isSavingLeads ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Salvar {saveOnlyWhatsApp ? whatsappValidEntriesForSave.length : validEntriesForSave.length} Leads
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
