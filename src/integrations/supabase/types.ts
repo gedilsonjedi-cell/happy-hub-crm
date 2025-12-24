@@ -343,6 +343,7 @@ export type Database = {
           provider: string
           updated_at: string
           user_id: string
+          webhook_verify_token: string | null
         }
         Insert: {
           access_token?: string | null
@@ -356,6 +357,7 @@ export type Database = {
           provider?: string
           updated_at?: string
           user_id: string
+          webhook_verify_token?: string | null
         }
         Update: {
           access_token?: string | null
@@ -369,6 +371,7 @@ export type Database = {
           provider?: string
           updated_at?: string
           user_id?: string
+          webhook_verify_token?: string | null
         }
         Relationships: [
           {
