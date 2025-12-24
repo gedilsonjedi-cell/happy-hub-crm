@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Shield,
   Lock,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ const menuItems = [
   { icon: Send, label: "Disparos", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: null },
+  { icon: Wallet, label: "Saldo", path: "/saldo", permission: null },
   { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
   { icon: Shield, label: "Super Admin", path: "/super-admin", permission: "canAccessSuperAdmin" },
 ];
