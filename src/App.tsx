@@ -1,12 +1,14 @@
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
 import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
+import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
 import Leads from "./pages/Leads";
@@ -34,6 +36,34 @@ const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+// Pages that are allowed even when subscription is expired
+const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password"];
+
+// Component to check subscription and redirect if expired
+const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const { needsPayment, isLoading } = useSubscription();
+
+  // Allow access to certain pages even when expired
+  const isAllowedPage = ALLOWED_PAGES_WHEN_EXPIRED.some(page => 
+    location.pathname === page || location.pathname.startsWith(page + "/")
+  );
+
+  // Super admin routes are always allowed
+  const isSuperAdminRoute = location.pathname.startsWith("/super-admin");
+
+  if (isLoading) {
+    return <>{children}</>;
+  }
+
+  // Redirect to store if subscription expired and not on allowed page
+  if (needsPayment && !isAllowedPage && !isSuperAdminRoute) {
+    return <Navigate to="/loja" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
 
@@ -53,7 +83,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
-          {children}
+          <SubscriptionGuard>
+            {children}
+          </SubscriptionGuard>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
@@ -72,7 +104,6 @@ const App = () => (
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
           <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-          
           <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
