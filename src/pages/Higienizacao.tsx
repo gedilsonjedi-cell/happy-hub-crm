@@ -1653,11 +1653,11 @@ export default function Higienizacao() {
           <TabsContent value="history" className="space-y-4">
             {/* Summary Statistics */}
             {historyStats && (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <div className="text-center">
-                      <p className="text-2xl font-bold">{historyStats.totalProcessed}</p>
+                      <p className="text-2xl font-bold">{historyStats.totalProcessed.toLocaleString('pt-BR')}</p>
                       <p className="text-xs text-muted-foreground">Total Processados</p>
                     </div>
                   </CardContent>
@@ -1665,7 +1665,7 @@ export default function Higienizacao() {
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-success">{historyStats.totalValid}</p>
+                      <p className="text-2xl font-bold text-success">{historyStats.totalValid.toLocaleString('pt-BR')}</p>
                       <p className="text-xs text-muted-foreground">Total Válidos</p>
                     </div>
                   </CardContent>
@@ -1673,7 +1673,7 @@ export default function Higienizacao() {
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-destructive">{historyStats.totalInvalid}</p>
+                      <p className="text-2xl font-bold text-destructive">{historyStats.totalInvalid.toLocaleString('pt-BR')}</p>
                       <p className="text-xs text-muted-foreground">Total Inválidos</p>
                     </div>
                   </CardContent>
@@ -1689,6 +1689,14 @@ export default function Higienizacao() {
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">+{historyStats.totalSaved.toLocaleString('pt-BR')}</p>
+                      <p className="text-xs text-muted-foreground">Leads Salvos</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="text-center">
                       <p className="text-2xl font-bold">{hygieneHistory.length}</p>
                       <p className="text-xs text-muted-foreground">Higienizações</p>
                     </div>
@@ -1697,13 +1705,80 @@ export default function Higienizacao() {
               </div>
             )}
 
+            {/* History Trend Chart */}
+            {hygieneHistory.length > 1 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    Tendência de Higienizações
+                  </CardTitle>
+                  <CardDescription>Últimas higienizações realizadas</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={hygieneHistory.slice(0, 10).reverse().map((h) => ({
+                        data: format(new Date(h.created_at), "dd/MM", { locale: ptBR }),
+                        válidos: h.valid_count,
+                        inválidos: h.invalid_count,
+                        duplicados: h.duplicate_count,
+                        total: h.total_numbers,
+                        taxa: h.total_numbers > 0 ? Math.round((h.valid_count / h.total_numbers) * 100) : 0,
+                      }))}>
+                        <XAxis dataKey="data" fontSize={12} />
+                        <YAxis fontSize={12} />
+                        <RechartsTooltip 
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                          labelStyle={{ color: 'hsl(var(--foreground))' }}
+                          formatter={(value: number, name: string) => [value.toLocaleString('pt-BR'), name]}
+                        />
+                        <Legend />
+                        <Bar dataKey="válidos" fill="#22c55e" name="Válidos" />
+                        <Bar dataKey="inválidos" fill="#ef4444" name="Inválidos" />
+                        <Bar dataKey="duplicados" fill="#f97316" name="Duplicados" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* History Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Histórico de Higienizações</CardTitle>
-                <CardDescription>
-                  Últimas 50 higienizações realizadas
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Histórico de Higienizações</CardTitle>
+                    <CardDescription>
+                      Últimas 50 higienizações realizadas
+                    </CardDescription>
+                  </div>
+                  {hygieneHistory.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const csvContent = [
+                          "Data,Origem,Total,Válidos,Inválidos,Duplicados,Lista Negra,Salvos,Excluídos,Taxa de Aprovação",
+                          ...hygieneHistory.map((h) => 
+                            `"${format(new Date(h.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}","${h.source_type === 'csv' ? 'Arquivo' : 'Leads'}",${h.total_numbers},${h.valid_count},${h.invalid_count},${h.duplicate_count},${h.blacklisted_count},${h.leads_saved},${h.leads_deleted},${h.total_numbers > 0 ? Math.round((h.valid_count / h.total_numbers) * 100) : 0}%`
+                          ),
+                        ].join("\n");
+                        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                        const link = document.createElement("a");
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `historico_higienizacao_${new Date().toISOString().split("T")[0]}.csv`;
+                        link.click();
+                        toast.success("Histórico exportado com sucesso!");
+                      }}
+                      className="gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      Exportar Histórico
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {hygieneHistory.length === 0 ? (
@@ -1724,56 +1799,70 @@ export default function Higienizacao() {
                           <TableHead className="text-center">Inválidos</TableHead>
                           <TableHead className="text-center">Duplicados</TableHead>
                           <TableHead className="text-center">Lista Negra</TableHead>
+                          <TableHead className="text-center">Taxa</TableHead>
                           <TableHead className="text-center">Salvos</TableHead>
                           <TableHead className="text-center">Excluídos</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {hygieneHistory.map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell>
-                              {format(new Date(record.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {record.source_type === "csv" ? "Arquivo" : "Leads"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-center font-medium">
-                              {record.total_numbers}
-                            </TableCell>
-                            <TableCell className="text-center text-success">
-                              {record.valid_count}
-                            </TableCell>
-                            <TableCell className="text-center text-destructive">
-                              {record.invalid_count}
-                            </TableCell>
-                            <TableCell className="text-center text-warning">
-                              {record.duplicate_count}
-                            </TableCell>
-                            <TableCell className="text-center text-muted-foreground">
-                              {record.blacklisted_count}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {record.leads_saved > 0 ? (
-                                <Badge variant="outline" className="bg-success/10 text-success border-success/30">
-                                  +{record.leads_saved}
+                        {hygieneHistory.map((record) => {
+                          const approvalRate = record.total_numbers > 0 
+                            ? Math.round((record.valid_count / record.total_numbers) * 100) 
+                            : 0;
+                          return (
+                            <TableRow key={record.id}>
+                              <TableCell>
+                                {format(new Date(record.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">
+                                  {record.source_type === "csv" ? "Arquivo" : "Leads"}
                                 </Badge>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {record.leads_deleted > 0 ? (
-                                <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
-                                  -{record.leads_deleted}
+                              </TableCell>
+                              <TableCell className="text-center font-medium">
+                                {record.total_numbers.toLocaleString('pt-BR')}
+                              </TableCell>
+                              <TableCell className="text-center text-success">
+                                {record.valid_count.toLocaleString('pt-BR')}
+                              </TableCell>
+                              <TableCell className="text-center text-destructive">
+                                {record.invalid_count.toLocaleString('pt-BR')}
+                              </TableCell>
+                              <TableCell className="text-center text-warning">
+                                {record.duplicate_count.toLocaleString('pt-BR')}
+                              </TableCell>
+                              <TableCell className="text-center text-muted-foreground">
+                                {record.blacklisted_count.toLocaleString('pt-BR')}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge 
+                                  variant={approvalRate >= 70 ? "default" : approvalRate >= 40 ? "secondary" : "destructive"}
+                                  className={approvalRate >= 70 ? "bg-success text-success-foreground" : ""}
+                                >
+                                  {approvalRate}%
                                 </Badge>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {record.leads_saved > 0 ? (
+                                  <Badge variant="outline" className="bg-success/10 text-success border-success/30">
+                                    +{record.leads_saved}
+                                  </Badge>
+                                ) : (
+                                  "-"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {record.leads_deleted > 0 ? (
+                                  <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                                    -{record.leads_deleted}
+                                  </Badge>
+                                ) : (
+                                  "-"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
