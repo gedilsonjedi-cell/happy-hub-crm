@@ -8,7 +8,7 @@ interface BalanceIndicatorProps {
 }
 
 export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps) {
-  const { currentBalance, isLoading } = useOrganizationBalance();
+  const { balance, isLoading } = useOrganizationBalance();
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -26,6 +26,8 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
     );
   }
 
+  const totalCredits = balance?.total_credits_added ?? 0;
+  const currentBalance = balance?.balance ?? 0;
   const isLowBalance = currentBalance < 5;
   const hasNoBalance = currentBalance <= 0;
 
@@ -42,18 +44,18 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
             ) : (
               <Wallet className="h-3 w-3 mr-1" />
             )}
-            {showDetails ? formatCurrency(currentBalance) : (
-              currentBalance > 0 ? formatCurrency(currentBalance) : "Sem saldo"
+            {showDetails ? formatCurrency(totalCredits) : (
+              totalCredits > 0 ? formatCurrency(totalCredits) : "Sem recarga"
             )}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
           <p>
             {hasNoBalance 
-              ? "Sem saldo para enviar mensagens. Entre em contato para recarregar."
+              ? "Sem saldo para trocar mensagens. Entre em contato para recarregar."
               : isLowBalance
-              ? "Saldo baixo. Considere recarregar."
-              : "Saldo disponível para envio de mensagens"}
+              ? `Saldo baixo: ${formatCurrency(currentBalance)}. Considere recarregar.`
+              : `Saldo disponível: ${formatCurrency(currentBalance)}`}
           </p>
         </TooltipContent>
       </Tooltip>
