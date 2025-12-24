@@ -28,7 +28,8 @@ import {
   CheckCircle2,
   Sparkles,
   AlertTriangle,
-  Ban
+  Ban,
+  Briefcase
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
+import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,6 +158,7 @@ const WhatsAppChat = () => {
   const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
+  const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -1201,6 +1204,11 @@ const WhatsAppChat = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setShowPortfolioDialog(true)}>
+                        <Briefcase className="w-4 h-4 mr-2" />
+                        Adicionar à Carteira
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleResolve(selectedConversation.phone)}>
                         <CheckCheck className="w-4 h-4 mr-2" />
                         Marcar como resolvido
@@ -1382,6 +1390,16 @@ const WhatsAppChat = () => {
             `${m.direction === 'inbound' ? (m.sender_name || 'Cliente') : 'Atendente'}: ${m.content || '[mídia]'}`
           ).join('\n')}
         />
+
+        {/* Portfolio Dialog */}
+        {selectedConversation && (
+          <AddToPortfolioDialog
+            open={showPortfolioDialog}
+            onOpenChange={setShowPortfolioDialog}
+            contactPhone={selectedConversation.phone}
+            contactName={selectedConversation.name}
+          />
+        )}
       </div>
     </MainLayout>
   );
