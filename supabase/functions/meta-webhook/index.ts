@@ -10,6 +10,149 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// Helper function to check if currently within business hours
+async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: boolean; awayMessage: string | null }> {
+  // Get current date/time in Brazil timezone (most common for this app)
+  const now = new Date();
+  const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const dayOfWeek = brazilTime.getDay(); // 0 = Sunday, 6 = Saturday
+  const currentTime = brazilTime.toTimeString().slice(0, 5); // HH:MM format
+
+  // Check business hours for today
+  const { data: businessHour } = await supabase
+    .from('business_hours')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('day_of_week', dayOfWeek)
+    .single();
+
+  // If no business hours configured, consider as always open (optional feature)
+  if (!businessHour) {
+    console.log('No business hours configured for day', dayOfWeek, '- skipping check');
+    return { isOpen: true, awayMessage: null };
+  }
+
+  // If day is not active, check for away message
+  if (!businessHour.is_active) {
+    const { data: awayConfig } = await supabase
+      .from('away_message_config')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (awayConfig?.is_enabled && awayConfig?.message) {
+      return { isOpen: false, awayMessage: awayConfig.message };
+    }
+    return { isOpen: false, awayMessage: null };
+  }
+
+  // Check if current time is within business hours
+  const startTime = businessHour.start_time.slice(0, 5);
+  const endTime = businessHour.end_time.slice(0, 5);
+  
+  const isOpen = currentTime >= startTime && currentTime <= endTime;
+
+  if (!isOpen) {
+    const { data: awayConfig } = await supabase
+      .from('away_message_config')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (awayConfig?.is_enabled && awayConfig?.message) {
+      return { isOpen: false, awayMessage: awayConfig.message };
+    }
+  }
+
+  return { isOpen, awayMessage: null };
+}
+
+// Helper function to check if today is a holiday
+async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; awayMessage: string | null }> {
+  const now = new Date();
+  const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const today = brazilTime.toISOString().slice(0, 10); // YYYY-MM-DD
+  const monthDay = today.slice(5); // MM-DD for recurring check
+
+  // Check for exact date match
+  const { data: exactHoliday } = await supabase
+    .from('holidays')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('date', today)
+    .single();
+
+  if (exactHoliday) {
+    console.log('Today is a holiday:', exactHoliday.name);
+    const { data: awayConfig } = await supabase
+      .from('away_message_config')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (awayConfig?.is_enabled && awayConfig?.message) {
+      return { isHoliday: true, awayMessage: awayConfig.message };
+    }
+    return { isHoliday: true, awayMessage: null };
+  }
+
+  // Check for recurring holidays (same month-day every year)
+  const { data: holidays } = await supabase
+    .from('holidays')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('is_recurring', true);
+
+  const recurringMatch = holidays?.find(h => h.date.slice(5) === monthDay);
+  
+  if (recurringMatch) {
+    console.log('Today is a recurring holiday:', recurringMatch.name);
+    const { data: awayConfig } = await supabase
+      .from('away_message_config')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (awayConfig?.is_enabled && awayConfig?.message) {
+      return { isHoliday: true, awayMessage: awayConfig.message };
+    }
+    return { isHoliday: true, awayMessage: null };
+  }
+
+  return { isHoliday: false, awayMessage: null };
+}
+
+// Helper function to send WhatsApp message via Meta API
+async function sendWhatsAppMessage(phoneNumberId: string, accessToken: string, recipientPhone: string, message: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: recipientPhone,
+        type: 'text',
+        text: { body: message },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Error sending away message:', errorBody);
+      return false;
+    }
+
+    console.log('Away message sent successfully to:', recipientPhone);
+    return true;
+  } catch (error) {
+    console.error('Error sending away message:', error);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   
@@ -212,6 +355,35 @@ Deno.serve(async (req) => {
           console.error('Error storing message:', insertError);
         } else {
           console.log('Message stored successfully:', messageId);
+
+          // Check business hours and holidays for away message (only if organization configured)
+          if (channel.organization_id && channel.access_token && channel.app_name) {
+            // First check if it's a holiday
+            const holidayCheck = await isHoliday(channel.organization_id);
+            
+            if (holidayCheck.isHoliday && holidayCheck.awayMessage) {
+              console.log('Sending holiday away message');
+              await sendWhatsAppMessage(
+                channel.app_name, // phone_number_id
+                channel.access_token,
+                senderPhone,
+                holidayCheck.awayMessage
+              );
+            } else if (!holidayCheck.isHoliday) {
+              // Not a holiday, check business hours
+              const businessCheck = await isWithinBusinessHours(channel.organization_id);
+              
+              if (!businessCheck.isOpen && businessCheck.awayMessage) {
+                console.log('Sending outside business hours away message');
+                await sendWhatsAppMessage(
+                  channel.app_name,
+                  channel.access_token,
+                  senderPhone,
+                  businessCheck.awayMessage
+                );
+              }
+            }
+          }
         }
 
         // Check if sender is a lead, if not create one
