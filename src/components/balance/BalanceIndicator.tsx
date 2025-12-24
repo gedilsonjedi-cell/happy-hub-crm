@@ -1,4 +1,4 @@
-import { Wallet, AlertTriangle } from "lucide-react";
+import { CreditCard, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
@@ -20,7 +20,7 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
   if (isLoading) {
     return (
       <Badge variant="outline" className="animate-pulse">
-        <Wallet className="h-3 w-3 mr-1" />
+        <CreditCard className="h-3 w-3 mr-1" />
         ...
       </Badge>
     );
@@ -28,6 +28,7 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
 
   const totalCredits = balance?.total_credits_added ?? 0;
   const currentBalance = balance?.balance ?? 0;
+  const totalSpent = balance?.total_spent ?? 0;
   const isLowBalance = currentBalance < 5;
   const hasNoBalance = currentBalance <= 0;
 
@@ -42,21 +43,18 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
             {hasNoBalance ? (
               <AlertTriangle className="h-3 w-3 mr-1" />
             ) : (
-              <Wallet className="h-3 w-3 mr-1" />
+              <CreditCard className="h-3 w-3 mr-1" />
             )}
-            {showDetails ? formatCurrency(totalCredits) : (
-              totalCredits > 0 ? formatCurrency(totalCredits) : "Sem recarga"
-            )}
+            {formatCurrency(totalCredits)}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
-          <p>
-            {hasNoBalance 
-              ? "Sem saldo para trocar mensagens. Entre em contato para recarregar."
-              : isLowBalance
-              ? `Saldo baixo: ${formatCurrency(currentBalance)}. Considere recarregar.`
-              : `Saldo disponível: ${formatCurrency(currentBalance)}`}
-          </p>
+          <div className="space-y-1">
+            <p className="font-semibold">Recarga para Mensagens</p>
+            <p>Total recarregado: {formatCurrency(totalCredits)}</p>
+            <p>Saldo disponível: {formatCurrency(currentBalance)}</p>
+            <p>Total utilizado: {formatCurrency(totalSpent)}</p>
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
