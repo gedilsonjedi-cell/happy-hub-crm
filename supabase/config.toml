@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.campaign-dispatch]
 verify_jwt = true
+
+[functions.zapi-validate-batch]
+verify_jwt = true
