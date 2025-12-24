@@ -288,13 +288,19 @@ export function AddLeadDialog({ open, onOpenChange, onSuccess }: AddLeadDialogPr
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone *</Label>
-              <Input
-                id="phone"
-                value={phone}
-                onChange={handlePhoneChange}
-                placeholder="(11) 99999-9999"
-                required
-              />
+              <div className="flex">
+                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
+                  +55
+                </span>
+                <Input
+                  id="phone"
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  placeholder="(11) 99999-9999"
+                  className="rounded-l-none"
+                  required
+                />
+              </div>
             </div>
           </div>
 
