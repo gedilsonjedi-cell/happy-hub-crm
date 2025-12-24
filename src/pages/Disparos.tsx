@@ -298,8 +298,7 @@ const Disparos = () => {
       }
     }
 
-    // Create campaign - using average of min/max for dispatch_interval
-    const avgInterval = Math.round((parseInt(formData.minInterval) + parseInt(formData.maxInterval)) / 2);
+    // Create campaign with min/max intervals
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
       .insert({
@@ -307,7 +306,9 @@ const Disparos = () => {
         name: formData.campaignName,
         team: formData.team || null,
         chatbot_enabled: formData.chatbot === "enabled",
-        dispatch_interval: avgInterval,
+        dispatch_interval: parseInt(formData.minInterval), // Keep for backwards compatibility
+        min_interval: parseInt(formData.minInterval),
+        max_interval: parseInt(formData.maxInterval),
         use_unified_template: useUnifiedTemplate,
         unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
         status: formData.startTime === "now" ? "running" : "scheduled",
@@ -317,6 +318,7 @@ const Disparos = () => {
 
     if (campaignError) {
       toast.error("Erro ao criar campanha");
+      console.error("Campaign creation error:", campaignError);
       return;
     }
 
@@ -337,7 +339,28 @@ const Disparos = () => {
       return;
     }
 
-    toast.success("Campanha criada com sucesso!");
+    // If starting now, trigger the campaign dispatch
+    if (formData.startTime === "now") {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const response = await supabase.functions.invoke('campaign-dispatch', {
+          body: { campaignId: campaign.id, action: 'start' }
+        });
+        
+        if (response.error) {
+          console.error("Dispatch error:", response.error);
+          toast.warning("Campanha criada, mas houve um erro ao iniciar o disparo");
+        } else {
+          toast.success("Campanha iniciada! Os disparos serão realizados com cadência aleatória.");
+        }
+      } catch (dispatchError) {
+        console.error("Error triggering dispatch:", dispatchError);
+        toast.warning("Campanha criada, mas houve um erro ao iniciar o disparo");
+      }
+    } else {
+      toast.success("Campanha agendada com sucesso!");
+    }
+
     setShowCreateForm(false);
     resetForm();
     fetchData();
