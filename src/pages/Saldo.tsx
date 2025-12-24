@@ -387,7 +387,7 @@ export default function Saldo() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-4">
-              * O valor é debitado automaticamente do seu saldo a cada mensagem enviada ou recebida com sucesso.
+              * O valor é debitado automaticamente do seu saldo a cada mensagem enviada com sucesso.
             </p>
           </CardContent>
         </Card>
