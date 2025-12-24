@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   CalendarIcon,
   Clock,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { DispatchPricingConfig } from "@/components/admin/DispatchPricingConfig";
 import { SubscriptionPricingConfig } from "@/components/admin/SubscriptionPricingConfig";
+import { StoreManagementPanel } from "@/components/admin/StoreManagementPanel";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -629,6 +631,10 @@ export default function SuperAdmin() {
               <Building2 className="w-4 h-4" />
               Clientes
             </TabsTrigger>
+            <TabsTrigger value="store" className="gap-2">
+              <ShoppingBag className="w-4 h-4" />
+              Loja
+            </TabsTrigger>
             <TabsTrigger value="pricing" className="gap-2">
               <DollarSign className="w-4 h-4" />
               Precificação
@@ -638,6 +644,11 @@ export default function SuperAdmin() {
               Configurações
             </TabsTrigger>
           </TabsList>
+
+          {/* Store Tab */}
+          <TabsContent value="store">
+            <StoreManagementPanel />
+          </TabsContent>
 
           {/* Clients Tab */}
           <TabsContent value="clients" className="space-y-4">
