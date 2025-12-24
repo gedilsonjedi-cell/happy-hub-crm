@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, Wallet, User, RefreshCw } from "lucide-react";
+import { MessageSquare, LogOut, User, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { useDispatchCosts } from "@/hooks/useDispatchCosts";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
@@ -15,15 +14,7 @@ import { cn } from "@/lib/utils";
 
 export function Header() {
   const { user, signOut } = useAuth();
-  const { summary, loading: costsLoading } = useDispatchCosts();
   const { syncing } = useUserRole();
-
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-  };
 
   return (
     <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
@@ -63,29 +54,6 @@ export function Header() {
 
         {/* Balance Indicator - Real-time */}
         <BalanceIndicator />
-
-        {/* Investimento em Disparos */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link 
-              to="/relatorios"
-              className="flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-lg border border-warning/20 hover:bg-warning/20 transition-colors"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="text-sm font-semibold">
-                {costsLoading ? "..." : formatCurrency(summary.monthly)}
-              </span>
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            <div className="space-y-1">
-              <p className="font-semibold">Investimento em Disparos</p>
-              <p>Hoje: {formatCurrency(summary.daily)}</p>
-              <p>Esta semana: {formatCurrency(summary.weekly)}</p>
-              <p>Este mês: {formatCurrency(summary.monthly)}</p>
-            </div>
-          </TooltipContent>
-        </Tooltip>
 
         {/* User Profile Link */}
         {user && (
