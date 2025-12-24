@@ -16,8 +16,10 @@ import {
   Check,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  Loader2
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -98,6 +100,8 @@ const Leads = () => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
   const [showTagFilterPopover, setShowTagFilterPopover] = useState(false);
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
@@ -239,6 +243,47 @@ const Leads = () => {
     setSelectedTagFilters([]);
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedLeads(new Set(filteredLeads.map(lead => lead.id)));
+    } else {
+      setSelectedLeads(new Set());
+    }
+  };
+
+  const handleSelectLead = (leadId: string, checked: boolean) => {
+    const newSelected = new Set(selectedLeads);
+    if (checked) {
+      newSelected.add(leadId);
+    } else {
+      newSelected.delete(leadId);
+    }
+    setSelectedLeads(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLeads.size === 0) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("leads")
+        .delete()
+        .in("id", Array.from(selectedLeads));
+
+      if (error) throw error;
+
+      toast.success(`${selectedLeads.size} contato(s) excluído(s) com sucesso`);
+      setSelectedLeads(new Set());
+      queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+    } catch (error) {
+      console.error("Erro ao excluir contatos:", error);
+      toast.error("Erro ao excluir contatos");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   // Filter leads by search term and tags
   const filteredLeads = leads.filter(lead => {
     // Search filter
@@ -253,6 +298,9 @@ const Leads = () => {
 
     return matchesSearch && matchesTags;
   });
+
+  const isAllSelected = filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length;
+  const isSomeSelected = selectedLeads.size > 0 && selectedLeads.size < filteredLeads.length;
 
   const getStatusCounts = () => {
     const counts: Record<string, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
@@ -444,11 +492,51 @@ const Leads = () => {
         ))}
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedLeads.size > 0 && (
+        <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 mb-4 flex items-center justify-between animate-fade-in">
+          <span className="text-sm font-medium">
+            {selectedLeads.size} contato(s) selecionado(s)
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedLeads(new Set())}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="gap-2"
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Excluir Selecionados
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-card rounded-lg border border-border overflow-hidden animate-slide-up">
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-muted/30">
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={isAllSelected}
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Selecionar todos"
+                  className={isSomeSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                />
+              </TableHead>
               <TableHead className="text-muted-foreground">Lead</TableHead>
               <TableHead className="text-muted-foreground">Contato</TableHead>
               <TableHead className="text-muted-foreground">Tags</TableHead>
@@ -459,13 +547,13 @@ const Leads = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   Carregando...
                 </TableCell>
               </TableRow>
             ) : filteredLeads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   {leads.length === 0 ? "Nenhum lead cadastrado" : "Nenhum lead encontrado"}
                 </TableCell>
               </TableRow>
@@ -473,8 +561,18 @@ const Leads = () => {
               filteredLeads.map((lead) => (
                 <TableRow 
                   key={lead.id}
-                  className="border-border hover:bg-muted/20"
+                  className={cn(
+                    "border-border hover:bg-muted/20",
+                    selectedLeads.has(lead.id) && "bg-primary/5"
+                  )}
                 >
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedLeads.has(lead.id)}
+                      onCheckedChange={(checked) => handleSelectLead(lead.id, !!checked)}
+                      aria-label={`Selecionar ${lead.name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="w-9 h-9">
