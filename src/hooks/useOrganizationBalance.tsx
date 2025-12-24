@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
@@ -70,6 +71,51 @@ export function useOrganizationBalance(organizationId?: string) {
     },
     enabled: !!effectiveOrgId,
   });
+
+  // Subscribe to realtime balance updates
+  useEffect(() => {
+    if (!effectiveOrgId) return;
+
+    console.log("Setting up realtime balance subscription for:", effectiveOrgId);
+
+    const channel = supabase
+      .channel("organization-balance-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "organization_balance",
+          filter: `organization_id=eq.${effectiveOrgId}`,
+        },
+        (payload) => {
+          console.log("Balance update received:", payload);
+          queryClient.invalidateQueries({ queryKey: ["organization-balance", effectiveOrgId] });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "balance_transactions",
+          filter: `organization_id=eq.${effectiveOrgId}`,
+        },
+        (payload) => {
+          console.log("New transaction received:", payload);
+          queryClient.invalidateQueries({ queryKey: ["balance-transactions", effectiveOrgId] });
+          queryClient.invalidateQueries({ queryKey: ["organization-balance", effectiveOrgId] });
+        }
+      )
+      .subscribe((status) => {
+        console.log("Balance subscription status:", status);
+      });
+
+    return () => {
+      console.log("Cleaning up balance subscription");
+      supabase.removeChannel(channel);
+    };
+  }, [effectiveOrgId, queryClient]);
 
   // Fetch transactions
   const { data: transactions } = useQuery({

@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
+import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
 import {
   Tooltip,
   TooltipContent,
@@ -41,7 +42,7 @@ export function Header() {
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {/* Sync Indicator */}
         {syncing && (
           <Tooltip>
@@ -59,6 +60,9 @@ export function Header() {
 
         {/* Client Switcher (Super Admin only) */}
         <ClientSwitcher />
+
+        {/* Balance Indicator - Real-time */}
+        <BalanceIndicator />
 
         {/* Investimento em Disparos */}
         <Tooltip>

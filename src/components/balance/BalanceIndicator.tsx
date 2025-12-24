@@ -1,7 +1,8 @@
-import { CreditCard, AlertTriangle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Link } from "react-router-dom";
+import { Wallet, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
+import { cn } from "@/lib/utils";
 
 interface BalanceIndicatorProps {
   showDetails?: boolean;
@@ -19,44 +20,78 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
 
   if (isLoading) {
     return (
-      <Badge variant="outline" className="animate-pulse">
-        <CreditCard className="h-3 w-3 mr-1" />
-        ...
-      </Badge>
+      <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-lg border border-border/50 animate-pulse">
+        <Wallet className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-semibold text-muted-foreground">...</span>
+      </div>
     );
   }
 
-  const totalCredits = balance?.total_credits_added ?? 0;
   const currentBalance = balance?.balance ?? 0;
+  const totalCredits = balance?.total_credits_added ?? 0;
   const totalSpent = balance?.total_spent ?? 0;
-  const isLowBalance = currentBalance < 5;
+  const isLowBalance = currentBalance > 0 && currentBalance < 10;
   const hasNoBalance = currentBalance <= 0;
 
+  const getStatusStyles = () => {
+    if (hasNoBalance) {
+      return "bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20";
+    }
+    if (isLowBalance) {
+      return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20 hover:bg-yellow-500/20";
+    }
+    return "bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20";
+  };
+
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge 
-            variant={hasNoBalance ? "destructive" : isLowBalance ? "secondary" : "default"}
-            className="cursor-default"
-          >
-            {hasNoBalance ? (
-              <AlertTriangle className="h-3 w-3 mr-1" />
-            ) : (
-              <CreditCard className="h-3 w-3 mr-1" />
-            )}
-            {formatCurrency(totalCredits)}
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link 
+          to="/saldo"
+          className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors",
+            getStatusStyles()
+          )}
+        >
+          {hasNoBalance ? (
+            <AlertTriangle className="w-4 h-4" />
+          ) : (
+            <Wallet className="w-4 h-4" />
+          )}
+          <span className="text-sm font-semibold">
+            {formatCurrency(currentBalance)}
+          </span>
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        <div className="space-y-2 py-1">
+          <p className="font-semibold text-sm">Saldo da Organização</p>
           <div className="space-y-1">
-            <p className="font-semibold">Recarga para Mensagens</p>
-            <p>Total recarregado: {formatCurrency(totalCredits)}</p>
-            <p>Saldo disponível: {formatCurrency(currentBalance)}</p>
-            <p>Total utilizado: {formatCurrency(totalSpent)}</p>
+            <div className="flex items-center gap-2">
+              <Wallet className="w-3 h-3" />
+              <span>Disponível: {formatCurrency(currentBalance)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-500">
+              <TrendingUp className="w-3 h-3" />
+              <span>Total recarregado: {formatCurrency(totalCredits)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-red-500">
+              <TrendingDown className="w-3 h-3" />
+              <span>Total gasto: {formatCurrency(totalSpent)}</span>
+            </div>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          {hasNoBalance && (
+            <p className="text-destructive text-xs mt-2">
+              Clique para adicionar créditos
+            </p>
+          )}
+          {isLowBalance && (
+            <p className="text-yellow-600 text-xs mt-2">
+              Saldo baixo - recarregue em breve
+            </p>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
