@@ -29,6 +29,7 @@ import Saldo from "./pages/Saldo";
 import Loja from "./pages/Loja";
 import MinhaAssinatura from "./pages/MinhaAssinatura";
 import ListaNegra from "./pages/ListaNegra";
+import Higienizacao from "./pages/Higienizacao";
 import Horarios from "./pages/personalizacao/Horarios";
 import Feriados from "./pages/personalizacao/Feriados";
 import Departamentos from "./pages/personalizacao/Departamentos";
@@ -124,6 +125,7 @@ const App = () => (
           <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
           <Route path="/minha-assinatura" element={<ProtectedRoute><MinhaAssinatura /></ProtectedRoute>} />
           <Route path="/lista-negra" element={<ProtectedRoute><ListaNegra /></ProtectedRoute>} />
+          <Route path="/higienizacao" element={<ProtectedRoute><Higienizacao /></ProtectedRoute>} />
           <Route path="/personalizacao/horarios" element={<ProtectedRoute><Horarios /></ProtectedRoute>} />
           <Route path="/personalizacao/feriados" element={<ProtectedRoute><Feriados /></ProtectedRoute>} />
           <Route path="/personalizacao/departamentos" element={<ProtectedRoute><Departamentos /></ProtectedRoute>} />

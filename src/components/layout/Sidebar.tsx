@@ -23,6 +23,7 @@ import {
   BookUser,
   X,
   PanelLeftClose,
+  Sparkles,
   PanelLeft,
   Briefcase,
   Settings,
@@ -57,6 +58,7 @@ const crmSubmenu = [
   { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
   { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
+  { icon: Sparkles, label: "Higienização", path: "/higienizacao", permission: "canAccessLeads" },
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: "canAccessLeads" },
 ];
 
