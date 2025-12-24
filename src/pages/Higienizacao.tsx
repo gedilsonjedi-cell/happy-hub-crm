@@ -146,6 +146,7 @@ export default function Higienizacao() {
   const [selectedDocumentColumn, setSelectedDocumentColumn] = useState<number | null>(null);
   const [selectedCityColumn, setSelectedCityColumn] = useState<number | null>(null);
   const [selectedStateColumn, setSelectedStateColumn] = useState<number | null>(null);
+  const [selectedCustomFieldColumns, setSelectedCustomFieldColumns] = useState<Record<string, number>>({});
   
   // Save leads dialog states
   const [showSaveLeadsDialog, setShowSaveLeadsDialog] = useState(false);
@@ -201,6 +202,22 @@ export default function Higienizacao() {
         .select("id, name, color")
         .eq("organization_id", profile.organization_id)
         .order("name");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  // Fetch custom field definitions
+  const { data: customFieldDefinitions = [] } = useQuery({
+    queryKey: ["custom-field-definitions", profile?.organization_id],
+    queryFn: async () => {
+      if (!profile?.organization_id) return [];
+      const { data, error } = await supabase
+        .from("lead_custom_field_definitions")
+        .select("id, field_name, field_label, field_type")
+        .eq("organization_id", profile.organization_id)
+        .order("display_order", { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -267,6 +284,17 @@ export default function Higienizacao() {
     }
   };
 
+  // Normalize field name to avoid duplicates (CPF = cpf = Cpf)
+  const normalizeFieldName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remove accents
+      .replace(/[^a-z0-9]/g, "_") // Replace special chars with underscore
+      .replace(/_+/g, "_") // Replace multiple underscores with single
+      .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+  };
+
   // Parse CSV file - Step 1: Read and detect columns
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -294,9 +322,20 @@ export default function Higienizacao() {
 
       // Detect if first row is header (contains text like "phone", "telefone", "nome", etc.)
       const firstRow = allRows[0];
-      const hasHeader = firstRow.some((cell) => 
-        /phone|telefone|nome|name|email|celular|whatsapp|numero|número|cpf|cnpj|documento|cidade|city|estado|state|uf/i.test(cell)
-      );
+      
+      // Build pattern that includes custom field definitions
+      const customFieldPatterns = customFieldDefinitions.map(f => normalizeFieldName(f.field_label)).join("|");
+      const basePattern = /phone|telefone|nome|name|email|celular|whatsapp|numero|número|cpf|cnpj|documento|cidade|city|estado|state|uf/i;
+      
+      const hasHeader = firstRow.some((cell) => {
+        const normalizedCell = normalizeFieldName(cell);
+        const matchesBase = basePattern.test(cell);
+        const matchesCustom = customFieldDefinitions.some(f => 
+          normalizeFieldName(f.field_label) === normalizedCell || 
+          f.field_name === normalizedCell
+        );
+        return matchesBase || matchesCustom;
+      });
 
       const headers = hasHeader 
         ? firstRow.map((h, i) => h || `Coluna ${i + 1}`)
@@ -341,6 +380,20 @@ export default function Higienizacao() {
       );
       setSelectedStateColumn(stateColumnIndex >= 0 ? stateColumnIndex : null);
       
+      // Auto-detect custom field columns
+      const detectedCustomColumns: Record<string, number> = {};
+      customFieldDefinitions.forEach((field) => {
+        const fieldNameNormalized = normalizeFieldName(field.field_label);
+        const columnIndex = headers.findIndex((h) => {
+          const headerNormalized = normalizeFieldName(h);
+          return headerNormalized === fieldNameNormalized || headerNormalized === field.field_name;
+        });
+        if (columnIndex >= 0) {
+          detectedCustomColumns[field.field_name] = columnIndex;
+        }
+      });
+      setSelectedCustomFieldColumns(detectedCustomColumns);
+      
       setShowColumnMapping(true);
       toast.success(`Arquivo carregado: ${dataRows.length} linhas detectadas`);
     };
@@ -367,6 +420,15 @@ export default function Higienizacao() {
       const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : undefined;
       const city = selectedCityColumn !== null ? row[selectedCityColumn] : undefined;
       const state = selectedStateColumn !== null ? row[selectedStateColumn] : undefined;
+      
+      // Extract custom fields
+      const customFields: Record<string, string> = {};
+      Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
+        const value = row[colIndex];
+        if (value) {
+          customFields[fieldName] = value;
+        }
+      });
 
       if (!phone) return;
 
@@ -384,6 +446,7 @@ export default function Higienizacao() {
         document: document || undefined,
         city: city || undefined,
         state: state || undefined,
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
         status: isDuplicate ? "duplicate" : isBlacklisted ? "blacklisted" : "pending",
         formattedPhone,
         source: "csv",
@@ -401,6 +464,7 @@ export default function Higienizacao() {
     setSelectedDocumentColumn(null);
     setSelectedCityColumn(null);
     setSelectedStateColumn(null);
+    setSelectedCustomFieldColumns({});
     toast.success(`${entries.length} números carregados do arquivo`);
   };
 
@@ -413,6 +477,7 @@ export default function Higienizacao() {
     setSelectedDocumentColumn(null);
     setSelectedCityColumn(null);
     setSelectedStateColumn(null);
+    setSelectedCustomFieldColumns({});
   };
 
   // Load selected leads
@@ -1351,6 +1416,51 @@ export default function Higienizacao() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Custom Field Columns */}
+                    {customFieldDefinitions.length > 0 && (
+                      <>
+                        <div className="col-span-full">
+                          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground border-t pt-4 mt-2">
+                            <Plus className="w-4 h-4" />
+                            Campos Personalizados
+                            <Badge variant="secondary" className="ml-1">
+                              {Object.keys(selectedCustomFieldColumns).length} detectado(s)
+                            </Badge>
+                          </div>
+                        </div>
+                        {customFieldDefinitions.map((field) => (
+                          <div key={field.id} className="space-y-2">
+                            <label className="text-sm font-medium flex items-center gap-2">
+                              <Tag className="w-4 h-4 text-muted-foreground" />
+                              {field.field_label}
+                            </label>
+                            <select
+                              value={selectedCustomFieldColumns[field.field_name] ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setSelectedCustomFieldColumns((prev) => {
+                                  if (value === "") {
+                                    const newState = { ...prev };
+                                    delete newState[field.field_name];
+                                    return newState;
+                                  }
+                                  return { ...prev, [field.field_name]: parseInt(value) };
+                                });
+                              }}
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <option value="">Nenhuma</option>
+                              {parsedFileData.headers.map((header, index) => (
+                                <option key={index} value={index} disabled={index === selectedPhoneColumn}>
+                                  {header}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
 
                   {/* Preview Table */}
@@ -1366,7 +1476,9 @@ export default function Higienizacao() {
                               const isDocument = index === selectedDocumentColumn;
                               const isCity = index === selectedCityColumn;
                               const isState = index === selectedStateColumn;
-                              const isSelected = isPhone || isName || isDocument || isCity || isState;
+                              const customFieldName = Object.entries(selectedCustomFieldColumns).find(([_, colIdx]) => colIdx === index)?.[0];
+                              const customField = customFieldName ? customFieldDefinitions.find(f => f.field_name === customFieldName) : null;
+                              const isCustom = !!customField;
                               
                               return (
                                 <TableHead 
@@ -1376,7 +1488,8 @@ export default function Higienizacao() {
                                     isName ? "bg-blue-500/10 text-blue-600 font-bold" :
                                     isDocument ? "bg-purple-500/10 text-purple-600 font-bold" :
                                     isCity ? "bg-green-500/10 text-green-600 font-bold" :
-                                    isState ? "bg-orange-500/10 text-orange-600 font-bold" : ""
+                                    isState ? "bg-orange-500/10 text-orange-600 font-bold" :
+                                    isCustom ? "bg-pink-500/10 text-pink-600 font-bold" : ""
                                   }
                                 >
                                   {header}
@@ -1385,6 +1498,7 @@ export default function Higienizacao() {
                                   {isDocument && <Badge className="ml-2 text-xs bg-purple-500">CPF/CNPJ</Badge>}
                                   {isCity && <Badge className="ml-2 text-xs bg-green-500">Cidade</Badge>}
                                   {isState && <Badge className="ml-2 text-xs bg-orange-500">Estado</Badge>}
+                                  {isCustom && <Badge className="ml-2 text-xs bg-pink-500">{customField?.field_label}</Badge>}
                                 </TableHead>
                               );
                             })}
@@ -1399,6 +1513,7 @@ export default function Higienizacao() {
                                 const isDocument = cellIndex === selectedDocumentColumn;
                                 const isCity = cellIndex === selectedCityColumn;
                                 const isState = cellIndex === selectedStateColumn;
+                                const isCustom = Object.values(selectedCustomFieldColumns).includes(cellIndex);
                                 
                                 return (
                                   <TableCell 
@@ -1408,7 +1523,8 @@ export default function Higienizacao() {
                                       isName ? "bg-blue-500/5" :
                                       isDocument ? "bg-purple-500/5 font-mono" :
                                       isCity ? "bg-green-500/5" :
-                                      isState ? "bg-orange-500/5" : ""
+                                      isState ? "bg-orange-500/5" :
+                                      isCustom ? "bg-pink-500/5" : ""
                                     }
                                   >
                                     {cell || <span className="text-muted-foreground italic">vazio</span>}
