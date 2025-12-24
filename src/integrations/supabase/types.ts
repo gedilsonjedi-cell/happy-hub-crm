@@ -263,6 +263,8 @@ export type Database = {
           dispatch_interval: number
           failed_count: number
           id: string
+          max_interval: number | null
+          min_interval: number | null
           name: string
           organization_id: string | null
           scheduled_at: string | null
@@ -284,6 +286,8 @@ export type Database = {
           dispatch_interval?: number
           failed_count?: number
           id?: string
+          max_interval?: number | null
+          min_interval?: number | null
           name: string
           organization_id?: string | null
           scheduled_at?: string | null
@@ -305,6 +309,8 @@ export type Database = {
           dispatch_interval?: number
           failed_count?: number
           id?: string
+          max_interval?: number | null
+          min_interval?: number | null
           name?: string
           organization_id?: string | null
           scheduled_at?: string | null
