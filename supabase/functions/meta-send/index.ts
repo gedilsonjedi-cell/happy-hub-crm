@@ -130,6 +130,31 @@ Deno.serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      // Check if destination is blacklisted
+      const { data: isBlacklisted, error: blacklistError } = await serviceRoleClient.rpc(
+        'is_phone_blacklisted',
+        {
+          _organization_id: channel.organization_id,
+          _phone: destination.replace(/\D/g, '')
+        }
+      );
+
+      if (blacklistError) {
+        console.error('Error checking blacklist:', blacklistError);
+      }
+
+      if (isBlacklisted) {
+        console.log('Destination is blacklisted:', destination);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Este contato está na lista negra e não pode receber mensagens.',
+            code: 'BLACKLISTED'
+          }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     const phoneNumberId = channel.app_name; // Phone Number ID from Meta

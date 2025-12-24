@@ -19,6 +19,8 @@ import {
   Link2,
   ShoppingBag,
   CreditCard,
+  Ban,
+  BookUser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,10 +37,14 @@ import {
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
   { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: "canAccessConexoes" },
-  { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
-  { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
+];
+
+const crmSubmenu = [
+  { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
+  { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
+  { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: "canAccessLeads" },
 ];
 
 const disparosSubmenu = [
@@ -57,11 +63,13 @@ const bottomMenuItems = [
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [crmOpen, setCrmOpen] = useState(true);
   const [disparosOpen, setDisparosOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
   const unreadCount = useUnreadMessagesCount();
 
+  const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
 
   const handleNavClick = (e: React.MouseEvent, permission: string | null) => {
@@ -123,6 +131,74 @@ export function Sidebar() {
     );
   };
 
+  const renderSubmenu = (
+    items: typeof crmSubmenu,
+    isOpen: boolean,
+    setIsOpen: (open: boolean) => void,
+    label: string,
+    Icon: React.ElementType,
+    isActive: boolean
+  ) => (
+    <Collapsible open={isOpen && !collapsed} onOpenChange={setIsOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 w-full",
+            isActive
+              ? "bg-primary/10 text-primary"
+              : "text-sidebar-foreground hover:bg-muted/30"
+          )}
+        >
+          <Icon className="w-5 h-5 shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="text-sm font-medium flex-1 text-left">{label}</span>
+              {isOpen ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </>
+          )}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-4 space-y-1 mt-1">
+        {items.map((item) => {
+          const isItemActive = location.pathname === item.path;
+          const ItemIcon = item.icon;
+          const hasPermission = item.permission === null || 
+            userRole.loading || 
+            userRole[item.permission as keyof typeof userRole];
+          const isLocked = !userRole.loading && item.permission !== null && !hasPermission;
+          
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={(e) => handleNavClick(e, item.permission)}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
+                isItemActive 
+                  ? "bg-primary text-primary-foreground" 
+                  : isLocked
+                    ? "text-sidebar-muted cursor-not-allowed opacity-60"
+                    : "text-sidebar-foreground hover:bg-muted/30"
+              )}
+            >
+              <ItemIcon className="w-4 h-4 shrink-0" />
+              {!collapsed && (
+                <span className="text-sm font-medium flex-1">{item.label}</span>
+              )}
+              {!collapsed && isLocked && (
+                <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </Link>
+          );
+        })}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+
   return (
     <aside 
       className={cn(
@@ -147,65 +223,11 @@ export function Sidebar() {
         {/* Main menu items */}
         {menuItems.map((item) => renderMenuItem(item, item.path === "/whatsapp-chat"))}
 
+        {/* CRM submenu */}
+        {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
+
         {/* Disparos submenu */}
-        <Collapsible open={disparosOpen && !collapsed} onOpenChange={setDisparosOpen}>
-          <CollapsibleTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 w-full",
-                isDisparosActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-sidebar-foreground hover:bg-muted/30"
-              )}
-            >
-              <Send className="w-5 h-5 shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="text-sm font-medium flex-1 text-left">Disparos</span>
-                  {disparosOpen ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </>
-              )}
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pl-4 space-y-1 mt-1">
-            {disparosSubmenu.map((item) => {
-              const isActive = location.pathname === item.path;
-              const Icon = item.icon;
-              const hasPermission = item.permission === null || 
-                userRole.loading || 
-                userRole[item.permission as keyof typeof userRole];
-              const isLocked = !userRole.loading && item.permission !== null && !hasPermission;
-              
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={(e) => handleNavClick(e, item.permission)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
-                    isActive 
-                      ? "bg-primary text-primary-foreground" 
-                      : isLocked
-                        ? "text-sidebar-muted cursor-not-allowed opacity-60"
-                        : "text-sidebar-foreground hover:bg-muted/30"
-                  )}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  {!collapsed && (
-                    <span className="text-sm font-medium flex-1">{item.label}</span>
-                  )}
-                  {!collapsed && isLocked && (
-                    <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                  )}
-                </Link>
-              );
-            })}
-          </CollapsibleContent>
-        </Collapsible>
+        {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
 
         {/* Bottom menu items */}
         {bottomMenuItems.map((item) => renderMenuItem(item))}

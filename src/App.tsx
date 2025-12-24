@@ -27,6 +27,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Saldo from "./pages/Saldo";
 import Loja from "./pages/Loja";
 import MinhaAssinatura from "./pages/MinhaAssinatura";
+import ListaNegra from "./pages/ListaNegra";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -116,6 +117,7 @@ const App = () => (
           <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
           <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
           <Route path="/minha-assinatura" element={<ProtectedRoute><MinhaAssinatura /></ProtectedRoute>} />
+          <Route path="/lista-negra" element={<ProtectedRoute><ListaNegra /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
