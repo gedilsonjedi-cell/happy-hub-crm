@@ -5,8 +5,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Webhook verify token - should match what you configure in Meta Developer Console
-const VERIFY_TOKEN = Deno.env.get('META_WEBHOOK_VERIFY_TOKEN') || 'lovable_meta_webhook_token';
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -19,12 +21,25 @@ Deno.serve(async (req) => {
 
     console.log('Webhook verification request:', { mode, token, challenge });
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('Webhook verified successfully');
-      return new Response(challenge, { status: 200 });
+    if (mode === 'subscribe' && token) {
+      // Find channel with this verify token
+      const { data: channel, error } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('webhook_verify_token', token)
+        .eq('provider', 'meta')
+        .single();
+      
+      if (channel && !error) {
+        console.log('Webhook verified for channel:', channel.id);
+        return new Response(challenge, { status: 200 });
+      } else {
+        console.error('Invalid verify token');
+        return new Response('Forbidden', { status: 403 });
+      }
     } else {
-      console.error('Webhook verification failed');
-      return new Response('Verification failed', { status: 403 });
+      console.error('Missing verification parameters');
+      return new Response('Forbidden', { status: 403 });
     }
   }
 
@@ -59,11 +74,7 @@ Deno.serve(async (req) => {
 
       console.log('Webhook metadata:', { phoneNumberId, displayPhoneNumber });
 
-      // Create Supabase client
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
+      // Supabase client already created at top level
 
       // Find channel by phone number ID (stored in app_name) or phone number
       let channel = null;
