@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, X, Loader2 } from "lucide-react";
+import { Upload, FileText, X, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ const formatFileSize = (bytes: number) => {
 export const DocumentUpload = ({ userId, agentId, documents, onDocumentsChange }: DocumentUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (files: FileList | null) => {
@@ -101,6 +103,10 @@ export const DocumentUpload = ({ userId, agentId, documents, onDocumentsChange }
     handleFileSelect(e.dataTransfer.files);
   };
 
+  const filteredDocuments = documents.filter(doc =>
+    doc.file_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -151,34 +157,59 @@ export const DocumentUpload = ({ userId, agentId, documents, onDocumentsChange }
           )}
         </div>
 
-        {/* Document List */}
+        {/* Document List with Search */}
         {documents.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Documentos enviados:</p>
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center justify-between p-2 rounded-md bg-muted/50"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <FileText className="w-4 h-4 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">{doc.file_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatFileSize(doc.file_size)}
-                    </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {filteredDocuments.length} de {documents.length} documento(s)
+              </p>
+            </div>
+            
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar documentos..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+
+            {/* Filtered Documents */}
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {filteredDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum documento encontrado
+                </p>
+              ) : (
+                filteredDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm truncate">{doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatFileSize(doc.file_size)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => handleDelete(doc)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => handleDelete(doc)}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
+                ))
+              )}
+            </div>
           </div>
         )}
       </CardContent>
