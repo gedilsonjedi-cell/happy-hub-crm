@@ -937,6 +937,62 @@ export type Database = {
           },
         ]
       }
+      pix_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          expires_at: string | null
+          id: string
+          mercadopago_id: string
+          organization_id: string
+          paid_at: string | null
+          payment_type: string
+          pix_copy_paste: string | null
+          pix_qr_code: string | null
+          pix_qr_code_base64: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          mercadopago_id: string
+          organization_id: string
+          paid_at?: string | null
+          payment_type: string
+          pix_copy_paste?: string | null
+          pix_qr_code?: string | null
+          pix_qr_code_base64?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          mercadopago_id?: string
+          organization_id?: string
+          paid_at?: string | null
+          payment_type?: string
+          pix_copy_paste?: string | null
+          pix_qr_code?: string | null
+          pix_qr_code_base64?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pix_payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

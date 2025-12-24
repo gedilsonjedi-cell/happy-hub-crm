@@ -22,13 +22,14 @@ import {
   Plus,
   ArrowUpRight,
   ArrowDownRight,
-  Clock
+  Clock,
+  QrCode
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { toast } from "sonner";
+import { PixPaymentDialog } from "@/components/payment/PixPaymentDialog";
 
 interface BalanceData {
   balance: number;
@@ -53,6 +54,7 @@ export default function Saldo() {
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [pixDialogOpen, setPixDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -110,10 +112,12 @@ export default function Saldo() {
     }
   };
 
-  const handleRequestRecharge = () => {
-    toast.info("Solicitação de recarga", {
-      description: "Entre em contato com o suporte para adicionar créditos à sua conta.",
-    });
+  const handleOpenPixDialog = () => {
+    setPixDialogOpen(true);
+  };
+
+  const handlePaymentCreated = () => {
+    fetchOrganizationAndBalance();
   };
 
   const formatCurrency = (value: number) => {
@@ -163,11 +167,21 @@ export default function Saldo() {
               Gerencie seus créditos e visualize o histórico de transações
             </p>
           </div>
-          <Button onClick={handleRequestRecharge} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Solicitar Recarga
+          <Button onClick={handleOpenPixDialog} className="gap-2">
+            <QrCode className="w-4 h-4" />
+            Pagar via PIX
           </Button>
         </div>
+
+        {/* PIX Payment Dialog */}
+        {organizationId && (
+          <PixPaymentDialog
+            open={pixDialogOpen}
+            onOpenChange={setPixDialogOpen}
+            organizationId={organizationId}
+            onPaymentCreated={handlePaymentCreated}
+          />
+        )}
 
         {/* Balance Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
