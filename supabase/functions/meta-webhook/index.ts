@@ -223,9 +223,11 @@ Deno.serve(async (req) => {
           .eq('organization_id', channel.organization_id)
           .single();
 
+        let leadId = existingLead?.id;
+
         if (!existingLead && channel.organization_id) {
           // Create new lead
-          const { error: leadError } = await supabase
+          const { data: newLead, error: leadError } = await supabase
             .from('leads')
             .insert({
               phone: senderPhone,
@@ -234,12 +236,15 @@ Deno.serve(async (req) => {
               organization_id: channel.organization_id,
               status: 'new',
               notes: 'Lead criado automaticamente via WhatsApp (Meta)'
-            });
+            })
+            .select('id')
+            .single();
 
           if (leadError) {
             console.error('Error creating lead:', leadError);
           } else {
             console.log('Lead created for:', senderPhone);
+            leadId = newLead?.id;
           }
         } else if (existingLead && senderName && channel.organization_id) {
           // Check if lead has auto-generated name (LeadWhats- pattern or WhatsApp pattern)
@@ -260,6 +265,80 @@ Deno.serve(async (req) => {
               console.error('Error updating lead name:', updateLeadError);
             } else {
               console.log('Lead name updated from', existingLead.name, 'to', senderName);
+            }
+          }
+        }
+
+        // Check if lead is in someone's portfolio (Carteira de Clientes)
+        if (leadId && channel.organization_id) {
+          const { data: portfolioEntry } = await supabase
+            .from('client_portfolios')
+            .select('user_id')
+            .eq('lead_id', leadId)
+            .eq('organization_id', channel.organization_id)
+            .single();
+
+          if (portfolioEntry) {
+            console.log('Lead is in portfolio of user:', portfolioEntry.user_id);
+
+            // Check if portfolio owner is available
+            const { data: ownerAvailability } = await supabase
+              .from('attendant_availability')
+              .select('is_available')
+              .eq('user_id', portfolioEntry.user_id)
+              .eq('organization_id', channel.organization_id)
+              .single();
+
+            // Check or create conversation assignment
+            const { data: existingAssignment } = await supabase
+              .from('conversation_assignments')
+              .select('id, assigned_to, status')
+              .eq('conversation_phone', senderPhone)
+              .eq('channel_id', channel.id)
+              .single();
+
+            if (!existingAssignment) {
+              // Create new assignment
+              const isOwnerAvailable = ownerAvailability?.is_available === true;
+              
+              const { error: assignError } = await supabase
+                .from('conversation_assignments')
+                .insert({
+                  conversation_phone: senderPhone,
+                  channel_id: channel.id,
+                  lead_id: leadId,
+                  assigned_to: isOwnerAvailable ? portfolioEntry.user_id : null,
+                  status: isOwnerAvailable ? 'active' : 'pending',
+                  is_bot_handling: !isOwnerAvailable,
+                });
+
+              if (assignError) {
+                console.error('Error creating assignment:', assignError);
+              } else {
+                console.log('Assignment created:', isOwnerAvailable ? 'to owner' : 'pending');
+              }
+            } else if (existingAssignment.status === 'pending' || !existingAssignment.assigned_to) {
+              // If previously pending, check if owner is now available
+              const isOwnerAvailable = ownerAvailability?.is_available === true;
+              
+              if (isOwnerAvailable) {
+                const { error: updateAssignError } = await supabase
+                  .from('conversation_assignments')
+                  .update({
+                    assigned_to: portfolioEntry.user_id,
+                    status: 'active',
+                    is_bot_handling: false,
+                    assigned_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', existingAssignment.id);
+
+                if (updateAssignError) {
+                  console.error('Error updating assignment:', updateAssignError);
+                } else {
+                  console.log('Assignment updated to owner');
+                }
+              }
             }
           }
         }

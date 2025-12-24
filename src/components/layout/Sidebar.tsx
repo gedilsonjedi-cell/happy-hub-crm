@@ -24,6 +24,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeft,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ const menuItems = [
 
 const crmSubmenu = [
   { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
+  { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: "canAccessLeads" },
 ];
