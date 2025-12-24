@@ -50,7 +50,10 @@ import {
   PhoneCall,
   MessageCircle,
   Zap,
+  BarChart3,
+  PieChart as PieChartIcon,
 } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -547,6 +550,30 @@ export default function Higienizacao() {
     };
   }, [phoneEntries]);
 
+  // Chart data for distribution
+  const chartData = useMemo(() => {
+    if (stats.total === 0) return { pieData: [], barData: [] };
+
+    const pieData = [
+      { name: 'WhatsApp ✓', value: stats.whatsappValid, color: '#16a34a' },
+      { name: 'Celular Válido', value: stats.valid, color: '#22c55e' },
+      { name: 'Sem WhatsApp', value: stats.whatsappInvalid, color: '#6b7280' },
+      { name: 'Fixo', value: stats.landline, color: '#eab308' },
+      { name: 'Inválido', value: stats.invalid, color: '#ef4444' },
+      { name: 'Duplicado', value: stats.duplicates, color: '#f97316' },
+      { name: 'Lista Negra', value: stats.blacklisted, color: '#78716c' },
+      { name: 'Pendente', value: stats.pending, color: '#a1a1aa' },
+    ].filter(item => item.value > 0);
+
+    const barData = [
+      { name: 'WhatsApp', válidos: stats.whatsappValid, inválidos: stats.whatsappInvalid },
+      { name: 'Formato', válidos: stats.valid + stats.whatsappValid, inválidos: stats.invalid },
+      { name: 'Tipo', celular: stats.valid + stats.whatsappValid + stats.whatsappInvalid, fixo: stats.landline },
+    ];
+
+    return { pieData, barData };
+  }, [stats]);
+
   // Export to CSV
   const exportToCsv = (type: "all" | "valid" | "invalid" | "whatsapp") => {
     let entries = phoneEntries;
@@ -866,7 +893,130 @@ export default function Higienizacao() {
           </div>
         )}
 
-        {/* Main Content */}
+        {/* Distribution Charts */}
+        {phoneEntries.length > 0 && stats.pending === 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <PieChartIcon className="w-4 h-4" />
+                  Distribuição por Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={chartData.pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={2}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {chartData.pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip 
+                        formatter={(value: number) => [value, 'Quantidade']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center mt-2">
+                  {chartData.pieData.map((entry, index) => (
+                    <div key={index} className="flex items-center gap-1 text-xs">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                      <span>{entry.name}: {entry.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Summary Report Card */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4" />
+                  Relatório da Higienização
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-2 rounded-lg bg-muted/50">
+                    <span className="text-sm font-medium">Total Processado</span>
+                    <span className="text-lg font-bold">{stats.total}</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Taxa de Aprovação</span>
+                      <span className="text-sm font-medium text-green-600">
+                        {stats.total > 0 ? Math.round(((stats.valid + stats.whatsappValid) / stats.total) * 100) : 0}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={stats.total > 0 ? ((stats.valid + stats.whatsappValid) / stats.total) * 100 : 0} 
+                      className="h-2 [&>div]:bg-green-600"
+                    />
+                  </div>
+
+                  {stats.whatsappValid > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Com WhatsApp</span>
+                        <span className="text-sm font-medium text-green-600">
+                          {stats.valid + stats.whatsappValid > 0 
+                            ? Math.round((stats.whatsappValid / (stats.valid + stats.whatsappValid + stats.whatsappInvalid)) * 100) 
+                            : 0}%
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(stats.whatsappValid / (stats.valid + stats.whatsappValid + stats.whatsappInvalid)) * 100}
+                        className="h-2 [&>div]:bg-green-500"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Taxa de Rejeição</span>
+                      <span className="text-sm font-medium text-destructive">
+                        {stats.total > 0 
+                          ? Math.round(((stats.invalid + stats.duplicates + stats.blacklisted + stats.whatsappInvalid + stats.landline) / stats.total) * 100) 
+                          : 0}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={stats.total > 0 
+                        ? ((stats.invalid + stats.duplicates + stats.blacklisted + stats.whatsappInvalid + stats.landline) / stats.total) * 100 
+                        : 0}
+                      className="h-2 [&>div]:bg-destructive"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                  <div className="text-center p-2 rounded-lg bg-green-50 dark:bg-green-950/30">
+                    <p className="text-lg font-bold text-green-600">{stats.whatsappValid}</p>
+                    <p className="text-xs text-muted-foreground">Prontos para Disparo</p>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/30">
+                    <p className="text-lg font-bold text-destructive">{stats.invalid + stats.duplicates + stats.blacklisted + stats.whatsappInvalid + stats.landline}</p>
+                    <p className="text-xs text-muted-foreground">Removidos/Bloqueados</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upload" | "leads" | "history")}>
           <TabsList className="grid w-full grid-cols-3 max-w-lg">
             <TabsTrigger value="upload" className="gap-2">
@@ -1035,10 +1185,28 @@ export default function Higienizacao() {
                     {isValidating && (
                       <div className="mt-4 space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span>Progresso da validação</span>
+                          <span>Progresso da validação de formato</span>
                           <span>{validationProgress}%</span>
                         </div>
                         <Progress value={validationProgress} />
+                      </div>
+                    )}
+                    
+                    {isValidatingZapi && (
+                      <div className="mt-4 space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-green-600" />
+                            Verificando WhatsApp via Z-API...
+                          </span>
+                          <span className="text-green-600">Processando</span>
+                        </div>
+                        <div className="relative">
+                          <Progress value={100} className="animate-pulse [&>div]:bg-green-600" />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Aguarde enquanto verificamos se os números possuem WhatsApp
+                        </p>
                       </div>
                     )}
                   </CardContent>
