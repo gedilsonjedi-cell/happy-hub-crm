@@ -39,11 +39,18 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { campaignId, action } = await req.json();
+    const { campaignId, action, recipients } = await req.json();
 
     if (!campaignId) {
       return new Response(
         JSON.stringify({ error: 'Campaign ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!recipients || recipients.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Recipients list is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -115,15 +122,15 @@ Deno.serve(async (req) => {
     const templatesMap = new Map(templates?.map(t => [t.id, t]) || []);
     const channelsMap = new Map(channels.map(c => [c.id, c]));
 
-    // For demo purposes, we'll simulate recipients
-    // In production, this would come from a leads table or uploaded list
-    const demoRecipients: CampaignRecipient[] = [
-      { id: '1', phone: '5511999999991', name: 'Cliente 1', status: 'pending' },
-      { id: '2', phone: '5511999999992', name: 'Cliente 2', status: 'pending' },
-      { id: '3', phone: '5511999999993', name: 'Cliente 3', status: 'pending' },
-      { id: '4', phone: '5511999999994', name: 'Cliente 4', status: 'pending' },
-      { id: '5', phone: '5511999999995', name: 'Cliente 5', status: 'pending' },
-    ];
+    // Use recipients from request
+    const campaignRecipients: CampaignRecipient[] = recipients.map((phone: string, index: number) => ({
+      id: String(index + 1),
+      phone: phone,
+      name: undefined,
+      status: 'pending'
+    }));
+
+    console.log(`Processing ${campaignRecipients.length} recipients`);
 
     // Update campaign status to running
     await supabase
@@ -131,7 +138,7 @@ Deno.serve(async (req) => {
       .update({ 
         status: 'running', 
         started_at: new Date().toISOString(),
-        total_recipients: demoRecipients.length 
+        total_recipients: campaignRecipients.length 
       })
       .eq('id', campaignId);
 
@@ -141,8 +148,8 @@ Deno.serve(async (req) => {
     let currentChannelIndex = 0;
 
     // Process each recipient with random intervals
-    for (let i = 0; i < demoRecipients.length; i++) {
-      const recipient = demoRecipients[i];
+    for (let i = 0; i < campaignRecipients.length; i++) {
+      const recipient = campaignRecipients[i];
       
       // Get current channel (alternate between channels)
       const campaignChannel = campaignChannels[currentChannelIndex % campaignChannels.length];
@@ -198,7 +205,7 @@ Deno.serve(async (req) => {
       currentChannelIndex++;
 
       // Wait random interval before next message (except for last one)
-      if (i < demoRecipients.length - 1) {
+      if (i < campaignRecipients.length - 1) {
         const randomInterval = getRandomInterval(minInterval, maxInterval);
         console.log(`⏱ Waiting ${randomInterval} seconds before next dispatch...`);
         await sleep(randomInterval * 1000);
@@ -224,7 +231,7 @@ Deno.serve(async (req) => {
         success: true, 
         message: 'Campaign dispatch completed',
         stats: {
-          total: demoRecipients.length,
+          total: campaignRecipients.length,
           sent: sentCount,
           delivered: deliveredCount,
           failed: failedCount

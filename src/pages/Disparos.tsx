@@ -52,6 +52,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
+import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
 
 interface Channel {
   id: string;
@@ -111,6 +112,10 @@ const Disparos = () => {
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
   const [useUnifiedTemplate, setUseUnifiedTemplate] = useState(true);
+  const [recipientData, setRecipientData] = useState<{ phones: string[]; source: "contacts" | "numbers" | null }>({
+    phones: [],
+    source: null
+  });
   const [formData, setFormData] = useState({
     campaignName: "",
     team: "",
@@ -296,6 +301,11 @@ const Disparos = () => {
       return;
     }
 
+    if (recipientData.phones.length === 0) {
+      toast.error("Selecione os destinatários da campanha");
+      return;
+    }
+
     if (useUnifiedTemplate && !formData.unifiedTemplate) {
       toast.error("Selecione um template");
       return;
@@ -309,6 +319,43 @@ const Disparos = () => {
       }
     }
 
+    // If source is "numbers", create leads for the new numbers
+    if (recipientData.source === "numbers") {
+      const { data: existingLeads } = await supabase
+        .from("leads")
+        .select("phone")
+        .in("phone", recipientData.phones);
+
+      const existingPhones = new Set(existingLeads?.map(l => l.phone) || []);
+      const newPhones = recipientData.phones.filter(p => !existingPhones.has(p));
+
+      if (newPhones.length > 0) {
+        // Get the current count for naming
+        const { count } = await supabase
+          .from("leads")
+          .select("*", { count: "exact", head: true })
+          .ilike("name", "LeadWhats-%");
+
+        const startIndex = (count || 0) + 1;
+
+        const newLeads = newPhones.map((phone, idx) => ({
+          user_id: user?.id,
+          name: `LeadWhats-${String(startIndex + idx).padStart(5, "0")}`,
+          phone: phone,
+          status: "new"
+        }));
+
+        const { error: leadsError } = await supabase
+          .from("leads")
+          .insert(newLeads);
+
+        if (leadsError) {
+          console.error("Error creating leads:", leadsError);
+          toast.warning("Alguns contatos podem não ter sido salvos");
+        }
+      }
+    }
+
     // Create campaign with min/max intervals
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
@@ -317,12 +364,13 @@ const Disparos = () => {
         name: formData.campaignName,
         team: formData.team || null,
         chatbot_enabled: formData.chatbot === "enabled",
-        dispatch_interval: parseInt(formData.minInterval), // Keep for backwards compatibility
+        dispatch_interval: parseInt(formData.minInterval),
         min_interval: parseInt(formData.minInterval),
         max_interval: parseInt(formData.maxInterval),
         use_unified_template: useUnifiedTemplate,
         unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
         status: formData.startTime === "now" ? "running" : "scheduled",
+        total_recipients: recipientData.phones.length,
       })
       .select()
       .single();
@@ -353,16 +401,19 @@ const Disparos = () => {
     // If starting now, trigger the campaign dispatch
     if (formData.startTime === "now") {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
         const response = await supabase.functions.invoke('campaign-dispatch', {
-          body: { campaignId: campaign.id, action: 'start' }
+          body: { 
+            campaignId: campaign.id, 
+            action: 'start',
+            recipients: recipientData.phones
+          }
         });
         
         if (response.error) {
           console.error("Dispatch error:", response.error);
           toast.warning("Campanha criada, mas houve um erro ao iniciar o disparo");
         } else {
-          toast.success("Campanha iniciada! Os disparos serão realizados com cadência aleatória.");
+          toast.success(`Campanha iniciada! ${recipientData.phones.length} destinatários.`);
         }
       } catch (dispatchError) {
         console.error("Error triggering dispatch:", dispatchError);
@@ -381,6 +432,7 @@ const Disparos = () => {
     setSelectedChannels([]);
     setChannelTemplates({});
     setUseUnifiedTemplate(true);
+    setRecipientData({ phones: [], source: null });
     setFormData({
       campaignName: "",
       team: "",
@@ -536,6 +588,11 @@ const Disparos = () => {
                 )}
               </div>
 
+              {/* Recipient Selection */}
+              <div className="space-y-3">
+                <RecipientSelection onSelectionChange={setRecipientData} />
+              </div>
+
               {/* Random Cadence Dispatch */}
               <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
                 <div className="flex items-center gap-2">
@@ -675,6 +732,15 @@ const Disparos = () => {
                 <div className="flex justify-between text-sm">
                   <span className="text-primary font-medium">Canais selecionados:</span>
                   <span className="text-foreground">{selectedChannels.length}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-primary font-medium">Destinatários:</span>
+                  <span className="text-foreground">
+                    {recipientData.phones.length > 0 
+                      ? `${recipientData.phones.length} (${recipientData.source === "contacts" ? "contatos" : "números"})`
+                      : "Nenhum selecionado"
+                    }
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-primary font-medium">Cadência:</span>
