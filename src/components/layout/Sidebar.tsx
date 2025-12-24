@@ -16,6 +16,7 @@ import {
   Wallet,
   ChevronDown,
   ChevronRight,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const menuItems = [
   { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
+  { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
 ];
 
 const disparosSubmenu = [
