@@ -962,6 +962,53 @@ export type Database = {
           },
         ]
       }
+      lead_custom_field_definitions: {
+        Row: {
+          created_at: string
+          display_order: number | null
+          field_label: string
+          field_name: string
+          field_options: string[] | null
+          field_type: string
+          id: string
+          is_required: boolean | null
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number | null
+          field_label: string
+          field_name: string
+          field_options?: string[] | null
+          field_type?: string
+          id?: string
+          is_required?: boolean | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number | null
+          field_label?: string
+          field_name?: string
+          field_options?: string[] | null
+          field_type?: string
+          id?: string
+          is_required?: boolean | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_custom_field_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_tags: {
         Row: {
           color: string | null
@@ -999,7 +1046,10 @@ export type Database = {
       }
       leads: {
         Row: {
+          city: string | null
           created_at: string
+          custom_fields: Json | null
+          document: string | null
           email: string | null
           id: string
           name: string
@@ -1007,13 +1057,17 @@ export type Database = {
           organization_id: string | null
           phone: string
           stage_id: string | null
+          state: string | null
           status: string
           tags: string[] | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          city?: string | null
           created_at?: string
+          custom_fields?: Json | null
+          document?: string | null
           email?: string | null
           id?: string
           name: string
@@ -1021,13 +1075,17 @@ export type Database = {
           organization_id?: string | null
           phone: string
           stage_id?: string | null
+          state?: string | null
           status?: string
           tags?: string[] | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          city?: string | null
           created_at?: string
+          custom_fields?: Json | null
+          document?: string | null
           email?: string | null
           id?: string
           name?: string
@@ -1035,6 +1093,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string
           stage_id?: string | null
+          state?: string | null
           status?: string
           tags?: string[] | null
           updated_at?: string

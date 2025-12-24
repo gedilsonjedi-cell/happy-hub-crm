@@ -60,6 +60,9 @@ import {
   Zap,
   BarChart3,
   PieChart as PieChartIcon,
+  Plus,
+  MapPin,
+  FileText,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
@@ -75,6 +78,10 @@ interface PhoneEntry {
   phone: string;
   originalPhone: string;
   name?: string;
+  document?: string;
+  city?: string;
+  state?: string;
+  customFields?: Record<string, string>;
   status: "pending" | "valid" | "invalid" | "duplicate" | "blacklisted" | "landline" | "whatsapp_valid" | "whatsapp_invalid";
   formattedPhone: string;
   source: "csv" | "leads";
@@ -136,12 +143,21 @@ export default function Higienizacao() {
   } | null>(null);
   const [selectedPhoneColumn, setSelectedPhoneColumn] = useState<number | null>(null);
   const [selectedNameColumn, setSelectedNameColumn] = useState<number | null>(null);
+  const [selectedDocumentColumn, setSelectedDocumentColumn] = useState<number | null>(null);
+  const [selectedCityColumn, setSelectedCityColumn] = useState<number | null>(null);
+  const [selectedStateColumn, setSelectedStateColumn] = useState<number | null>(null);
   
   // Save leads dialog states
   const [showSaveLeadsDialog, setShowSaveLeadsDialog] = useState(false);
   const [selectedTagsForSave, setSelectedTagsForSave] = useState<string[]>([]);
   const [isSavingLeads, setIsSavingLeads] = useState(false);
   const [saveOnlyWhatsApp, setSaveOnlyWhatsApp] = useState(false);
+  
+  // New tag creation states
+  const [showCreateTag, setShowCreateTag] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#3b82f6");
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
 
   // Fetch user's organization
   const { data: profile } = useQuery({
@@ -279,7 +295,7 @@ export default function Higienizacao() {
       // Detect if first row is header (contains text like "phone", "telefone", "nome", etc.)
       const firstRow = allRows[0];
       const hasHeader = firstRow.some((cell) => 
-        /phone|telefone|nome|name|email|celular|whatsapp|numero|número/i.test(cell)
+        /phone|telefone|nome|name|email|celular|whatsapp|numero|número|cpf|cnpj|documento|cidade|city|estado|state|uf/i.test(cell)
       );
 
       const headers = hasHeader 
@@ -295,7 +311,7 @@ export default function Higienizacao() {
         fileName: file.name,
       });
       
-      // Auto-detect phone column (look for column with phone-like data)
+      // Auto-detect phone column
       const phoneColumnIndex = headers.findIndex((h) => 
         /phone|telefone|celular|whatsapp|numero|número/i.test(h)
       );
@@ -303,9 +319,27 @@ export default function Higienizacao() {
       
       // Auto-detect name column
       const nameColumnIndex = headers.findIndex((h) => 
-        /nome|name/i.test(h)
+        /^nome$|^name$/i.test(h)
       );
       setSelectedNameColumn(nameColumnIndex >= 0 ? nameColumnIndex : null);
+      
+      // Auto-detect document column (CPF/CNPJ)
+      const documentColumnIndex = headers.findIndex((h) => 
+        /cpf|cnpj|documento|document/i.test(h)
+      );
+      setSelectedDocumentColumn(documentColumnIndex >= 0 ? documentColumnIndex : null);
+      
+      // Auto-detect city column
+      const cityColumnIndex = headers.findIndex((h) => 
+        /cidade|city|municipio|município/i.test(h)
+      );
+      setSelectedCityColumn(cityColumnIndex >= 0 ? cityColumnIndex : null);
+      
+      // Auto-detect state column
+      const stateColumnIndex = headers.findIndex((h) => 
+        /estado|state|uf/i.test(h)
+      );
+      setSelectedStateColumn(stateColumnIndex >= 0 ? stateColumnIndex : null);
       
       setShowColumnMapping(true);
       toast.success(`Arquivo carregado: ${dataRows.length} linhas detectadas`);
@@ -330,6 +364,9 @@ export default function Higienizacao() {
     parsedFileData.rows.forEach((row, index) => {
       const phone = row[selectedPhoneColumn];
       const name = selectedNameColumn !== null ? row[selectedNameColumn] : undefined;
+      const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : undefined;
+      const city = selectedCityColumn !== null ? row[selectedCityColumn] : undefined;
+      const state = selectedStateColumn !== null ? row[selectedStateColumn] : undefined;
 
       if (!phone) return;
 
@@ -344,6 +381,9 @@ export default function Higienizacao() {
         phone,
         originalPhone: phone,
         name: name || undefined,
+        document: document || undefined,
+        city: city || undefined,
+        state: state || undefined,
         status: isDuplicate ? "duplicate" : isBlacklisted ? "blacklisted" : "pending",
         formattedPhone,
         source: "csv",
@@ -358,6 +398,9 @@ export default function Higienizacao() {
     setParsedFileData(null);
     setSelectedPhoneColumn(null);
     setSelectedNameColumn(null);
+    setSelectedDocumentColumn(null);
+    setSelectedCityColumn(null);
+    setSelectedStateColumn(null);
     toast.success(`${entries.length} números carregados do arquivo`);
   };
 
@@ -367,6 +410,9 @@ export default function Higienizacao() {
     setParsedFileData(null);
     setSelectedPhoneColumn(null);
     setSelectedNameColumn(null);
+    setSelectedDocumentColumn(null);
+    setSelectedCityColumn(null);
+    setSelectedStateColumn(null);
   };
 
   // Load selected leads
@@ -709,7 +755,45 @@ export default function Higienizacao() {
   const openSaveLeadsDialog = (onlyWhatsApp: boolean = false) => {
     setSaveOnlyWhatsApp(onlyWhatsApp);
     setSelectedTagsForSave([]);
+    setShowCreateTag(false);
+    setNewTagName("");
+    setNewTagColor("#3b82f6");
     setShowSaveLeadsDialog(true);
+  };
+
+  // Create new tag
+  const createNewTag = async () => {
+    if (!profile?.organization_id || !newTagName.trim()) {
+      toast.error("Digite um nome para a tag");
+      return;
+    }
+    
+    setIsCreatingTag(true);
+    
+    const { data, error } = await supabase
+      .from("lead_tags")
+      .insert({
+        name: newTagName.trim(),
+        color: newTagColor,
+        organization_id: profile.organization_id,
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      toast.error("Erro ao criar tag: " + error.message);
+      setIsCreatingTag(false);
+      return;
+    }
+    
+    // Refresh tags and select the new one
+    queryClient.invalidateQueries({ queryKey: ["lead-tags"] });
+    setSelectedTagsForSave((prev) => [...prev, newTagName.trim()]);
+    setShowCreateTag(false);
+    setNewTagName("");
+    setNewTagColor("#3b82f6");
+    setIsCreatingTag(false);
+    toast.success(`Tag "${data.name}" criada com sucesso!`);
   };
 
   // Save valid numbers as leads with optional tags
@@ -735,6 +819,10 @@ export default function Higienizacao() {
     const leadsToInsert = entriesToSave.map((e) => ({
       phone: e.formattedPhone,
       name: e.name || `Lead ${e.formattedPhone}`,
+      document: e.document || null,
+      city: e.city || null,
+      state: e.state || null,
+      custom_fields: e.customFields || {},
       user_id: user.id,
       organization_id: profile.organization_id,
       status: "novo",
@@ -1163,19 +1251,19 @@ export default function Higienizacao() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {/* Phone Column Selection */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium flex items-center gap-2">
                         <Phone className="w-4 h-4 text-primary" />
-                        Coluna de Telefone <span className="text-destructive">*</span>
+                        Telefone <span className="text-destructive">*</span>
                       </label>
                       <select
                         value={selectedPhoneColumn ?? ""}
                         onChange={(e) => setSelectedPhoneColumn(e.target.value ? parseInt(e.target.value) : null)}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <option value="">Selecione a coluna...</option>
+                        <option value="">Selecione...</option>
                         {parsedFileData.headers.map((header, index) => (
                           <option key={index} value={index}>
                             {header}
@@ -1188,14 +1276,74 @@ export default function Higienizacao() {
                     <div className="space-y-2">
                       <label className="text-sm font-medium flex items-center gap-2">
                         <Users className="w-4 h-4 text-muted-foreground" />
-                        Coluna de Nome <span className="text-muted-foreground">(opcional)</span>
+                        Nome
                       </label>
                       <select
                         value={selectedNameColumn ?? ""}
                         onChange={(e) => setSelectedNameColumn(e.target.value ? parseInt(e.target.value) : null)}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <option value="">Nenhuma coluna selecionada</option>
+                        <option value="">Nenhuma</option>
+                        {parsedFileData.headers.map((header, index) => (
+                          <option key={index} value={index} disabled={index === selectedPhoneColumn}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Document Column Selection (CPF/CNPJ) */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        CPF/CNPJ
+                      </label>
+                      <select
+                        value={selectedDocumentColumn ?? ""}
+                        onChange={(e) => setSelectedDocumentColumn(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Nenhuma</option>
+                        {parsedFileData.headers.map((header, index) => (
+                          <option key={index} value={index} disabled={index === selectedPhoneColumn}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* City Column Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        Cidade
+                      </label>
+                      <select
+                        value={selectedCityColumn ?? ""}
+                        onChange={(e) => setSelectedCityColumn(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Nenhuma</option>
+                        {parsedFileData.headers.map((header, index) => (
+                          <option key={index} value={index} disabled={index === selectedPhoneColumn}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* State Column Selection */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        Estado
+                      </label>
+                      <select
+                        value={selectedStateColumn ?? ""}
+                        onChange={(e) => setSelectedStateColumn(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Nenhuma</option>
                         {parsedFileData.headers.map((header, index) => (
                           <option key={index} value={index} disabled={index === selectedPhoneColumn}>
                             {header}
@@ -1212,45 +1360,61 @@ export default function Higienizacao() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            {parsedFileData.headers.map((header, index) => (
-                              <TableHead 
-                                key={index}
-                                className={
-                                  index === selectedPhoneColumn 
-                                    ? "bg-primary/10 text-primary font-bold" 
-                                    : index === selectedNameColumn 
-                                      ? "bg-blue-500/10 text-blue-600 font-bold"
-                                      : ""
-                                }
-                              >
-                                {header}
-                                {index === selectedPhoneColumn && (
-                                  <Badge className="ml-2 text-xs" variant="default">Telefone</Badge>
-                                )}
-                                {index === selectedNameColumn && (
-                                  <Badge className="ml-2 text-xs" variant="secondary">Nome</Badge>
-                                )}
-                              </TableHead>
-                            ))}
+                            {parsedFileData.headers.map((header, index) => {
+                              const isPhone = index === selectedPhoneColumn;
+                              const isName = index === selectedNameColumn;
+                              const isDocument = index === selectedDocumentColumn;
+                              const isCity = index === selectedCityColumn;
+                              const isState = index === selectedStateColumn;
+                              const isSelected = isPhone || isName || isDocument || isCity || isState;
+                              
+                              return (
+                                <TableHead 
+                                  key={index}
+                                  className={
+                                    isPhone ? "bg-primary/10 text-primary font-bold" :
+                                    isName ? "bg-blue-500/10 text-blue-600 font-bold" :
+                                    isDocument ? "bg-purple-500/10 text-purple-600 font-bold" :
+                                    isCity ? "bg-green-500/10 text-green-600 font-bold" :
+                                    isState ? "bg-orange-500/10 text-orange-600 font-bold" : ""
+                                  }
+                                >
+                                  {header}
+                                  {isPhone && <Badge className="ml-2 text-xs" variant="default">Telefone</Badge>}
+                                  {isName && <Badge className="ml-2 text-xs bg-blue-500">Nome</Badge>}
+                                  {isDocument && <Badge className="ml-2 text-xs bg-purple-500">CPF/CNPJ</Badge>}
+                                  {isCity && <Badge className="ml-2 text-xs bg-green-500">Cidade</Badge>}
+                                  {isState && <Badge className="ml-2 text-xs bg-orange-500">Estado</Badge>}
+                                </TableHead>
+                              );
+                            })}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {parsedFileData.rows.slice(0, 5).map((row, rowIndex) => (
                             <TableRow key={rowIndex}>
-                              {row.map((cell, cellIndex) => (
-                                <TableCell 
-                                  key={cellIndex}
-                                  className={
-                                    cellIndex === selectedPhoneColumn 
-                                      ? "bg-primary/5 font-mono" 
-                                      : cellIndex === selectedNameColumn 
-                                        ? "bg-blue-500/5"
-                                        : ""
-                                  }
-                                >
-                                  {cell || <span className="text-muted-foreground italic">vazio</span>}
-                                </TableCell>
-                              ))}
+                              {row.map((cell, cellIndex) => {
+                                const isPhone = cellIndex === selectedPhoneColumn;
+                                const isName = cellIndex === selectedNameColumn;
+                                const isDocument = cellIndex === selectedDocumentColumn;
+                                const isCity = cellIndex === selectedCityColumn;
+                                const isState = cellIndex === selectedStateColumn;
+                                
+                                return (
+                                  <TableCell 
+                                    key={cellIndex}
+                                    className={
+                                      isPhone ? "bg-primary/5 font-mono" :
+                                      isName ? "bg-blue-500/5" :
+                                      isDocument ? "bg-purple-500/5 font-mono" :
+                                      isCity ? "bg-green-500/5" :
+                                      isState ? "bg-orange-500/5" : ""
+                                    }
+                                  >
+                                    {cell || <span className="text-muted-foreground italic">vazio</span>}
+                                  </TableCell>
+                                );
+                              })}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -2010,12 +2174,75 @@ export default function Higienizacao() {
             
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Deseja adicionar tags aos leads? (opcional)
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">
+                    Deseja adicionar tags aos leads? (opcional)
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCreateTag(!showCreateTag)}
+                    className="gap-1 h-7 text-xs"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nova Tag
+                  </Button>
+                </div>
+                
+                {/* Create New Tag Form */}
+                {showCreateTag && (
+                  <div className="mb-3 p-3 border rounded-md bg-muted/30 space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Nome da tag"
+                        value={newTagName}
+                        onChange={(e) => setNewTagName(e.target.value)}
+                        className="flex-1 h-8"
+                      />
+                      <input
+                        type="color"
+                        value={newTagColor}
+                        onChange={(e) => setNewTagColor(e.target.value)}
+                        className="w-8 h-8 rounded border cursor-pointer"
+                        title="Cor da tag"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowCreateTag(false);
+                          setNewTagName("");
+                          setNewTagColor("#3b82f6");
+                        }}
+                        className="flex-1"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={createNewTag}
+                        disabled={isCreatingTag || !newTagName.trim()}
+                        className="flex-1 gap-1"
+                      >
+                        {isCreatingTag ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Plus className="w-3 h-3" />
+                        )}
+                        Criar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="flex flex-wrap gap-2 max-h-40 overflow-auto p-2 border rounded-md">
-                  {availableTags.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhuma tag disponível</p>
+                  {availableTags.length === 0 && !showCreateTag ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma tag disponível. Clique em "Nova Tag" para criar.</p>
                   ) : (
                     availableTags.map((tag) => (
                       <Badge
