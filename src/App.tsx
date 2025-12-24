@@ -12,6 +12,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
 import Leads from "./pages/Leads";
+import CarteiraClientes from "./pages/CarteiraClientes";
 import Disparos from "./pages/Disparos";
 import Templates from "./pages/Templates";
 import Pipeline from "./pages/Pipeline";
@@ -106,6 +107,7 @@ const App = () => (
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
           <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
+          <Route path="/carteira-clientes" element={<ProtectedRoute><CarteiraClientes /></ProtectedRoute>} />
           <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
