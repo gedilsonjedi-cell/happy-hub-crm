@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -607,9 +608,15 @@ const Chatbot = () => {
           </ScrollArea>
         </div>
 
-        {/* Agent Preview Panel */}
-        {showPreview && (
-          <div className="w-96">
+      </div>
+
+      {/* Agent Preview Sheet */}
+      <Sheet open={showPreview} onOpenChange={setShowPreview}>
+        <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Preview do Agente</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-hidden">
             <AgentPreview
               agentName={config.name}
               nickname={config.nickname}
@@ -619,8 +626,8 @@ const Chatbot = () => {
               companyInfo={config.company_info}
             />
           </div>
-        )}
-      </div>
+        </SheetContent>
+      </Sheet>
     </MainLayout>
   );
 };
