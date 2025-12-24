@@ -74,6 +74,7 @@ const personalizacaoSubmenu = [
   { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessUsuarios" },
   { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessUsuarios" },
   { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessUsuarios" },
+  { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: "canAccessUsuarios" },
 ];
 
 const bottomMenuItems = [
