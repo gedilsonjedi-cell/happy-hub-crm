@@ -28,8 +28,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { DocumentUpload } from "@/components/chatbot/DocumentUpload";
 import { AgentPreview } from "@/components/chatbot/AgentPreview";
-import { ChatbotConfigPanel } from "@/components/chatbot/ChatbotConfigPanel";
-import { AttendantAvailabilityPanel } from "@/components/chatbot/AttendantAvailabilityPanel";
 
 interface KnowledgeDocument {
   id: string;
@@ -286,43 +284,6 @@ const Chatbot = () => {
             </CardHeader>
           </Card>
 
-          <p className="text-xs text-muted-foreground px-2 pt-4">Automação WhatsApp</p>
-
-          <Card 
-            className={cn(
-              "cursor-pointer transition-all",
-              activeTab === "chatbot-auto" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-            )}
-            onClick={() => setActiveTab("chatbot-auto")}
-          >
-            <CardHeader className="p-4">
-              <div className="flex items-center gap-3">
-                <Zap className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <CardTitle className="text-sm">Chatbot Automático</CardTitle>
-                  <CardDescription className="text-xs">Respostas e distribuição</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Card 
-            className={cn(
-              "cursor-pointer transition-all",
-              activeTab === "disponibilidade" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-            )}
-            onClick={() => setActiveTab("disponibilidade")}
-          >
-            <CardHeader className="p-4">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <CardTitle className="text-sm">Disponibilidade</CardTitle>
-                  <CardDescription className="text-xs">Seu status de atendimento</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
         </div>
 
         {/* Main Content */}
@@ -531,20 +492,60 @@ const Chatbot = () => {
                 </div>
               )}
 
-              {activeTab === "comportamento" && (
+{activeTab === "comportamento" && (
                 <div className="space-y-6">
                   <h2 className="text-xl font-semibold">Comportamento</h2>
                   <p className="text-sm text-muted-foreground">
                     Configure como o agente deve agir durante as conversas.
                   </p>
 
-                  <Card className="p-6">
-                    <div className="text-center text-muted-foreground">
-                      <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                      <p>Configurações de comportamento em breve</p>
-                      <p className="text-xs mt-1">Tempo de resposta, escalação, horários de atendimento</p>
-                    </div>
-                  </Card>
+                  <div className="grid gap-4">
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <MessageCircle className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Tempo de Resposta</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Defina o tempo máximo que o agente deve aguardar antes de responder e simular digitação natural.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Escalação para Atendente</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Configure quando o agente deve transferir a conversa para um atendente humano automaticamente.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Horários de Atendimento</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Defina os horários em que o agente deve responder e configure mensagens automáticas fora do expediente.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  <p className="text-xs text-center text-muted-foreground pt-4">
+                    Estas funcionalidades estarão disponíveis em breve
+                  </p>
                 </div>
               )}
 
@@ -555,33 +556,53 @@ const Chatbot = () => {
                     Preferências avançadas que controlam o funcionamento da IA.
                   </p>
 
-                  <Card className="p-6">
-                    <div className="text-center text-muted-foreground">
-                      <Settings className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                      <p>Configurações avançadas em breve</p>
-                      <p className="text-xs mt-1">Integrações, webhooks, limites</p>
-                    </div>
-                  </Card>
-                </div>
-              )}
+                  <div className="grid gap-4">
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Settings className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Integrações Externas</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Conecte com CRMs, ERPs e outros sistemas para buscar informações em tempo real durante as conversas.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
 
-              {activeTab === "chatbot-auto" && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-semibold">Chatbot Automático</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Configure respostas automáticas, distribuição de atendimentos e qualificação de leads.
-                  </p>
-                  <ChatbotConfigPanel />
-                </div>
-              )}
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Webhooks</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Receba notificações em tempo real sobre eventos do agente como início de conversa, qualificação e escalação.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
 
-              {activeTab === "disponibilidade" && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-semibold">Minha Disponibilidade</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Controle seu status para receber novos atendimentos via WhatsApp.
+                    <Card className="p-4 border-dashed">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <BookOpen className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">Limites e Uso</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Configure limites de mensagens, tokens de IA e monitore o consumo do seu agente.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  <p className="text-xs text-center text-muted-foreground pt-4">
+                    Estas funcionalidades estarão disponíveis em breve
                   </p>
-                  <AttendantAvailabilityPanel />
                 </div>
               )}
 
