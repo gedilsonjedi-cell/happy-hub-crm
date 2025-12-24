@@ -48,6 +48,8 @@ import {
   X,
   Smartphone,
   PhoneCall,
+  MessageCircle,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -62,13 +64,14 @@ interface PhoneEntry {
   phone: string;
   originalPhone: string;
   name?: string;
-  status: "pending" | "valid" | "invalid" | "duplicate" | "blacklisted" | "landline";
+  status: "pending" | "valid" | "invalid" | "duplicate" | "blacklisted" | "landline" | "whatsapp_valid" | "whatsapp_invalid";
   formattedPhone: string;
   source: "csv" | "leads";
   leadId?: string;
   tags?: string[];
   validationResult?: PhoneValidationResult;
   validationMessage?: string;
+  hasWhatsApp?: boolean;
 }
 
 interface ValidationStats {
@@ -79,6 +82,8 @@ interface ValidationStats {
   blacklisted: number;
   pending: number;
   landline: number;
+  whatsappValid: number;
+  whatsappInvalid: number;
 }
 
 interface HygieneHistoryRecord {
@@ -108,6 +113,8 @@ export default function Higienizacao() {
   const [leadsSavedCount, setLeadsSavedCount] = useState(0);
   const [leadsDeletedCount, setLeadsDeletedCount] = useState(0);
   const [currentSource, setCurrentSource] = useState<"csv" | "leads">("csv");
+  const [isValidatingZapi, setIsValidatingZapi] = useState(false);
+  const [zapiProgress, setZapiProgress] = useState(0);
 
   // Fetch user's organization
   const { data: profile } = useQuery({
@@ -435,7 +442,94 @@ export default function Higienizacao() {
     }
     
     setIsValidating(false);
-    toast.success("Validação concluída!");
+    toast.success("Validação local concluída!");
+  };
+
+  // Validate WhatsApp numbers using Z-API
+  const validateWithZapi = async () => {
+    // Get entries that are valid mobile numbers (can use WhatsApp)
+    const validMobileEntries = phoneEntries.filter(
+      (e) => e.status === "valid" || e.status === "whatsapp_valid" || e.status === "whatsapp_invalid"
+    );
+    
+    if (validMobileEntries.length === 0) {
+      toast.error("Nenhum celular válido para verificar no WhatsApp. Execute a validação local primeiro.");
+      return;
+    }
+    
+    setIsValidatingZapi(true);
+    setZapiProgress(0);
+    
+    try {
+      const phones = validMobileEntries.map((e) => e.formattedPhone.replace(/\D/g, ''));
+      
+      toast.info(`Verificando ${phones.length} números no WhatsApp via Z-API...`);
+      
+      const { data, error } = await supabase.functions.invoke('zapi-validate-batch', {
+        body: { phones }
+      });
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      const results = data.results as Array<{
+        exists: boolean;
+        inputPhone: string;
+        outputPhone: string;
+      }>;
+      
+      // Create a map for quick lookup
+      const resultMap = new Map<string, boolean>();
+      results.forEach((r) => {
+        resultMap.set(r.inputPhone, r.exists);
+        // Also map the cleaned format
+        const cleaned = r.inputPhone.replace(/\D/g, '');
+        resultMap.set(cleaned, r.exists);
+      });
+      
+      // Update entries
+      setPhoneEntries((prev) =>
+        prev.map((e) => {
+          if (e.status !== "valid" && e.status !== "whatsapp_valid" && e.status !== "whatsapp_invalid") {
+            return e;
+          }
+          
+          const cleanedPhone = e.formattedPhone.replace(/\D/g, '');
+          const hasWhatsApp = resultMap.get(cleanedPhone);
+          
+          if (hasWhatsApp === undefined) {
+            return e;
+          }
+          
+          return {
+            ...e,
+            status: hasWhatsApp ? "whatsapp_valid" : "whatsapp_invalid",
+            hasWhatsApp,
+            validationMessage: hasWhatsApp 
+              ? "✅ Número possui WhatsApp" 
+              : "❌ Número não possui WhatsApp",
+          };
+        })
+      );
+      
+      const whatsappCount = results.filter((r) => r.exists).length;
+      const noWhatsappCount = results.filter((r) => !r.exists).length;
+      
+      toast.success(
+        `Verificação Z-API concluída! ${whatsappCount} com WhatsApp, ${noWhatsappCount} sem WhatsApp.`
+      );
+    } catch (error) {
+      console.error("Z-API validation error:", error);
+      toast.error(`Erro na verificação Z-API: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
+    } finally {
+      setIsValidatingZapi(false);
+      setZapiProgress(100);
+    }
   };
 
   // Calculate statistics
@@ -448,20 +542,25 @@ export default function Higienizacao() {
       blacklisted: phoneEntries.filter((e) => e.status === "blacklisted").length,
       pending: phoneEntries.filter((e) => e.status === "pending").length,
       landline: phoneEntries.filter((e) => e.status === "landline").length,
+      whatsappValid: phoneEntries.filter((e) => e.status === "whatsapp_valid").length,
+      whatsappInvalid: phoneEntries.filter((e) => e.status === "whatsapp_invalid").length,
     };
   }, [phoneEntries]);
 
   // Export to CSV
-  const exportToCsv = (type: "all" | "valid" | "invalid") => {
+  const exportToCsv = (type: "all" | "valid" | "invalid" | "whatsapp") => {
     let entries = phoneEntries;
     let filename = "higienizacao_completa";
     
     if (type === "valid") {
-      entries = phoneEntries.filter((e) => e.status === "valid");
+      entries = phoneEntries.filter((e) => e.status === "valid" || e.status === "whatsapp_valid");
       filename = "numeros_validos";
+    } else if (type === "whatsapp") {
+      entries = phoneEntries.filter((e) => e.status === "whatsapp_valid");
+      filename = "numeros_whatsapp_validos";
     } else if (type === "invalid") {
       entries = phoneEntries.filter(
-        (e) => e.status === "invalid" || e.status === "duplicate" || e.status === "blacklisted"
+        (e) => e.status === "invalid" || e.status === "duplicate" || e.status === "blacklisted" || e.status === "whatsapp_invalid"
       );
       filename = "numeros_invalidos";
     }
@@ -581,6 +680,18 @@ export default function Higienizacao() {
               <Smartphone className="w-3 h-3" /> Celular Válido
             </Badge>
           );
+        case "whatsapp_valid":
+          return (
+            <Badge className="bg-green-600 text-white gap-1">
+              <MessageCircle className="w-3 h-3" /> WhatsApp ✓
+            </Badge>
+          );
+        case "whatsapp_invalid":
+          return (
+            <Badge variant="secondary" className="gap-1 bg-gray-500 text-white">
+              <MessageCircle className="w-3 h-3" /> Sem WhatsApp
+            </Badge>
+          );
         case "landline":
           return (
             <Badge variant="secondary" className="gap-1 bg-warning text-warning-foreground">
@@ -667,7 +778,7 @@ export default function Higienizacao() {
 
         {/* Statistics */}
         {phoneEntries.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-9 gap-4">
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="text-center">
@@ -683,7 +794,29 @@ export default function Higienizacao() {
                     <Smartphone className="w-4 h-4 text-success" />
                     <p className="text-2xl font-bold text-success">{stats.valid}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">Celulares Válidos</p>
+                  <p className="text-xs text-muted-foreground">Celulares</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-green-500/50">
+              <CardContent className="pt-4 pb-4">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <MessageCircle className="w-4 h-4 text-green-600" />
+                    <p className="text-2xl font-bold text-green-600">{stats.whatsappValid}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Com WhatsApp</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <MessageCircle className="w-4 h-4 text-gray-500" />
+                    <p className="text-2xl font-bold text-gray-500">{stats.whatsappInvalid}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Sem WhatsApp</p>
                 </div>
               </CardContent>
             </Card>
@@ -789,18 +922,36 @@ export default function Higienizacao() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         onClick={validateNumbers}
-                        disabled={isValidating || stats.pending === 0}
+                        disabled={isValidating || isValidatingZapi || stats.pending === 0}
                         className="gap-2"
                       >
                         {isValidating ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            Validando...
+                            Validando Formato...
                           </>
                         ) : (
                           <>
                             <Phone className="w-4 h-4" />
-                            Validar WhatsApp
+                            Validar Formato
+                          </>
+                        )}
+                      </Button>
+                      
+                      <Button
+                        onClick={validateWithZapi}
+                        disabled={isValidating || isValidatingZapi || stats.valid === 0}
+                        className="gap-2 bg-green-600 hover:bg-green-700"
+                      >
+                        {isValidatingZapi ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Verificando WhatsApp...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" />
+                            Verificar WhatsApp (Z-API)
                           </>
                         )}
                       </Button>
@@ -808,7 +959,7 @@ export default function Higienizacao() {
                       <Button
                         variant="outline"
                         onClick={() => exportToCsv("valid")}
-                        disabled={stats.valid === 0}
+                        disabled={stats.valid + stats.whatsappValid === 0}
                         className="gap-2"
                       >
                         <Download className="w-4 h-4" />
@@ -817,8 +968,18 @@ export default function Higienizacao() {
                       
                       <Button
                         variant="outline"
+                        onClick={() => exportToCsv("whatsapp")}
+                        disabled={stats.whatsappValid === 0}
+                        className="gap-2 border-green-500 text-green-600 hover:bg-green-50"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Exportar com WhatsApp
+                      </Button>
+                      
+                      <Button
+                        variant="outline"
                         onClick={() => exportToCsv("invalid")}
-                        disabled={stats.invalid + stats.duplicates + stats.blacklisted === 0}
+                        disabled={stats.invalid + stats.duplicates + stats.blacklisted + stats.whatsappInvalid === 0}
                         className="gap-2"
                       >
                         <Download className="w-4 h-4" />
@@ -1286,6 +1447,12 @@ export default function Higienizacao() {
                 <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <span>
                   <strong>Formato de Celular:</strong> Celulares devem ter 11 dígitos, começar com 9, e o segundo dígito ser 6, 7, 8 ou 9
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Zap className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                <span>
+                  <strong>Verificação WhatsApp (Z-API):</strong> Após validar o formato, use o botão "Verificar WhatsApp" para confirmar quais números realmente possuem WhatsApp ativo
                 </span>
               </li>
               <li className="flex items-start gap-2">
