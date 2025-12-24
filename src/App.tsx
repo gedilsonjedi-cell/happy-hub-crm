@@ -10,7 +10,6 @@ import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
 import Leads from "./pages/Leads";
-
 import Disparos from "./pages/Disparos";
 import Templates from "./pages/Templates";
 import Pipeline from "./pages/Pipeline";
@@ -24,6 +23,7 @@ import WhatsAppChat from "./pages/WhatsAppChat";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Saldo from "./pages/Saldo";
+import Loja from "./pages/Loja";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -82,6 +82,7 @@ const App = () => (
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
           <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
+          <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
