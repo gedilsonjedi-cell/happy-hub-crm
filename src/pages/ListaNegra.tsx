@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, Plus, Trash2, Search, UserX } from "lucide-react";
+import { Ban, Plus, Trash2, Search, UserX, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 interface BlacklistEntry {
   id: string;
@@ -50,10 +51,19 @@ interface BlacklistEntry {
   created_at: string;
 }
 
+interface ImportResult {
+  success: number;
+  duplicates: number;
+  errors: number;
+  total: number;
+}
+
 export default function ListaNegra() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [newEntry, setNewEntry] = useState({
@@ -61,6 +71,10 @@ export default function ListaNegra() {
     name: "",
     reason: "",
   });
+  const [importProgress, setImportProgress] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [csvPreview, setCsvPreview] = useState<{ phone: string; name?: string }[]>([]);
 
   // Get user's organization
   const { data: profile } = useQuery({
@@ -154,6 +168,140 @@ export default function ListaNegra() {
     return phone;
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      toast.error("Por favor, selecione um arquivo CSV");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      parseCSV(text);
+    };
+    reader.readAsText(file);
+  };
+
+  const parseCSV = (text: string) => {
+    const lines = text.split('\n').filter(line => line.trim());
+    const entries: { phone: string; name?: string }[] = [];
+
+    // Skip header if it looks like one
+    const startIndex = lines[0]?.toLowerCase().includes('telefone') || 
+                       lines[0]?.toLowerCase().includes('phone') ? 1 : 0;
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const parts = lines[i].split(/[,;]/).map(p => p.trim().replace(/"/g, ''));
+      const phone = parts[0]?.replace(/\D/g, '');
+      const name = parts[1] || undefined;
+
+      if (phone && phone.length >= 10) {
+        entries.push({ phone, name });
+      }
+    }
+
+    setCsvPreview(entries.slice(0, 5));
+    setImportResult(null);
+    
+    if (entries.length === 0) {
+      toast.error("Nenhum número válido encontrado no arquivo");
+    } else {
+      setIsImportDialogOpen(true);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!profile?.organization_id || !fileInputRef.current?.files?.[0]) return;
+
+    setIsImporting(true);
+    setImportProgress(0);
+    setImportResult(null);
+
+    const file = fileInputRef.current.files[0];
+    const text = await file.text();
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    const startIndex = lines[0]?.toLowerCase().includes('telefone') || 
+                       lines[0]?.toLowerCase().includes('phone') ? 1 : 0;
+
+    const entries: { phone: string; name?: string }[] = [];
+    for (let i = startIndex; i < lines.length; i++) {
+      const parts = lines[i].split(/[,;]/).map(p => p.trim().replace(/"/g, ''));
+      const phone = parts[0]?.replace(/\D/g, '');
+      const name = parts[1] || undefined;
+      if (phone && phone.length >= 10) {
+        entries.push({ phone, name });
+      }
+    }
+
+    let success = 0;
+    let duplicates = 0;
+    let errors = 0;
+    const batchSize = 50;
+
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batch = entries.slice(i, i + batchSize);
+      
+      const { error } = await supabase.from("blacklist").insert(
+        batch.map(entry => ({
+          organization_id: profile.organization_id,
+          phone: entry.phone,
+          name: entry.name || null,
+          reason: "Importado via CSV",
+          blocked_by: user?.id,
+        }))
+      );
+
+      if (error) {
+        // Handle batch errors - try individual inserts
+        for (const entry of batch) {
+          const { error: singleError } = await supabase.from("blacklist").insert({
+            organization_id: profile.organization_id,
+            phone: entry.phone,
+            name: entry.name || null,
+            reason: "Importado via CSV",
+            blocked_by: user?.id,
+          });
+
+          if (singleError) {
+            if (singleError.code === '23505') {
+              duplicates++;
+            } else {
+              errors++;
+            }
+          } else {
+            success++;
+          }
+        }
+      } else {
+        success += batch.length;
+      }
+
+      setImportProgress(Math.round(((i + batch.length) / entries.length) * 100));
+    }
+
+    setImportResult({ success, duplicates, errors, total: entries.length });
+    setIsImporting(false);
+    queryClient.invalidateQueries({ queryKey: ["blacklist"] });
+
+    if (success > 0) {
+      toast.success(`${success} contatos importados com sucesso`);
+    }
+  };
+
+  const resetImport = () => {
+    setIsImportDialogOpen(false);
+    setCsvPreview([]);
+    setImportResult(null);
+    setImportProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const filteredBlacklist = blacklist?.filter(
     (entry) =>
       entry.phone.includes(searchTerm.replace(/\D/g, "")) ||
@@ -174,75 +322,196 @@ export default function ListaNegra() {
             </p>
           </div>
 
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar Contato
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Adicionar à Lista Negra</DialogTitle>
-                <DialogDescription>
-                  Este contato não receberá mais disparos da sua organização.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefone *</Label>
-                  <Input
-                    id="phone"
-                    placeholder="5511999999999"
-                    value={newEntry.phone}
-                    onChange={(e) =>
-                      setNewEntry({ ...newEntry, phone: e.target.value })
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Formato: código do país + DDD + número
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome (opcional)</Label>
-                  <Input
-                    id="name"
-                    placeholder="Nome do contato"
-                    value={newEntry.name}
-                    onChange={(e) =>
-                      setNewEntry({ ...newEntry, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reason">Motivo (opcional)</Label>
-                  <Textarea
-                    id="reason"
-                    placeholder="Por que este contato está sendo bloqueado?"
-                    value={newEntry.reason}
-                    onChange={(e) =>
-                      setNewEntry({ ...newEntry, reason: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAddDialogOpen(false)}
-                >
-                  Cancelar
+          <div className="flex gap-2">
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4 mr-2" />
+              Importar CSV
+            </Button>
+
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Contato
                 </Button>
-                <Button
-                  onClick={() => addMutation.mutate(newEntry)}
-                  disabled={!newEntry.phone || addMutation.isPending}
-                >
-                  {addMutation.isPending ? "Adicionando..." : "Adicionar"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Adicionar à Lista Negra</DialogTitle>
+                  <DialogDescription>
+                    Este contato não receberá mais disparos da sua organização.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone *</Label>
+                    <Input
+                      id="phone"
+                      placeholder="5511999999999"
+                      value={newEntry.phone}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, phone: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Formato: código do país + DDD + número
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome (opcional)</Label>
+                    <Input
+                      id="name"
+                      placeholder="Nome do contato"
+                      value={newEntry.name}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reason">Motivo (opcional)</Label>
+                    <Textarea
+                      id="reason"
+                      placeholder="Por que este contato está sendo bloqueado?"
+                      value={newEntry.reason}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, reason: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAddDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={() => addMutation.mutate(newEntry)}
+                    disabled={!newEntry.phone || addMutation.isPending}
+                  >
+                    {addMutation.isPending ? "Adicionando..." : "Adicionar"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
+
+        {/* Import Dialog */}
+        <Dialog open={isImportDialogOpen} onOpenChange={(open) => !isImporting && (open ? setIsImportDialogOpen(true) : resetImport())}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />
+                Importar Lista Negra
+              </DialogTitle>
+              <DialogDescription>
+                Importe contatos em massa a partir de um arquivo CSV.
+              </DialogDescription>
+            </DialogHeader>
+
+            {!importResult ? (
+              <>
+                <div className="space-y-4 py-4">
+                  {csvPreview.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Pré-visualização ({csvPreview.length} de {fileInputRef.current?.files?.[0] ? "..." : "0"} contatos)</Label>
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Telefone</TableHead>
+                              <TableHead>Nome</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {csvPreview.map((entry, idx) => (
+                              <TableRow key={idx}>
+                                <TableCell className="font-mono text-sm">{formatPhone(entry.phone)}</TableCell>
+                                <TableCell>{entry.name || "-"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando os primeiros 5 registros
+                      </p>
+                    </div>
+                  )}
+
+                  {isImporting && (
+                    <div className="space-y-2">
+                      <Label>Importando...</Label>
+                      <Progress value={importProgress} className="h-2" />
+                      <p className="text-sm text-muted-foreground text-center">
+                        {importProgress}% concluído
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium">Formato esperado do CSV:</p>
+                    <code className="text-xs bg-background p-2 rounded block">
+                      telefone,nome<br/>
+                      5511999999999,João Silva<br/>
+                      5521988888888,Maria Santos
+                    </code>
+                    <p className="text-xs text-muted-foreground">
+                      A coluna de nome é opcional. Separadores aceitos: vírgula (,) ou ponto e vírgula (;)
+                    </p>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={resetImport} disabled={isImporting}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleImport} disabled={isImporting || csvPreview.length === 0}>
+                    {isImporting ? "Importando..." : "Importar Contatos"}
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <div className="py-6 space-y-6">
+                <div className="text-center space-y-2">
+                  <CheckCircle2 className="h-12 w-12 text-primary mx-auto" />
+                  <h3 className="text-lg font-semibold">Importação Concluída</h3>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="bg-primary/10 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-primary">{importResult.success}</p>
+                    <p className="text-xs text-muted-foreground">Importados</p>
+                  </div>
+                  <div className="bg-warning/10 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-warning">{importResult.duplicates}</p>
+                    <p className="text-xs text-muted-foreground">Duplicados</p>
+                  </div>
+                  <div className="bg-destructive/10 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-destructive">{importResult.errors}</p>
+                    <p className="text-xs text-muted-foreground">Erros</p>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button onClick={resetImport}>Fechar</Button>
+                </DialogFooter>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>
