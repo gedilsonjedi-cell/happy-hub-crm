@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
+import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
 import Leads from "./pages/Leads";
@@ -27,6 +28,12 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Component to initialize global notifications
+const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
+  usePixPaymentNotifications();
+  return <>{children}</>;
+};
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
 
@@ -45,7 +52,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return (
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
-        {children}
+        <GlobalNotifications>
+          {children}
+        </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
   );
