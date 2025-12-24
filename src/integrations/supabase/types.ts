@@ -117,6 +117,41 @@ export type Database = {
           },
         ]
       }
+      away_message_config: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean | null
+          message: string | null
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          message?: string | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          message?: string | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "away_message_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       balance_transactions: {
         Row: {
           amount: number
@@ -201,6 +236,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "blacklist_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_hours: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          is_active: boolean | null
+          organization_id: string | null
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          start_time?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_hours_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -754,6 +830,44 @@ export type Database = {
         }
         Relationships: []
       }
+      holidays: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          is_recurring: boolean | null
+          name: string
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          is_recurring?: boolean | null
+          name: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          is_recurring?: boolean | null
+          name?: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holidays_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_documents: {
         Row: {
           agent_id: string | null
@@ -791,6 +905,41 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tags: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_tags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]

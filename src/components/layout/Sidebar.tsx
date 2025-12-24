@@ -25,6 +25,11 @@ import {
   PanelLeftClose,
   PanelLeft,
   Briefcase,
+  Settings,
+  Clock,
+  Calendar,
+  Building2,
+  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -61,6 +66,13 @@ const disparosSubmenu = [
   { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: null },
 ];
 
+const personalizacaoSubmenu = [
+  { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: "canAccessUsuarios" },
+  { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessUsuarios" },
+  { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessUsuarios" },
+  { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessUsuarios" },
+];
+
 const bottomMenuItems = [
   { icon: ShoppingBag, label: "Loja", path: "/loja", permission: null },
   { icon: CreditCard, label: "Minha Assinatura", path: "/minha-assinatura", permission: null },
@@ -73,12 +85,14 @@ export function Sidebar() {
   const { collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
   const [crmOpen, setCrmOpen] = useState(true);
   const [disparosOpen, setDisparosOpen] = useState(true);
+  const [personalizacaoOpen, setPersonalizacaoOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
   const unreadCount = useUnreadMessagesCount();
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
+  const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -279,6 +293,9 @@ export function Sidebar() {
 
             {/* Disparos submenu */}
             {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
+
+            {/* Personalização submenu */}
+            {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
 
             {/* Bottom menu items */}
             {bottomMenuItems.map((item) => renderMenuItem(item))}
