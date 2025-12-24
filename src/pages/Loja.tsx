@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,7 +21,10 @@ import {
   Crown,
   Zap,
   Wallet,
-  Calendar
+  Calendar,
+  Minus,
+  Plus,
+  Users
 } from "lucide-react";
 import {
   AlertDialog,
@@ -48,6 +53,7 @@ interface Purchase {
   status: string;
   purchased_at: string | null;
   created_at: string;
+  quantity: number;
   store_products: {
     name: string;
   } | null;
@@ -62,9 +68,11 @@ export default function Loja() {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; product: Product | null }>({
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; product: Product | null; quantity: number }>({
     open: false,
     product: null,
+    quantity: 1,
   });
 
   useEffect(() => {
@@ -84,6 +92,13 @@ export default function Loja() {
 
       if (error) throw error;
       setProducts(data || []);
+      
+      // Initialize quantities
+      const initialQuantities: Record<string, number> = {};
+      (data || []).forEach(p => {
+        initialQuantities[p.id] = 1;
+      });
+      setQuantities(initialQuantities);
     } catch (error) {
       console.error("Error fetching products:", error);
       toast({
@@ -117,6 +132,20 @@ export default function Loja() {
     }
   };
 
+  const handleQuantityChange = (productId: string, delta: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [productId]: Math.max(1, (prev[productId] || 1) + delta)
+    }));
+  };
+
+  const setQuantity = (productId: string, value: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [productId]: Math.max(1, value)
+    }));
+  };
+
   const handlePurchase = async (product: Product) => {
     if (!organizationId) {
       toast({
@@ -127,29 +156,34 @@ export default function Loja() {
       return;
     }
 
-    if (currentBalance < product.price) {
+    const quantity = product.product_type === "subscription" ? 1 : (quantities[product.id] || 1);
+    const totalPrice = product.price * quantity;
+
+    if (currentBalance < totalPrice) {
       toast({
         title: "Saldo insuficiente",
-        description: `Você precisa de ${formatCurrency(product.price)} para comprar este produto. Seu saldo atual é ${formatCurrency(currentBalance)}.`,
+        description: `Você precisa de ${formatCurrency(totalPrice)} para esta compra. Seu saldo atual é ${formatCurrency(currentBalance)}.`,
         variant: "destructive",
       });
       return;
     }
 
-    setConfirmDialog({ open: true, product });
+    setConfirmDialog({ open: true, product, quantity });
   };
 
   const confirmPurchase = async () => {
     const product = confirmDialog.product;
+    const quantity = confirmDialog.quantity;
     if (!product || !organizationId) return;
 
     setPurchasing(product.id);
-    setConfirmDialog({ open: false, product: null });
+    setConfirmDialog({ open: false, product: null, quantity: 1 });
 
     try {
       const { data, error } = await supabase.rpc("purchase_product", {
         _organization_id: organizationId,
         _product_id: product.id,
+        _quantity: quantity,
       });
 
       if (error) throw error;
@@ -157,9 +191,13 @@ export default function Loja() {
       if (data) {
         toast({
           title: "Compra realizada!",
-          description: `${product.name} foi adquirido com sucesso.`,
+          description: quantity > 1 
+            ? `${quantity}x ${product.name} adquirido(s) com sucesso.`
+            : `${product.name} foi adquirido com sucesso.`,
         });
         fetchPurchases();
+        // Reset quantity
+        setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       } else {
         toast({
           title: "Erro na compra",
@@ -197,6 +235,9 @@ export default function Loja() {
   const getProductIcon = (productType: string, productName: string) => {
     if (productType === "subscription") return <Crown className="w-6 h-6 text-primary" />;
     if (productName.toLowerCase().includes("api")) return <Zap className="w-6 h-6 text-warning" />;
+    if (productName.toLowerCase().includes("usuário") || productName.toLowerCase().includes("usuario")) {
+      return <Users className="w-6 h-6 text-blue-500" />;
+    }
     return <ShoppingBag className="w-6 h-6 text-muted-foreground" />;
   };
 
@@ -306,8 +347,10 @@ export default function Loja() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {products.map((product) => {
-                const canAfford = currentBalance >= product.price;
                 const isSubscription = product.product_type === "subscription";
+                const quantity = isSubscription ? 1 : (quantities[product.id] || 1);
+                const totalPrice = product.price * quantity;
+                const canAfford = currentBalance >= totalPrice;
                 
                 return (
                   <Card key={product.id} className={isSubscription ? "border-primary" : ""}>
@@ -321,14 +364,54 @@ export default function Loja() {
                       <CardTitle className="mt-2">{product.name}</CardTitle>
                       <CardDescription>{product.description}</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold text-primary">
-                        {formatCurrency(product.price)}
+                    <CardContent className="space-y-4">
+                      <div>
+                        <div className="text-3xl font-bold text-primary">
+                          {formatCurrency(product.price)}
+                        </div>
+                        {isSubscription && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Renovação mensal usando saldo
+                          </p>
+                        )}
                       </div>
-                      {isSubscription && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Renovação mensal usando saldo
-                        </p>
+
+                      {/* Quantity Selector - only for non-subscription products */}
+                      {!isSubscription && (
+                        <div className="space-y-2">
+                          <Label className="text-sm text-muted-foreground">Quantidade</Label>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleQuantityChange(product.id, -1)}
+                              disabled={quantity <= 1}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={quantity}
+                              onChange={(e) => setQuantity(product.id, parseInt(e.target.value) || 1)}
+                              className="w-16 text-center h-8"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleQuantityChange(product.id, 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {quantity > 1 && (
+                            <p className="text-sm font-medium text-primary">
+                              Total: {formatCurrency(totalPrice)}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </CardContent>
                     <CardFooter>
@@ -343,7 +426,7 @@ export default function Loja() {
                         ) : canAfford ? (
                           <>
                             <Check className="w-4 h-4" />
-                            Comprar
+                            Comprar{quantity > 1 ? ` (${quantity}x)` : ""}
                           </>
                         ) : (
                           <>
@@ -374,6 +457,7 @@ export default function Loja() {
                         <div>
                           <p className="font-medium">
                             {purchase.store_products?.name || "Produto"}
+                            {purchase.quantity > 1 && ` (x${purchase.quantity})`}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {formatDate(purchase.purchased_at || purchase.created_at)}
@@ -414,11 +498,21 @@ export default function Loja() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Compra</AlertDialogTitle>
             <AlertDialogDescription>
-              Você está prestes a comprar <strong>{confirmDialog.product?.name}</strong> por{" "}
-              <strong>{confirmDialog.product ? formatCurrency(confirmDialog.product.price) : ""}</strong>.
+              Você está prestes a comprar{" "}
+              {confirmDialog.quantity > 1 && <strong>{confirmDialog.quantity}x </strong>}
+              <strong>{confirmDialog.product?.name}</strong> por{" "}
+              <strong>{confirmDialog.product ? formatCurrency(confirmDialog.product.price * confirmDialog.quantity) : ""}</strong>.
               <br /><br />
               O valor será debitado do seu saldo atual de{" "}
               <strong>{formatCurrency(currentBalance)}</strong>.
+              {confirmDialog.product?.name?.toLowerCase().includes("usuário") && confirmDialog.quantity > 0 && (
+                <>
+                  <br /><br />
+                  <span className="text-primary">
+                    Isso adicionará {confirmDialog.quantity} usuário(s) ao limite da sua organização.
+                  </span>
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

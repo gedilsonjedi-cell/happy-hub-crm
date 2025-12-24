@@ -1163,6 +1163,7 @@ export type Database = {
           organization_id: string
           product_id: string
           purchased_at: string | null
+          quantity: number | null
           status: string
           updated_at: string
         }
@@ -1173,6 +1174,7 @@ export type Database = {
           organization_id: string
           product_id: string
           purchased_at?: string | null
+          quantity?: number | null
           status?: string
           updated_at?: string
         }
@@ -1183,6 +1185,7 @@ export type Database = {
           organization_id?: string
           product_id?: string
           purchased_at?: string | null
+          quantity?: number | null
           status?: string
           updated_at?: string
         }
@@ -1406,10 +1409,19 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
-      purchase_product: {
-        Args: { _organization_id: string; _product_id: string }
-        Returns: boolean
-      }
+      purchase_product:
+        | {
+            Args: { _organization_id: string; _product_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              _organization_id: string
+              _product_id: string
+              _quantity?: number
+            }
+            Returns: boolean
+          }
     }
     Enums: {
       app_role: "admin" | "supervisor" | "atendente" | "super_admin"
