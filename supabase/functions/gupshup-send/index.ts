@@ -85,12 +85,55 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Use service role client for balance operations
+    const serviceRoleClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Get message pricing
+    const { data: pricing } = await serviceRoleClient
+      .from('dispatch_pricing')
+      .select('price_per_message')
+      .eq('dispatch_type', 'service')
+      .single();
+
+    const pricePerMessage = pricing?.price_per_message ?? 0.008; // Default to R$0.008
+
+    // Check organization balance before sending
+    if (channel.organization_id) {
+      const { data: hasBalance, error: balanceCheckError } = await serviceRoleClient.rpc(
+        'check_organization_balance',
+        {
+          _organization_id: channel.organization_id,
+          _amount: pricePerMessage
+        }
+      );
+
+      if (balanceCheckError) {
+        console.error('Error checking balance:', balanceCheckError);
+      }
+
+      if (!hasBalance) {
+        console.log('Insufficient balance for organization:', channel.organization_id);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Saldo insuficiente para enviar mensagens. Por favor, recarregue seus créditos.',
+            code: 'INSUFFICIENT_BALANCE'
+          }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     console.log('Sending WhatsApp message via Gupshup:', {
       appName: channel.app_name,
       destination,
       hasTemplate: !!templateName,
       hasMedia: !!mediaUrl,
-      mediaType
+      mediaType,
+      pricePerMessage
     });
 
     let gupshupResponse;
@@ -232,12 +275,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Store outbound message in database
-    const serviceRoleClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Message sent successfully - debit balance
+    if (channel.organization_id) {
+      const messageId = responseData.messageId || `out_${Date.now()}`;
+      
+      const { data: debitSuccess, error: debitError } = await serviceRoleClient.rpc(
+        'debit_organization_balance',
+        {
+          _organization_id: channel.organization_id,
+          _amount: pricePerMessage,
+          _description: `Mensagem WhatsApp enviada para ${cleanDestination}`,
+          _reference_type: 'message',
+          _reference_id: messageId
+        }
+      );
 
+      if (debitError) {
+        console.error('Error debiting balance:', debitError);
+      } else {
+        console.log('Balance debited successfully:', debitSuccess);
+      }
+    }
+
+    // Store outbound message in database
     const messageId = responseData.messageId || `out_${Date.now()}`;
 
     // Determine content and message type for storage
@@ -269,7 +329,8 @@ Deno.serve(async (req) => {
           templateName, 
           templateParams,
           mediaType,
-          fileName
+          fileName,
+          cost: pricePerMessage
         }
       });
 
@@ -277,7 +338,8 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         messageId,
-        message: 'Mensagem enviada com sucesso!'
+        message: 'Mensagem enviada com sucesso!',
+        cost: pricePerMessage
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
