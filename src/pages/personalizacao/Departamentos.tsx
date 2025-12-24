@@ -1,0 +1,312 @@
+import { useState } from "react";
+import { MainLayout } from "@/components/layout/MainLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import { Building2, Plus, Trash2, Edit2, Save, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export default function Departamentos() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newDepartment, setNewDepartment] = useState({
+    name: "",
+    description: "",
+  });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user!.id)
+        .single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: departments, isLoading } = useQuery({
+    queryKey: ["sectors", profile?.organization_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sectors")
+        .select("*")
+        .eq("organization_id", profile!.organization_id)
+        .order("name");
+      return data || [];
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async (dept: typeof newDepartment) => {
+      const { error } = await supabase.from("sectors").insert({
+        organization_id: profile!.organization_id,
+        created_by: user!.id,
+        name: dept.name,
+        description: dept.description || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sectors"] });
+      setDialogOpen(false);
+      setNewDepartment({ name: "", description: "" });
+      toast.success("Departamento criado com sucesso!");
+    },
+    onError: () => {
+      toast.error("Erro ao criar departamento");
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof editForm }) => {
+      const { error } = await supabase
+        .from("sectors")
+        .update({
+          name: data.name,
+          description: data.description || null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sectors"] });
+      setEditingId(null);
+      toast.success("Departamento atualizado com sucesso!");
+    },
+    onError: () => {
+      toast.error("Erro ao atualizar departamento");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("sectors").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sectors"] });
+      toast.success("Departamento removido com sucesso!");
+    },
+    onError: () => {
+      toast.error("Erro ao remover departamento");
+    },
+  });
+
+  const handleAdd = () => {
+    if (!newDepartment.name) {
+      toast.error("Preencha o nome do departamento");
+      return;
+    }
+    addMutation.mutate(newDepartment);
+  };
+
+  const startEdit = (dept: any) => {
+    setEditingId(dept.id);
+    setEditForm({
+      name: dept.name,
+      description: dept.description || "",
+    });
+  };
+
+  const saveEdit = (id: string) => {
+    if (!editForm.name) {
+      toast.error("Preencha o nome do departamento");
+      return;
+    }
+    updateMutation.mutate({ id, data: editForm });
+  };
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  return (
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Departamentos</h1>
+            <p className="text-muted-foreground">Gerencie os departamentos da organização</p>
+          </div>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Departamento
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo Departamento</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={newDepartment.name}
+                    onChange={(e) =>
+                      setNewDepartment((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                    placeholder="Ex: Vendas"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Descrição (opcional)</Label>
+                  <Textarea
+                    value={newDepartment.description}
+                    onChange={(e) =>
+                      setNewDepartment((prev) => ({ ...prev, description: e.target.value }))
+                    }
+                    placeholder="Descrição do departamento..."
+                    rows={3}
+                  />
+                </div>
+                <Button onClick={handleAdd} disabled={addMutation.isPending} className="w-full">
+                  Criar Departamento
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              Lista de Departamentos
+            </CardTitle>
+            <CardDescription>
+              Departamentos disponíveis para atribuição de usuários
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {departments && departments.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead className="w-28">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {departments.map((dept) => (
+                    <TableRow key={dept.id}>
+                      <TableCell>
+                        {editingId === dept.id ? (
+                          <Input
+                            value={editForm.name}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                            }
+                          />
+                        ) : (
+                          <span className="font-medium">{dept.name}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingId === dept.id ? (
+                          <Input
+                            value={editForm.description}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({ ...prev, description: e.target.value }))
+                            }
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {dept.description || "-"}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {editingId === dept.id ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => saveEdit(dept.id)}
+                                disabled={updateMutation.isPending}
+                              >
+                                <Save className="w-4 h-4 text-primary" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setEditingId(null)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => startEdit(dept)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteMutation.mutate(dept.id)}
+                                disabled={deleteMutation.isPending}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Nenhum departamento cadastrado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </MainLayout>
+  );
+}
