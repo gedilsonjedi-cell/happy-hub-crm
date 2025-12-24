@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, User, RefreshCw } from "lucide-react";
+import { MessageSquare, LogOut, User, RefreshCw, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -11,15 +11,30 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useSidebarState } from "@/hooks/useSidebarState";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const { syncing } = useUserRole();
+  const { isMobile, setMobileOpen } = useSidebarState();
 
   return (
     <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
-      {/* Logo */}
-      <div className="flex items-center gap-8">
+      {/* Left Section */}
+      <div className="flex items-center gap-3">
+        {/* Mobile menu button */}
+        {isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileOpen(true)}
+            className="h-9 w-9 text-sidebar-muted hover:text-sidebar-foreground"
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+        )}
+        
+        {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center">
             <MessageSquare className="w-5 h-5 text-primary-foreground" />
@@ -29,7 +44,6 @@ export function Header() {
             <span className="text-primary">Code</span>
           </span>
         </Link>
-
       </div>
 
       {/* Right Section */}
