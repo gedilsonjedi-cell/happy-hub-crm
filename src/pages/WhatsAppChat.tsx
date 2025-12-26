@@ -1395,6 +1395,7 @@ const WhatsAppChat = () => {
                           )}
                         </div>
                       )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                   <Button
@@ -1624,80 +1625,78 @@ const WhatsAppChat = () => {
         onSelectResponse={(content) => setNewMessage(content)}
       />
 
+      {/* Media Upload Dialog */}
+      <MediaUploadDialog
+        isOpen={showMediaDialog}
+        onClose={() => setShowMediaDialog(false)}
+        onSend={handleSendMedia}
+      />
 
-        {/* Media Upload Dialog */}
-        <MediaUploadDialog
-          isOpen={showMediaDialog}
-          onClose={() => setShowMediaDialog(false)}
-          onSend={handleSendMedia}
+      {/* Template Selector */}
+      <TemplateSelector
+        isOpen={showTemplateSelector}
+        onClose={() => setShowTemplateSelector(false)}
+        onSend={handleSendTemplate}
+        channelId={selectedConversation?.channelId || null}
+      />
+
+      {/* Sales Assistant */}
+      <SalesAssistant
+        isOpen={showSalesAssistant}
+        onClose={() => setShowSalesAssistant(false)}
+        customerName={selectedConversation?.name || selectedConversation?.phone}
+        conversationContext={messages.map(m => 
+          `${m.direction === 'inbound' ? (m.sender_name || 'Cliente') : 'Atendente'}: ${m.content || '[mídia]'}`
+        ).join('\n')}
+      />
+
+      {/* Portfolio Dialog */}
+      {selectedConversation && (
+        <AddToPortfolioDialog
+          open={showPortfolioDialog}
+          onOpenChange={setShowPortfolioDialog}
+          contactPhone={selectedConversation.phone}
+          contactName={selectedConversation.name}
         />
+      )}
 
-        {/* Template Selector */}
-        <TemplateSelector
-          isOpen={showTemplateSelector}
-          onClose={() => setShowTemplateSelector(false)}
-          onSend={handleSendTemplate}
-          channelId={selectedChannel?.id || null}
-        />
-
-        {/* Sales Assistant */}
-        <SalesAssistant
-          isOpen={showSalesAssistant}
-          onClose={() => setShowSalesAssistant(false)}
-          customerName={selectedConversation?.name || selectedConversation?.phone}
-          conversationContext={messages.map(m => 
-            `${m.direction === 'inbound' ? (m.sender_name || 'Cliente') : 'Atendente'}: ${m.content || '[mídia]'}`
-          ).join('\n')}
-        />
-
-        {/* Portfolio Dialog */}
-        {selectedConversation && (
-          <AddToPortfolioDialog
-            open={showPortfolioDialog}
-            onOpenChange={setShowPortfolioDialog}
-            contactPhone={selectedConversation.phone}
-            contactName={selectedConversation.name}
-          />
-        )}
-
-        {/* Tags Dialog */}
-        {selectedConversation && (
-          <AssignTagsFromChatDialog
-            open={showTagsDialog}
-            onOpenChange={setShowTagsDialog}
-            contactPhone={selectedConversation.phone}
-            contactName={selectedConversation.name}
-            onSuccess={() => {
-              // Refresh contact tags
-              const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-              supabase
-                .from("leads")
-                .select("tags")
-                .eq("phone", normalizedPhone)
-                .single()
-                .then(({ data }) => {
-                  if (data?.tags) {
-                    setContactTags(data.tags);
-                  }
-                });
-            }}
-          />
-        )}
-
-        {/* Manual Send Dialog */}
-        <ManualSendDialog
-          isOpen={showManualSendDialog}
-          onClose={() => {
-            setShowManualSendDialog(false);
-            setManualPhoneInput("");
+      {/* Tags Dialog */}
+      {selectedConversation && (
+        <AssignTagsFromChatDialog
+          open={showTagsDialog}
+          onOpenChange={setShowTagsDialog}
+          contactPhone={selectedConversation.phone}
+          contactName={selectedConversation.name}
+          onSuccess={() => {
+            // Refresh contact tags
+            const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+            supabase
+              .from("leads")
+              .select("tags")
+              .eq("phone", normalizedPhone)
+              .single()
+              .then(({ data }) => {
+                if (data?.tags) {
+                  setContactTags(data.tags);
+                }
+              });
           }}
-          channels={channels}
-          selectedChannel={selectedChannel}
-          onChannelChange={setSelectedChannel}
-          initialPhone={manualPhoneInput}
-          onPhoneUsed={() => setManualPhoneInput("")}
         />
-      </div>
+      )}
+
+      {/* Manual Send Dialog */}
+      <ManualSendDialog
+        isOpen={showManualSendDialog}
+        onClose={() => {
+          setShowManualSendDialog(false);
+          setManualPhoneInput("");
+        }}
+        channels={channels}
+        selectedChannel={channels.find(c => c.id === selectedConversation?.channelId) || null}
+        onChannelChange={() => {}}
+        initialPhone={manualPhoneInput}
+        onPhoneUsed={() => setManualPhoneInput("")}
+      />
     </MainLayout>
   );
 };
