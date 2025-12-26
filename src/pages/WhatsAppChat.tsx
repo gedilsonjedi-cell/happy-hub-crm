@@ -252,9 +252,13 @@ const WhatsAppChat = () => {
   // Fetch conversations
   useEffect(() => {
     const fetchConversations = async () => {
-      if (!selectedChannel) return;
+      if (!selectedChannel) {
+        console.log("[WhatsAppChat] No selected channel, skipping fetch");
+        return;
+      }
 
       setLoading(true);
+      console.log("[WhatsAppChat] Fetching conversations for channel:", selectedChannel.id, selectedChannel.name);
 
       // Fetch all messages (inbound and outbound) to build conversations
       const { data, error } = await supabase
@@ -264,10 +268,12 @@ const WhatsAppChat = () => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error fetching conversations:", error);
+        console.error("[WhatsAppChat] Error fetching conversations:", error);
         setLoading(false);
         return;
       }
+
+      console.log("[WhatsAppChat] Fetched messages:", data?.length, "messages");
 
       const conversationsMap = new Map<string, Conversation>();
       
@@ -282,9 +288,18 @@ const WhatsAppChat = () => {
         } else {
           // For outbound messages, the contact is in metadata.destination
           const metadata = msg.metadata as { destination?: string } | null;
-          contactPhone = metadata?.destination || msg.sender_phone;
-          // Skip if no destination metadata (shouldn't happen but just in case)
-          if (!metadata?.destination) return;
+          contactPhone = metadata?.destination || "";
+          console.log("[WhatsAppChat] Outbound message metadata:", metadata, "contactPhone:", contactPhone);
+          // Skip if no destination metadata
+          if (!contactPhone) {
+            console.log("[WhatsAppChat] Skipping outbound message without destination");
+            return;
+          }
+        }
+
+        // Normalize phone - add + prefix if missing for consistency
+        if (!contactPhone.startsWith('+')) {
+          contactPhone = '+' + contactPhone;
         }
 
         if (!conversationsMap.has(contactPhone)) {
@@ -299,6 +314,7 @@ const WhatsAppChat = () => {
             channelId: msg.channel_id,
             status: storedStatus || "pending"
           });
+          console.log("[WhatsAppChat] Created conversation for:", contactPhone);
         } else {
           const existing = conversationsMap.get(contactPhone)!;
           // Update name if we get it from an inbound message
@@ -316,7 +332,9 @@ const WhatsAppChat = () => {
         }
       });
 
-      setConversations(Array.from(conversationsMap.values()));
+      const convList = Array.from(conversationsMap.values());
+      console.log("[WhatsAppChat] Built conversations:", convList.length, convList);
+      setConversations(convList);
       setLoading(false);
     };
 
