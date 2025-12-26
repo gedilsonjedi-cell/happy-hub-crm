@@ -290,6 +290,12 @@ const Templates = () => {
 
     const variables = detectedVariables.map(v => v.name);
 
+    // Build variable mappings object
+    const mappingsToSave: Record<string, string> = {};
+    detectedVariables.forEach(v => {
+      mappingsToSave[v.name] = variableMappings[v.name] || "manual";
+    });
+
     const { data: template, error } = await supabase
       .from("message_templates")
       .insert({
@@ -297,6 +303,7 @@ const Templates = () => {
         name: formData.name.trim(),
         content: formData.content.trim(),
         variables,
+        variable_mappings: mappingsToSave,
         dispatch_type: formData.category as "marketing" | "utility" | "service",
         status: formData.isDraft ? "pending" : "pending",
       })
