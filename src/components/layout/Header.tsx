@@ -46,8 +46,8 @@ export function Header() {
             <MessageSquare className="w-5 h-5 text-primary-foreground" />
           </div>
           <span className="text-xl font-bold">
-            <span className="text-foreground">Whats</span>
-            <span className="text-primary">Code</span>
+            <span className="text-foreground">Optimus</span>
+            <span className="text-primary">CRM</span>
           </span>
         </Link>
       </div>
