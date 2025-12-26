@@ -165,19 +165,19 @@ Deno.serve(async (req) => {
     console.log('Webhook verification request:', { mode, token, challenge });
 
     if (mode === 'subscribe' && token) {
-      // Find channel with this verify token
-      const { data: channel, error } = await supabase
+      // Find any channel with this verify token (may be shared across multiple channels in same WABA)
+      const { data: channels, error } = await supabase
         .from('channels')
-        .select('id')
+        .select('id, waba_id')
         .eq('webhook_verify_token', token)
         .eq('provider', 'meta')
-        .single();
+        .limit(1);
       
-      if (channel && !error) {
-        console.log('Webhook verified for channel:', channel.id);
+      if (channels && channels.length > 0 && !error) {
+        console.log('Webhook verified for channel:', channels[0].id, 'WABA:', channels[0].waba_id);
         return new Response(challenge, { status: 200 });
       } else {
-        console.error('Invalid verify token');
+        console.error('Invalid verify token, no channel found');
         return new Response('Forbidden', { status: 403 });
       }
     } else {
