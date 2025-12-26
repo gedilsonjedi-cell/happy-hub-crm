@@ -36,6 +36,7 @@ import Departamentos from "./pages/personalizacao/Departamentos";
 import Tags from "./pages/personalizacao/Tags";
 import CamposPersonalizados from "./pages/personalizacao/CamposPersonalizados";
 import ContatoDetalhes from "./pages/ContatoDetalhes";
+import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,7 +48,7 @@ const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
 };
 
 // Pages that are allowed even when subscription is expired
-const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password", "/minha-assinatura"];
+const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password", "/minha-assinatura", "/landing"];
 
 // Component to check subscription and redirect if expired
 const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
@@ -111,6 +112,7 @@ const App = () => (
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/landing" element={<LandingPage />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
           <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
