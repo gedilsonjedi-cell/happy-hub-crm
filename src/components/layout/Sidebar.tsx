@@ -32,6 +32,7 @@ import {
   Building2,
   Tag,
   RotateCcw,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -77,6 +78,7 @@ const personalizacaoSubmenu = [
   { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessUsuarios" },
   { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessUsuarios" },
   { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: "canAccessUsuarios" },
+  { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: "canAccessUsuarios" },
 ];
 
 const bottomMenuItems = [

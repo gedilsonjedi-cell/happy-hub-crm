@@ -1428,15 +1428,6 @@ const WhatsAppChat = () => {
                   </div>
                   <div className="flex items-center gap-2">
                   <Button
-                    variant={showQuickResponses ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowQuickResponses(!showQuickResponses)}
-                    className="gap-2"
-                  >
-                    <Zap className="w-4 h-4" />
-                    <span className="hidden sm:inline">Rápidas</span>
-                  </Button>
-                  <Button
                     variant={showSalesAssistant ? "default" : "outline"}
                     size="sm"
                     onClick={() => setShowSalesAssistant(!showSalesAssistant)}
