@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Bot, Send, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,15 @@ export const AgentPreview = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
 
   const handleSend = async (customMessage?: string) => {
     const messageText = customMessage || input.trim();
@@ -104,59 +113,62 @@ export const AgentPreview = ({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col p-0">
-        <ScrollArea className="flex-1 px-4">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center py-8">
-              <Bot className="w-12 h-12 text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground text-center mb-4">
-                Teste o agente com as configurações atuais
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {sampleQuestions.map((q, i) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => handleSend(q)}
-                  >
-                    {q}
-                  </Button>
-                ))}
+      <CardContent className="flex-1 flex flex-col p-0 overflow-hidden min-h-0">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-4">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center py-8">
+                <Bot className="w-12 h-12 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground text-center mb-4">
+                  Teste o agente com as configurações atuais
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {sampleQuestions.map((q, i) => (
+                    <Button
+                      key={i}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => handleSend(q)}
+                    >
+                      {q}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-3 py-4">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={cn(
-                    "flex",
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
+            ) : (
+              <div className="space-y-3 py-4">
+                {messages.map((msg, idx) => (
                   <div
+                    key={idx}
                     className={cn(
-                      "max-w-[85%] rounded-lg px-3 py-2 text-sm",
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground"
+                      "flex",
+                      msg.role === "user" ? "justify-end" : "justify-start"
                     )}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm break-words",
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-foreground"
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-lg px-3 py-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-lg px-3 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
         </ScrollArea>
 
         <div className="p-4 border-t border-border">
