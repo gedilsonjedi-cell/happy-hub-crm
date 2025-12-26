@@ -132,7 +132,7 @@ export function PremiumFeaturePaywall({
             <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
               <Crown className="w-8 h-8 text-primary" />
             </div>
-            <DialogTitle className="text-xl">Recurso Premium</DialogTitle>
+            <DialogTitle className="text-xl text-center">Recurso Premium</DialogTitle>
             <DialogDescription className="text-center">
               Este é um recurso exclusivo que requer uma assinatura adicional.
             </DialogDescription>
