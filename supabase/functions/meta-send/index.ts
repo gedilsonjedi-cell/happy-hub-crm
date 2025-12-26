@@ -96,6 +96,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Check if user is a SuperAdmin (exempt from balance check)
+    const { data: isSuperAdmin } = await serviceRoleClient.rpc('is_super_admin', {
+      _user_id: user.id
+    });
+
+    console.log('User is SuperAdmin:', isSuperAdmin);
+
     // Get message pricing
     const { data: pricing } = await serviceRoleClient
       .from('dispatch_pricing')
@@ -105,8 +112,8 @@ Deno.serve(async (req) => {
 
     const pricePerMessage = pricing?.price_per_message ?? 0.008;
 
-    // Check organization balance before sending
-    if (channel.organization_id) {
+    // Check organization balance before sending (skip for SuperAdmin)
+    if (channel.organization_id && !isSuperAdmin) {
       const { data: hasBalance, error: balanceCheckError } = await serviceRoleClient.rpc(
         'check_organization_balance',
         {
