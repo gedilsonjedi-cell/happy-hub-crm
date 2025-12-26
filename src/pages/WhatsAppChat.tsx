@@ -147,6 +147,7 @@ const WhatsAppChat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [templates, setTemplates] = useState<Map<string, { content: string; variables: string[] | null }>>(new Map());
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -247,6 +248,27 @@ const WhatsAppChat = () => {
 
     if (user) {
       fetchChannels();
+    }
+  }, [user]);
+
+  // Fetch all templates for displaying in chat
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      const { data } = await supabase
+        .from("message_templates")
+        .select("name, content, variables");
+
+      if (data) {
+        const templatesMap = new Map<string, { content: string; variables: string[] | null }>();
+        data.forEach(t => {
+          templatesMap.set(t.name, { content: t.content, variables: t.variables });
+        });
+        setTemplates(templatesMap);
+      }
+    };
+
+    if (user) {
+      fetchTemplates();
     }
   }, [user]);
 
@@ -885,6 +907,58 @@ const WhatsAppChat = () => {
         default:
           return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
       }
+    }
+
+    // Check if it's a template message
+    if (message.message_type === "template" || message.content?.startsWith("Template:")) {
+      // Get template name from content or metadata
+      const metadata = message.metadata as { templateName?: string; templateParams?: string[] } | null;
+      let templateName = metadata?.templateName || "";
+      const templateParams = metadata?.templateParams || [];
+      
+      // Extract template name from content if not in metadata
+      if (!templateName && message.content?.startsWith("Template:")) {
+        templateName = message.content.replace("Template:", "").trim();
+      }
+
+      // Get template content from our cached templates
+      const templateData = templates.get(templateName);
+      
+      if (templateData) {
+        // Replace {{1}}, {{2}}, etc. with actual params
+        let displayContent = templateData.content;
+        templateParams.forEach((param, index) => {
+          const placeholder = `{{${index + 1}}}`;
+          displayContent = displayContent.replace(placeholder, param);
+        });
+
+        // Also replace *[VARIABLE]* style placeholders if any remain
+        displayContent = displayContent.replace(/\*?\[[A-Z_]+\]\*?/g, (match) => {
+          // Just show the placeholder as-is if not replaced
+          return match;
+        });
+
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/80 mb-1">
+              <FileText className="w-3 h-3" />
+              <span className="font-medium">{templateName}</span>
+            </div>
+            <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+          </div>
+        );
+      }
+      
+      // Fallback: show original content if template not found
+      return (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+            <FileText className="w-3 h-3" />
+            <span>{templateName || "Template"}</span>
+          </div>
+          <p className="text-sm text-muted-foreground italic">Template não encontrado</p>
+        </div>
+      );
     }
 
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
