@@ -64,12 +64,14 @@ serve(async (req) => {
       }
 
       // Create user using admin API (doesn't change session)
+      // Include organization_id in metadata to prevent auto-organization creation trigger
       const { data: authData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: {
           display_name,
+          organization_id, // This prevents the onboarding trigger from creating a new org
         },
       });
 
