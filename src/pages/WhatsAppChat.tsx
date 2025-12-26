@@ -10,6 +10,7 @@ import {
   BellOff,
   Loader2,
   User,
+  Check,
   CheckCheck,
   Clock,
   Paperclip,
@@ -1329,8 +1330,12 @@ const WhatsAppChat = () => {
                         )}>
                           <span className="text-xs">{formatMessageTime(message.created_at)}</span>
                           {message.direction === "outbound" && (
-                            message.status === "sent" ? (
+                            message.status === "read" ? (
+                              <CheckCheck className="w-3 h-3 text-blue-400" />
+                            ) : message.status === "delivered" ? (
                               <CheckCheck className="w-3 h-3" />
+                            ) : message.status === "sent" ? (
+                              <Check className="w-3 h-3" />
                             ) : (
                               <Clock className="w-3 h-3" />
                             )
