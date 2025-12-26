@@ -125,6 +125,8 @@ export default function SuperAdmin() {
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [isPartnerPlan, setIsPartnerPlan] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState("");
   
@@ -245,6 +247,12 @@ export default function SuperAdmin() {
       return;
     }
 
+    // Validate password
+    if (!adminPassword.trim() || adminPassword.length < 6) {
+      toast.error("A senha deve ter no mínimo 6 caracteres");
+      return;
+    }
+
     setIsCreating(true);
     try {
       // 1. Create organization first
@@ -256,8 +264,10 @@ export default function SuperAdmin() {
           plan: newOrgPlan,
           max_users: newOrgMaxUsers,
           max_channels: newOrgMaxChannels,
-          subscription_ends_at: newOrgExpiryDate ? newOrgExpiryDate.toISOString() : null,
+          subscription_ends_at: isPartnerPlan ? null : (newOrgExpiryDate ? newOrgExpiryDate.toISOString() : null),
           subscription_started_at: new Date().toISOString(),
+          is_partner: isPartnerPlan,
+          subscription_status: isPartnerPlan ? "active" : "trial",
         })
         .select()
         .single();
@@ -272,13 +282,13 @@ export default function SuperAdmin() {
         return;
       }
 
-      // 2. Generate temporary password
-      const tempPassword = generateSecurePassword();
+      // 2. Use provided password
+      const userPassword = adminPassword.trim();
 
       // 3. Create admin user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: adminEmail.trim(),
-        password: tempPassword,
+        password: userPassword,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
@@ -329,7 +339,7 @@ export default function SuperAdmin() {
       }
 
       // Show success with credentials
-      setGeneratedPassword(tempPassword);
+      setGeneratedPassword(userPassword);
       setShowCredentials(true);
       toast.success("Cliente e usuário admin criados com sucesso!");
       fetchOrganizations();
@@ -352,6 +362,8 @@ export default function SuperAdmin() {
     setAdminName("");
     setAdminEmail("");
     setAdminPhone("");
+    setAdminPassword("");
+    setIsPartnerPlan(false);
     setShowCredentials(false);
     setGeneratedPassword("");
   };
@@ -916,6 +928,51 @@ export default function SuperAdmin() {
                   </div>
                 </div>
 
+                {/* Plan Type Selection */}
+                <div className="space-y-2">
+                  <Label>Tipo de Plano</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsPartnerPlan(false)}
+                      className={`p-3 rounded-lg border-2 transition-all ${
+                        !isPartnerPlan 
+                          ? "border-primary bg-primary/10" 
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CreditCard className={`w-4 h-4 ${!isPartnerPlan ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`font-medium ${!isPartnerPlan ? "text-primary" : "text-foreground"}`}>
+                          Plano Mensal
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 text-left">
+                        Cobrança automática mensal
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPartnerPlan(true)}
+                      className={`p-3 rounded-lg border-2 transition-all ${
+                        isPartnerPlan 
+                          ? "border-primary bg-primary/10" 
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Activity className={`w-4 h-4 ${isPartnerPlan ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`font-medium ${isPartnerPlan ? "text-primary" : "text-foreground"}`}>
+                          Plano Parceiro
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 text-left">
+                        Sem cobrança de assinatura
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Qtd. Usuários</Label>
@@ -937,30 +994,32 @@ export default function SuperAdmin() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Data de Vencimento</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {newOrgExpiryDate ? format(newOrgExpiryDate, "dd/MM/yyyy") : "Selecione uma data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={newOrgExpiryDate}
-                        onSelect={setNewOrgExpiryDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                {!isPartnerPlan && (
+                  <div className="space-y-2">
+                    <Label>Data de Vencimento</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {newOrgExpiryDate ? format(newOrgExpiryDate, "dd/MM/yyyy") : "Selecione uma data"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={newOrgExpiryDate}
+                          onSelect={setNewOrgExpiryDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
 
-                {subscriptionPricing && (
+                {!isPartnerPlan && subscriptionPricing && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                     <p className="text-sm font-medium text-primary">
                       Valor mensal: R$ {calculateMonthlyCost(newOrgMaxUsers, newOrgMaxChannels).toFixed(2)}
@@ -971,6 +1030,15 @@ export default function SuperAdmin() {
                         ` + ${newOrgMaxUsers - subscriptionPricing.included_users} usuário(s) extra × R$ ${subscriptionPricing.price_per_user.toFixed(2)}`}
                       {newOrgMaxChannels > subscriptionPricing.included_channels && 
                         ` + ${newOrgMaxChannels - subscriptionPricing.included_channels} WhatsApp(s) extra × R$ ${subscriptionPricing.price_per_channel.toFixed(2)}`}
+                    </p>
+                  </div>
+                )}
+
+                {isPartnerPlan && (
+                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                    <p className="text-sm font-medium text-primary">Plano Parceiro</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Sem cobrança automática de assinatura. O cliente só pagará por recursos adicionais na loja.
                     </p>
                   </div>
                 )}
@@ -1007,10 +1075,28 @@ export default function SuperAdmin() {
                     />
                   </div>
                 </div>
-                
-                <p className="text-xs text-muted-foreground">
-                  * Uma senha temporária será gerada automaticamente. O cliente poderá alterá-la após o primeiro acesso.
-                </p>
+
+                <div className="space-y-2">
+                  <Label>Senha *</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline"
+                      onClick={() => setAdminPassword(generateSecurePassword())}
+                    >
+                      Gerar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O cliente poderá alterar a senha após o primeiro acesso.
+                  </p>
+                </div>
               </div>
             )}
             
