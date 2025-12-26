@@ -27,6 +27,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Format phone number for WhatsApp API (remove non-digits, ensure country code)
+function formatPhoneNumber(phone: string): string {
+  // Remove all non-digit characters
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // If starts with 0, remove it
+  if (cleaned.startsWith('0')) {
+    cleaned = cleaned.substring(1);
+  }
+  
+  // If doesn't start with country code (55 for Brazil), add it
+  if (!cleaned.startsWith('55') && cleaned.length <= 11) {
+    cleaned = '55' + cleaned;
+  }
+  
+  return cleaned;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -162,28 +180,40 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      console.log(`Sending to ${recipient.phone} via channel ${channel.name}`);
+      const formattedPhone = formatPhoneNumber(recipient.phone);
+      console.log(`Sending to ${formattedPhone} via channel ${channel.name}`);
       console.log(`Template: ${template.name}`);
 
-      // Replace variables in template content
-      let messageContent = template.content;
-      if (recipient.name) {
-        messageContent = messageContent.replace(/\{\{nome\}\}/gi, recipient.name);
-        messageContent = messageContent.replace(/\{\{name\}\}/gi, recipient.name);
-      }
-
       try {
-        // In production, this would call the meta-send edge function
-        // For now, we simulate the send
-        const sendSuccess = Math.random() > 0.1; // 90% success rate simulation
+        // Call meta-send edge function to actually send the message
+        const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            channelId: channel.id,
+            destination: formattedPhone,
+            templateName: template.name,
+            templateComponents: template.variables ? template.variables.map((v: string) => ({
+              type: 'body',
+              parameters: [{ type: 'text', text: recipient.name || v }]
+            })) : undefined,
+            // Send as template message
+            messageType: 'template'
+          }),
+        });
 
-        if (sendSuccess) {
+        const metaSendResult = await metaSendResponse.json();
+        
+        if (metaSendResponse.ok && metaSendResult.success) {
           sentCount++;
           deliveredCount++;
-          console.log(`✓ Message sent to ${recipient.phone}`);
+          console.log(`✓ Message sent to ${formattedPhone} - Message ID: ${metaSendResult.messageId || 'N/A'}`);
         } else {
           failedCount++;
-          console.log(`✗ Failed to send to ${recipient.phone}`);
+          console.error(`✗ Failed to send to ${formattedPhone}: ${metaSendResult.error || 'Unknown error'}`);
         }
 
         // Update campaign progress
@@ -197,8 +227,18 @@ Deno.serve(async (req) => {
           .eq('id', campaignId);
 
       } catch (error) {
-        console.error(`Error sending to ${recipient.phone}:`, error);
+        console.error(`Error sending to ${formattedPhone}:`, error);
         failedCount++;
+        
+        // Update campaign progress even on error
+        await supabase
+          .from('campaigns')
+          .update({ 
+            sent_count: sentCount,
+            delivered_count: deliveredCount,
+            failed_count: failedCount
+          })
+          .eq('id', campaignId);
       }
 
       // Move to next channel for interleaved dispatch
