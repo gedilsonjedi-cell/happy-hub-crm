@@ -359,8 +359,8 @@ const WhatsAppChat = () => {
           console.log("[WhatsAppChat] Created conversation for:", phoneKey, "display:", displayPhone);
         } else {
           const existing = conversationsMap.get(phoneKey)!;
-          // Update name if we get it from an inbound message
-          if (msg.direction === "inbound" && msg.sender_name && !existing.name) {
+          // Always update name from inbound messages (WhatsApp real name replaces fictitious names)
+          if (msg.direction === "inbound" && msg.sender_name) {
             existing.name = msg.sender_name;
           }
           // Track the most recent inbound message time
@@ -563,7 +563,8 @@ const WhatsAppChat = () => {
                           ? c.unreadCount + 1 
                           : c.unreadCount,
                         status: newStatus,
-                        name: contactName || c.name
+                        // Always prefer WhatsApp name over existing/fictitious name
+                        name: contactName ? contactName : c.name
                       }
                     : c
                 );
