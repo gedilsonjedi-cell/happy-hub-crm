@@ -335,13 +335,39 @@ Deno.serve(async (req) => {
 
         const metaSendResult = await metaSendResponse.json();
         
-        if (metaSendResponse.ok && metaSendResult.success) {
+        console.log(`meta-send response status: ${metaSendResponse.status}`);
+        console.log(`meta-send response body:`, JSON.stringify(metaSendResult));
+        
+        if (metaSendResult.success) {
           sentCount++;
           deliveredCount++;
           console.log(`✓ Message sent to ${formattedPhone} - Message ID: ${metaSendResult.messageId || 'N/A'}`);
         } else {
           failedCount++;
-          console.error(`✗ Failed to send to ${formattedPhone}: ${metaSendResult.error || 'Unknown error'}`);
+          const errorDetails = metaSendResult.details ? JSON.stringify(metaSendResult.details) : '';
+          console.error(`✗ Failed to send to ${formattedPhone}: ${metaSendResult.error || 'Unknown error'} ${errorDetails}`);
+          
+          // Store failed message in whatsapp_messages for debugging
+          const serviceClient = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          );
+          await serviceClient.from('whatsapp_messages').insert({
+            channel_id: channel.id,
+            organization_id: channel.organization_id,
+            message_id: `failed_${Date.now()}_${formattedPhone}`,
+            sender_phone: channel.phone,
+            message_type: 'template',
+            content: `Template: ${template.name}`,
+            direction: 'outbound',
+            status: 'failed',
+            metadata: {
+              destination: formattedPhone,
+              error: metaSendResult.error,
+              errorDetails: metaSendResult.details,
+              campaignId: campaignId
+            }
+          });
         }
 
         // Update campaign progress
