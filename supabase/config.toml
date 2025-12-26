@@ -47,3 +47,9 @@ verify_jwt = false
 
 [functions.follow-up-sender]
 verify_jwt = false
+
+[functions.zapi-webhook]
+verify_jwt = false
+
+[functions.zapi-send]
+verify_jwt = false
