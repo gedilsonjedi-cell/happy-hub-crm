@@ -295,6 +295,28 @@ Deno.serve(async (req) => {
       console.log(`Processed content preview: ${processedContent.substring(0, 100)}...`);
 
       try {
+        // Build templateParams array from variables
+        const templateParams: string[] = [];
+        if (template.variables && template.variables.length > 0) {
+          for (const varName of template.variables) {
+            const mapping = template.variable_mappings?.[varName] || 'manual';
+            let value = '';
+            
+            if (mapping === 'manual') {
+              value = manualVariables?.[varName] || varName;
+            } else if (variableFieldMap[mapping]) {
+              const field = variableFieldMap[mapping];
+              value = String(recipient[field] || varName);
+            } else {
+              value = varName;
+            }
+            
+            templateParams.push(value);
+          }
+        }
+
+        console.log(`Template params for ${formattedPhone}:`, templateParams);
+
         // Call meta-send edge function to actually send the message
         const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
           method: 'POST',
@@ -306,26 +328,8 @@ Deno.serve(async (req) => {
             channelId: channel.id,
             destination: formattedPhone,
             templateName: template.name,
-            templateComponents: template.variables ? template.variables.map((v: string) => {
-              // Get the mapped value for each variable
-              const mapping = template.variable_mappings?.[v] || 'manual';
-              let value = '';
-              
-              if (mapping === 'manual') {
-                value = manualVariables?.[v] || v;
-              } else if (variableFieldMap[mapping]) {
-                const field = variableFieldMap[mapping];
-                value = String(recipient[field] || v);
-              } else {
-                value = v;
-              }
-              
-              return {
-                type: 'body',
-                parameters: [{ type: 'text', text: value }]
-              };
-            }) : undefined,
-            messageType: 'template'
+            templateParams: templateParams.length > 0 ? templateParams : undefined,
+            templateLanguage: 'pt_BR'
           }),
         });
 
