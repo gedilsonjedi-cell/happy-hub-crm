@@ -1274,6 +1274,32 @@ const WhatsAppChat = () => {
             </div>
           </ScrollArea>
 
+          {/* Manual Send Section - Fixed */}
+          <div className="border-t border-border p-3">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center px-2 h-9 bg-muted rounded-md border border-border text-xs font-medium text-muted-foreground shrink-0">
+                  +55
+                </div>
+                <Input
+                  placeholder="DDD + Número"
+                  className="flex-1 h-9 text-sm"
+                  value={manualPhoneInput}
+                  onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                />
+              </div>
+              <Button 
+                onClick={() => setShowManualSendDialog(true)}
+                className="w-full gap-2 h-9"
+                size="sm"
+                disabled={!manualPhoneInput.trim()}
+              >
+                <FileText className="w-4 h-4" />
+                Enviar Template
+              </Button>
+            </div>
+          </div>
+
           {/* Archived Section */}
           {archivedConversations.length > 0 && (
             <div className="border-t border-border">
@@ -1579,39 +1605,11 @@ const WhatsAppChat = () => {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col">
-              {/* Empty state */}
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
-                  <p className="text-sm">Selecione uma conversa ou envie uma mensagem manual</p>
-                </div>
-              </div>
-              
-              {/* Manual Send Footer */}
-              <div className="p-4 border-t border-border bg-muted/30">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 flex-1">
-                    <div className="flex items-center justify-center px-3 h-10 bg-muted rounded-md border border-border text-sm font-medium text-muted-foreground shrink-0">
-                      +55
-                    </div>
-                    <Input
-                      placeholder="DDD + Número (ex: 11999999999)"
-                      className="flex-1"
-                      value={manualPhoneInput}
-                      onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    />
-                  </div>
-                  <Button 
-                    onClick={() => setShowManualSendDialog(true)}
-                    className="gap-2 shrink-0"
-                    disabled={!manualPhoneInput.trim()}
-                  >
-                    <FileText className="w-4 h-4" />
-                    Selecionar Template
-                  </Button>
-                </div>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
+                <p className="text-sm">Selecione uma conversa ou envie uma mensagem manual</p>
               </div>
             </div>
           )}
