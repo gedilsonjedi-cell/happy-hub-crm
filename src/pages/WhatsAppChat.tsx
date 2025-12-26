@@ -49,6 +49,7 @@ import { ptBR } from "date-fns/locale";
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
+import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
 import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
@@ -159,6 +160,7 @@ const WhatsAppChat = () => {
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showManualSendDialog, setShowManualSendDialog] = useState(false);
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
@@ -935,6 +937,16 @@ const WhatsAppChat = () => {
               <div className="flex items-center gap-2">
                 <BalanceIndicator />
                 <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setShowManualSendDialog(true)}
+                  title="Enviar mensagem manual"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Enviar</span>
+                </Button>
+                <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
@@ -1476,6 +1488,15 @@ const WhatsAppChat = () => {
             }}
           />
         )}
+
+        {/* Manual Send Dialog */}
+        <ManualSendDialog
+          isOpen={showManualSendDialog}
+          onClose={() => setShowManualSendDialog(false)}
+          channels={channels}
+          selectedChannel={selectedChannel}
+          onChannelChange={setSelectedChannel}
+        />
       </div>
     </MainLayout>
   );
