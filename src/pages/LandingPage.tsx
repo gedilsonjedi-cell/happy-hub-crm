@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -164,6 +165,7 @@ const testimonials = [
 ];
 
 const LandingPage = () => {
+  const { user } = useAuth();
   const heroParallax = useParallax(0.3);
   const featuresSection = useInView(0.1);
   const benefitsSection = useInView(0.1);
@@ -214,16 +216,26 @@ const LandingPage = () => {
               </a>
             </div>
             <div className="flex items-center gap-3">
-              <Link to="/auth">
-                <Button variant="ghost" size="sm">
-                  Entrar
-                </Button>
-              </Link>
-              <Link to="/auth">
-                <Button size="sm" className="bg-primary hover:bg-primary/90">
-                  Começar Grátis
-                </Button>
-              </Link>
+              {user ? (
+                <Link to="/dashboard">
+                  <Button size="sm" className="bg-primary hover:bg-primary/90">
+                    Ir para Dashboard
+                  </Button>
+                </Link>
+              ) : (
+                <>
+                  <Link to="/auth">
+                    <Button variant="ghost" size="sm">
+                      Entrar
+                    </Button>
+                  </Link>
+                  <Link to="/auth">
+                    <Button size="sm" className="bg-primary hover:bg-primary/90">
+                      Começar Grátis
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -297,10 +309,10 @@ const LandingPage = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-              <Link to="/auth">
+              <Link to={user ? "/dashboard" : "/auth"}>
                 <Button size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
                   <Rocket className="w-5 h-5 mr-2" />
-                  Começar Agora — É Grátis
+                  {user ? "Acessar Dashboard" : "Começar Agora — É Grátis"}
                 </Button>
               </Link>
               <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-border/50 hover:bg-muted/50">
@@ -560,9 +572,9 @@ const LandingPage = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-              <Link to="/auth">
+              <Link to={user ? "/dashboard" : "/auth"}>
                 <Button size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
-                  Começar Gratuitamente
+                  {user ? "Acessar Dashboard" : "Começar Gratuitamente"}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
