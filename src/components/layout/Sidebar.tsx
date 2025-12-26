@@ -31,6 +31,7 @@ import {
   Calendar,
   Building2,
   Tag,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ const crmSubmenu = [
   { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
   { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: "canAccessLeads" },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
+  { icon: RotateCcw, label: "Follow-up", path: "/follow-up", permission: "canAccessLeads" },
   { icon: Sparkles, label: "Higienização", path: "/higienizacao", permission: "canAccessLeads" },
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: "canAccessLeads" },
 ];

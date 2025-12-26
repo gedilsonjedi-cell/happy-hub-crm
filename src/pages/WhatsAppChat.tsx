@@ -31,7 +31,8 @@ import {
   AlertTriangle,
   Ban,
   Briefcase,
-  Tag
+  Tag,
+  GitBranch
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,8 @@ import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
 import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
 import { AssignTagsFromChatDialog } from "@/components/whatsapp/AssignTagsFromChatDialog";
+import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
+import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineStageDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -171,6 +174,8 @@ const WhatsAppChat = () => {
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [showPipelineStageDialog, setShowPipelineStageDialog] = useState(false);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1459,6 +1464,15 @@ const WhatsAppChat = () => {
                         Atribuir Tags
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setShowPipelineStageDialog(true)}>
+                        <GitBranch className="w-4 h-4 mr-2" />
+                        Alterar Etapa do Pipeline
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowFollowUpDialog(true)}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Follow-up Automático
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleResolve(selectedConversation.phone)}>
                         <CheckCheck className="w-4 h-4 mr-2" />
                         Marcar como resolvido
@@ -1693,6 +1707,32 @@ const WhatsAppChat = () => {
         initialPhone={manualPhoneInput}
         onPhoneUsed={() => setManualPhoneInput("")}
       />
+
+      {/* Follow-up Dialog */}
+      {selectedConversation && (
+        <FollowUpDialog
+          isOpen={showFollowUpDialog}
+          onClose={() => setShowFollowUpDialog(false)}
+          leadId={selectedConversation ? (() => {
+            // We need to find the lead ID from the phone number
+            return null; // Will be handled by the dialog
+          })() : null}
+          leadName={selectedConversation?.name || selectedConversation?.phone || ""}
+          leadPhone={selectedConversation?.phone || ""}
+          channelId={selectedConversation?.channelId || null}
+        />
+      )}
+
+      {/* Change Pipeline Stage Dialog */}
+      {selectedConversation && (
+        <ChangePipelineStageDialog
+          isOpen={showPipelineStageDialog}
+          onClose={() => setShowPipelineStageDialog(false)}
+          leadId={null}
+          leadName={selectedConversation?.name || selectedConversation?.phone || ""}
+          currentStageId={null}
+        />
+      )}
     </MainLayout>
   );
 };

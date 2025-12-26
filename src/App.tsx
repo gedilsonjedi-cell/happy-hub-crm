@@ -38,6 +38,7 @@ import CamposPersonalizados from "./pages/personalizacao/CamposPersonalizados";
 import ContatoDetalhes from "./pages/ContatoDetalhes";
 import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
+import FollowUp from "./pages/FollowUp";
 
 const queryClient = new QueryClient();
 
@@ -143,6 +144,7 @@ const App = () => (
           <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
+          <Route path="/follow-up" element={<ProtectedRoute><FollowUp /></ProtectedRoute>} />
           <Route path="/chatbot" element={<ProtectedRoute><Chatbot /></ProtectedRoute>} />
           <Route path="/whatsapp-chat" element={<ProtectedRoute><WhatsAppChat /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
