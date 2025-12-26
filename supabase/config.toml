@@ -13,7 +13,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.meta-send]
-verify_jwt = true
+verify_jwt = false
 
 [functions.meta-webhook]
 verify_jwt = false
