@@ -17,53 +17,86 @@ export type Database = {
       ai_agents: {
         Row: {
           agent_profile: string | null
+          auto_escalate_enabled: boolean | null
+          auto_greet_enabled: boolean | null
           communication_style: string | null
           company_info: string | null
           created_at: string
+          escalate_after_messages: number | null
+          escalate_keywords: string[] | null
+          escalate_on_sentiment: boolean | null
           faq: string | null
+          greeting_delay_seconds: number | null
           id: string
           is_active: boolean | null
           name: string
           nickname: string | null
           objective: string | null
           organization_id: string | null
+          out_of_hours_message: string | null
           products_services: string | null
+          response_delay_max: number | null
+          response_delay_min: number | null
           sign_conversations: boolean | null
+          simulate_typing: boolean | null
           updated_at: string
+          use_business_hours: boolean | null
           user_id: string
         }
         Insert: {
           agent_profile?: string | null
+          auto_escalate_enabled?: boolean | null
+          auto_greet_enabled?: boolean | null
           communication_style?: string | null
           company_info?: string | null
           created_at?: string
+          escalate_after_messages?: number | null
+          escalate_keywords?: string[] | null
+          escalate_on_sentiment?: boolean | null
           faq?: string | null
+          greeting_delay_seconds?: number | null
           id?: string
           is_active?: boolean | null
           name: string
           nickname?: string | null
           objective?: string | null
           organization_id?: string | null
+          out_of_hours_message?: string | null
           products_services?: string | null
+          response_delay_max?: number | null
+          response_delay_min?: number | null
           sign_conversations?: boolean | null
+          simulate_typing?: boolean | null
           updated_at?: string
+          use_business_hours?: boolean | null
           user_id: string
         }
         Update: {
           agent_profile?: string | null
+          auto_escalate_enabled?: boolean | null
+          auto_greet_enabled?: boolean | null
           communication_style?: string | null
           company_info?: string | null
           created_at?: string
+          escalate_after_messages?: number | null
+          escalate_keywords?: string[] | null
+          escalate_on_sentiment?: boolean | null
           faq?: string | null
+          greeting_delay_seconds?: number | null
           id?: string
           is_active?: boolean | null
           name?: string
           nickname?: string | null
           objective?: string | null
           organization_id?: string | null
+          out_of_hours_message?: string | null
           products_services?: string | null
+          response_delay_max?: number | null
+          response_delay_min?: number | null
           sign_conversations?: boolean | null
+          simulate_typing?: boolean | null
           updated_at?: string
+          use_business_hours?: boolean | null
           user_id?: string
         }
         Relationships: [
