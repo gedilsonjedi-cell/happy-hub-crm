@@ -59,6 +59,7 @@ interface Channel {
   id: string;
   name: string;
   phone: string;
+  provider: string;
   connected: boolean;
 }
 
@@ -139,6 +140,7 @@ const Disparos = () => {
     id: "demo-channel-1",
     name: "WhatsApp Vendas (Demo)",
     phone: "+5511999999999",
+    provider: "meta",
     connected: true
   };
 
@@ -169,11 +171,12 @@ const Disparos = () => {
   const fetchData = async () => {
     setLoading(true);
 
-    // Fetch channels
+    // Fetch channels - exclude Z-API channels (they can't be used for mass dispatches)
     const { data: channelsData } = await supabase
       .from("channels")
-      .select("id, name, phone, connected")
-      .eq("connected", true);
+      .select("id, name, phone, provider, connected")
+      .eq("connected", true)
+      .neq("provider", "zapi");
 
     // Fetch templates (only approved ones for dispatching)
     const { data: templatesData } = await supabase
