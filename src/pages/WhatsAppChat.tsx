@@ -1472,7 +1472,7 @@ const WhatsAppChat = () => {
                         className={cn(
                           "max-w-[70%] rounded-lg px-4 py-2",
                           message.direction === "outbound"
-                            ? "bg-emerald-500 text-white"
+                            ? "bg-emerald-700 text-white"
                             : "bg-muted"
                         )}
                       >
