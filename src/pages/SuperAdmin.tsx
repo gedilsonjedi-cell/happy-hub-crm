@@ -326,23 +326,23 @@ export default function SuperAdmin() {
         console.error("Error updating profile:", profileError);
       }
 
-      // 6. Create admin role for the user
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: authData.user.id,
-          role: "admin",
-        });
+      // 6. Create admin role for the user using the security definer function
+      const { error: roleError } = await supabase.rpc('admin_create_user_role', {
+        _user_id: authData.user.id,
+        _role: 'admin'
+      });
 
       if (roleError) {
         console.error("Error creating role:", roleError);
+        // Role creation failed but we continue since the user was created
+        toast.warning("Usuário criado, mas houve um problema ao atribuir o papel de admin");
       }
 
       // Show success with credentials
       setGeneratedPassword(userPassword);
       setShowCredentials(true);
       toast.success("Cliente e usuário admin criados com sucesso!");
-      fetchOrganizations();
+      await fetchOrganizations();
     } catch (err) {
       console.error("Error creating organization:", err);
       toast.error("Erro ao criar organização");

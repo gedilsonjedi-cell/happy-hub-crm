@@ -1782,6 +1782,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      admin_create_user_role: {
+        Args: {
+          _role?: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       calculate_subscription_total: {
         Args: { _organization_id: string }
         Returns: number
