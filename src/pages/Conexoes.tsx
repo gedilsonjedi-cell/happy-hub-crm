@@ -95,6 +95,12 @@ const Conexoes = () => {
   const [sharedVerifyToken, setSharedVerifyToken] = useState<string>('');
   const [showWabaConfig, setShowWabaConfig] = useState<{ wabaId: string; verifyToken: string } | null>(null);
   
+  // Sync dialog state
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFormData, setSyncFormData] = useState({ wabaId: "", accessToken: "" });
+  const [showSyncToken, setShowSyncToken] = useState(false);
+  
   const [formData, setFormData] = useState({
     wabaId: "",
     accessToken: "",
@@ -133,6 +139,83 @@ const Conexoes = () => {
     setAvailablePhones([]);
     setSelectedPhones([]);
     setSharedVerifyToken('');
+  };
+
+  // Sync existing channels with Meta API data
+  const handleSyncChannels = async () => {
+    if (!syncFormData.wabaId.trim() || !syncFormData.accessToken.trim()) {
+      toast.error("Preencha WABA ID e Access Token");
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      // Fetch phones from Meta API
+      const { data, error } = await supabase.functions.invoke('meta-fetch-phones', {
+        body: {
+          wabaId: syncFormData.wabaId.trim(),
+          accessToken: syncFormData.accessToken.trim(),
+        },
+      });
+
+      if (error || data.error) {
+        toast.error(data?.error || "Erro ao buscar números do Meta");
+        setIsSyncing(false);
+        return;
+      }
+
+      if (!data.phones || data.phones.length === 0) {
+        toast.error("Nenhum número encontrado nesta WABA");
+        setIsSyncing(false);
+        return;
+      }
+
+      // Match phones with existing channels and update
+      let updatedCount = 0;
+      for (const metaPhone of data.phones) {
+        const cleanMetaPhone = metaPhone.displayPhoneNumber.replace(/\D/g, '');
+        
+        // Find matching channel by phone number
+        const matchingChannel = channels.find(ch => {
+          const cleanChannelPhone = ch.phone.replace(/\D/g, '');
+          return cleanChannelPhone === cleanMetaPhone || 
+                 cleanChannelPhone.endsWith(cleanMetaPhone) || 
+                 cleanMetaPhone.endsWith(cleanChannelPhone);
+        });
+
+        if (matchingChannel) {
+          // Update channel with correct Phone Number ID and other data
+          const { error: updateError } = await supabase
+            .from("channels")
+            .update({
+              app_name: metaPhone.id, // Phone Number ID
+              waba_id: syncFormData.wabaId.trim(),
+              access_token: syncFormData.accessToken.trim(),
+            })
+            .eq("id", matchingChannel.id);
+
+          if (!updateError) {
+            updatedCount++;
+            console.log(`Updated channel ${matchingChannel.name} with Phone Number ID: ${metaPhone.id}`);
+          }
+        }
+      }
+
+      if (updatedCount > 0) {
+        toast.success(`${updatedCount} canal(is) atualizado(s) com sucesso!`);
+        setShowSyncDialog(false);
+        setSyncFormData({ wabaId: "", accessToken: "" });
+        await fetchChannels();
+      } else {
+        toast.warning("Nenhum canal foi encontrado para sincronizar. Verifique se os números correspondem.");
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      toast.error("Erro ao sincronizar canais");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleFetchPhones = async () => {
@@ -340,10 +423,20 @@ const Conexoes = () => {
           <p className="text-muted-foreground">Conecte seus números via Meta Cloud API</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={fetchChannels}>
+      <Button variant="outline" className="gap-2" onClick={fetchChannels}>
             <RefreshCw className="w-4 h-4" />
             Atualizar
           </Button>
+          {channels.length > 0 && (
+            <Button 
+              variant="outline" 
+              className="gap-2"
+              onClick={() => setShowSyncDialog(true)}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Sincronizar com Meta
+            </Button>
+          )}
           <Button className="gap-2" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
             <Plus className="w-4 h-4" />
             Nova Conexão
@@ -933,6 +1026,84 @@ const Conexoes = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync Dialog */}
+      <Dialog open={showSyncDialog} onOpenChange={(open) => !isSyncing && setShowSyncDialog(open)}>
+        <DialogContent className="sm:max-w-lg bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <RefreshCw className="w-5 h-5" />
+              Sincronizar Canais com Meta
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Atualize os Phone Number IDs dos canais existentes buscando os dados mais recentes da API do Meta.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+              <p className="text-sm text-blue-400">
+                Esta função atualiza os canais existentes com os IDs corretos da API do Meta, corrigindo erros de "Account not registered".
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">WhatsApp Business Account ID (WABA ID)</Label>
+              <Input 
+                placeholder="Ex: 123456789012345" 
+                className="bg-muted/30 border-border"
+                value={syncFormData.wabaId}
+                onChange={(e) => setSyncFormData({ ...syncFormData, wabaId: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground">Access Token</Label>
+              <div className="relative">
+                <Input 
+                  type={showSyncToken ? "text" : "password"}
+                  placeholder="EAAG..."
+                  className="bg-muted/30 border-border pr-10"
+                  value={syncFormData.accessToken}
+                  onChange={(e) => setSyncFormData({ ...syncFormData, accessToken: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={() => setShowSyncToken(!showSyncToken)}
+                >
+                  {showSyncToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setShowSyncDialog(false)} disabled={isSyncing}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleSyncChannels} 
+                disabled={isSyncing || !syncFormData.wabaId || !syncFormData.accessToken}
+                className="gap-2"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Sincronizar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </MainLayout>
