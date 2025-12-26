@@ -120,7 +120,16 @@ export default function Saldo() {
     fetchOrganizationAndBalance();
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number, forceDecimals = false) => {
+    // For small values (less than 0.01), show more decimal places
+    if (forceDecimals || (value > 0 && value < 0.01)) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3,
+      }).format(value);
+    }
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
