@@ -1663,6 +1663,7 @@ export type Database = {
           category: string | null
           content: string
           created_at: string
+          display_order: number | null
           id: string
           is_global: boolean | null
           organization_id: string | null
@@ -1675,6 +1676,7 @@ export type Database = {
           category?: string | null
           content: string
           created_at?: string
+          display_order?: number | null
           id?: string
           is_global?: boolean | null
           organization_id?: string | null
@@ -1687,6 +1689,7 @@ export type Database = {
           category?: string | null
           content?: string
           created_at?: string
+          display_order?: number | null
           id?: string
           is_global?: boolean | null
           organization_id?: string | null
