@@ -19,7 +19,8 @@ import {
   Plus,
   Loader2,
   Copy,
-  Wallet
+  Wallet,
+  Gift
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
+import { PartnerManagementPanel } from "@/components/admin/PartnerManagementPanel";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -71,6 +73,7 @@ interface Organization {
   created_at: string;
   subscription_started_at: string | null;
   subscription_ends_at: string | null;
+  is_partner: boolean;
 }
 
 interface UserProfile {
@@ -483,6 +486,10 @@ export default function OrganizationDetails() {
               <Users className="w-4 h-4" />
               Usuários ({users.length})
             </TabsTrigger>
+            <TabsTrigger value="partner" className="gap-2">
+              <Gift className="w-4 h-4" />
+              Parceria
+            </TabsTrigger>
             <TabsTrigger value="balance" className="gap-2">
               <Wallet className="w-4 h-4" />
               Saldo
@@ -570,6 +577,16 @@ export default function OrganizationDetails() {
                 </TableBody>
               </Table>
             </Card>
+          </TabsContent>
+
+          {/* Partner Tab */}
+          <TabsContent value="partner">
+            <PartnerManagementPanel
+              organizationId={organization.id}
+              organizationName={organization.name}
+              isPartner={organization.is_partner || false}
+              onPartnerStatusChange={fetchOrganizationData}
+            />
           </TabsContent>
 
           {/* Balance Tab */}
