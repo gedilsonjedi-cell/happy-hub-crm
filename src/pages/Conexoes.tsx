@@ -259,9 +259,10 @@ const Conexoes = () => {
         
         // Auto-subscribe to webhook after registration
         try {
-          console.log(`Subscribing phone ${channel.app_name} to webhook after registration...`);
+          console.log(`Subscribing WABA ${channel.waba_id} to webhook after registration...`);
           const { data: subscribeData, error: subscribeError } = await supabase.functions.invoke('meta-subscribe-webhook', {
             body: {
+              wabaId: channel.waba_id,
               phoneNumberId: channel.app_name,
               accessToken: channel.access_token,
             },
@@ -437,11 +438,12 @@ const Conexoes = () => {
           console.error('Error inserting channel:', error);
           results.failed++;
         } else {
-          // Auto-subscribe to webhook after creating channel
-          console.log(`Subscribing phone ${phone.id} to webhook...`);
+          // Auto-subscribe to webhook after creating channel (use WABA level)
+          console.log(`Subscribing WABA ${wabaId} to webhook...`);
           try {
             const { data: subscribeData, error: subscribeError } = await supabase.functions.invoke('meta-subscribe-webhook', {
               body: {
+                wabaId: wabaId,
                 phoneNumberId: phone.id,
                 accessToken: formData.accessToken.trim(),
               },
@@ -531,17 +533,23 @@ const Conexoes = () => {
 
   // Subscribe channel to webhook manually
   const handleSubscribeWebhook = async (channel: Channel) => {
-    if (!channel.app_name || !channel.access_token) {
-      toast.error("Canal não possui Phone Number ID ou Access Token");
+    if (!channel.access_token) {
+      toast.error("Canal não possui Access Token");
+      return;
+    }
+
+    if (!channel.waba_id && !channel.app_name) {
+      toast.error("Canal não possui WABA ID ou Phone Number ID");
       return;
     }
 
     setIsSubscribing(channel.id);
 
     try {
-      console.log(`Subscribing phone ${channel.app_name} to webhook...`);
+      console.log(`Subscribing WABA ${channel.waba_id} / phone ${channel.app_name} to webhook...`);
       const { data, error } = await supabase.functions.invoke('meta-subscribe-webhook', {
         body: {
+          wabaId: channel.waba_id,
           phoneNumberId: channel.app_name,
           accessToken: channel.access_token,
         },
