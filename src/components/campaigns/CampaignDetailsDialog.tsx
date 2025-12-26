@@ -4,10 +4,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Send,
   CheckCircle,
@@ -22,9 +24,11 @@ import {
   Calendar,
   Timer,
   Play,
-  Pause,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Campaign {
   id: string;
@@ -44,6 +48,12 @@ interface Campaign {
   chatbot_enabled?: boolean;
 }
 
+interface FailedMessage {
+  destination: string;
+  error: string;
+  timestamp: string;
+}
+
 interface CampaignDetailsDialogProps {
   campaign: Campaign | null;
   open: boolean;
@@ -58,7 +68,79 @@ const statusConfig = {
   failed: { label: "Falhou", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
 };
 
+// Categorize error messages
+function categorizeError(error: string): { category: string; icon: typeof AlertCircle } {
+  const lowerError = error.toLowerCase();
+  
+  if (lowerError.includes('não possui whatsapp') || lowerError.includes('not on whatsapp') || lowerError.includes('no whatsapp')) {
+    return { category: 'Sem WhatsApp', icon: PhoneOff };
+  }
+  if (lowerError.includes('número inválido') || lowerError.includes('invalid number') || lowerError.includes('invalid phone')) {
+    return { category: 'Número Inválido', icon: XCircle };
+  }
+  if (lowerError.includes('bloqueado') || lowerError.includes('blocked') || lowerError.includes('blacklist')) {
+    return { category: 'Bloqueado', icon: Ban };
+  }
+  if (lowerError.includes('timeout') || lowerError.includes('tempo esgotado')) {
+    return { category: 'Timeout', icon: Clock };
+  }
+  if (lowerError.includes('saldo') || lowerError.includes('balance') || lowerError.includes('insufficient')) {
+    return { category: 'Saldo Insuficiente', icon: AlertCircle };
+  }
+  if (lowerError.includes('template') || lowerError.includes('not approved')) {
+    return { category: 'Erro de Template', icon: MessageSquare };
+  }
+  
+  return { category: 'Erro de API', icon: AlertTriangle };
+}
+
 export function CampaignDetailsDialog({ campaign, open, onOpenChange }: CampaignDetailsDialogProps) {
+  const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
+  const [loadingErrors, setLoadingErrors] = useState(false);
+
+  useEffect(() => {
+    if (open && campaign && campaign.failed_count > 0) {
+      fetchFailedMessages();
+    } else {
+      setFailedMessages([]);
+    }
+  }, [open, campaign?.id]);
+
+  const fetchFailedMessages = async () => {
+    if (!campaign) return;
+    
+    setLoadingErrors(true);
+    try {
+      // Fetch failed messages from whatsapp_messages table
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .select('metadata, created_at')
+        .eq('status', 'failed')
+        .gte('created_at', campaign.started_at || campaign.created_at)
+        .lte('created_at', campaign.completed_at || new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (data) {
+        const errors: FailedMessage[] = data
+          .filter(msg => msg.metadata && typeof msg.metadata === 'object')
+          .map(msg => {
+            const metadata = msg.metadata as Record<string, unknown>;
+            return {
+              destination: String(metadata.destination || 'Desconhecido'),
+              error: String(metadata.error || metadata.errorMessage || 'Erro desconhecido'),
+              timestamp: msg.created_at
+            };
+          });
+        setFailedMessages(errors);
+      }
+    } catch (error) {
+      console.error('Error fetching failed messages:', error);
+    } finally {
+      setLoadingErrors(false);
+    }
+  };
+
   if (!campaign) return null;
 
   const config = statusConfig[campaign.status];
@@ -77,14 +159,27 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
     ? Math.round((campaign.sent_count / campaign.total_recipients) * 100) 
     : 0;
 
-  // Simulated failure reasons (in production, this would come from the database)
-  const failureReasons = {
-    noWhatsApp: Math.floor(campaign.failed_count * 0.4),
-    invalidNumber: Math.floor(campaign.failed_count * 0.25),
-    blocked: Math.floor(campaign.failed_count * 0.2),
-    timeout: Math.floor(campaign.failed_count * 0.1),
-    other: campaign.failed_count - Math.floor(campaign.failed_count * 0.4) - Math.floor(campaign.failed_count * 0.25) - Math.floor(campaign.failed_count * 0.2) - Math.floor(campaign.failed_count * 0.1),
-  };
+  // Group failure reasons from real data
+  const groupedErrors: Record<string, { count: number; icon: typeof AlertCircle; samples: string[] }> = {};
+  
+  failedMessages.forEach(msg => {
+    const { category, icon } = categorizeError(msg.error);
+    if (!groupedErrors[category]) {
+      groupedErrors[category] = { count: 0, icon, samples: [] };
+    }
+    groupedErrors[category].count++;
+    if (groupedErrors[category].samples.length < 3) {
+      groupedErrors[category].samples.push(msg.error);
+    }
+  });
+
+  // If no real data, use estimated distribution
+  const hasRealErrorData = failedMessages.length > 0;
+  const estimatedFailureReasons = !hasRealErrorData && campaign.failed_count > 0 ? {
+    'Erro de API': { count: campaign.failed_count, icon: AlertTriangle, samples: ['Verifique os logs para mais detalhes'] }
+  } : {};
+
+  const displayErrors = hasRealErrorData ? groupedErrors : estimatedFailureReasons;
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return "-";
@@ -109,6 +204,14 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
     return `${diffMins}m ${diffSecs}s`;
   };
 
+  const formatPhone = (phone: string) => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 13) {
+      return `+${cleaned.slice(0, 2)} (${cleaned.slice(2, 4)}) ${cleaned.slice(4, 9)}-${cleaned.slice(9)}`;
+    }
+    return phone;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl bg-card border-border max-h-[90vh] overflow-y-auto">
@@ -120,6 +223,9 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
               {config.label}
             </Badge>
           </div>
+          <DialogDescription className="text-muted-foreground">
+            Detalhes e estatísticas da campanha
+          </DialogDescription>
         </DialogHeader>
 
         {/* Progress Section (for running campaigns) */}
@@ -206,59 +312,56 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
             <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-warning" />
               Motivos das Falhas
+              {loadingErrors && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             </h3>
             
             <div className="grid gap-2">
-              {failureReasons.noWhatsApp > 0 && (
-                <div className="flex items-center justify-between bg-muted/20 rounded-lg p-3 border border-border">
-                  <div className="flex items-center gap-3">
-                    <PhoneOff className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">Sem WhatsApp</span>
+              {Object.entries(displayErrors).map(([category, data]) => {
+                const Icon = data.icon;
+                return (
+                  <div key={category} className="bg-muted/20 rounded-lg p-3 border border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-foreground font-medium">{category}</span>
+                      </div>
+                      <Badge variant="secondary">{data.count}</Badge>
+                    </div>
+                    {data.samples.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {data.samples.map((sample, idx) => (
+                          <p key={idx} className="text-xs text-muted-foreground truncate">
+                            • {sample}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <Badge variant="secondary">{failureReasons.noWhatsApp}</Badge>
-                </div>
-              )}
-              
-              {failureReasons.invalidNumber > 0 && (
-                <div className="flex items-center justify-between bg-muted/20 rounded-lg p-3 border border-border">
-                  <div className="flex items-center gap-3">
-                    <XCircle className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">Número Inválido</span>
-                  </div>
-                  <Badge variant="secondary">{failureReasons.invalidNumber}</Badge>
-                </div>
-              )}
-              
-              {failureReasons.blocked > 0 && (
-                <div className="flex items-center justify-between bg-muted/20 rounded-lg p-3 border border-border">
-                  <div className="flex items-center gap-3">
-                    <Ban className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">Bloqueado</span>
-                  </div>
-                  <Badge variant="secondary">{failureReasons.blocked}</Badge>
-                </div>
-              )}
-              
-              {failureReasons.timeout > 0 && (
-                <div className="flex items-center justify-between bg-muted/20 rounded-lg p-3 border border-border">
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">Timeout</span>
-                  </div>
-                  <Badge variant="secondary">{failureReasons.timeout}</Badge>
-                </div>
-              )}
-              
-              {failureReasons.other > 0 && (
-                <div className="flex items-center justify-between bg-muted/20 rounded-lg p-3 border border-border">
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">Outros Erros</span>
-                  </div>
-                  <Badge variant="secondary">{failureReasons.other}</Badge>
-                </div>
-              )}
+                );
+              })}
             </div>
+
+            {/* Detailed error list */}
+            {failedMessages.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">
+                  Detalhes ({failedMessages.length} erros)
+                </h4>
+                <ScrollArea className="h-32 rounded-lg border border-border">
+                  <div className="p-2 space-y-1">
+                    {failedMessages.map((msg, idx) => (
+                      <div key={idx} className="flex items-start gap-2 text-xs p-2 bg-muted/10 rounded">
+                        <XCircle className="w-3 h-3 text-destructive mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <span className="font-mono text-muted-foreground">{formatPhone(msg.destination)}</span>
+                          <p className="text-destructive/80 truncate">{msg.error}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
           </div>
         )}
 

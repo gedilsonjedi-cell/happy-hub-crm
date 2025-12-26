@@ -1048,7 +1048,8 @@ const Disparos = () => {
                 return (
                   <TableRow 
                     key={campaign.id}
-                    className="border-border hover:bg-muted/20"
+                    className="border-border hover:bg-muted/20 cursor-pointer"
+                    onClick={() => handleViewDetails(campaign.id)}
                   >
                     <TableCell>
                       <div>
@@ -1078,7 +1079,7 @@ const Disparos = () => {
                     <TableCell>
                       <span className="text-destructive">{campaign.failed_count}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
