@@ -51,6 +51,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSuperAdmin } from "@/hooks/useSuperAdmin";
+import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
 
 interface MessageTemplate {
@@ -97,6 +99,8 @@ const buttonTypeConfig = {
 
 const Templates = () => {
   const { user } = useAuth();
+  const { isSuperAdmin } = useUserRole();
+  const { selectedOrganization, isImpersonating } = useSuperAdmin();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
@@ -384,6 +388,12 @@ const Templates = () => {
   };
 
   const handleSyncFromMeta = async () => {
+    // SuperAdmin must select an organization first
+    if (isSuperAdmin && !isImpersonating) {
+      toast.error("Selecione uma organização para sincronizar");
+      return;
+    }
+
     setSyncing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -394,10 +404,16 @@ const Templates = () => {
         return;
       }
 
+      // If SuperAdmin is impersonating, pass the organization_id
+      const body = isSuperAdmin && selectedOrganization 
+        ? { organization_id: selectedOrganization.id }
+        : undefined;
+
       const response = await supabase.functions.invoke('meta-sync-templates', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
+        body,
       });
 
       if (response.error) {
