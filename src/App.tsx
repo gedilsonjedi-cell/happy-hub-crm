@@ -35,6 +35,7 @@ import Feriados from "./pages/personalizacao/Feriados";
 import Departamentos from "./pages/personalizacao/Departamentos";
 import Tags from "./pages/personalizacao/Tags";
 import CamposPersonalizados from "./pages/personalizacao/CamposPersonalizados";
+import RespostasRapidas from "./pages/personalizacao/RespostasRapidas";
 import ContatoDetalhes from "./pages/ContatoDetalhes";
 import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
@@ -160,6 +161,7 @@ const App = () => (
           <Route path="/personalizacao/departamentos" element={<ProtectedRoute><Departamentos /></ProtectedRoute>} />
           <Route path="/personalizacao/tags" element={<ProtectedRoute><Tags /></ProtectedRoute>} />
           <Route path="/personalizacao/campos" element={<ProtectedRoute><CamposPersonalizados /></ProtectedRoute>} />
+          <Route path="/personalizacao/respostas-rapidas" element={<ProtectedRoute><RespostasRapidas /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
