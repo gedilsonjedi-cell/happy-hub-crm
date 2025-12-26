@@ -24,7 +24,8 @@ import {
   Calendar,
   Minus,
   Plus,
-  Users
+  Users,
+  Sparkles
 } from "lucide-react";
 import {
   AlertDialog,
@@ -255,9 +256,13 @@ export default function Loja() {
 
   const getProductIcon = (productType: string, productName: string) => {
     if (productType === "subscription") return <Crown className="w-6 h-6 text-primary" />;
+    if (productType === "addon") return <Zap className="w-6 h-6 text-warning" />;
     if (productName.toLowerCase().includes("api")) return <Zap className="w-6 h-6 text-warning" />;
     if (productName.toLowerCase().includes("usuário") || productName.toLowerCase().includes("usuario")) {
       return <Users className="w-6 h-6 text-blue-500" />;
+    }
+    if (productName.toLowerCase().includes("higieniza")) {
+      return <Sparkles className="w-6 h-6 text-emerald-500" />;
     }
     return <ShoppingBag className="w-6 h-6 text-muted-foreground" />;
   };
@@ -369,7 +374,9 @@ export default function Loja() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {products.map((product) => {
                 const isSubscription = product.product_type === "subscription";
-                const quantity = isSubscription ? 1 : (quantities[product.id] || 1);
+                const isAddon = product.product_type === "addon";
+                const isMonthly = isSubscription || isAddon;
+                const quantity = isMonthly ? 1 : (quantities[product.id] || 1);
                 
                 // For subscription, use promotional price if first subscription
                 const displayPrice = isSubscription && isFirstSubscription && subscriptionPricing
@@ -379,7 +386,7 @@ export default function Loja() {
                 const canAfford = currentBalance >= totalPrice;
                 
                 return (
-                  <Card key={product.id} className={isSubscription ? "border-primary" : ""}>
+                  <Card key={product.id} className={isSubscription ? "border-primary" : isAddon ? "border-warning/50" : ""}>
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         {getProductIcon(product.product_type, product.name)}
@@ -388,6 +395,9 @@ export default function Loja() {
                         )}
                         {isSubscription && !isFirstSubscription && (
                           <Badge variant="secondary">Mensal</Badge>
+                        )}
+                        {isAddon && (
+                          <Badge variant="outline" className="border-warning text-warning">Add-on Mensal</Badge>
                         )}
                       </div>
                       <CardTitle className="mt-2">{product.name}</CardTitle>
@@ -411,18 +421,24 @@ export default function Loja() {
                           <>
                             <div className="text-3xl font-bold text-primary">
                               {formatCurrency(displayPrice)}
+                              {isMonthly && <span className="text-sm font-normal text-muted-foreground">/mês</span>}
                             </div>
                             {isSubscription && (
                               <p className="text-xs text-muted-foreground mt-1">
                                 Renovação mensal usando saldo
                               </p>
                             )}
+                            {isAddon && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Cobrado mensalmente junto com sua assinatura
+                              </p>
+                            )}
                           </>
                         )}
                       </div>
 
-                      {/* Quantity Selector - only for non-subscription products */}
-                      {!isSubscription && (
+                      {/* Quantity Selector - only for non-monthly products */}
+                      {!isMonthly && (
                         <div className="space-y-2">
                           <Label className="text-sm text-muted-foreground">Quantidade</Label>
                           <div className="flex items-center gap-2">
