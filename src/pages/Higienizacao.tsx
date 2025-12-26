@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +72,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
+import { useHasAddon } from "@/hooks/useHasAddon";
+import { PremiumFeaturePaywall } from "@/components/paywall/PremiumFeaturePaywall";
 
 interface PhoneEntry {
   id: string;
@@ -121,6 +123,18 @@ export default function Higienizacao() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Check if user has the Higienização addon
+  const { hasAddon, isLoading: isLoadingAddon } = useHasAddon("Higienização");
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  // Show paywall when addon check is complete and user doesn't have it
+  useEffect(() => {
+    if (!isLoadingAddon && !hasAddon) {
+      setShowPaywall(true);
+    }
+  }, [isLoadingAddon, hasAddon]);
+
   const [activeTab, setActiveTab] = useState<"upload" | "leads" | "history">("upload");
   const [phoneEntries, setPhoneEntries] = useState<PhoneEntry[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
@@ -2420,6 +2434,17 @@ export default function Higienizacao() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Premium Feature Paywall */}
+        <PremiumFeaturePaywall
+          open={showPaywall && !isLoadingAddon && !hasAddon}
+          productName="Higienização"
+          onClose={() => setShowPaywall(false)}
+          onPurchased={() => {
+            setShowPaywall(false);
+            queryClient.invalidateQueries({ queryKey: ["organization-addon"] });
+          }}
+        />
       </div>
     </MainLayout>
   );
