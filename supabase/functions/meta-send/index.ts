@@ -25,19 +25,41 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      console.error('Authentication failed:', authError?.message);
-      return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    
+    // Extract the token from the auth header
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Check if it's the service role key (used by campaign-dispatch)
+    const isServiceRole = token === supabaseServiceKey;
+    
+    let supabase;
+    let userId: string | null = null;
+    
+    if (isServiceRole) {
+      // Service role access - create admin client
+      console.log('Using service role authentication');
+      supabase = createClient(supabaseUrl, supabaseServiceKey);
+      userId = 'service_role'; // Mark as service role
+    } else {
+      // User token access - validate the user
+      supabase = createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+        { global: { headers: { Authorization: authHeader } } }
       );
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.error('Authentication failed:', authError?.message);
+        return new Response(
+          JSON.stringify({ error: 'Invalid or expired token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
     }
 
     const { 
@@ -97,11 +119,19 @@ Deno.serve(async (req) => {
     );
 
     // Check if user is a SuperAdmin (exempt from balance check)
-    const { data: isSuperAdmin } = await serviceRoleClient.rpc('is_super_admin', {
-      _user_id: user.id
-    });
+    // Skip for service role since it's used for campaigns
+    let isSuperAdmin = false;
+    if (userId && userId !== 'service_role') {
+      const { data: superAdminCheck } = await serviceRoleClient.rpc('is_super_admin', {
+        _user_id: userId
+      });
+      isSuperAdmin = !!superAdminCheck;
+    } else if (userId === 'service_role') {
+      // Service role is trusted, skip balance check for campaigns
+      isSuperAdmin = true;
+    }
 
-    console.log('User is SuperAdmin:', isSuperAdmin);
+    console.log('User/Role:', userId, 'Is SuperAdmin:', isSuperAdmin);
 
     // Get message pricing
     const { data: pricing } = await serviceRoleClient
