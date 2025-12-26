@@ -101,6 +101,7 @@ const Templates = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [channelFilter, setChannelFilter] = useState<string>("all");
@@ -371,6 +372,58 @@ const Templates = () => {
     return "Atendimento\nCampanha\nSequência";
   };
 
+  const getChannelNames = (templateId: string) => {
+    const templateChannelIds = channelTemplates[templateId] || [];
+    if (templateChannelIds.length === 0) return null;
+    
+    const channelNames = templateChannelIds
+      .map(id => channels.find(c => c.id === id)?.name)
+      .filter(Boolean);
+    
+    return channelNames;
+  };
+
+  const handleSyncFromMeta = async () => {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        setSyncing(false);
+        return;
+      }
+
+      const response = await supabase.functions.invoke('meta-sync-templates', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        console.error('Sync error:', response.error);
+        toast.error(response.error.message || "Erro ao sincronizar templates");
+        setSyncing(false);
+        return;
+      }
+
+      const result = response.data;
+      
+      if (result.error) {
+        toast.error(result.message || result.error);
+      } else {
+        toast.success(result.message || `${result.stats?.created || 0} novos, ${result.stats?.updated || 0} atualizados`);
+        await fetchTemplates();
+        await fetchChannels();
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      toast.error("Erro ao sincronizar templates da Meta");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.content.toLowerCase().includes(searchTerm.toLowerCase());
@@ -394,9 +447,14 @@ const Templates = () => {
           <p className="text-muted-foreground text-sm">{filteredTemplates.length} modelos encontrados</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => { fetchTemplates(); fetchChannels(); }}>
-            <RefreshCw className="w-4 h-4" />
-            Sincronizar
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={handleSyncFromMeta}
+            disabled={syncing}
+          >
+            <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
+            {syncing ? "Sincronizando..." : "Sincronizar Meta"}
           </Button>
           <Button className="gap-2" onClick={() => { resetForm(); setDialogOpen(true); }}>
             <Plus className="w-4 h-4" />
@@ -520,24 +578,25 @@ const Templates = () => {
                   <div className="flex items-center">
                     {approvedChannels.length > 0 ? (
                       <div className="space-y-1">
-                        {approvedChannels.slice(0, 1).map(chId => {
+                        {approvedChannels.slice(0, 2).map(chId => {
                           const ch = channels.find(c => c.id === chId);
                           return ch ? (
                             <div key={chId} className="flex items-center gap-2">
-                              <Smartphone className="w-4 h-4 text-primary" />
-                              <span className="text-sm text-foreground">{ch.phone}</span>
+                              <Smartphone className="w-3.5 h-3.5 text-primary" />
+                              <span className="text-sm text-foreground truncate max-w-[150px]" title={`${ch.name} (${ch.phone})`}>
+                                {ch.name}
+                              </span>
                             </div>
                           ) : null;
                         })}
-                        {approvedChannels.length > 1 && (
+                        {approvedChannels.length > 2 && (
                           <span className="text-xs text-muted-foreground">
-                            +{approvedChannels.length - 1} número(s)
+                            +{approvedChannels.length - 2} canal(is)
                           </span>
                         )}
-                        <span className="text-xs text-muted-foreground">Toda a empresa</span>
                       </div>
                     ) : (
-                      <span className="text-sm text-muted-foreground">Somente para meu usuário</span>
+                      <span className="text-sm text-muted-foreground italic">Sem canal vinculado</span>
                     )}
                   </div>
 
