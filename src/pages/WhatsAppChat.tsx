@@ -312,6 +312,12 @@ const WhatsAppChat = () => {
 
       const conversationsMap = new Map<string, Conversation>();
       
+      // Helper function to normalize phone numbers for consistent comparison
+      const normalizePhoneForKey = (phone: string): string => {
+        // Remove all non-digit characters for a clean comparison key
+        return phone.replace(/\D/g, '');
+      };
+      
       data?.forEach((msg) => {
         // Determine the contact phone - for inbound it's sender_phone, for outbound it's in metadata.destination
         let contactPhone: string;
@@ -324,7 +330,6 @@ const WhatsAppChat = () => {
           // For outbound messages, the contact is in metadata.destination
           const metadata = msg.metadata as { destination?: string } | null;
           contactPhone = metadata?.destination || "";
-          console.log("[WhatsAppChat] Outbound message metadata:", metadata, "contactPhone:", contactPhone);
           // Skip if no destination metadata
           if (!contactPhone) {
             console.log("[WhatsAppChat] Skipping outbound message without destination");
@@ -332,15 +337,17 @@ const WhatsAppChat = () => {
           }
         }
 
-        // Normalize phone - add + prefix if missing for consistency
-        if (!contactPhone.startsWith('+')) {
-          contactPhone = '+' + contactPhone;
-        }
+        // Use normalized phone (digits only) as the map key to avoid duplicates
+        const phoneKey = normalizePhoneForKey(contactPhone);
+        
+        // For display, format with + prefix
+        const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + contactPhone.replace(/\D/g, '');
 
-        if (!conversationsMap.has(contactPhone)) {
-          const storedStatus = conversationStatuses[contactPhone];
-          conversationsMap.set(contactPhone, {
-            phone: contactPhone,
+        if (!conversationsMap.has(phoneKey)) {
+          // Check stored status by both normalized key and display phone for backwards compatibility
+          const storedStatus = conversationStatuses[phoneKey] || conversationStatuses[displayPhone];
+          conversationsMap.set(phoneKey, {
+            phone: displayPhone,
             name: contactName,
             lastMessage: msg.content || "",
             lastMessageTime: msg.created_at,
@@ -349,9 +356,9 @@ const WhatsAppChat = () => {
             channelId: msg.channel_id,
             status: storedStatus || "pending"
           });
-          console.log("[WhatsAppChat] Created conversation for:", contactPhone);
+          console.log("[WhatsAppChat] Created conversation for:", phoneKey, "display:", displayPhone);
         } else {
-          const existing = conversationsMap.get(contactPhone)!;
+          const existing = conversationsMap.get(phoneKey)!;
           // Update name if we get it from an inbound message
           if (msg.direction === "inbound" && msg.sender_name && !existing.name) {
             existing.name = msg.sender_name;
@@ -567,9 +574,10 @@ const WhatsAppChat = () => {
                 }
                 return updated;
               } else {
-                // Create new conversation for inbound messages
+                // Create new conversation for inbound messages - format phone with + prefix
+                const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
                 return [{
-                  phone: contactPhone,
+                  phone: displayPhone,
                   name: contactName,
                   lastMessage: newMsg.content || "",
                   lastMessageTime: newMsg.created_at,
