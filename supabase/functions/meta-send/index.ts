@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify JWT authentication
+    // Get authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.error('Missing authorization header');
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     // Extract the token from the auth header
     const token = authHeader.replace('Bearer ', '');
     
-    // Check if it's the service role key (used by campaign-dispatch)
+    // Check if it's the service role key (used by campaign-dispatch and other internal functions)
     const isServiceRole = token === supabaseServiceKey;
     
     let supabase;
@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
       userId = 'service_role'; // Mark as service role
     } else {
       // User token access - validate the user
+      // First try with the token as-is (for user JWTs)
       supabase = createClient(
         supabaseUrl,
         supabaseAnonKey,
@@ -60,6 +61,7 @@ Deno.serve(async (req) => {
         );
       }
       userId = user.id;
+      console.log('Authenticated user:', userId);
     }
 
     const { 
