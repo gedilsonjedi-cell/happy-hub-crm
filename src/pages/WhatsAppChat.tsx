@@ -284,22 +284,25 @@ const WhatsAppChat = () => {
     }
   }, [user]);
 
-  // Fetch conversations - only when channel changes, not on status changes
+  // Fetch conversations from ALL channels
   useEffect(() => {
     const fetchConversations = async () => {
-      if (!selectedChannel) {
-        console.log("[WhatsAppChat] No selected channel, skipping fetch");
+      if (channels.length === 0) {
+        console.log("[WhatsAppChat] No channels available, skipping fetch");
         return;
       }
 
       setLoading(true);
-      console.log("[WhatsAppChat] Fetching conversations for channel:", selectedChannel.id, selectedChannel.name);
+      console.log("[WhatsAppChat] Fetching conversations from all channels");
 
-      // Fetch all messages (inbound and outbound) to build conversations
+      // Get all channel IDs
+      const channelIds = channels.map(c => c.id);
+
+      // Fetch all messages (inbound and outbound) from all channels to build conversations
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*")
-        .eq("channel_id", selectedChannel.id)
+        .in("channel_id", channelIds)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -382,21 +385,25 @@ const WhatsAppChat = () => {
     };
 
     fetchConversations();
-  }, [selectedChannel]); // Removed conversationStatuses dependency to prevent re-fetching
+  }, [channels]); // Fetch when channels are loaded
 
   // Fetch messages for selected conversation and mark as read
   useEffect(() => {
     const fetchMessages = async () => {
-      if (!selectedConversation || !selectedChannel) return;
+      if (!selectedConversation) return;
 
       // Normalize the phone number for queries (remove non-digits)
       const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+
+      // Use the channel from the conversation
+      const conversationChannelId = selectedConversation.channelId;
+      if (!conversationChannelId) return;
 
       // Fetch all messages for the channel, then filter client-side for more accurate matching
       const { data, error } = await supabase
         .from("whatsapp_messages")
         .select("*")
-        .eq("channel_id", selectedChannel.id)
+        .eq("channel_id", conversationChannelId)
         .order("created_at", { ascending: true });
 
       if (!error && data) {
@@ -436,7 +443,7 @@ const WhatsAppChat = () => {
     };
 
     fetchMessages();
-  }, [selectedConversation, selectedChannel]);
+  }, [selectedConversation]);
 
   // Fetch contact tags when conversation is selected
   useEffect(() => {
@@ -464,20 +471,22 @@ const WhatsAppChat = () => {
     fetchContactTags();
   }, [selectedConversation?.phone]);
 
-  // Real-time subscription for new messages
+  // Real-time subscription for new messages - listen to all channels
   useEffect(() => {
-    if (!selectedChannel) return;
+    if (channels.length === 0) return;
 
-    const channel = supabase
-      .channel('whatsapp-messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'whatsapp_messages',
-          filter: `channel_id=eq.${selectedChannel.id}`
-        },
+    // Create subscriptions for all channels
+    const channelSubscriptions = channels.map(ch => 
+      supabase
+        .channel(`whatsapp-messages-${ch.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `channel_id=eq.${ch.id}`
+          },
         (payload) => {
           console.log('New message received:', payload);
           const newMsg = payload.new as Message;
@@ -593,12 +602,13 @@ const WhatsAppChat = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe()
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      channelSubscriptions.forEach(sub => supabase.removeChannel(sub));
     };
-  }, [selectedChannel, selectedConversation, showNotification, soundEnabled, playNotificationSound]);
+  }, [channels, selectedConversation, showNotification, soundEnabled, playNotificationSound]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -689,9 +699,17 @@ const WhatsAppChat = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !selectedChannel || sendingMessage) return;
+  // Get channel info for the selected conversation
+  const selectedConversationChannel = useMemo(() => {
+    if (!selectedConversation?.channelId) return null;
+    return channels.find(c => c.id === selectedConversation.channelId) || null;
+  }, [selectedConversation?.channelId, channels]);
 
+  const handleSendMessage = async () => {
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!newMessage.trim() || !selectedConversation || !conversationChannelId || sendingMessage) return;
+
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
     const messageToSend = newMessage.trim();
     setNewMessage(""); // Clear immediately to prevent duplicates
     setSendingMessage(true);
@@ -700,9 +718,9 @@ const WhatsAppChat = () => {
     const tempId = `temp_${Date.now()}_${Math.random()}`;
     const optimisticMessage: Message = {
       id: tempId,
-      channel_id: selectedChannel.id,
+      channel_id: conversationChannelId,
       message_id: tempId,
-      sender_phone: selectedChannel.phone,
+      sender_phone: conversationChannel?.phone || "",
       sender_name: null,
       message_type: "text",
       content: messageToSend,
@@ -717,7 +735,7 @@ const WhatsAppChat = () => {
     try {
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
-          channelId: selectedChannel.id,
+          channelId: conversationChannelId,
           destination: selectedConversation.phone,
           message: messageToSend,
           messageType: 'text'
@@ -764,14 +782,16 @@ const WhatsAppChat = () => {
     mediaCaption?: string;
     fileName?: string;
   }) => {
-    if (!selectedConversation || !selectedChannel) return;
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!selectedConversation || !conversationChannelId) return;
 
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
     setSendingMessage(true);
 
     try {
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
-          channelId: selectedChannel.id,
+          channelId: conversationChannelId,
           destination: selectedConversation.phone,
           messageType: mediaData.mediaType,
           mediaUrl: mediaData.mediaUrl,
@@ -789,9 +809,9 @@ const WhatsAppChat = () => {
       if (data.success) {
         const optimisticMessage: Message = {
           id: `temp_${Date.now()}`,
-          channel_id: selectedChannel.id,
+          channel_id: conversationChannelId,
           message_id: data.messageId,
-          sender_phone: selectedChannel.phone,
+          sender_phone: conversationChannel?.phone || "",
           sender_name: null,
           message_type: mediaData.mediaType,
           content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
@@ -815,14 +835,16 @@ const WhatsAppChat = () => {
   };
 
   const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
-    if (!selectedConversation || !selectedChannel) return;
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!selectedConversation || !conversationChannelId) return;
 
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
     setSendingMessage(true);
 
     try {
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
-          channelId: selectedChannel.id,
+          channelId: conversationChannelId,
           destination: selectedConversation.phone,
           messageType: 'template',
           templateName,
@@ -840,9 +862,9 @@ const WhatsAppChat = () => {
       if (data.success) {
         const optimisticMessage: Message = {
           id: `temp_${Date.now()}`,
-          channel_id: selectedChannel.id,
+          channel_id: conversationChannelId,
           message_id: data.messageId,
-          sender_phone: selectedChannel.phone,
+          sender_phone: conversationChannel?.phone || "",
           sender_name: null,
           message_type: "template",
           content: `Template: ${templateName}`,
@@ -1174,20 +1196,6 @@ const WhatsAppChat = () => {
                 </Badge>
               )}
             </Button>
-
-            {channels.length > 1 && (
-              <select
-                className="w-full p-2 rounded-md bg-muted/30 border border-border text-sm"
-                value={selectedChannel?.id || ""}
-                onChange={(e) => setSelectedChannel(channels.find(c => c.id === e.target.value) || null)}
-              >
-                {channels.map(channel => (
-                  <option key={channel.id} value={channel.id}>
-                    {channel.name} ({channel.phone})
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
 
           {/* Conversations */}
@@ -1332,50 +1340,63 @@ const WhatsAppChat = () => {
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="md:hidden"
-                    onClick={() => setSelectedConversation(null)}
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </Button>
-                  <Avatar className="w-10 h-10">
-                    <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
-                      {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-foreground">
-                      {selectedConversation.name || selectedConversation.phone}
-                    </h3>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="w-3 h-3" />
-                      {selectedConversation.phone}
-                    </p>
-                    {contactTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {contactTags.slice(0, 3).map((tag) => (
-                          <Badge 
-                            key={tag} 
-                            variant="outline" 
-                            className="text-[10px] h-4 px-1.5 bg-muted/50"
-                          >
-                            {tag}
-                          </Badge>
-                        ))}
-                        {contactTags.length > 3 && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
-                            +{contactTags.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
+              <div className="p-4 border-b border-border">
+                {/* Channel indicator */}
+                {selectedConversationChannel && (
+                  <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-medium text-primary">
+                      Canal: {selectedConversationChannel.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({selectedConversationChannel.phone})
+                    </span>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
+                )}
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden"
+                      onClick={() => setSelectedConversation(null)}
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
+                        {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground">
+                        {selectedConversation.name || selectedConversation.phone}
+                      </h3>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {selectedConversation.phone}
+                      </p>
+                      {contactTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {contactTags.slice(0, 3).map((tag) => (
+                            <Badge 
+                              key={tag} 
+                              variant="outline" 
+                              className="text-[10px] h-4 px-1.5 bg-muted/50"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                          {contactTags.length > 3 && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
+                              +{contactTags.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                  </div>
+                  <div className="flex items-center gap-2">
                   <Button
                     variant={showQuickResponses ? "default" : "outline"}
                     size="sm"
@@ -1431,6 +1452,7 @@ const WhatsAppChat = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  </div>
                 </div>
               </div>
 
@@ -1593,13 +1615,14 @@ const WhatsAppChat = () => {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Quick Responses Panel */}
-        <QuickResponsesPanel
-          isOpen={showQuickResponses}
-          onClose={() => setShowQuickResponses(false)}
-          onSelectResponse={(content) => setNewMessage(content)}
-        />
+      {/* Quick Responses Panel */}
+      <QuickResponsesPanel
+        isOpen={showQuickResponses}
+        onClose={() => setShowQuickResponses(false)}
+        onSelectResponse={(content) => setNewMessage(content)}
+      />
 
 
         {/* Media Upload Dialog */}
