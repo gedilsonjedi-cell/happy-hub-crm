@@ -17,7 +17,8 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  Pencil
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ interface MetaPhoneNumber {
   verifiedName: string;
   qualityRating: string;
   codeVerificationStatus?: string;
+  customName?: string;
 }
 
 const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
@@ -168,12 +170,17 @@ const Conexoes = () => {
         return;
       }
 
-      // Filter out phones that are already connected
+      // Filter out phones that are already connected and add customName
       const existingPhones = channels.map(c => c.phone.replace(/\D/g, ''));
-      const newPhones = data.phones.filter((phone: MetaPhoneNumber) => {
-        const cleanPhone = phone.displayPhoneNumber.replace(/\D/g, '');
-        return !existingPhones.includes(cleanPhone);
-      });
+      const newPhones = data.phones
+        .filter((phone: MetaPhoneNumber) => {
+          const cleanPhone = phone.displayPhoneNumber.replace(/\D/g, '');
+          return !existingPhones.includes(cleanPhone);
+        })
+        .map((phone: MetaPhoneNumber) => ({
+          ...phone,
+          customName: phone.verifiedName || `WhatsApp ${phone.displayPhoneNumber}`,
+        }));
 
       if (newPhones.length === 0) {
         toast.error("Todos os números desta WABA já estão conectados");
@@ -197,6 +204,16 @@ const Conexoes = () => {
       prev.includes(phoneId) 
         ? prev.filter(id => id !== phoneId)
         : [...prev, phoneId]
+    );
+  };
+
+  const handlePhoneNameChange = (phoneId: string, newName: string) => {
+    setAvailablePhones(prev => 
+      prev.map(phone => 
+        phone.id === phoneId 
+          ? { ...phone, customName: newName }
+          : phone
+      )
     );
   };
 
@@ -238,7 +255,7 @@ const Conexoes = () => {
         const { error } = await supabase.from("channels").insert({
           user_id: user?.id,
           organization_id: profileData?.organization_id || null,
-          name: phone.verifiedName || `WhatsApp ${phone.displayPhoneNumber}`,
+          name: phone.customName || phone.verifiedName || `WhatsApp ${phone.displayPhoneNumber}`,
           phone: formattedPhone,
           provider: "meta",
           app_name: phone.id, // Phone Number ID
@@ -634,49 +651,64 @@ const Conexoes = () => {
               </div>
 
               {/* Phone List */}
-              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
                 {availablePhones.map((phone) => (
                   <div 
                     key={phone.id}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                      "rounded-lg border transition-all",
                       selectedPhones.includes(phone.id)
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/50"
                     )}
-                    onClick={() => handlePhoneSelection(phone.id)}
                   >
-                    <Checkbox 
-                      checked={selectedPhones.includes(phone.id)}
-                      onCheckedChange={() => handlePhoneSelection(phone.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground text-sm truncate">
-                        {phone.verifiedName || 'Sem nome verificado'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {phone.displayPhoneNumber}
-                      </p>
+                    <div 
+                      className="flex items-center gap-3 p-3 cursor-pointer"
+                      onClick={() => handlePhoneSelection(phone.id)}
+                    >
+                      <Checkbox 
+                        checked={selectedPhones.includes(phone.id)}
+                        onCheckedChange={() => handlePhoneSelection(phone.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">
+                          {phone.displayPhoneNumber}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {phone.qualityRating && (
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              "text-xs",
+                              phone.qualityRating === 'GREEN' 
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                                : phone.qualityRating === 'YELLOW'
+                                ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                                : "bg-red-500/10 text-red-500 border-red-500/30"
+                            )}
+                          >
+                            {phone.qualityRating === 'GREEN' ? 'Alta' : phone.qualityRating === 'YELLOW' ? 'Média' : 'Baixa'}
+                          </Badge>
+                        )}
+                        {selectedPhones.includes(phone.id) && (
+                          <CheckCircle2 className="w-5 h-5 text-primary" />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {phone.qualityRating && (
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "text-xs",
-                            phone.qualityRating === 'GREEN' 
-                              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                              : phone.qualityRating === 'YELLOW'
-                              ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                              : "bg-red-500/10 text-red-500 border-red-500/30"
-                          )}
-                        >
-                          {phone.qualityRating === 'GREEN' ? 'Alta' : phone.qualityRating === 'YELLOW' ? 'Média' : 'Baixa'}
-                        </Badge>
-                      )}
-                      {selectedPhones.includes(phone.id) && (
-                        <CheckCircle2 className="w-5 h-5 text-primary" />
-                      )}
+                    
+                    {/* Editable name field */}
+                    <div className="px-3 pb-3 pt-0">
+                      <div className="flex items-center gap-2">
+                        <Pencil className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        <Input
+                          value={phone.customName || ''}
+                          onChange={(e) => handlePhoneNameChange(phone.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="Nome do canal"
+                          className="h-8 text-sm bg-muted/30 border-border"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
