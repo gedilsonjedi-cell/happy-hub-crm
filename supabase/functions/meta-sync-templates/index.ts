@@ -47,25 +47,36 @@ Deno.serve(async (req) => {
     );
 
     if (authError || !user) {
+      console.error('Auth error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    console.log('User authenticated:', user.id, user.email);
+
     // Get user's organization
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('user_id', user.id)
       .single();
 
-    if (!profile?.organization_id) {
-      return new Response(JSON.stringify({ error: 'Organization not found' }), {
+    console.log('Profile lookup result:', { profile, profileError });
+
+    if (profileError || !profile?.organization_id) {
+      console.error('Organization not found for user:', user.id);
+      return new Response(JSON.stringify({ 
+        error: 'Organization not found',
+        message: 'Usuário não está associado a uma organização'
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('Organization found:', profile.organization_id);
 
     // Get all Meta channels with access tokens for the organization
     const { data: channels, error: channelsError } = await supabase
