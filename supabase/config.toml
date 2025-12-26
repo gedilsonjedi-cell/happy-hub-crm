@@ -41,3 +41,6 @@ verify_jwt = true
 
 [functions.meta-register-phone]
 verify_jwt = true
+
+[functions.meta-subscribe-webhook]
+verify_jwt = false
