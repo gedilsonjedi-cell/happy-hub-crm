@@ -255,6 +255,15 @@ export default function SuperAdmin() {
 
     setIsCreating(true);
     try {
+      // Save the current super admin session before creating new user
+      const { data: currentSession } = await supabase.auth.getSession();
+      const superAdminToken = currentSession?.session?.access_token;
+
+      if (!superAdminToken) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
       // 1. Create organization first
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
@@ -285,57 +294,32 @@ export default function SuperAdmin() {
       // 2. Use provided password
       const userPassword = adminPassword.trim();
 
-      // 3. Create admin user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: adminEmail.trim(),
-        password: userPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            display_name: adminName.trim(),
+      // 3. Create admin user using admin API via edge function to avoid session switch
+      const createUserResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user-role`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${superAdminToken}`,
           },
-        },
-      });
+          body: JSON.stringify({
+            action: "create_user_with_role",
+            email: adminEmail.trim(),
+            password: userPassword,
+            display_name: adminName.trim(),
+            organization_id: orgData.id,
+            role: "admin",
+          }),
+        }
+      );
 
-      if (authError) {
+      if (!createUserResponse.ok) {
+        const errorData = await createUserResponse.json();
         // Rollback: delete the organization
         await supabase.from("organizations").delete().eq("id", orgData.id);
-        toast.error(`Erro ao criar usuário: ${authError.message}`);
+        toast.error(`Erro ao criar usuário: ${errorData.error}`);
         return;
-      }
-
-      if (!authData.user) {
-        await supabase.from("organizations").delete().eq("id", orgData.id);
-        toast.error("Erro ao criar usuário");
-        return;
-      }
-
-      // 4. Wait a moment for the profile trigger to run
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 5. Update profile with organization_id and additional data
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          organization_id: orgData.id,
-          display_name: adminName.trim(),
-        })
-        .eq("user_id", authData.user.id);
-
-      if (profileError) {
-        console.error("Error updating profile:", profileError);
-      }
-
-      // 6. Create admin role for the user using the security definer function
-      const { error: roleError } = await supabase.rpc('admin_create_user_role', {
-        _user_id: authData.user.id,
-        _role: 'admin'
-      });
-
-      if (roleError) {
-        console.error("Error creating role:", roleError);
-        // Role creation failed but we continue since the user was created
-        toast.warning("Usuário criado, mas houve um problema ao atribuir o papel de admin");
       }
 
       // Show success with credentials

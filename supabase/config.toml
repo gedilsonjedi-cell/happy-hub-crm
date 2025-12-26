@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.zapi-send]
 verify_jwt = false
+
+[functions.create-user-role]
+verify_jwt = true
