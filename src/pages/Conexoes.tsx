@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { validateBrazilianPhone, formatBrazilianPhone } from "@/lib/brazilPhoneValidation";
 
 interface Channel {
   id: string;
@@ -131,12 +132,21 @@ const Conexoes = () => {
       return;
     }
 
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-    const cleanPhone = formData.whatsappNumber.replace(/\s/g, "");
-    if (!phoneRegex.test(cleanPhone)) {
-      toast.error("Número de telefone inválido. Use o formato: +5511999999999");
+    // Validar número brasileiro
+    const phoneValidation = validateBrazilianPhone(formData.whatsappNumber);
+    
+    if (!phoneValidation.isValid) {
+      toast.error(phoneValidation.errorMessage || "Número de telefone inválido");
       return;
     }
+
+    if (phoneValidation.isLandline) {
+      toast.error("Telefones fixos não funcionam com WhatsApp. Use um número de celular.");
+      return;
+    }
+
+    // Formatar número para padrão internacional
+    const formattedPhone = formatBrazilianPhone(formData.whatsappNumber);
 
     setIsConnecting(true);
 
@@ -151,7 +161,7 @@ const Conexoes = () => {
         user_id: user?.id,
         organization_id: profileData?.organization_id || null,
         name: formData.name.trim(),
-        phone: cleanPhone,
+        phone: formattedPhone,
         provider: "meta",
         app_name: formData.phoneNumberId.trim(),
         access_token: formData.accessToken.trim(),
