@@ -394,6 +394,11 @@ const Templates = () => {
       return;
     }
 
+    const orgName = selectedOrganization?.name;
+    if (orgName) {
+      toast.info(`Sincronizando templates para: ${orgName}`);
+    }
+
     setSyncing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
