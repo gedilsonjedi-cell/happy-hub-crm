@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.meta-sync-templates]
 verify_jwt = true
+
+[functions.meta-register-phone]
+verify_jwt = true

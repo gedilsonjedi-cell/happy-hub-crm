@@ -101,6 +101,10 @@ const Conexoes = () => {
   const [syncFormData, setSyncFormData] = useState({ wabaId: "", accessToken: "" });
   const [showSyncToken, setShowSyncToken] = useState(false);
   
+  // Register phone state
+  const [isRegistering, setIsRegistering] = useState<string | null>(null);
+  const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
+  
   const [formData, setFormData] = useState({
     wabaId: "",
     accessToken: "",
@@ -215,6 +219,58 @@ const Conexoes = () => {
       toast.error("Erro ao sincronizar canais");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Register phone number with Meta Cloud API
+  const handleRegisterPhone = async (channel: Channel) => {
+    if (!channel.app_name || !channel.access_token) {
+      toast.error("Canal não possui Phone Number ID ou Access Token");
+      return;
+    }
+
+    setIsRegistering(channel.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+        },
+      });
+
+      if (error) {
+        console.error('Error registering phone:', error);
+        toast.error("Erro ao registrar número");
+        return;
+      }
+
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      console.log('Register response:', data);
+      setChannelStatuses(prev => ({ ...prev, [channel.id]: data.status }));
+
+      if (data.registered) {
+        toast.success("Número registrado com sucesso na Cloud API!");
+        
+        // Update channel as connected
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+        
+        await fetchChannels();
+      } else {
+        toast.warning("Número pode precisar de verificação adicional no Meta");
+      }
+    } catch (err) {
+      console.error('Register error:', err);
+      toast.error("Erro ao registrar número");
+    } finally {
+      setIsRegistering(null);
     }
   };
 
@@ -613,7 +669,26 @@ const Conexoes = () => {
                 )}
 
                 {!channel.connected && (
-                  <div className="mt-3 pt-3 border-t border-border">
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleRegisterPhone(channel)}
+                      disabled={isRegistering === channel.id}
+                    >
+                      {isRegistering === channel.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Registrando...
+                        </>
+                      ) : (
+                        <>
+                          <Power className="w-3 h-3" />
+                          Registrar na Cloud API
+                        </>
+                      )}
+                    </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -621,7 +696,7 @@ const Conexoes = () => {
                       onClick={() => setShowChannelConfig(channel)}
                     >
                       <Info className="w-3 h-3" />
-                      Configurar Webhook
+                      Ver Configuração Webhook
                     </Button>
                   </div>
                 )}
