@@ -60,6 +60,7 @@ interface MessageTemplate {
   name: string;
   content: string;
   variables: string[];
+  variable_mappings?: Record<string, string>;
   status: "pending" | "approved" | "rejected";
   dispatch_type: "marketing" | "utility" | "service";
   created_at: string;
@@ -123,10 +124,12 @@ const Templates = () => {
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [showButtonDialog, setShowButtonDialog] = useState(false);
+  const [editVariableMappings, setEditVariableMappings] = useState<Record<string, string>>({});
   
   // New template form state
   const [formData, setFormData] = useState({
@@ -191,7 +194,8 @@ const Templates = () => {
     setTemplates((data || []).map(t => ({
       ...t,
       status: t.status as "pending" | "approved" | "rejected",
-      dispatch_type: (t.dispatch_type || "utility") as "marketing" | "utility" | "service"
+      dispatch_type: (t.dispatch_type || "utility") as "marketing" | "utility" | "service",
+      variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined
     })));
     setLoading(false);
   };
@@ -340,6 +344,54 @@ const Templates = () => {
 
     toast.success("Template excluído");
     fetchTemplates();
+  };
+
+  // Open edit dialog to configure template variables
+  const openEditDialog = (template: MessageTemplate) => {
+    setSelectedTemplate(template);
+    setEditVariableMappings(template.variable_mappings || {});
+    setSelectedChannels(channelTemplates[template.id] || []);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveVariableMappings = async () => {
+    if (!selectedTemplate) return;
+
+    const { error } = await supabase
+      .from("message_templates")
+      .update({ variable_mappings: editVariableMappings })
+      .eq("id", selectedTemplate.id);
+
+    if (error) {
+      toast.error("Erro ao salvar configurações");
+      return;
+    }
+
+    // Also save channel approvals
+    await supabase
+      .from("channel_templates")
+      .delete()
+      .eq("template_id", selectedTemplate.id);
+
+    if (selectedChannels.length > 0) {
+      const inserts = selectedChannels.map(channelId => ({
+        channel_id: channelId,
+        template_id: selectedTemplate.id,
+      }));
+
+      await supabase.from("channel_templates").insert(inserts);
+    }
+
+    const newStatus = selectedChannels.length > 0 ? "approved" : "pending";
+    await supabase
+      .from("message_templates")
+      .update({ status: newStatus })
+      .eq("id", selectedTemplate.id);
+
+    toast.success("Configurações salvas!");
+    setEditDialogOpen(false);
+    fetchTemplates();
+    fetchChannels();
   };
 
   const openApprovalDialog = (template: MessageTemplate) => {
@@ -580,7 +632,7 @@ const Templates = () => {
                 <div
                   key={template.id}
                   className="grid grid-cols-[1fr_150px_200px_100px] gap-4 px-6 py-4 hover:bg-muted/20 transition-colors group cursor-pointer"
-                  onClick={() => openApprovalDialog(template)}
+                  onClick={() => openEditDialog(template)}
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5">
@@ -1146,6 +1198,175 @@ const Templates = () => {
               </Button>
               <Button onClick={handleSaveApprovals}>
                 Salvar Aprovações
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Template Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle className="text-foreground text-xl">
+              Configurar Template
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {selectedTemplate?.name}
+            </p>
+          </DialogHeader>
+          
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)] space-y-6">
+            {/* Template Content Preview */}
+            <div className="bg-muted/20 rounded-lg p-4 border border-border">
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">Conteúdo do template</h4>
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {selectedTemplate?.content}
+              </p>
+            </div>
+
+            {/* Variable Mappings */}
+            <div>
+              <h3 className="font-medium text-foreground mb-2">Configuração de Variáveis</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Defina como cada variável será preenchida ao enviar mensagens.
+              </p>
+
+              {selectedTemplate?.variables && selectedTemplate.variables.length > 0 ? (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <div className="grid grid-cols-[1fr_1fr] gap-4 px-4 py-2 bg-muted/30 border-b border-border">
+                    <span className="text-xs font-medium text-muted-foreground">Variável</span>
+                    <span className="text-xs font-medium text-muted-foreground">Origem do valor</span>
+                  </div>
+                  
+                  <div className="divide-y divide-border">
+                    {selectedTemplate.variables.map((varName) => {
+                      const currentMapping = editVariableMappings[varName] || "manual";
+                      
+                      return (
+                        <div key={varName} className="grid grid-cols-[1fr_1fr] gap-4 px-4 py-3 items-center">
+                          <div className="flex items-center gap-2">
+                            <code className="bg-muted px-2 py-1 rounded text-sm font-mono text-primary">
+                              [{varName}]
+                            </code>
+                          </div>
+                          <Select 
+                            value={currentMapping}
+                            onValueChange={(value) => {
+                              setEditVariableMappings(prev => ({
+                                ...prev,
+                                [varName]: value
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="bg-background border-border">
+                              <SelectValue placeholder="Selecione a origem" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-card border-border z-50">
+                              {contactFieldOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  <span className={option.value === "manual" ? "text-primary font-medium" : ""}>
+                                    {option.label}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Helper text */}
+                  <div className="px-4 py-3 bg-muted/10 border-t border-border">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Dica:</strong> Selecione um campo do contato para preencher automaticamente 
+                      com os dados cadastrados, ou escolha "Informar no momento do envio" para digitar 
+                      o valor manualmente ao criar uma campanha.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm bg-muted/20 rounded-lg border border-border">
+                  Este template não possui variáveis.
+                </div>
+              )}
+            </div>
+
+            {/* Channel Approvals */}
+            <div>
+              <h3 className="font-medium text-foreground mb-2">Canais Aprovados</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Selecione em quais canais este template está disponível.
+              </p>
+              
+              <div className="space-y-2">
+                {channels.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4 bg-muted/20 rounded-lg border border-border">
+                    Nenhum canal cadastrado
+                  </p>
+                ) : (
+                  channels.map(channel => (
+                    <div
+                      key={channel.id}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                        selectedChannels.includes(channel.id)
+                          ? "bg-primary/10 border-primary/50"
+                          : "bg-muted/30 border-border hover:border-primary/30"
+                      )}
+                      onClick={() => toggleChannelApproval(channel.id)}
+                    >
+                      <Checkbox
+                        checked={selectedChannels.includes(channel.id)}
+                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      />
+                      <Smartphone className="w-4 h-4 text-primary" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">{channel.name}</p>
+                        <p className="text-xs text-muted-foreground">{channel.phone}</p>
+                      </div>
+                      {selectedChannels.includes(channel.id) && (
+                        <Badge variant="outline" className="text-xs bg-primary/10 border-primary/30 text-primary">
+                          Aprovado
+                        </Badge>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-between items-center px-6 py-4 border-t border-border bg-muted/20">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="bg-card border-border z-50">
+                <DropdownMenuItem 
+                  className="gap-2 cursor-pointer text-destructive"
+                  onClick={() => {
+                    if (selectedTemplate) {
+                      handleDeleteTemplate(selectedTemplate.id);
+                      setEditDialogOpen(false);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Excluir Template
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveVariableMappings}>
+                Salvar Configurações
               </Button>
             </div>
           </div>
