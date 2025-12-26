@@ -52,6 +52,7 @@ interface Channel {
   app_name: string | null;
   access_token: string | null;
   webhook_verify_token: string | null;
+  waba_id: string | null;
   connected: boolean;
   created_at: string;
 }
@@ -91,6 +92,8 @@ const Conexoes = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [availablePhones, setAvailablePhones] = useState<MetaPhoneNumber[]>([]);
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
+  const [sharedVerifyToken, setSharedVerifyToken] = useState<string>('');
+  const [showWabaConfig, setShowWabaConfig] = useState<{ wabaId: string; verifyToken: string } | null>(null);
   
   const [formData, setFormData] = useState({
     wabaId: "",
@@ -129,6 +132,7 @@ const Conexoes = () => {
     setStep('credentials');
     setAvailablePhones([]);
     setSelectedPhones([]);
+    setSharedVerifyToken('');
   };
 
   const handleFetchPhones = async () => {
@@ -189,6 +193,8 @@ const Conexoes = () => {
       }
 
       setAvailablePhones(newPhones);
+      // Generate ONE shared verify token for all numbers in this WABA
+      setSharedVerifyToken(generateVerifyToken());
       setStep('select-numbers');
       toast.success(`${newPhones.length} número(s) disponível(is) encontrado(s)`);
     } catch (err) {
@@ -242,10 +248,9 @@ const Conexoes = () => {
 
       const phonesToConnect = availablePhones.filter(p => selectedPhones.includes(p.id));
       const results = { success: 0, failed: 0 };
+      const wabaId = formData.wabaId.trim();
 
       for (const phone of phonesToConnect) {
-        const verifyToken = generateVerifyToken();
-        
         // Format phone number
         let formattedPhone = phone.displayPhoneNumber.replace(/\D/g, '');
         if (!formattedPhone.startsWith('+')) {
@@ -260,7 +265,8 @@ const Conexoes = () => {
           provider: "meta",
           app_name: phone.id, // Phone Number ID
           access_token: formData.accessToken.trim(),
-          webhook_verify_token: verifyToken,
+          webhook_verify_token: sharedVerifyToken, // Use shared token for all numbers in this WABA
+          waba_id: wabaId, // Store WABA ID to group channels
           connected: false,
         });
 
@@ -278,6 +284,8 @@ const Conexoes = () => {
           toast.warning(`${results.failed} canal(is) falhou(aram)`);
         }
         setIsDialogOpen(false);
+        // Show unified webhook config
+        setShowWabaConfig({ wabaId, verifyToken: sharedVerifyToken });
         resetForm();
         await fetchChannels();
       } else {
@@ -832,6 +840,96 @@ const Conexoes = () => {
                     Ativar Canal
                   </Button>
                 )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* WABA Unified Webhook Config Dialog */}
+      <Dialog open={!!showWabaConfig} onOpenChange={(open) => !open && setShowWabaConfig(null)}>
+        <DialogContent className="sm:max-w-lg bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Webhook className="w-5 h-5" />
+              Configuração do Webhook
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Configure o webhook para a WABA <strong>{showWabaConfig?.wabaId}</strong>. 
+              Este token serve para todos os números conectados.
+            </DialogDescription>
+          </DialogHeader>
+
+          {showWabaConfig && (
+            <div className="space-y-4 py-2">
+              <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <p className="text-sm text-blue-400 mb-2">
+                  <strong>Importante:</strong> Todos os números desta WABA usam o mesmo webhook.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Configure apenas uma vez no Meta Developer Console.
+                </p>
+              </div>
+
+              <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                <p className="text-sm text-amber-400 mb-2">
+                  <strong>No Meta Developer Console, vá em:</strong>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  WhatsApp → Configuration → Webhook → Edit
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground text-sm">Callback URL</Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted/50 px-3 py-2.5 rounded border border-border font-mono overflow-x-auto">
+                    {META_WEBHOOK_URL}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => copyToClipboard(META_WEBHOOK_URL, "URL")} className="gap-1.5">
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground text-sm">Verify Token (único para todos os números)</Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted/50 px-3 py-2.5 rounded border border-border font-mono overflow-x-auto">
+                    {showWabaConfig.verifyToken}
+                  </code>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => copyToClipboard(showWabaConfig.verifyToken, "Token")} 
+                    className="gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground text-sm">Webhook Fields (selecione todos)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {['messages', 'message_template_status_update'].map((field) => (
+                    <Badge key={field} variant="outline" className="text-xs">
+                      {field}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                <p className="text-sm text-emerald-400">
+                  <strong>Após configurar:</strong> Clique em "Verify and Save" no Meta, depois ative os canais.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowWabaConfig(null)}>
+                  Fechar
+                </Button>
               </div>
             </div>
           )}
