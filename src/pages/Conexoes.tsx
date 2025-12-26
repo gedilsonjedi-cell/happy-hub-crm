@@ -18,7 +18,8 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  Pencil
+  Pencil,
+  MessageSquare
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
 
 interface Channel {
@@ -80,11 +82,15 @@ const generateVerifyToken = () => {
 
 const Conexoes = () => {
   const { user } = useAuth();
+  const { isSuperAdmin } = useUserRole();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
+  
+  // Connection type selection
+  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | null>(null);
   
   // Step-based flow
   const [step, setStep] = useState<'credentials' | 'select-numbers'>('credentials');
@@ -105,6 +111,14 @@ const Conexoes = () => {
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
+  
+  // Z-API form data
+  const [zapiFormData, setZapiFormData] = useState({
+    instanceId: "",
+    token: "",
+    name: "",
+    phone: "",
+  });
   
   const [formData, setFormData] = useState({
     wabaId: "",
@@ -139,11 +153,68 @@ const Conexoes = () => {
       wabaId: "",
       accessToken: "",
     });
+    setZapiFormData({
+      instanceId: "",
+      token: "",
+      name: "",
+      phone: "",
+    });
+    setConnectionType(null);
     setShowAccessToken(false);
     setStep('credentials');
     setAvailablePhones([]);
     setSelectedPhones([]);
     setSharedVerifyToken('');
+  };
+
+  // Handle Z-API connection
+  const handleConnectZapi = async () => {
+    if (!zapiFormData.instanceId.trim() || !zapiFormData.token.trim() || !zapiFormData.name.trim() || !zapiFormData.phone.trim()) {
+      toast.error("Preencha todos os campos");
+      return;
+    }
+
+    setIsConnecting(true);
+
+    try {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user?.id)
+        .maybeSingle();
+
+      // Format phone number
+      let formattedPhone = zapiFormData.phone.replace(/\D/g, '');
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+
+      const { error } = await supabase.from("channels").insert({
+        user_id: user?.id,
+        organization_id: profileData?.organization_id || null,
+        name: zapiFormData.name.trim(),
+        phone: formattedPhone,
+        provider: "zapi",
+        app_name: zapiFormData.instanceId.trim(), // Instance ID
+        access_token: zapiFormData.token.trim(),
+        connected: true,
+      });
+
+      if (error) {
+        console.error('Error inserting Z-API channel:', error);
+        toast.error("Erro ao criar canal Z-API");
+      } else {
+        toast.success("Canal Z-API criado com sucesso!");
+        setIsDialogOpen(false);
+        resetForm();
+        await fetchChannels();
+      }
+    } catch (err) {
+      console.error('Z-API connect error:', err);
+      toast.error("Erro ao conectar Z-API");
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   // Sync existing channels with Meta API data
@@ -629,7 +700,7 @@ const Conexoes = () => {
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-lg font-semibold text-foreground">Meta Cloud API</h3>
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
-                Gratuito
+                Oficial
               </Badge>
             </div>
             <p className="text-muted-foreground text-sm mb-3">
@@ -645,11 +716,52 @@ const Conexoes = () => {
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-          <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
+          <Button onClick={() => { resetForm(); setConnectionType('meta'); setIsDialogOpen(true); }}>
             Conectar
           </Button>
         </div>
       </div>
+
+      {/* Z-API Info Card - Only visible to Super Admin */}
+      {isSuperAdmin && (
+        <div className="bg-card rounded-lg border border-emerald-500/30 p-6 animate-slide-up mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+              <MessageSquare className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-semibold text-foreground">Z-API</h3>
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
+                  Não Oficial
+                </Badge>
+                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
+                  Super Admin
+                </Badge>
+              </div>
+              <p className="text-muted-foreground text-sm mb-3">
+                Conexão via Z-API para WhatsApp tradicional. Disponível apenas para configuração por administradores.
+              </p>
+              <a 
+                href="https://developer.z-api.io/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-emerald-500 text-sm hover:underline"
+              >
+                Acessar Z-API Developer
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <Button 
+              variant="outline" 
+              className="border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10"
+              onClick={() => { resetForm(); setConnectionType('zapi'); setIsDialogOpen(true); }}
+            >
+              Conectar Z-API
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Setup Guide */}
       <div className="p-4 bg-muted/20 rounded-lg border border-border mb-6">
@@ -767,9 +879,14 @@ const Conexoes = () => {
                 <div className="flex items-center justify-between">
                   <Badge 
                     variant="outline" 
-                    className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30"
+                    className={cn(
+                      "text-xs",
+                      channel.provider === 'zapi'
+                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                        : "bg-blue-500/10 text-blue-500 border-blue-500/30"
+                    )}
                   >
-                    Meta Cloud API
+                    {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
                   </Badge>
                   <Badge 
                     variant="outline" 
@@ -866,17 +983,118 @@ const Conexoes = () => {
         >
           <DialogHeader>
             <DialogTitle className="text-foreground">
-              {step === 'credentials' ? 'Conectar WhatsApp Business' : 'Selecionar Números'}
+              {connectionType === 'zapi' 
+                ? 'Conectar via Z-API'
+                : step === 'credentials' 
+                  ? 'Conectar WhatsApp Business' 
+                  : 'Selecionar Números'
+              }
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {step === 'credentials' 
-                ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
-                : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+              {connectionType === 'zapi'
+                ? 'Configure a conexão Z-API para este cliente'
+                : step === 'credentials' 
+                  ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                  : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
               }
             </DialogDescription>
           </DialogHeader>
 
-          {step === 'credentials' && (
+          {/* Z-API Form - Only for Super Admin */}
+          {connectionType === 'zapi' && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                <p className="text-sm text-emerald-400">
+                  <strong>Atenção:</strong> Esta é uma conexão não oficial via Z-API. 
+                  Configure a instância no{" "}
+                  <a href="https://developer.z-api.io/" target="_blank" className="underline">
+                    painel Z-API
+                  </a>.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Nome do Canal</Label>
+                <Input 
+                  placeholder="Ex: WhatsApp Vendas" 
+                  className="bg-muted/30 border-border"
+                  value={zapiFormData.name}
+                  onChange={(e) => setZapiFormData({ ...zapiFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Número de Telefone</Label>
+                <Input 
+                  placeholder="Ex: 5511999999999" 
+                  className="bg-muted/30 border-border"
+                  value={zapiFormData.phone}
+                  onChange={(e) => setZapiFormData({ ...zapiFormData, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Instance ID</Label>
+                <Input 
+                  placeholder="ID da instância Z-API" 
+                  className="bg-muted/30 border-border"
+                  value={zapiFormData.instanceId}
+                  onChange={(e) => setZapiFormData({ ...zapiFormData, instanceId: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Encontre no painel Z-API da instância
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Token</Label>
+                <div className="relative">
+                  <Input 
+                    type={showAccessToken ? "text" : "password"}
+                    placeholder="Token da instância Z-API"
+                    className="bg-muted/30 border-border pr-10"
+                    value={zapiFormData.token}
+                    onChange={(e) => setZapiFormData({ ...zapiFormData, token: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                  >
+                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleConnectZapi} 
+                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Conectando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Conectar Z-API
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Meta Cloud API Form */}
+          {connectionType === 'meta' && step === 'credentials' && (
             <div className="space-y-4 py-2">
               <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
                 <p className="text-sm text-blue-400">
@@ -951,7 +1169,7 @@ const Conexoes = () => {
             </div>
           )}
 
-          {step === 'select-numbers' && (
+          {connectionType === 'meta' && step === 'select-numbers' && (
             <div className="space-y-4 py-2">
               {/* Select All */}
               <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border">
