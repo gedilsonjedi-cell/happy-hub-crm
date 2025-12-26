@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.meta-fetch-phones]
 verify_jwt = true
+
+[functions.meta-sync-templates]
+verify_jwt = true
