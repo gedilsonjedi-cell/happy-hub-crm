@@ -103,6 +103,7 @@ const Conexoes = () => {
   
   // Register phone state
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
+  const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
   
   const [formData, setFormData] = useState({
@@ -255,6 +256,29 @@ const Conexoes = () => {
 
       if (data.registered) {
         toast.success("Número registrado com sucesso na Cloud API!");
+        
+        // Auto-subscribe to webhook after registration
+        try {
+          console.log(`Subscribing phone ${channel.app_name} to webhook after registration...`);
+          const { data: subscribeData, error: subscribeError } = await supabase.functions.invoke('meta-subscribe-webhook', {
+            body: {
+              phoneNumberId: channel.app_name,
+              accessToken: channel.access_token,
+            },
+          });
+
+          if (subscribeError) {
+            console.error('Error subscribing to webhook:', subscribeError);
+            toast.warning("Número registrado, mas falha na inscrição do webhook");
+          } else if (subscribeData?.success) {
+            console.log(`Phone ${channel.app_name} subscribed to webhook successfully`);
+            toast.success("Webhook inscrito com sucesso!");
+          } else {
+            console.warn(`Webhook subscription response:`, subscribeData);
+          }
+        } catch (subErr) {
+          console.error('Exception subscribing to webhook:', subErr);
+        }
         
         // Update channel as connected
         await supabase
@@ -413,12 +437,33 @@ const Conexoes = () => {
           console.error('Error inserting channel:', error);
           results.failed++;
         } else {
+          // Auto-subscribe to webhook after creating channel
+          console.log(`Subscribing phone ${phone.id} to webhook...`);
+          try {
+            const { data: subscribeData, error: subscribeError } = await supabase.functions.invoke('meta-subscribe-webhook', {
+              body: {
+                phoneNumberId: phone.id,
+                accessToken: formData.accessToken.trim(),
+              },
+            });
+
+            if (subscribeError) {
+              console.error('Error subscribing to webhook:', subscribeError);
+            } else if (subscribeData?.success) {
+              console.log(`Phone ${phone.id} subscribed to webhook successfully`);
+            } else {
+              console.warn(`Webhook subscription response:`, subscribeData);
+            }
+          } catch (subErr) {
+            console.error('Exception subscribing to webhook:', subErr);
+          }
+          
           results.success++;
         }
       }
 
       if (results.success > 0) {
-        toast.success(`${results.success} canal(is) criado(s) com sucesso!`);
+        toast.success(`${results.success} canal(is) criado(s) e inscrito(s) no webhook!`);
         if (results.failed > 0) {
           toast.warning(`${results.failed} canal(is) falhou(aram)`);
         }
@@ -482,6 +527,51 @@ const Conexoes = () => {
     }
 
     toast.success("Canal excluído");
+  };
+
+  // Subscribe channel to webhook manually
+  const handleSubscribeWebhook = async (channel: Channel) => {
+    if (!channel.app_name || !channel.access_token) {
+      toast.error("Canal não possui Phone Number ID ou Access Token");
+      return;
+    }
+
+    setIsSubscribing(channel.id);
+
+    try {
+      console.log(`Subscribing phone ${channel.app_name} to webhook...`);
+      const { data, error } = await supabase.functions.invoke('meta-subscribe-webhook', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+        },
+      });
+
+      if (error) {
+        console.error('Error subscribing to webhook:', error);
+        toast.error("Erro ao inscrever no webhook");
+        return;
+      }
+
+      if (data?.success) {
+        toast.success("Webhook inscrito com sucesso! Agora as mensagens devem chegar.");
+        
+        // Mark channel as connected
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+        
+        await fetchChannels();
+      } else {
+        toast.error(data?.error || "Falha na inscrição do webhook");
+      }
+    } catch (err) {
+      console.error('Subscribe error:', err);
+      toast.error("Erro ao inscrever no webhook");
+    } finally {
+      setIsSubscribing(null);
+    }
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -648,6 +738,14 @@ const Conexoes = () => {
                         )}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
+                        className="gap-2 cursor-pointer"
+                        onClick={() => handleSubscribeWebhook(channel)}
+                        disabled={isSubscribing === channel.id}
+                      >
+                        <Webhook className="w-4 h-4" />
+                        {isSubscribing === channel.id ? 'Inscrevendo...' : 'Inscrever Webhook'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
                         className="gap-2 cursor-pointer text-destructive"
                         onClick={() => handleDeleteChannel(channel.id)}
                       >
@@ -679,11 +777,30 @@ const Conexoes = () => {
                 </div>
 
                 {channel.connected && (
-                  <div className="mt-3 pt-3 border-t border-border">
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs text-muted-foreground">Pronto para enviar</span>
+                      <span className="text-xs text-muted-foreground">Pronto para enviar e receber</span>
                     </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleSubscribeWebhook(channel)}
+                      disabled={isSubscribing === channel.id}
+                    >
+                      {isSubscribing === channel.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Inscrevendo...
+                        </>
+                      ) : (
+                        <>
+                          <Webhook className="w-3 h-3" />
+                          Reinscrever no Webhook
+                        </>
+                      )}
+                    </Button>
                   </div>
                 )}
 
