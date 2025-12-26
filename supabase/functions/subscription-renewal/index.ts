@@ -27,6 +27,7 @@ interface Organization {
   subscription_paid_until: string | null;
   subscription_status: string;
   has_paid_first_subscription: boolean;
+  is_partner: boolean;
 }
 
 interface OrganizationAddon {
@@ -86,9 +87,10 @@ Deno.serve(async (req) => {
     
     const { data: organizations, error: orgsError } = await supabase
       .from("organizations")
-      .select("id, name, subscription_paid_until, subscription_status, has_paid_first_subscription")
+      .select("id, name, subscription_paid_until, subscription_status, has_paid_first_subscription, is_partner")
       .lte("subscription_paid_until", today)
-      .eq("subscription_status", "active");
+      .eq("subscription_status", "active")
+      .eq("is_partner", false);
 
     if (orgsError) {
       console.error("Error fetching organizations:", orgsError);

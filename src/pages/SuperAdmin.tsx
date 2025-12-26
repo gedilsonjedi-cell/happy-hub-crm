@@ -93,6 +93,7 @@ interface Organization {
   channel_count?: number;
   monthly_cost?: number;
   days_until_expiry?: number;
+  is_partner?: boolean;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -100,6 +101,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   trial: { label: "Trial", className: "bg-blue-500/10 text-blue-500" },
   past_due: { label: "Atrasada", className: "bg-warning/10 text-warning" },
   canceled: { label: "Cancelada", className: "bg-destructive/10 text-destructive" },
+  partner: { label: "Parceiro", className: "bg-primary/10 text-primary" },
 };
 
 export default function SuperAdmin() {
@@ -455,21 +457,24 @@ export default function SuperAdmin() {
   );
 
   const activeOrgs = organizations.filter((o) => o.is_active).length;
+  const partnerOrgs = organizations.filter((o) => o.is_partner).length;
   const totalUsers = organizations.reduce((acc, o) => acc + (o.user_count || 0), 0);
   const totalMonthlyRevenue = organizations
-    .filter((o) => o.is_active)
+    .filter((o) => o.is_active && !o.is_partner)
     .reduce((acc, o) => acc + calculateMonthlyCost(o.max_users, o.max_channels), 0);
   
-  // Organizations close to expiry (within 15 days)
+  // Organizations close to expiry (within 15 days) - excluding partners
   const expiringOrgs = organizations.filter((o) => 
     o.is_active && 
+    !o.is_partner &&
     o.days_until_expiry !== undefined && 
     o.days_until_expiry <= 15 && 
     o.days_until_expiry >= 0
   ).sort((a, b) => (a.days_until_expiry || 0) - (b.days_until_expiry || 0));
   
-  // Expired organizations
+  // Expired organizations - excluding partners
   const expiredOrgs = organizations.filter((o) => 
+    !o.is_partner &&
     o.days_until_expiry !== undefined && 
     o.days_until_expiry < 0
   );
@@ -506,7 +511,7 @@ export default function SuperAdmin() {
 
       <div className="p-6 space-y-6">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -527,6 +532,17 @@ export default function SuperAdmin() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{activeOrgs}</div>
+            </CardContent>
+          </Card>
+          <Card className={partnerOrgs > 0 ? "border-primary/30 bg-primary/5" : ""}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Parceiros
+              </CardTitle>
+              <Activity className="w-4 h-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{partnerOrgs}</div>
             </CardContent>
           </Card>
           <Card>
@@ -691,23 +707,35 @@ export default function SuperAdmin() {
                     </TableRow>
                   ) : (
                     filteredOrganizations.map((org) => {
-                      const monthlyCost = calculateMonthlyCost(org.max_users, org.max_channels);
+                      const monthlyCost = org.is_partner ? 0 : calculateMonthlyCost(org.max_users, org.max_channels);
+                      const displayStatus = org.is_partner ? "partner" : org.subscription_status;
                       return (
                         <TableRow key={org.id} className={!org.is_active ? "opacity-50" : ""}>
                           <TableCell>
-                            <div>
-                              <p className="font-medium">{org.name}</p>
-                              <p className="text-sm text-muted-foreground">{org.slug}</p>
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <p className="font-medium">{org.name}</p>
+                                <p className="text-sm text-muted-foreground">{org.slug}</p>
+                              </div>
+                              {org.is_partner && (
+                                <Badge variant="outline" className="border-primary/50 text-primary text-xs">
+                                  Parceiro
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-primary">
-                              R$ {monthlyCost.toFixed(2)}
-                            </span>
+                            {org.is_partner ? (
+                              <span className="text-muted-foreground text-sm">Parceiro</span>
+                            ) : (
+                              <span className="font-medium text-primary">
+                                R$ {monthlyCost.toFixed(2)}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell>
-                            <Badge className={statusConfig[org.subscription_status]?.className || ""}>
-                              {statusConfig[org.subscription_status]?.label || org.subscription_status}
+                            <Badge className={statusConfig[displayStatus]?.className || ""}>
+                              {statusConfig[displayStatus]?.label || displayStatus}
                             </Badge>
                           </TableCell>
                           <TableCell>

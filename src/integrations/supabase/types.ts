@@ -1258,6 +1258,7 @@ export type Database = {
           has_paid_first_subscription: boolean
           id: string
           is_active: boolean
+          is_partner: boolean | null
           logo_url: string | null
           max_channels: number | null
           max_users: number | null
@@ -1275,6 +1276,7 @@ export type Database = {
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
+          is_partner?: boolean | null
           logo_url?: string | null
           max_channels?: number | null
           max_users?: number | null
@@ -1292,6 +1294,7 @@ export type Database = {
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
+          is_partner?: boolean | null
           logo_url?: string | null
           max_channels?: number | null
           max_users?: number | null
@@ -1770,6 +1773,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_add_product_to_organization: {
+        Args: {
+          _is_free?: boolean
+          _organization_id: string
+          _product_id: string
+          _quantity?: number
+        }
+        Returns: boolean
+      }
       calculate_subscription_total: {
         Args: { _organization_id: string }
         Returns: number
