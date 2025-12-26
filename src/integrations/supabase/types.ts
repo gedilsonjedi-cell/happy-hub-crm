@@ -1121,6 +1121,7 @@ export type Database = {
       }
       message_templates: {
         Row: {
+          components: Json | null
           content: string
           created_at: string
           dispatch_type: Database["public"]["Enums"]["dispatch_type"]
@@ -1134,6 +1135,7 @@ export type Database = {
           variables: string[] | null
         }
         Insert: {
+          components?: Json | null
           content: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
@@ -1147,6 +1149,7 @@ export type Database = {
           variables?: string[] | null
         }
         Update: {
+          components?: Json | null
           content?: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]

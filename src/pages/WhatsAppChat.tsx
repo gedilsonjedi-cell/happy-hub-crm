@@ -147,7 +147,11 @@ const WhatsAppChat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [templates, setTemplates] = useState<Map<string, { content: string; variables: string[] | null }>>(new Map());
+  const [templates, setTemplates] = useState<Map<string, { 
+    content: string; 
+    variables: string[] | null;
+    components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
+  }>>(new Map());
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -256,12 +260,20 @@ const WhatsAppChat = () => {
     const fetchTemplates = async () => {
       const { data } = await supabase
         .from("message_templates")
-        .select("name, content, variables");
+        .select("name, content, variables, components");
 
       if (data) {
-        const templatesMap = new Map<string, { content: string; variables: string[] | null }>();
+        const templatesMap = new Map<string, { 
+          content: string; 
+          variables: string[] | null;
+          components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
+        }>();
         data.forEach(t => {
-          templatesMap.set(t.name, { content: t.content, variables: t.variables });
+          templatesMap.set(t.name, { 
+            content: t.content, 
+            variables: t.variables,
+            components: t.components as { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null
+          });
         });
         setTemplates(templatesMap);
       }
@@ -938,6 +950,9 @@ const WhatsAppChat = () => {
           return match;
         });
 
+        // Get buttons from components
+        const buttons = templateData.components?.buttons || [];
+
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground/80 mb-1">
@@ -945,6 +960,37 @@ const WhatsAppChat = () => {
               <span className="font-medium">{templateName}</span>
             </div>
             <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+            
+            {/* Render buttons if any */}
+            {buttons.length > 0 && (
+              <div className="flex flex-col gap-1 pt-2 border-t border-border/30">
+                {buttons.map((button, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-center gap-2 py-1.5 px-3 rounded bg-background/20 text-xs font-medium text-center"
+                  >
+                    {button.type === "URL" && (
+                      <>
+                        <span className="text-primary">🔗</span>
+                        <span>{button.text}</span>
+                      </>
+                    )}
+                    {button.type === "PHONE_NUMBER" && (
+                      <>
+                        <Phone className="w-3 h-3 text-primary" />
+                        <span>{button.text}</span>
+                      </>
+                    )}
+                    {button.type === "QUICK_REPLY" && (
+                      <span>{button.text}</span>
+                    )}
+                    {!["URL", "PHONE_NUMBER", "QUICK_REPLY"].includes(button.type) && (
+                      <span>{button.text}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
