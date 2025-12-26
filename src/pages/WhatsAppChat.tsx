@@ -1276,26 +1276,24 @@ const WhatsAppChat = () => {
 
           {/* Manual Send Section - Fixed */}
           <div className="border-t border-border p-3">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center justify-center px-2 h-9 bg-muted rounded-md border border-border text-xs font-medium text-muted-foreground shrink-0">
-                  +55
-                </div>
-                <Input
-                  placeholder="DDD + Número"
-                  className="flex-1 h-9 text-sm"
-                  value={manualPhoneInput}
-                  onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center px-2 h-9 bg-muted rounded-md border border-border text-xs font-medium text-muted-foreground shrink-0">
+                +55
               </div>
+              <Input
+                placeholder="DDD + Número"
+                className="flex-1 h-9 text-sm"
+                value={manualPhoneInput}
+                onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))}
+              />
               <Button 
                 onClick={() => setShowManualSendDialog(true)}
-                className="w-full gap-2 h-9"
-                size="sm"
+                size="icon"
+                className="h-9 w-9 shrink-0"
                 disabled={!manualPhoneInput.trim()}
+                title="Enviar Template"
               >
-                <FileText className="w-4 h-4" />
-                Enviar Template
+                <Send className="w-4 h-4" />
               </Button>
             </div>
           </div>
