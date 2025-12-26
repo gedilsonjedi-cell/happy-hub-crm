@@ -50,6 +50,8 @@ interface ManualSendDialogProps {
   channels: Channel[];
   selectedChannel: Channel | null;
   onChannelChange: (channel: Channel) => void;
+  initialPhone?: string;
+  onPhoneUsed?: () => void;
 }
 
 export const ManualSendDialog = ({ 
@@ -57,7 +59,9 @@ export const ManualSendDialog = ({
   onClose, 
   channels,
   selectedChannel,
-  onChannelChange
+  onChannelChange,
+  initialPhone = "",
+  onPhoneUsed
 }: ManualSendDialogProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -71,8 +75,14 @@ export const ManualSendDialog = ({
   useEffect(() => {
     if (isOpen && selectedChannel) {
       fetchTemplates();
+      // If we have an initial phone, use it and skip to template selection
+      if (initialPhone) {
+        setPhoneNumber(initialPhone);
+        setStep("template");
+        onPhoneUsed?.();
+      }
     }
-  }, [isOpen, selectedChannel]);
+  }, [isOpen, selectedChannel, initialPhone]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -188,11 +198,8 @@ export const ManualSendDialog = ({
     setSending(true);
 
     try {
-      // Format phone number - ensure it has country code
-      let formattedPhone = phoneNumber;
-      if (!formattedPhone.startsWith("55") && formattedPhone.length <= 11) {
-        formattedPhone = "55" + formattedPhone;
-      }
+      // Always add 55 prefix since we show it as fixed
+      const formattedPhone = "55" + phoneNumber;
 
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
@@ -295,19 +302,24 @@ export const ManualSendDialog = ({
 
             <div className="space-y-2">
               <Label htmlFor="phone">Número de Telefone</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="phone"
-                  placeholder="Ex: 5511999999999"
-                  className="pl-10"
-                  value={phoneNumber}
-                  onChange={handlePhoneChange}
-                  maxLength={15}
-                />
+              <div className="flex gap-2">
+                <div className="flex items-center justify-center px-3 bg-muted rounded-md border border-border text-sm font-medium text-muted-foreground">
+                  +55
+                </div>
+                <div className="relative flex-1">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="phone"
+                    placeholder="11999999999"
+                    className="pl-10"
+                    value={phoneNumber}
+                    onChange={handlePhoneChange}
+                    maxLength={11}
+                  />
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Digite o número com DDD. O código do país (55) será adicionado automaticamente se necessário.
+                Digite o DDD + número (ex: 11999999999)
               </p>
             </div>
 

@@ -161,6 +161,7 @@ const WhatsAppChat = () => {
   const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showManualSendDialog, setShowManualSendDialog] = useState(false);
+  const [manualPhoneInput, setManualPhoneInput] = useState("");
   const [showSalesAssistant, setShowSalesAssistant] = useState(false);
   const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
@@ -937,16 +938,6 @@ const WhatsAppChat = () => {
               <div className="flex items-center gap-2">
                 <BalanceIndicator />
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5"
-                  onClick={() => setShowManualSendDialog(true)}
-                  title="Enviar mensagem manual"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">Enviar</span>
-                </Button>
-                <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
@@ -1412,11 +1403,39 @@ const WhatsAppChat = () => {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
-                <p className="text-sm">Selecione uma conversa para começar a responder</p>
+            <div className="flex-1 flex flex-col">
+              {/* Empty state */}
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                  <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
+                  <p className="text-sm">Selecione uma conversa ou envie uma mensagem manual</p>
+                </div>
+              </div>
+              
+              {/* Manual Send Footer */}
+              <div className="p-4 border-t border-border bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="flex items-center justify-center px-3 h-10 bg-muted rounded-md border border-border text-sm font-medium text-muted-foreground shrink-0">
+                      +55
+                    </div>
+                    <Input
+                      placeholder="DDD + Número (ex: 11999999999)"
+                      className="flex-1"
+                      value={manualPhoneInput}
+                      onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    />
+                  </div>
+                  <Button 
+                    onClick={() => setShowManualSendDialog(true)}
+                    className="gap-2 shrink-0"
+                    disabled={!manualPhoneInput.trim()}
+                  >
+                    <FileText className="w-4 h-4" />
+                    Selecionar Template
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1492,10 +1511,15 @@ const WhatsAppChat = () => {
         {/* Manual Send Dialog */}
         <ManualSendDialog
           isOpen={showManualSendDialog}
-          onClose={() => setShowManualSendDialog(false)}
+          onClose={() => {
+            setShowManualSendDialog(false);
+            setManualPhoneInput("");
+          }}
           channels={channels}
           selectedChannel={selectedChannel}
           onChannelChange={setSelectedChannel}
+          initialPhone={manualPhoneInput}
+          onPhoneUsed={() => setManualPhoneInput("")}
         />
       </div>
     </MainLayout>
