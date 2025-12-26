@@ -864,13 +864,15 @@ export default function SuperAdmin() {
 
         {/* New Organization Dialog */}
         <Dialog open={isNewOrgDialogOpen} onOpenChange={handleCloseDialog}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
+          <DialogContent className="max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Novo Cliente</DialogTitle>
               <DialogDescription>
                 Cadastre uma nova organização e crie o usuário administrador
               </DialogDescription>
             </DialogHeader>
+            
+            <div className="flex-1 overflow-y-auto pr-2">
             
             {showCredentials ? (
               <div className="space-y-4">
@@ -1099,8 +1101,9 @@ export default function SuperAdmin() {
                 </div>
               </div>
             )}
+            </div>
             
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 pt-4 border-t">
               {showCredentials ? (
                 <Button onClick={handleCloseDialog}>
                   Fechar
