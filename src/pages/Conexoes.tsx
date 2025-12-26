@@ -439,30 +439,49 @@ const Conexoes = () => {
   };
 
   const handleToggleConnection = async (channel: Channel) => {
+    const newConnectedState = !channel.connected;
+    
+    // Optimistic update
+    setChannels(prev => prev.map(c => 
+      c.id === channel.id ? { ...c, connected: newConnectedState } : c
+    ));
+    
     const { error } = await supabase
       .from("channels")
-      .update({ connected: !channel.connected })
+      .update({ connected: newConnectedState })
       .eq("id", channel.id);
 
     if (error) {
+      console.error('Toggle connection error:', error);
+      // Revert optimistic update
+      setChannels(prev => prev.map(c => 
+        c.id === channel.id ? { ...c, connected: channel.connected } : c
+      ));
       toast.error("Erro ao atualizar canal");
       return;
     }
 
-    toast.success(channel.connected ? "Canal desconectado" : "Canal ativado");
-    fetchChannels();
+    toast.success(newConnectedState ? "Canal ativado" : "Canal desconectado");
   };
 
   const handleDeleteChannel = async (id: string) => {
+    // Optimistic update - remove from UI immediately
+    const channelToDelete = channels.find(c => c.id === id);
+    setChannels(prev => prev.filter(c => c.id !== id));
+    
     const { error } = await supabase.from("channels").delete().eq("id", id);
 
     if (error) {
+      console.error('Delete channel error:', error);
+      // Revert optimistic update
+      if (channelToDelete) {
+        setChannels(prev => [...prev, channelToDelete]);
+      }
       toast.error("Erro ao excluir canal");
       return;
     }
 
     toast.success("Canal excluído");
-    fetchChannels();
   };
 
   const copyToClipboard = (text: string, label: string) => {
