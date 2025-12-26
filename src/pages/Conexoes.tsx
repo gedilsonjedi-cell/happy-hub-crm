@@ -13,7 +13,11 @@ import {
   Webhook,
   Eye,
   EyeOff,
-  Info
+  Info,
+  Check,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -33,11 +37,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
-import { validateBrazilianPhone, formatBrazilianPhone } from "@/lib/brazilPhoneValidation";
 
 interface Channel {
   id: string;
@@ -49,6 +53,14 @@ interface Channel {
   webhook_verify_token: string | null;
   connected: boolean;
   created_at: string;
+}
+
+interface MetaPhoneNumber {
+  id: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  qualityRating: string;
+  codeVerificationStatus?: string;
 }
 
 const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
@@ -68,16 +80,19 @@ const Conexoes = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
   
+  // Step-based flow
+  const [step, setStep] = useState<'credentials' | 'select-numbers'>('credentials');
+  const [isFetchingPhones, setIsFetchingPhones] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [availablePhones, setAvailablePhones] = useState<MetaPhoneNumber[]>([]);
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
+  
   const [formData, setFormData] = useState({
-    name: "",
-    phoneNumberId: "",
+    wabaId: "",
     accessToken: "",
-    whatsappNumber: "",
-    verifyToken: generateVerifyToken()
   });
 
   useEffect(() => {
@@ -105,48 +120,99 @@ const Conexoes = () => {
 
   const resetForm = () => {
     setFormData({
-      name: "",
-      phoneNumberId: "",
+      wabaId: "",
       accessToken: "",
-      whatsappNumber: "",
-      verifyToken: generateVerifyToken()
     });
     setShowAccessToken(false);
+    setStep('credentials');
+    setAvailablePhones([]);
+    setSelectedPhones([]);
   };
 
-  const handleConnect = async () => {
-    if (!formData.name.trim()) {
-      toast.error("Preencha o nome do canal");
-      return;
-    }
-    if (!formData.phoneNumberId.trim()) {
-      toast.error("Preencha o Phone Number ID");
+  const handleFetchPhones = async () => {
+    if (!formData.wabaId.trim()) {
+      toast.error("Preencha o WABA ID");
       return;
     }
     if (!formData.accessToken.trim()) {
       toast.error("Preencha o Access Token");
       return;
     }
-    if (!formData.whatsappNumber.trim()) {
-      toast.error("Preencha o número do WhatsApp");
+
+    setIsFetchingPhones(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-fetch-phones', {
+        body: {
+          wabaId: formData.wabaId.trim(),
+          accessToken: formData.accessToken.trim(),
+        },
+      });
+
+      if (error) {
+        console.error('Error invoking function:', error);
+        toast.error("Erro ao buscar números. Verifique suas credenciais.");
+        setIsFetchingPhones(false);
+        return;
+      }
+
+      if (data.error) {
+        toast.error(data.error);
+        setIsFetchingPhones(false);
+        return;
+      }
+
+      if (!data.phones || data.phones.length === 0) {
+        toast.error("Nenhum número encontrado nesta WABA");
+        setIsFetchingPhones(false);
+        return;
+      }
+
+      // Filter out phones that are already connected
+      const existingPhones = channels.map(c => c.phone.replace(/\D/g, ''));
+      const newPhones = data.phones.filter((phone: MetaPhoneNumber) => {
+        const cleanPhone = phone.displayPhoneNumber.replace(/\D/g, '');
+        return !existingPhones.includes(cleanPhone);
+      });
+
+      if (newPhones.length === 0) {
+        toast.error("Todos os números desta WABA já estão conectados");
+        setIsFetchingPhones(false);
+        return;
+      }
+
+      setAvailablePhones(newPhones);
+      setStep('select-numbers');
+      toast.success(`${newPhones.length} número(s) disponível(is) encontrado(s)`);
+    } catch (err) {
+      console.error('Fetch phones error:', err);
+      toast.error("Erro ao buscar números");
+    } finally {
+      setIsFetchingPhones(false);
+    }
+  };
+
+  const handlePhoneSelection = (phoneId: string) => {
+    setSelectedPhones(prev => 
+      prev.includes(phoneId) 
+        ? prev.filter(id => id !== phoneId)
+        : [...prev, phoneId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPhones.length === availablePhones.length) {
+      setSelectedPhones([]);
+    } else {
+      setSelectedPhones(availablePhones.map(p => p.id));
+    }
+  };
+
+  const handleConnectSelected = async () => {
+    if (selectedPhones.length === 0) {
+      toast.error("Selecione pelo menos um número");
       return;
     }
-
-    // Validar número brasileiro
-    const phoneValidation = validateBrazilianPhone(formData.whatsappNumber);
-    
-    if (!phoneValidation.isValid) {
-      toast.error(phoneValidation.errorMessage || "Número de telefone inválido");
-      return;
-    }
-
-    if (phoneValidation.isLandline) {
-      toast.error("Telefones fixos não funcionam com WhatsApp. Use um número de celular.");
-      return;
-    }
-
-    // Formatar número para padrão internacional
-    const formattedPhone = formatBrazilianPhone(formData.whatsappNumber);
 
     setIsConnecting(true);
 
@@ -157,39 +223,53 @@ const Conexoes = () => {
         .eq("user_id", user?.id)
         .maybeSingle();
 
-      const { data: newChannel, error } = await supabase.from("channels").insert({
-        user_id: user?.id,
-        organization_id: profileData?.organization_id || null,
-        name: formData.name.trim(),
-        phone: formattedPhone,
-        provider: "meta",
-        app_name: formData.phoneNumberId.trim(),
-        access_token: formData.accessToken.trim(),
-        webhook_verify_token: formData.verifyToken,
-        connected: false,
-      }).select().single();
+      const phonesToConnect = availablePhones.filter(p => selectedPhones.includes(p.id));
+      const results = { success: 0, failed: 0 };
 
-      if (error) {
-        toast.error("Erro ao criar canal");
-        setIsConnecting(false);
-        return;
+      for (const phone of phonesToConnect) {
+        const verifyToken = generateVerifyToken();
+        
+        // Format phone number
+        let formattedPhone = phone.displayPhoneNumber.replace(/\D/g, '');
+        if (!formattedPhone.startsWith('+')) {
+          formattedPhone = '+' + formattedPhone;
+        }
+
+        const { error } = await supabase.from("channels").insert({
+          user_id: user?.id,
+          organization_id: profileData?.organization_id || null,
+          name: phone.verifiedName || `WhatsApp ${phone.displayPhoneNumber}`,
+          phone: formattedPhone,
+          provider: "meta",
+          app_name: phone.id, // Phone Number ID
+          access_token: formData.accessToken.trim(),
+          webhook_verify_token: verifyToken,
+          connected: false,
+        });
+
+        if (error) {
+          console.error('Error inserting channel:', error);
+          results.failed++;
+        } else {
+          results.success++;
+        }
       }
 
-      toast.success("Canal criado! Configure o webhook no Meta Developer Console.");
-      setIsDialogOpen(false);
-      
-      setTimeout(() => {
-        resetForm();
-        setIsConnecting(false);
-        if (newChannel) {
-          setShowChannelConfig(newChannel as Channel);
+      if (results.success > 0) {
+        toast.success(`${results.success} canal(is) criado(s) com sucesso!`);
+        if (results.failed > 0) {
+          toast.warning(`${results.failed} canal(is) falhou(aram)`);
         }
-      }, 100);
-      
-      await fetchChannels();
-      
+        setIsDialogOpen(false);
+        resetForm();
+        await fetchChannels();
+      } else {
+        toast.error("Erro ao criar canais");
+      }
     } catch (err) {
-      toast.error("Erro ao criar canal");
+      console.error('Connect error:', err);
+      toast.error("Erro ao conectar números");
+    } finally {
       setIsConnecting(false);
     }
   };
@@ -286,9 +366,9 @@ const Conexoes = () => {
         <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
           <li>Acesse o <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Meta Developer Console</a> e crie um novo app (tipo: Business)</li>
           <li>Adicione o produto <strong>WhatsApp</strong> ao seu app</li>
-          <li>Em <strong>API Setup</strong>, copie o <strong>Phone Number ID</strong></li>
+          <li>Em <strong>API Setup</strong>, copie o <strong>WhatsApp Business Account ID</strong></li>
           <li>Gere um <strong>Access Token permanente</strong> em Business Settings → System Users</li>
-          <li>Conecte o canal aqui e configure o webhook no Meta</li>
+          <li>Conecte aqui e selecione os números que deseja adicionar</li>
         </ol>
       </div>
 
@@ -433,119 +513,204 @@ const Conexoes = () => {
         )}
       </div>
 
-      {/* Connect Dialog */}
+      {/* Connect Dialog - Step-based */}
       <Dialog 
         open={isDialogOpen} 
         onOpenChange={(open) => { 
-          if (!isConnecting) {
+          if (!isFetchingPhones && !isConnecting) {
             setIsDialogOpen(open); 
             if (!open) resetForm(); 
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg bg-card border-border" onInteractOutside={(e) => isConnecting && e.preventDefault()}>
+        <DialogContent 
+          className="sm:max-w-lg bg-card border-border" 
+          onInteractOutside={(e) => (isFetchingPhones || isConnecting) && e.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle className="text-foreground">Conectar WhatsApp via Meta Cloud API</DialogTitle>
+            <DialogTitle className="text-foreground">
+              {step === 'credentials' ? 'Conectar WhatsApp Business' : 'Selecionar Números'}
+            </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Configure as credenciais do seu app Meta para conectar
+              {step === 'credentials' 
+                ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+              }
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <p className="text-sm text-blue-400">
-                <strong>Pré-requisito:</strong> Crie um app no{" "}
-                <a href="https://developers.facebook.com/apps/" target="_blank" className="underline">
-                  Meta Developer Console
-                </a>
-                {" "}e adicione o produto WhatsApp.
-              </p>
-            </div>
+          {step === 'credentials' && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <p className="text-sm text-blue-400">
+                  <strong>Pré-requisito:</strong> Crie um app no{" "}
+                  <a href="https://developers.facebook.com/apps/" target="_blank" className="underline">
+                    Meta Developer Console
+                  </a>
+                  {" "}e adicione o produto WhatsApp.
+                </p>
+              </div>
 
-            <div className="space-y-2">
-              <Label className="text-foreground">Nome do Canal</Label>
-              <Input 
-                placeholder="Ex: WhatsApp Vendas" 
-                className="bg-muted/30 border-border"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Um nome para identificar este canal
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">Número WhatsApp</Label>
-              <Input 
-                placeholder="+5511999999999"
-                className="bg-muted/30 border-border"
-                value={formData.whatsappNumber}
-                onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                O número conectado ao seu app Meta
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">Phone Number ID</Label>
-              <Input 
-                placeholder="Ex: 123456789012345" 
-                className="bg-muted/30 border-border"
-                value={formData.phoneNumberId}
-                onChange={(e) => setFormData({ ...formData, phoneNumberId: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Encontre em: WhatsApp → API Setup → Phone number ID
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">Access Token (Permanente)</Label>
-              <div className="relative">
+              <div className="space-y-2">
+                <Label className="text-foreground">WhatsApp Business Account ID (WABA ID)</Label>
                 <Input 
-                  type={showAccessToken ? "text" : "password"}
-                  placeholder="EAAG..."
-                  className="bg-muted/30 border-border pr-10"
-                  value={formData.accessToken}
-                  onChange={(e) => setFormData({ ...formData, accessToken: e.target.value })}
+                  placeholder="Ex: 123456789012345" 
+                  className="bg-muted/30 border-border"
+                  value={formData.wabaId}
+                  onChange={(e) => setFormData({ ...formData, wabaId: e.target.value })}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={() => setShowAccessToken(!showAccessToken)}
+                <p className="text-xs text-muted-foreground">
+                  Encontre em: WhatsApp → API Setup → WhatsApp Business Account ID
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Access Token (Permanente)</Label>
+                <div className="relative">
+                  <Input 
+                    type={showAccessToken ? "text" : "password"}
+                    placeholder="EAAG..."
+                    className="bg-muted/30 border-border pr-10"
+                    value={formData.accessToken}
+                    onChange={(e) => setFormData({ ...formData, accessToken: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                  >
+                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gere um token permanente em: Business Settings → System Users
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleFetchPhones} 
+                  disabled={isFetchingPhones || !formData.wabaId || !formData.accessToken}
+                  className="gap-2"
                 >
-                  {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {isFetchingPhones ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Buscando...
+                    </>
+                  ) : (
+                    <>
+                      Buscar Números
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Gere um token permanente em: Business Settings → System Users
-              </p>
             </div>
+          )}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleConnect} 
-                disabled={isConnecting || !formData.name || !formData.phoneNumberId || !formData.accessToken || !formData.whatsappNumber}
-                className="gap-2"
-              >
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Criando...
-                  </>
-                ) : (
-                  "Criar Canal"
-                )}
-              </Button>
+          {step === 'select-numbers' && (
+            <div className="space-y-4 py-2">
+              {/* Select All */}
+              <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="select-all"
+                    checked={selectedPhones.length === availablePhones.length}
+                    onCheckedChange={handleSelectAll}
+                  />
+                  <Label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                    Selecionar todos ({availablePhones.length})
+                  </Label>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {selectedPhones.length} selecionado{selectedPhones.length !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+
+              {/* Phone List */}
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                {availablePhones.map((phone) => (
+                  <div 
+                    key={phone.id}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                      selectedPhones.includes(phone.id)
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    )}
+                    onClick={() => handlePhoneSelection(phone.id)}
+                  >
+                    <Checkbox 
+                      checked={selectedPhones.includes(phone.id)}
+                      onCheckedChange={() => handlePhoneSelection(phone.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground text-sm truncate">
+                        {phone.verifiedName || 'Sem nome verificado'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {phone.displayPhoneNumber}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {phone.qualityRating && (
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-xs",
+                            phone.qualityRating === 'GREEN' 
+                              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                              : phone.qualityRating === 'YELLOW'
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                              : "bg-red-500/10 text-red-500 border-red-500/30"
+                          )}
+                        >
+                          {phone.qualityRating === 'GREEN' ? 'Alta' : phone.qualityRating === 'YELLOW' ? 'Média' : 'Baixa'}
+                        </Badge>
+                      )}
+                      {selectedPhones.includes(phone.id) && (
+                        <CheckCircle2 className="w-5 h-5 text-primary" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setStep('credentials')}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Voltar
+                </Button>
+                <Button 
+                  onClick={handleConnectSelected} 
+                  disabled={isConnecting || selectedPhones.length === 0}
+                  className="gap-2"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Conectando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Conectar {selectedPhones.length} Número{selectedPhones.length !== 1 ? 's' : ''}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 
