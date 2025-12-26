@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.meta-subscribe-webhook]
 verify_jwt = false
+
+[functions.follow-up-sender]
+verify_jwt = false
