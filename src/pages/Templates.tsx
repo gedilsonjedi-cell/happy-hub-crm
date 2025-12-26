@@ -78,6 +78,18 @@ interface DetectedVariable {
   example: string;
 }
 
+// Available contact fields for variable mapping
+const contactFieldOptions = [
+  { value: "manual", label: "Informar no momento do envio", icon: "edit" },
+  { value: "contact_name", label: "Nome do contato", field: "name" },
+  { value: "contact_phone", label: "Telefone do contato", field: "phone" },
+  { value: "contact_email", label: "E-mail do contato", field: "email" },
+  { value: "contact_city", label: "Cidade do contato", field: "city" },
+  { value: "contact_state", label: "Estado do contato", field: "state" },
+  { value: "contact_document", label: "CPF/CNPJ do contato", field: "document" },
+  { value: "contact_notes", label: "Observações do contato", field: "notes" },
+];
+
 interface TemplateButton {
   id: string;
   type: "quick_reply" | "url" | "phone";
@@ -128,6 +140,7 @@ const Templates = () => {
     isArchived: false,
   });
   const [variableExamples, setVariableExamples] = useState<Record<string, string>>({});
+  const [variableMappings, setVariableMappings] = useState<Record<string, string>>({});
   const [templateButtons, setTemplateButtons] = useState<TemplateButton[]>([]);
   const [newButton, setNewButton] = useState<Omit<TemplateButton, "id">>({
     type: "quick_reply",
@@ -218,6 +231,7 @@ const Templates = () => {
       isArchived: false,
     });
     setVariableExamples({});
+    setVariableMappings({});
     setTemplateButtons([]);
   };
 
@@ -845,62 +859,89 @@ const Templates = () => {
                   </div>
                 ) : (
                   <div className="border border-border rounded-lg overflow-hidden">
-                    <div className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-2 bg-muted/30 border-b border-border">
+                    <div className="grid grid-cols-[100px_80px_1fr_1fr] gap-3 px-4 py-2 bg-muted/30 border-b border-border">
                       <span className="text-xs font-medium text-muted-foreground">Nome</span>
                       <span className="text-xs font-medium text-muted-foreground">Tipo</span>
-                      <span className="text-xs font-medium text-muted-foreground">Variável</span>
+                      <span className="text-xs font-medium text-muted-foreground">Origem do valor</span>
                       <span className="text-xs font-medium text-muted-foreground">Exemplo de uso</span>
                     </div>
                     
                     <div className="divide-y divide-border">
-                      {detectedVariables.map((variable) => (
-                        <div key={variable.name} className="grid grid-cols-[120px_80px_1fr_1fr] gap-3 px-4 py-3 items-center">
-                          <span className="text-sm font-medium text-foreground">{variable.name}</span>
-                          <div>
-                            <Select defaultValue="text">
+                      {detectedVariables.map((variable) => {
+                        const currentMapping = variableMappings[variable.name] || "manual";
+                        const isManual = currentMapping === "manual";
+                        
+                        return (
+                          <div key={variable.name} className="grid grid-cols-[100px_80px_1fr_1fr] gap-3 px-4 py-3 items-center">
+                            <span className="text-sm font-medium text-foreground truncate" title={variable.name}>
+                              {variable.name}
+                            </span>
+                            <div>
+                              <Select defaultValue="text">
+                                <SelectTrigger className="h-8 bg-background border-border text-xs">
+                                  <div className="flex items-center gap-1">
+                                    <Type className="w-3 h-3" />
+                                  </div>
+                                </SelectTrigger>
+                                <SelectContent className="bg-card border-border z-50">
+                                  <SelectItem value="text">Texto</SelectItem>
+                                  <SelectItem value="number">Número</SelectItem>
+                                  <SelectItem value="date">Data</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Select 
+                              value={currentMapping}
+                              onValueChange={(value) => {
+                                setVariableMappings(prev => ({
+                                  ...prev,
+                                  [variable.name]: value
+                                }));
+                              }}
+                            >
                               <SelectTrigger className="h-8 bg-background border-border text-xs">
-                                <div className="flex items-center gap-1">
-                                  <Type className="w-3 h-3" />
-                                </div>
+                                <SelectValue placeholder="Selecione a origem" />
                               </SelectTrigger>
                               <SelectContent className="bg-card border-border z-50">
-                                <SelectItem value="text">Texto</SelectItem>
-                                <SelectItem value="number">Número</SelectItem>
-                                <SelectItem value="date">Data</SelectItem>
+                                {contactFieldOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <span className={option.value === "manual" ? "text-primary" : ""}>
+                                      {option.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
+                            <div className="relative">
+                              <Input
+                                placeholder={isManual ? "Valor a ser informado" : "Exemplo de uso"}
+                                className="h-8 bg-background border-border text-xs pr-12"
+                                value={variableExamples[variable.name] || ""}
+                                onChange={(e) => {
+                                  if (e.target.value.length <= 100) {
+                                    setVariableExamples(prev => ({
+                                      ...prev,
+                                      [variable.name]: e.target.value
+                                    }));
+                                  }
+                                }}
+                                maxLength={100}
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                                {(variableExamples[variable.name] || "").length}/100
+                              </span>
+                            </div>
                           </div>
-                          <Select defaultValue="manual">
-                            <SelectTrigger className="h-8 bg-background border-border text-xs">
-                              <SelectValue placeholder="Informar no momento do envio" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-card border-border z-50">
-                              <SelectItem value="manual">Informar no momento do envio</SelectItem>
-                              <SelectItem value="contact_name">Nome do contato</SelectItem>
-                              <SelectItem value="contact_phone">Telefone do contato</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <div className="relative">
-                            <Input
-                              placeholder="Exemplo de uso"
-                              className="h-8 bg-background border-border text-xs pr-12"
-                              value={variableExamples[variable.name] || ""}
-                              onChange={(e) => {
-                                if (e.target.value.length <= 100) {
-                                  setVariableExamples(prev => ({
-                                    ...prev,
-                                    [variable.name]: e.target.value
-                                  }));
-                                }
-                              }}
-                              maxLength={100}
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                              {(variableExamples[variable.name] || "").length}/100
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Helper text */}
+                    <div className="px-4 py-3 bg-muted/10 border-t border-border">
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Dica:</strong> Selecione um campo do contato para preencher automaticamente, 
+                        ou escolha "Informar no momento do envio" para digitar o valor manualmente durante a campanha.
+                      </p>
                     </div>
                   </div>
                 )}
