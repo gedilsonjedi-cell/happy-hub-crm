@@ -32,7 +32,8 @@ interface TemplateData {
 
 // Variable mapping to contact field
 const variableFieldMap: Record<string, keyof CampaignRecipient> = {
-  'contact_name': 'name',
+  'contact_name': 'name', // Legacy support
+  'contact_full_name': 'name',
   'contact_phone': 'phone',
   'contact_email': 'email',
   'contact_city': 'city',
@@ -40,6 +41,12 @@ const variableFieldMap: Record<string, keyof CampaignRecipient> = {
   'contact_document': 'document',
   'contact_notes': 'notes',
 };
+
+// Helper function to extract first name from full name
+function getFirstName(fullName: string | undefined): string {
+  if (!fullName) return '';
+  return fullName.split(' ')[0];
+}
 
 // Generate random interval between min and max (in seconds)
 function getRandomInterval(minSeconds: number, maxSeconds: number): number {
@@ -93,6 +100,9 @@ function replaceVariables(
     if (mapping === 'manual') {
       // Use manual value if provided
       value = manualValues?.[varName] || '';
+    } else if (mapping === 'contact_first_name') {
+      // Special handling for first name - extract from full name
+      value = getFirstName(recipient.name);
     } else if (variableFieldMap[mapping]) {
       // Get value from contact field
       const field = variableFieldMap[mapping];
@@ -304,6 +314,9 @@ Deno.serve(async (req) => {
             
             if (mapping === 'manual') {
               value = manualVariables?.[varName] || varName;
+            } else if (mapping === 'contact_first_name') {
+              // Special handling for first name - extract from full name
+              value = getFirstName(recipient.name) || varName;
             } else if (variableFieldMap[mapping]) {
               const field = variableFieldMap[mapping];
               value = String(recipient[field] || varName);

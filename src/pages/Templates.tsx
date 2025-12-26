@@ -82,7 +82,8 @@ interface DetectedVariable {
 // Available contact fields for variable mapping
 const contactFieldOptions = [
   { value: "manual", label: "Informar no momento do envio", icon: "edit" },
-  { value: "contact_name", label: "Nome do contato", field: "name" },
+  { value: "contact_first_name", label: "Primeiro nome do contato", field: "first_name" },
+  { value: "contact_full_name", label: "Nome completo do contato", field: "name" },
   { value: "contact_phone", label: "Telefone do contato", field: "phone" },
   { value: "contact_email", label: "E-mail do contato", field: "email" },
   { value: "contact_city", label: "Cidade do contato", field: "city" },
