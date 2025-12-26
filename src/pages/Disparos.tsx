@@ -106,6 +106,7 @@ const Disparos = () => {
   const [channelTemplateRelations, setChannelTemplateRelations] = useState<ChannelTemplate[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   
@@ -296,6 +297,9 @@ const Disparos = () => {
   };
 
   const handleCreateCampaign = async () => {
+    // Prevent double clicks
+    if (isCreating) return;
+    
     if (!formData.campaignName || selectedChannels.length === 0) {
       toast.error("Preencha o nome da campanha e selecione pelo menos um canal");
       return;
@@ -319,113 +323,125 @@ const Disparos = () => {
       }
     }
 
-    // If source is "numbers", create leads for the new numbers
-    if (recipientData.source === "numbers") {
-      const { data: existingLeads } = await supabase
-        .from("leads")
-        .select("phone")
-        .in("phone", recipientData.phones);
+    // Block the button immediately
+    setIsCreating(true);
 
-      const existingPhones = new Set(existingLeads?.map(l => l.phone) || []);
-      const newPhones = recipientData.phones.filter(p => !existingPhones.has(p));
-
-      if (newPhones.length > 0) {
-        // Get the current count for naming
-        const { count } = await supabase
+    try {
+      // If source is "numbers", create leads for the new numbers
+      if (recipientData.source === "numbers") {
+        const { data: existingLeads } = await supabase
           .from("leads")
-          .select("*", { count: "exact", head: true })
-          .ilike("name", "LeadWhats-%");
+          .select("phone")
+          .in("phone", recipientData.phones);
 
-        const startIndex = (count || 0) + 1;
+        const existingPhones = new Set(existingLeads?.map(l => l.phone) || []);
+        const newPhones = recipientData.phones.filter(p => !existingPhones.has(p));
 
-        const newLeads = newPhones.map((phone, idx) => ({
-          user_id: user?.id,
-          name: `LeadWhats-${String(startIndex + idx).padStart(5, "0")}`,
-          phone: phone,
-          status: "new"
-        }));
+        if (newPhones.length > 0) {
+          // Get the current count for naming
+          const { count } = await supabase
+            .from("leads")
+            .select("*", { count: "exact", head: true })
+            .ilike("name", "LeadWhats-%");
 
-        const { error: leadsError } = await supabase
-          .from("leads")
-          .insert(newLeads);
+          const startIndex = (count || 0) + 1;
 
-        if (leadsError) {
-          console.error("Error creating leads:", leadsError);
-          toast.warning("Alguns contatos podem não ter sido salvos");
+          const newLeads = newPhones.map((phone, idx) => ({
+            user_id: user?.id,
+            name: `LeadWhats-${String(startIndex + idx).padStart(5, "0")}`,
+            phone: phone,
+            status: "new"
+          }));
+
+          const { error: leadsError } = await supabase
+            .from("leads")
+            .insert(newLeads);
+
+          if (leadsError) {
+            console.error("Error creating leads:", leadsError);
+            toast.warning("Alguns contatos podem não ter sido salvos");
+          }
         }
       }
-    }
 
-    // Create campaign with min/max intervals
-    const { data: campaign, error: campaignError } = await supabase
-      .from("campaigns")
-      .insert({
-        user_id: user?.id,
-        name: formData.campaignName,
-        team: formData.team || null,
-        chatbot_enabled: formData.chatbot === "enabled",
-        dispatch_interval: parseInt(formData.minInterval),
-        min_interval: parseInt(formData.minInterval),
-        max_interval: parseInt(formData.maxInterval),
-        use_unified_template: useUnifiedTemplate,
-        unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
-        status: formData.startTime === "now" ? "running" : "scheduled",
-        total_recipients: recipientData.phones.length,
-      })
-      .select()
-      .single();
+      // Create campaign with min/max intervals
+      const { data: campaign, error: campaignError } = await supabase
+        .from("campaigns")
+        .insert({
+          user_id: user?.id,
+          name: formData.campaignName,
+          team: formData.team || null,
+          chatbot_enabled: formData.chatbot === "enabled",
+          dispatch_interval: parseInt(formData.minInterval),
+          min_interval: parseInt(formData.minInterval),
+          max_interval: parseInt(formData.maxInterval),
+          use_unified_template: useUnifiedTemplate,
+          unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
+          status: formData.startTime === "now" ? "running" : "scheduled",
+          total_recipients: recipientData.phones.length,
+        })
+        .select()
+        .single();
 
-    if (campaignError) {
-      toast.error("Erro ao criar campanha");
-      console.error("Campaign creation error:", campaignError);
-      return;
-    }
+      if (campaignError) {
+        toast.error("Erro ao criar campanha");
+        console.error("Campaign creation error:", campaignError);
+        setIsCreating(false);
+        return;
+      }
 
-    // Create campaign channels
-    const channelInserts = selectedChannels.map((channelId, index) => ({
-      campaign_id: campaign.id,
-      channel_id: channelId,
-      template_id: useUnifiedTemplate ? formData.unifiedTemplate : channelTemplates[channelId],
-      order_index: index,
-    }));
+      // Create campaign channels
+      const channelInserts = selectedChannels.map((channelId, index) => ({
+        campaign_id: campaign.id,
+        channel_id: channelId,
+        template_id: useUnifiedTemplate ? formData.unifiedTemplate : channelTemplates[channelId],
+        order_index: index,
+      }));
 
-    const { error: channelsError } = await supabase
-      .from("campaign_channels")
-      .insert(channelInserts);
+      const { error: channelsError } = await supabase
+        .from("campaign_channels")
+        .insert(channelInserts);
 
-    if (channelsError) {
-      toast.error("Erro ao salvar canais da campanha");
-      return;
-    }
+      if (channelsError) {
+        toast.error("Erro ao salvar canais da campanha");
+        setIsCreating(false);
+        return;
+      }
 
-    // If starting now, trigger the campaign dispatch
-    if (formData.startTime === "now") {
-      try {
-        const response = await supabase.functions.invoke('campaign-dispatch', {
+      // Close form and reset immediately to prevent double clicks
+      setShowCreateForm(false);
+      resetForm();
+
+      // If starting now, trigger the campaign dispatch (in background)
+      if (formData.startTime === "now") {
+        toast.success(`Campanha iniciada! Enviando para ${recipientData.phones.length} destinatários...`);
+        
+        // Don't await - let it run in background
+        supabase.functions.invoke('campaign-dispatch', {
           body: { 
             campaignId: campaign.id, 
             action: 'start',
             recipients: recipientData.phones
           }
+        }).then(response => {
+          if (response.error) {
+            console.error("Dispatch error:", response.error);
+          }
+        }).catch(dispatchError => {
+          console.error("Error triggering dispatch:", dispatchError);
         });
-        
-        if (response.error) {
-          console.error("Dispatch error:", response.error);
-          toast.warning("Campanha criada, mas houve um erro ao iniciar o disparo");
-        } else {
-          toast.success(`Campanha iniciada! ${recipientData.phones.length} destinatários.`);
-        }
-      } catch (dispatchError) {
-        console.error("Error triggering dispatch:", dispatchError);
-        toast.warning("Campanha criada, mas houve um erro ao iniciar o disparo");
+      } else {
+        toast.success("Campanha agendada com sucesso!");
       }
-    } else {
-      toast.success("Campanha agendada com sucesso!");
-    }
 
-    setShowCreateForm(false);
-    resetForm();
-    fetchData();
+      // Refresh data
+      fetchData();
+    } catch (error) {
+      console.error("Error creating campaign:", error);
+      toast.error("Erro ao criar campanha");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const resetForm = () => {
@@ -912,12 +928,29 @@ const Disparos = () => {
         {/* Action Buttons */}
         {channels.length > 0 && (
           <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-border">
-            <Button variant="outline" onClick={() => { setShowCreateForm(false); resetForm(); }}>
+            <Button 
+              variant="outline" 
+              onClick={() => { setShowCreateForm(false); resetForm(); }}
+              disabled={isCreating}
+            >
               Cancelar
             </Button>
-            <Button className="gap-2" onClick={handleCreateCampaign}>
-              <Send className="w-4 h-4" />
-              Criar Campanha
+            <Button 
+              className="gap-2" 
+              onClick={handleCreateCampaign}
+              disabled={isCreating}
+            >
+              {isCreating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Criando...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Criar Campanha
+                </>
+              )}
             </Button>
           </div>
         )}
