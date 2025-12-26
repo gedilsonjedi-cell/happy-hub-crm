@@ -103,8 +103,24 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Home route that shows landing for non-authenticated users and dashboard for authenticated
+// Home route that shows landing for non-authenticated users and redirects to dashboard for authenticated
 const HomeRoute = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // If user is authenticated, redirect to dashboard
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Show landing page for non-authenticated users
   return <LandingPage />;
 };
 
