@@ -11,7 +11,11 @@ import {
   Loader2,
   Eye,
   Zap,
-  Users
+  Users,
+  Clock,
+  AlertTriangle,
+  X,
+  Plus
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -28,6 +32,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { DocumentUpload } from "@/components/chatbot/DocumentUpload";
 import { AgentPreview } from "@/components/chatbot/AgentPreview";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 
 interface KnowledgeDocument {
   id: string;
@@ -49,6 +55,18 @@ interface AgentConfig {
   company_info: string;
   products_services: string;
   faq: string;
+  // Behavior settings
+  response_delay_min: number;
+  response_delay_max: number;
+  simulate_typing: boolean;
+  auto_escalate_enabled: boolean;
+  escalate_keywords: string[];
+  escalate_after_messages: number;
+  escalate_on_sentiment: boolean;
+  use_business_hours: boolean;
+  out_of_hours_message: string;
+  auto_greet_enabled: boolean;
+  greeting_delay_seconds: number;
 }
 
 const communicationStyles = [
@@ -83,6 +101,18 @@ const Chatbot = () => {
     company_info: "",
     products_services: "",
     faq: "",
+    // Behavior defaults
+    response_delay_min: 1,
+    response_delay_max: 3,
+    simulate_typing: true,
+    auto_escalate_enabled: false,
+    escalate_keywords: [],
+    escalate_after_messages: 5,
+    escalate_on_sentiment: false,
+    use_business_hours: true,
+    out_of_hours_message: "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve!",
+    auto_greet_enabled: true,
+    greeting_delay_seconds: 2,
   });
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -124,6 +154,18 @@ const Chatbot = () => {
           company_info: data.company_info || "",
           products_services: data.products_services || "",
           faq: data.faq || "",
+          // Behavior settings
+          response_delay_min: (data as any).response_delay_min ?? 1,
+          response_delay_max: (data as any).response_delay_max ?? 3,
+          simulate_typing: (data as any).simulate_typing ?? true,
+          auto_escalate_enabled: (data as any).auto_escalate_enabled ?? false,
+          escalate_keywords: (data as any).escalate_keywords || [],
+          escalate_after_messages: (data as any).escalate_after_messages ?? 5,
+          escalate_on_sentiment: (data as any).escalate_on_sentiment ?? false,
+          use_business_hours: (data as any).use_business_hours ?? true,
+          out_of_hours_message: (data as any).out_of_hours_message || "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve!",
+          auto_greet_enabled: (data as any).auto_greet_enabled ?? true,
+          greeting_delay_seconds: (data as any).greeting_delay_seconds ?? 2,
         });
       }
     } catch (error) {
@@ -154,6 +196,18 @@ const Chatbot = () => {
         products_services: config.products_services,
         faq: config.faq,
         is_active: true,
+        // Behavior settings
+        response_delay_min: config.response_delay_min,
+        response_delay_max: config.response_delay_max,
+        simulate_typing: config.simulate_typing,
+        auto_escalate_enabled: config.auto_escalate_enabled,
+        escalate_keywords: config.escalate_keywords,
+        escalate_after_messages: config.escalate_after_messages,
+        escalate_on_sentiment: config.escalate_on_sentiment,
+        use_business_hours: config.use_business_hours,
+        out_of_hours_message: config.out_of_hours_message,
+        auto_greet_enabled: config.auto_greet_enabled,
+        greeting_delay_seconds: config.greeting_delay_seconds,
       };
 
       if (config.id) {
@@ -499,53 +553,266 @@ const Chatbot = () => {
                     Configure como o agente deve agir durante as conversas.
                   </p>
 
-                  <div className="grid gap-4">
-                    <Card className="p-4 border-dashed">
-                      <div className="flex items-start gap-3">
+                  {/* Tempo de Resposta */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <MessageCircle className="w-4 h-4 text-primary" />
+                          <Clock className="w-4 h-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">Tempo de Resposta</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Defina o tempo máximo que o agente deve aguardar antes de responder e simular digitação natural.
-                          </p>
+                          <CardTitle className="text-base">Tempo de Resposta</CardTitle>
+                          <CardDescription className="text-xs">
+                            Defina o tempo que o agente aguarda antes de responder
+                          </CardDescription>
                         </div>
                       </div>
-                    </Card>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">Simular digitação</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Mostra indicador "digitando..." para parecer mais natural
+                          </p>
+                        </div>
+                        <Switch
+                          checked={config.simulate_typing}
+                          onCheckedChange={(checked) => updateConfig("simulate_typing", checked)}
+                        />
+                      </div>
 
-                    <Card className="p-4 border-dashed">
-                      <div className="flex items-start gap-3">
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <Label className="text-sm font-medium">Delay de resposta</Label>
+                          <span className="text-sm text-muted-foreground">
+                            {config.response_delay_min}s - {config.response_delay_max}s
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">Mínimo (segundos)</Label>
+                            <Slider
+                              value={[config.response_delay_min]}
+                              onValueChange={(value) => updateConfig("response_delay_min", value[0])}
+                              min={0}
+                              max={10}
+                              step={1}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">Máximo (segundos)</Label>
+                            <Slider
+                              value={[config.response_delay_max]}
+                              onValueChange={(value) => updateConfig("response_delay_max", Math.max(value[0], config.response_delay_min))}
+                              min={0}
+                              max={15}
+                              step={1}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <div>
+                          <Label className="text-sm font-medium">Saudação automática</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Envia mensagem de boas-vindas automaticamente
+                          </p>
+                        </div>
+                        <Switch
+                          checked={config.auto_greet_enabled}
+                          onCheckedChange={(checked) => updateConfig("auto_greet_enabled", checked)}
+                        />
+                      </div>
+
+                      {config.auto_greet_enabled && (
+                        <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-xs text-muted-foreground">Delay da saudação</Label>
+                            <span className="text-xs text-muted-foreground">{config.greeting_delay_seconds}s</span>
+                          </div>
+                          <Slider
+                            value={[config.greeting_delay_seconds]}
+                            onValueChange={(value) => updateConfig("greeting_delay_seconds", value[0])}
+                            min={0}
+                            max={10}
+                            step={1}
+                          />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Escalação para Atendente */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                           <Users className="w-4 h-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">Escalação para Atendente</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Configure quando o agente deve transferir a conversa para um atendente humano automaticamente.
-                          </p>
+                          <CardTitle className="text-base">Escalação para Atendente</CardTitle>
+                          <CardDescription className="text-xs">
+                            Quando transferir para um humano automaticamente
+                          </CardDescription>
                         </div>
                       </div>
-                    </Card>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">Escalação automática</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Transfere para atendente em situações específicas
+                          </p>
+                        </div>
+                        <Switch
+                          checked={config.auto_escalate_enabled}
+                          onCheckedChange={(checked) => updateConfig("auto_escalate_enabled", checked)}
+                        />
+                      </div>
 
-                    <Card className="p-4 border-dashed">
-                      <div className="flex items-start gap-3">
+                      {config.auto_escalate_enabled && (
+                        <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <Label className="text-sm font-medium">Após quantas mensagens</Label>
+                              <span className="text-sm text-muted-foreground">{config.escalate_after_messages} mensagens</span>
+                            </div>
+                            <Slider
+                              value={[config.escalate_after_messages]}
+                              onValueChange={(value) => updateConfig("escalate_after_messages", value[0])}
+                              min={2}
+                              max={20}
+                              step={1}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Escala se não resolver após este número de mensagens
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label className="text-sm font-medium">Detectar sentimento negativo</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Escala quando detectar frustração ou insatisfação
+                              </p>
+                            </div>
+                            <Switch
+                              checked={config.escalate_on_sentiment}
+                              onCheckedChange={(checked) => updateConfig("escalate_on_sentiment", checked)}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Palavras-chave para escalação</Label>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Escala quando o cliente usar estas palavras
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {config.escalate_keywords.map((keyword, index) => (
+                                <Badge key={index} variant="secondary" className="gap-1">
+                                  {keyword}
+                                  <X
+                                    className="w-3 h-3 cursor-pointer hover:text-destructive"
+                                    onClick={() => {
+                                      const newKeywords = config.escalate_keywords.filter((_, i) => i !== index);
+                                      updateConfig("escalate_keywords", newKeywords);
+                                    }}
+                                  />
+                                </Badge>
+                              ))}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs gap-1"
+                                onClick={() => {
+                                  const keyword = prompt("Digite a palavra-chave:");
+                                  if (keyword?.trim() && !config.escalate_keywords.includes(keyword.trim().toLowerCase())) {
+                                    updateConfig("escalate_keywords", [...config.escalate_keywords, keyword.trim().toLowerCase()]);
+                                  }
+                                }}
+                              >
+                                <Plus className="w-3 h-3" />
+                                Adicionar
+                              </Button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 pt-2">
+                              <span className="text-xs text-muted-foreground">Sugestões:</span>
+                              {["atendente", "humano", "pessoa", "gerente", "reclamação", "cancelar"].map((suggestion) => (
+                                <Badge
+                                  key={suggestion}
+                                  variant="outline"
+                                  className="cursor-pointer text-xs hover:bg-primary/10"
+                                  onClick={() => {
+                                    if (!config.escalate_keywords.includes(suggestion)) {
+                                      updateConfig("escalate_keywords", [...config.escalate_keywords, suggestion]);
+                                    }
+                                  }}
+                                >
+                                  {suggestion}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Horários de Atendimento */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                           <Zap className="w-4 h-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">Horários de Atendimento</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Defina os horários em que o agente deve responder e configure mensagens automáticas fora do expediente.
-                          </p>
+                          <CardTitle className="text-base">Horários de Atendimento</CardTitle>
+                          <CardDescription className="text-xs">
+                            Configure o comportamento fora do expediente
+                          </CardDescription>
                         </div>
                       </div>
-                    </Card>
-                  </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">Respeitar horário comercial</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Usa os horários definidos em Personalização → Horários
+                          </p>
+                        </div>
+                        <Switch
+                          checked={config.use_business_hours}
+                          onCheckedChange={(checked) => updateConfig("use_business_hours", checked)}
+                        />
+                      </div>
 
-                  <p className="text-xs text-center text-muted-foreground pt-4">
-                    Estas funcionalidades estarão disponíveis em breve
-                  </p>
+                      {config.use_business_hours && (
+                        <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                          <Label className="text-sm font-medium">Mensagem fora do horário</Label>
+                          <Textarea
+                            placeholder="Mensagem enviada fora do expediente..."
+                            value={config.out_of_hours_message}
+                            onChange={(e) => updateConfig("out_of_hours_message", e.target.value)}
+                            rows={3}
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                          Configure os horários de funcionamento em{" "}
+                          <a href="/personalizacao/horarios" className="text-primary hover:underline">
+                            Personalização → Horários
+                          </a>
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               )}
 
