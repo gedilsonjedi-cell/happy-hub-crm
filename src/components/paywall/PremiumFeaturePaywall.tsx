@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ interface PremiumFeaturePaywallProps {
   productName: string;
   onClose: () => void;
   onPurchased?: () => void;
+  redirectOnClose?: string;
 }
 
 export function PremiumFeaturePaywall({
@@ -27,7 +29,9 @@ export function PremiumFeaturePaywall({
   productName,
   onClose,
   onPurchased,
+  redirectOnClose = "/",
 }: PremiumFeaturePaywallProps) {
+  const navigate = useNavigate();
   const { currentBalance, organizationId } = useOrganizationBalance();
   const [product, setProduct] = useState<{
     id: string;
@@ -126,8 +130,13 @@ export function PremiumFeaturePaywall({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={open} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          navigate(redirectOnClose);
+          onClose();
+        }
+      }}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader className="text-center">
             <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
               <Crown className="w-8 h-8 text-primary" />
@@ -230,7 +239,10 @@ export function PremiumFeaturePaywall({
                 )}
               </>
             )}
-            <Button variant="ghost" onClick={onClose} className="w-full">
+            <Button variant="ghost" onClick={() => {
+              navigate(redirectOnClose);
+              onClose();
+            }} className="w-full">
               Voltar
             </Button>
           </DialogFooter>
