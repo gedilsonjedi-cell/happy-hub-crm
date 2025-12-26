@@ -96,6 +96,7 @@ interface Channel {
   id: string;
   name: string;
   phone: string;
+  provider: string;
 }
 
 interface QuickResponse {
@@ -238,13 +239,13 @@ const WhatsAppChat = () => {
     }
   }, [notificationsEnabled]);
 
-  // Fetch channels (Meta Cloud API only)
+  // Fetch channels (Meta Cloud API and Z-API)
   useEffect(() => {
     const fetchChannels = async () => {
       const { data, error } = await supabase
         .from("channels")
-        .select("id, name, phone")
-        .eq("provider", "meta")
+        .select("id, name, phone, provider")
+        .in("provider", ["meta", "zapi"])
         .eq("connected", true);
 
       if (!error && data) {
@@ -738,7 +739,10 @@ const WhatsAppChat = () => {
     setMessages(prev => [...prev, optimisticMessage]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('meta-send', {
+      // Determine which function to use based on provider
+      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
+      
+      const { data, error } = await supabase.functions.invoke(sendFunction, {
         body: {
           channelId: conversationChannelId,
           destination: selectedConversation.phone,
@@ -794,13 +798,17 @@ const WhatsAppChat = () => {
     setSendingMessage(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('meta-send', {
+      // Determine which function to use based on provider
+      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
+      
+      const { data, error } = await supabase.functions.invoke(sendFunction, {
         body: {
           channelId: conversationChannelId,
           destination: selectedConversation.phone,
           messageType: mediaData.mediaType,
           mediaUrl: mediaData.mediaUrl,
-          caption: mediaData.mediaCaption
+          mediaCaption: mediaData.mediaCaption,
+          fileName: mediaData.fileName
         }
       });
 
@@ -844,6 +852,13 @@ const WhatsAppChat = () => {
     if (!selectedConversation || !conversationChannelId) return;
 
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
+    
+    // Z-API doesn't support templates - show error
+    if (conversationChannel?.provider === 'zapi') {
+      toast.error('Templates não são suportados em canais Z-API. Use mensagens de texto.');
+      return;
+    }
+    
     setSendingMessage(true);
 
     try {
