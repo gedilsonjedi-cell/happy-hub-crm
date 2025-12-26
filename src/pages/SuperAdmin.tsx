@@ -22,6 +22,7 @@ import {
   CalendarIcon,
   Clock,
   ShoppingBag,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ import { toast } from "sonner";
 import { DispatchPricingConfig } from "@/components/admin/DispatchPricingConfig";
 import { SubscriptionPricingConfig } from "@/components/admin/SubscriptionPricingConfig";
 import { StoreManagementPanel } from "@/components/admin/StoreManagementPanel";
+import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -138,6 +140,10 @@ export default function SuperAdmin() {
   const [editOrgMaxChannels, setEditOrgMaxChannels] = useState(1);
   const [editOrgExpiryDate, setEditOrgExpiryDate] = useState<Date | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Balance/Recharge dialog
+  const [isBalanceDialogOpen, setIsBalanceDialogOpen] = useState(false);
+  const [selectedOrgForBalance, setSelectedOrgForBalance] = useState<Organization | null>(null);
   
   // Subscription pricing
   const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing | null>(null);
@@ -786,6 +792,16 @@ export default function SuperAdmin() {
                                 <Edit className="w-4 h-4" />
                                 Editar
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="gap-2"
+                                onClick={() => {
+                                  setSelectedOrgForBalance(org);
+                                  setIsBalanceDialogOpen(true);
+                                }}
+                              >
+                                <Wallet className="w-4 h-4" />
+                                Recarregar Saldo
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="gap-2"
@@ -1194,6 +1210,34 @@ export default function SuperAdmin() {
                 {isSaving ? "Salvando..." : "Salvar"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Balance/Recharge Dialog */}
+        <Dialog open={isBalanceDialogOpen} onOpenChange={(open) => {
+          setIsBalanceDialogOpen(open);
+          if (!open) setSelectedOrgForBalance(null);
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Recarregar Saldo
+              </DialogTitle>
+              <DialogDescription>
+                {selectedOrgForBalance?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-y-auto">
+              {selectedOrgForBalance && (
+                <OrganizationBalancePanel
+                  organizationId={selectedOrgForBalance.id}
+                  organizationName={selectedOrgForBalance.name}
+                  showAddCredits={true}
+                />
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
