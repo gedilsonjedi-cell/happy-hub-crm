@@ -284,7 +284,7 @@ const WhatsAppChat = () => {
     }
   }, [user]);
 
-  // Fetch conversations
+  // Fetch conversations - only when channel changes, not on status changes
   useEffect(() => {
     const fetchConversations = async () => {
       if (!selectedChannel) {
@@ -318,6 +318,9 @@ const WhatsAppChat = () => {
         return phone.replace(/\D/g, '');
       };
       
+      // Get current statuses from localStorage to avoid dependency on state
+      const storedStatuses = JSON.parse(localStorage.getItem("whatsapp-conversation-statuses") || "{}");
+      
       data?.forEach((msg) => {
         // Determine the contact phone - for inbound it's sender_phone, for outbound it's in metadata.destination
         let contactPhone: string;
@@ -332,7 +335,6 @@ const WhatsAppChat = () => {
           contactPhone = metadata?.destination || "";
           // Skip if no destination metadata
           if (!contactPhone) {
-            console.log("[WhatsAppChat] Skipping outbound message without destination");
             return;
           }
         }
@@ -345,7 +347,7 @@ const WhatsAppChat = () => {
 
         if (!conversationsMap.has(phoneKey)) {
           // Check stored status by both normalized key and display phone for backwards compatibility
-          const storedStatus = conversationStatuses[phoneKey] || conversationStatuses[displayPhone];
+          const storedStatus = storedStatuses[phoneKey] || storedStatuses[displayPhone];
           conversationsMap.set(phoneKey, {
             phone: displayPhone,
             name: contactName,
@@ -356,7 +358,6 @@ const WhatsAppChat = () => {
             channelId: msg.channel_id,
             status: storedStatus || "pending"
           });
-          console.log("[WhatsAppChat] Created conversation for:", phoneKey, "display:", displayPhone);
         } else {
           const existing = conversationsMap.get(phoneKey)!;
           // Always update name from inbound messages (WhatsApp real name replaces fictitious names)
@@ -375,13 +376,13 @@ const WhatsAppChat = () => {
       });
 
       const convList = Array.from(conversationsMap.values());
-      console.log("[WhatsAppChat] Built conversations:", convList.length, convList);
+      console.log("[WhatsAppChat] Built conversations:", convList.length);
       setConversations(convList);
       setLoading(false);
     };
 
     fetchConversations();
-  }, [selectedChannel, conversationStatuses]);
+  }, [selectedChannel]); // Removed conversationStatuses dependency to prevent re-fetching
 
   // Fetch messages for selected conversation and mark as read
   useEffect(() => {
@@ -618,12 +619,12 @@ const WhatsAppChat = () => {
     }
   }, [newMessage, quickResponses]);
 
-  const updateConversationStatus = (phone: string, status: Conversation["status"]) => {
+  const updateConversationStatus = useCallback((phone: string, status: Conversation["status"]) => {
     setConversationStatuses(prev => ({ ...prev, [phone]: status }));
     setConversations(prev => prev.map(c => 
       c.phone === phone ? { ...c, status } : c
     ));
-  };
+  }, []);
 
   const handleArchive = (phone: string) => {
     updateConversationStatus(phone, "archived");
