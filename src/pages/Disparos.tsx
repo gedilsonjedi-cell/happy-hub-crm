@@ -17,7 +17,8 @@ import {
   Shuffle,
   Timer,
   Smartphone,
-  Eye
+  Eye,
+  RefreshCw
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -966,10 +967,21 @@ const Disparos = () => {
           <h1 className="text-2xl font-bold text-foreground mb-1">Disparos</h1>
           <p className="text-muted-foreground">Gerencie suas campanhas de mensagens</p>
         </div>
-        <Button className="gap-2" onClick={() => setShowCreateForm(true)}>
-          <Plus className="w-4 h-4" />
-          Nova Campanha
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={() => fetchData()}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+            Atualizar
+          </Button>
+          <Button className="gap-2" onClick={() => setShowCreateForm(true)}>
+            <Plus className="w-4 h-4" />
+            Nova Campanha
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
