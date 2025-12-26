@@ -117,7 +117,24 @@ serve(async (req) => {
       registerSuccess = true;
     }
 
-    // Step 3: Always check final status
+    // Step 3: Subscribe phone number to webhook (IMPORTANT for receiving messages!)
+    console.log(`[meta-register-phone] Subscribing phone to webhook...`);
+    
+    const subscribeUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/subscribed_apps`;
+    
+    const subscribeResponse = await fetch(subscribeUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({})
+    });
+
+    const subscribeData = await subscribeResponse.json();
+    console.log(`[meta-register-phone] Subscribe response:`, JSON.stringify(subscribeData));
+
+    // Step 4: Always check final status
     console.log(`[meta-register-phone] Fetching final phone status...`);
     
     const finalStatusResponse = await fetch(statusUrl, {
@@ -130,7 +147,9 @@ serve(async (req) => {
 
     const finalStatus = await finalStatusResponse.json();
     console.log(`[meta-register-phone] Final status:`, JSON.stringify(finalStatus));
-
+    
+    // Add subscription info to status
+    finalStatus.webhookSubscribed = subscribeData.success === true;
     // If status shows CONNECTED, the phone is working regardless of register errors
     const isConnected = finalStatus.status === 'CONNECTED';
     
