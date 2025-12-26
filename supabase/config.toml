@@ -32,3 +32,6 @@ verify_jwt = true
 
 [functions.zapi-validate-batch]
 verify_jwt = true
+
+[functions.meta-fetch-phones]
+verify_jwt = true
