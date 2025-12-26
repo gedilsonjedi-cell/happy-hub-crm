@@ -56,33 +56,72 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id, user.email);
 
-    // Get user's organization
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .single();
-
-    console.log('Profile lookup result:', { profile, profileError });
-
-    if (profileError || !profile?.organization_id) {
-      console.error('Organization not found for user:', user.id);
-      return new Response(JSON.stringify({ 
-        error: 'Organization not found',
-        message: 'Usuário não está associado a uma organização'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Check if organization_id was passed in the request body (for SuperAdmins impersonating)
+    let organizationId: string | null = null;
+    
+    try {
+      const body = await req.json();
+      if (body.organization_id) {
+        organizationId = body.organization_id;
+        console.log('Organization ID from request body:', organizationId);
+      }
+    } catch {
+      // No body or invalid JSON, continue normally
     }
 
-    console.log('Organization found:', profile.organization_id);
+    // If no organization_id in body, check user's role and profile
+    if (!organizationId) {
+      // Check if user is super_admin
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+      const isSuperAdmin = userRole?.role === 'super_admin';
+      console.log('User role:', userRole?.role, 'Is SuperAdmin:', isSuperAdmin);
+
+      if (isSuperAdmin) {
+        // SuperAdmin without organization_id - they need to select one via impersonation
+        return new Response(JSON.stringify({ 
+          error: 'Organization required',
+          message: 'Selecione uma organização para sincronizar'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Regular user - get organization from profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      console.log('Profile lookup result:', { profile, profileError });
+
+      if (profileError || !profile?.organization_id) {
+        console.error('Organization not found for user:', user.id);
+        return new Response(JSON.stringify({ 
+          error: 'Organization not found',
+          message: 'Usuário não está associado a uma organização'
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      organizationId = profile.organization_id;
+    }
+
+    console.log('Using organization:', organizationId);
 
     // Get all Meta channels with access tokens for the organization
     const { data: channels, error: channelsError } = await supabase
       .from('channels')
       .select('id, name, phone, waba_id, access_token')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', organizationId)
       .eq('provider', 'meta')
       .eq('connected', true)
       .not('access_token', 'is', null)
@@ -192,7 +231,7 @@ Deno.serve(async (req) => {
             .from('message_templates')
             .select('id')
             .eq('name', metaTemplate.name)
-            .eq('organization_id', profile.organization_id)
+            .eq('organization_id', organizationId)
             .single();
 
           if (existingTemplate) {
@@ -234,7 +273,7 @@ Deno.serve(async (req) => {
               .from('message_templates')
               .insert({
                 user_id: user.id,
-                organization_id: profile.organization_id,
+                organization_id: organizationId,
                 name: metaTemplate.name,
                 content,
                 status,
