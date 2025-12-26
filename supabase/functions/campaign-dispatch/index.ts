@@ -9,6 +9,11 @@ interface CampaignRecipient {
   id: string;
   phone: string;
   name?: string;
+  email?: string;
+  city?: string;
+  state?: string;
+  document?: string;
+  notes?: string;
   status: string;
 }
 
@@ -16,6 +21,25 @@ interface CampaignChannel {
   channel_id: string;
   template_id: string;
 }
+
+interface TemplateData {
+  id: string;
+  name: string;
+  content: string;
+  variables: string[] | null;
+  variable_mappings: Record<string, string> | null;
+}
+
+// Variable mapping to contact field
+const variableFieldMap: Record<string, keyof CampaignRecipient> = {
+  'contact_name': 'name',
+  'contact_phone': 'phone',
+  'contact_email': 'email',
+  'contact_city': 'city',
+  'contact_state': 'state',
+  'contact_document': 'document',
+  'contact_notes': 'notes',
+};
 
 // Generate random interval between min and max (in seconds)
 function getRandomInterval(minSeconds: number, maxSeconds: number): number {
@@ -45,6 +69,45 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Replace template variables with actual values from contact
+function replaceVariables(
+  content: string, 
+  recipient: CampaignRecipient, 
+  variableMappings: Record<string, string> | null,
+  manualValues?: Record<string, string>
+): string {
+  let result = content;
+  
+  // Find all variables in the format *[VARIABLE]* or [VARIABLE]
+  const regex = /\*?\[([A-Z_]+)\]\*?/g;
+  let match;
+  
+  while ((match = regex.exec(content)) !== null) {
+    const fullMatch = match[0];
+    const varName = match[1];
+    
+    // Determine the value based on mapping
+    let value = '';
+    const mapping = variableMappings?.[varName] || 'manual';
+    
+    if (mapping === 'manual') {
+      // Use manual value if provided
+      value = manualValues?.[varName] || '';
+    } else if (variableFieldMap[mapping]) {
+      // Get value from contact field
+      const field = variableFieldMap[mapping];
+      value = String(recipient[field] || '');
+    }
+    
+    // Replace the variable with the value
+    if (value) {
+      result = result.replace(fullMatch, value);
+    }
+  }
+  
+  return result;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -57,7 +120,7 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { campaignId, action, recipients } = await req.json();
+    const { campaignId, action, recipients, manualVariables } = await req.json();
 
     if (!campaignId) {
       return new Response(
@@ -126,29 +189,66 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get templates content
+    // Get templates content with variable mappings
     const templateIds = [...new Set(campaignChannels.map(cc => cc.template_id).filter(Boolean))];
     const { data: templates, error: templatesError } = await supabase
       .from('message_templates')
-      .select('id, name, content, variables')
+      .select('id, name, content, variables, variable_mappings')
       .in('id', templateIds);
 
     if (templatesError) {
       console.error('Error fetching templates:', templatesError);
     }
 
-    const templatesMap = new Map(templates?.map(t => [t.id, t]) || []);
+    const templatesMap = new Map<string, TemplateData>(templates?.map(t => [t.id, t as TemplateData]) || []);
     const channelsMap = new Map(channels.map(c => [c.id, c]));
 
-    // Use recipients from request
-    const campaignRecipients: CampaignRecipient[] = recipients.map((phone: string, index: number) => ({
-      id: String(index + 1),
-      phone: phone,
-      name: undefined,
-      status: 'pending'
-    }));
+    // Get phone numbers from recipients
+    const phoneNumbers = recipients.map((r: string | { phone: string }) => 
+      typeof r === 'string' ? r : r.phone
+    );
+    const formattedPhones = phoneNumbers.map(formatPhoneNumber);
+
+    // Try to find leads by phone to get additional contact info
+    const { data: leadsData } = await supabase
+      .from('leads')
+      .select('phone, name, email, city, state, document, notes')
+      .or(phoneNumbers.map((p: string) => `phone.ilike.%${p.replace(/\D/g, '').slice(-9)}%`).join(','));
+
+    // Create a map of phone to lead data
+    type LeadData = { phone: string; name: string | null; email: string | null; city: string | null; state: string | null; document: string | null; notes: string | null };
+    const leadsMap = new Map<string, LeadData>();
+    if (leadsData) {
+      leadsData.forEach(lead => {
+        const cleanPhone = lead.phone.replace(/\D/g, '');
+        leadsMap.set(cleanPhone, lead);
+        // Also map last 9 digits for matching
+        if (cleanPhone.length >= 9) {
+          leadsMap.set(cleanPhone.slice(-9), lead);
+        }
+      });
+    }
+
+    // Build recipients with contact data
+    const campaignRecipients: CampaignRecipient[] = phoneNumbers.map((phone: string, index: number) => {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const lead = leadsMap.get(cleanPhone) || leadsMap.get(cleanPhone.slice(-9));
+      
+      return {
+        id: String(index + 1),
+        phone: phone,
+        name: lead?.name,
+        email: lead?.email || undefined,
+        city: lead?.city || undefined,
+        state: lead?.state || undefined,
+        document: lead?.document || undefined,
+        notes: lead?.notes || undefined,
+        status: 'pending'
+      };
+    });
 
     console.log(`Processing ${campaignRecipients.length} recipients`);
+    console.log(`Found ${leadsData?.length || 0} matching leads for contact data`);
 
     // Update campaign status to running
     await supabase
@@ -181,8 +281,18 @@ Deno.serve(async (req) => {
       }
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
+      
+      // Replace variables in template content
+      const processedContent = replaceVariables(
+        template.content, 
+        recipient, 
+        template.variable_mappings,
+        manualVariables
+      );
+      
       console.log(`Sending to ${formattedPhone} via channel ${channel.name}`);
       console.log(`Template: ${template.name}`);
+      console.log(`Processed content preview: ${processedContent.substring(0, 100)}...`);
 
       try {
         // Call meta-send edge function to actually send the message
@@ -196,11 +306,25 @@ Deno.serve(async (req) => {
             channelId: channel.id,
             destination: formattedPhone,
             templateName: template.name,
-            templateComponents: template.variables ? template.variables.map((v: string) => ({
-              type: 'body',
-              parameters: [{ type: 'text', text: recipient.name || v }]
-            })) : undefined,
-            // Send as template message
+            templateComponents: template.variables ? template.variables.map((v: string) => {
+              // Get the mapped value for each variable
+              const mapping = template.variable_mappings?.[v] || 'manual';
+              let value = '';
+              
+              if (mapping === 'manual') {
+                value = manualVariables?.[v] || v;
+              } else if (variableFieldMap[mapping]) {
+                const field = variableFieldMap[mapping];
+                value = String(recipient[field] || v);
+              } else {
+                value = v;
+              }
+              
+              return {
+                type: 'body',
+                parameters: [{ type: 'text', text: value }]
+              };
+            }) : undefined,
             messageType: 'template'
           }),
         });

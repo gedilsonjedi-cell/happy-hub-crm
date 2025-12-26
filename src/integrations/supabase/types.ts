@@ -1130,6 +1130,7 @@ export type Database = {
           status: string
           updated_at: string
           user_id: string
+          variable_mappings: Json | null
           variables: string[] | null
         }
         Insert: {
@@ -1142,6 +1143,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id: string
+          variable_mappings?: Json | null
           variables?: string[] | null
         }
         Update: {
@@ -1154,6 +1156,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+          variable_mappings?: Json | null
           variables?: string[] | null
         }
         Relationships: [
