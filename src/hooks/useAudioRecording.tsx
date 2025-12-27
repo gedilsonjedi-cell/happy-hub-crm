@@ -9,30 +9,27 @@ interface UseAudioRecordingReturn {
 }
 
 // Get the best supported audio format for recording
-// We prioritize formats that WhatsApp/Meta accepts: OGG, MP4/AAC, MP3
-const getBestMimeType = (): { mimeType: string; extension: string; storageMimeType: string } => {
-  // Try OGG first - best for WhatsApp voice messages
-  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-    return { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg', storageMimeType: 'audio/ogg' };
-  }
-  // MP4/AAC - Safari and some browsers
-  if (MediaRecorder.isTypeSupported('audio/mp4')) {
-    return { mimeType: 'audio/mp4', extension: 'm4a', storageMimeType: 'audio/mp4' };
-  }
-  // WebM with OPUS - Chrome, Firefox
-  // Note: We save this as .webm but Meta API accepts audio/webm for regular audio (not PTT)
+const getBestMimeType = (): string => {
+  // Try WebM with OPUS - most widely supported in Chrome/Firefox
   if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-    return { mimeType: 'audio/webm;codecs=opus', extension: 'webm', storageMimeType: 'audio/webm' };
+    return 'audio/webm;codecs=opus';
+  }
+  // Try OGG
+  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+    return 'audio/ogg;codecs=opus';
+  }
+  // MP4/AAC - Safari
+  if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    return 'audio/mp4';
   }
   // Plain WebM
   if (MediaRecorder.isTypeSupported('audio/webm')) {
-    return { mimeType: 'audio/webm', extension: 'webm', storageMimeType: 'audio/webm' };
+    return 'audio/webm';
   }
-  // Fallback
-  return { mimeType: 'audio/webm', extension: 'webm', storageMimeType: 'audio/webm' };
+  return 'audio/webm';
 };
 
-export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () => { extension: string; storageMimeType: string } } => {
+export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   
@@ -40,16 +37,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () =
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const formatRef = useRef<{ mimeType: string; extension: string; storageMimeType: string }>({ 
-    mimeType: 'audio/webm', 
-    extension: 'webm',
-    storageMimeType: 'audio/webm'
-  });
-
-  const getFormat = useCallback(() => ({
-    extension: formatRef.current.extension,
-    storageMimeType: formatRef.current.storageMimeType
-  }), []);
+  const mimeTypeRef = useRef<string>('audio/webm');
 
   const startRecording = useCallback(async () => {
     try {
@@ -63,14 +51,13 @@ export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () =
       });
       streamRef.current = stream;
       
-      // Get the best format
-      const format = getBestMimeType();
-      formatRef.current = format;
+      const mimeType = getBestMimeType();
+      mimeTypeRef.current = mimeType;
       
-      console.log('Recording with format:', format);
+      console.log('Recording with format:', mimeType);
       
       const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType: format.mimeType,
+        mimeType,
         audioBitsPerSecond: 128000
       });
       
@@ -119,7 +106,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () =
         setRecordingDuration(0);
 
         const chunks = audioChunksRef.current;
-        const format = formatRef.current;
+        const mimeType = mimeTypeRef.current;
         
         if (chunks.length === 0) {
           console.error('No audio chunks recorded');
@@ -127,13 +114,11 @@ export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () =
           return;
         }
 
-        const audioBlob = new Blob(chunks, { type: format.mimeType });
+        const audioBlob = new Blob(chunks, { type: mimeType });
         audioChunksRef.current = [];
         
         console.log('Recording completed:', {
-          format: format.mimeType,
-          extension: format.extension,
-          storageMimeType: format.storageMimeType,
+          format: mimeType,
           size: audioBlob.size,
           chunks: chunks.length
         });
@@ -171,7 +156,6 @@ export const useAudioRecording = (): UseAudioRecordingReturn & { getFormat: () =
     recordingDuration,
     startRecording,
     stopRecording,
-    cancelRecording,
-    getFormat
+    cancelRecording
   };
 };
