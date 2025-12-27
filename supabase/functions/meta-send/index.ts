@@ -401,30 +401,40 @@ Deno.serve(async (req) => {
           };
           break;
         case 'audio':
-          messagePayload = {
-            ...messagePayload,
-            type: 'audio',
-            audio: {
-              link: mediaUrl
-            }
-          };
-          break;
         case 'ptt':
         case 'voice':
-          // Voice messages - send as regular audio using direct link
-          // The Meta API will download and process the file itself
-          // This is more reliable than uploading the media first
-          console.log('Processing voice message:', { mediaUrl });
+          // For audio messages, we need to upload to Meta first
+          // because direct links with WebM format may not work correctly
+          console.log('Processing audio message, uploading to Meta first:', { mediaUrl });
           
-          // Send as audio with direct link - most reliable method
-          messagePayload = {
-            ...messagePayload,
-            type: 'audio',
-            audio: {
-              link: mediaUrl
-            }
-          };
-          console.log('Sending audio with direct link');
+          // Try to upload the audio with automatic mime type retry
+          const audioUploadResult = await uploadAudioWithRetry(
+            phoneNumberId,
+            accessToken,
+            mediaUrl,
+            'audio/ogg' // Start with OGG which is WhatsApp's preferred format
+          );
+          
+          if (audioUploadResult.mediaId) {
+            console.log('Audio uploaded to Meta successfully, using media ID:', audioUploadResult.mediaId);
+            messagePayload = {
+              ...messagePayload,
+              type: 'audio',
+              audio: {
+                id: audioUploadResult.mediaId
+              }
+            };
+          } else {
+            // Fallback to direct link if upload fails
+            console.log('Audio upload failed, falling back to direct link');
+            messagePayload = {
+              ...messagePayload,
+              type: 'audio',
+              audio: {
+                link: mediaUrl
+              }
+            };
+          }
           break;
         case 'document':
         case 'file':
