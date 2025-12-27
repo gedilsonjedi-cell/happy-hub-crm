@@ -1335,13 +1335,15 @@ const WhatsAppChat = () => {
                   <div
                     key={conversationKey}
                     className={cn(
-                      "group relative",
-                      isSelected && "bg-muted/30 border-l-2 border-l-primary"
+                      "group relative border-l-2 transition-colors",
+                      isSelected 
+                        ? "bg-primary/10 border-l-primary" 
+                        : "border-l-transparent hover:bg-muted/30"
                     )}
                   >
                     <button
                       onClick={() => setSelectedConversation(conversation)}
-                      className="w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                      className="w-full p-4 text-left transition-colors"
                     >
                       <div className="flex items-start gap-3">
                         <Avatar className="w-10 h-10">
