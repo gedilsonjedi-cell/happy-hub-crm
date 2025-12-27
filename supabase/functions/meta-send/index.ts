@@ -276,17 +276,33 @@ Deno.serve(async (req) => {
           break;
         case 'ptt':
         case 'voice':
-          // Voice message (PTT) - requires voice: true parameter
-          // Note: For native voice message display, audio must be in OGG/OPUS format
-          // If not in correct format, it will be sent as regular audio
-          messagePayload = {
-            ...messagePayload,
-            type: 'audio',
-            audio: {
-              link: mediaUrl,
-              voice: true // This flag makes it appear as a voice message (if format supports it)
-            }
-          };
+          // Voice message (PTT) - requires audio to be in OGG/OPUS format
+          // Check the file extension to determine if we can send as voice
+          const isOggFormat = mediaUrl.toLowerCase().includes('.ogg') || 
+                              mediaUrl.toLowerCase().includes('opus');
+          
+          if (isOggFormat) {
+            // OGG format - can send as voice message (PTT)
+            messagePayload = {
+              ...messagePayload,
+              type: 'audio',
+              audio: {
+                link: mediaUrl
+              }
+            };
+            console.log('Sending as voice message (OGG format detected)');
+          } else {
+            // Non-OGG format (M4A, MP3, etc.) - send as regular audio file
+            // WhatsApp only shows PTT waveform for OGG/OPUS files
+            messagePayload = {
+              ...messagePayload,
+              type: 'audio',
+              audio: {
+                link: mediaUrl
+              }
+            };
+            console.log('Sending as audio file (non-OGG format:', mediaUrl, ')');
+          }
           break;
         case 'document':
         case 'file':
