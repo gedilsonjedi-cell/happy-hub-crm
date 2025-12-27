@@ -411,47 +411,20 @@ Deno.serve(async (req) => {
           break;
         case 'ptt':
         case 'voice':
-          // Voice/PTT messages - upload to Meta first with automatic retry
-          // Determine initial mime type based on file extension
-          let initialAudioMimeType = 'audio/ogg';
+          // Voice messages - send as regular audio using direct link
+          // The Meta API will download and process the file itself
+          // This is more reliable than uploading the media first
+          console.log('Processing voice message:', { mediaUrl });
           
-          if (mediaUrl.includes('.m4a')) {
-            initialAudioMimeType = 'audio/mp4';
-          } else if (mediaUrl.includes('.mp3')) {
-            initialAudioMimeType = 'audio/mpeg';
-          } else if (mediaUrl.includes('.webm')) {
-            // WebM with OPUS codec - try audio/ogg first (most compatible)
-            initialAudioMimeType = 'audio/ogg';
-          } else if (mediaUrl.includes('.ogg')) {
-            initialAudioMimeType = 'audio/ogg';
-          }
-          
-          console.log('Processing voice message with retry:', { mediaUrl, initialAudioMimeType });
-          
-          // Upload to Meta with automatic retry using different mime types
-          const uploadResult = await uploadAudioWithRetry(phoneNumberId, accessToken, mediaUrl, initialAudioMimeType);
-          
-          if (uploadResult.mediaId) {
-            messagePayload = {
-              ...messagePayload,
-              type: 'audio',
-              audio: {
-                id: uploadResult.mediaId
-              }
-            };
-            console.log('Sending audio with media ID:', uploadResult.mediaId, 'using mime type:', uploadResult.usedMimeType);
-          } else {
-            // All retries failed - return error instead of trying link (which will also fail)
-            console.error('All audio upload attempts failed');
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                error: 'Não foi possível enviar o áudio. Formato não suportado pelo WhatsApp.',
-                code: 'AUDIO_FORMAT_ERROR'
-              }),
-              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
+          // Send as audio with direct link - most reliable method
+          messagePayload = {
+            ...messagePayload,
+            type: 'audio',
+            audio: {
+              link: mediaUrl
+            }
+          };
+          console.log('Sending audio with direct link');
           break;
         case 'document':
         case 'file':
