@@ -41,7 +41,8 @@ import {
   Plus,
   Mic,
   Square,
-  X
+  X,
+  UserCheck
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineS
 import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
 import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
+import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
@@ -133,7 +135,7 @@ const statusConfig = {
   archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
 };
 
-type FilterStatus = "all" | "pending" | "in_progress" | "resolved";
+type FilterStatus = "all" | "pending" | "in_progress" | "resolved" | "mine";
 
 // Audio notification using Web Audio API
 const useNotificationSound = () => {
@@ -202,6 +204,7 @@ const WhatsAppChat = () => {
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showNotesDialog, setShowNotesDialog] = useState(false);
   const [showLeadDetailsDialog, setShowLeadDetailsDialog] = useState(false);
+  const [showAssignAttendantDialog, setShowAssignAttendantDialog] = useState(false);
   const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
@@ -1430,8 +1433,18 @@ const WhatsAppChat = () => {
   const filteredConversations = activeConversations.filter(conv => {
     const matchesSearch = conv.phone.includes(searchTerm) || 
       conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || conv.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    
+    // Filter by status or "mine" (assigned to current user)
+    let matchesFilter = false;
+    if (filterStatus === "all") {
+      matchesFilter = true;
+    } else if (filterStatus === "mine") {
+      matchesFilter = conv.assignedTo === user?.id;
+    } else {
+      matchesFilter = conv.status === filterStatus;
+    }
+    
+    return matchesSearch && matchesFilter;
   });
 
   // Filter archived conversations by search
@@ -1443,7 +1456,7 @@ const WhatsAppChat = () => {
   // Get counts for filter badges
   const pendingCount = activeConversations.filter(c => c.status === "pending").length;
   const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
-  const resolvedCount = activeConversations.filter(c => c.status === "resolved").length;
+  const mineCount = activeConversations.filter(c => c.assignedTo === user?.id).length;
 
   // Get conversation context for Sales Assistant
   const conversationContext = messages.map(m => 
@@ -1554,6 +1567,20 @@ const WhatsAppChat = () => {
                 {inProgressCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {inProgressCount}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant={filterStatus === "mine" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilterStatus("mine")}
+                className="text-xs px-3 h-7 gap-1.5"
+              >
+                <User className="w-3 h-3 shrink-0" />
+                Minhas
+                {mineCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
+                    {mineCount}
                   </Badge>
                 )}
               </Button>
@@ -1840,6 +1867,11 @@ const WhatsAppChat = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setShowAssignAttendantDialog(true)}>
+                        <UserCheck className="w-4 h-4 mr-2" />
+                        Atribuir Atendente
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setShowPortfolioDialog(true)}>
                         <Briefcase className="w-4 h-4 mr-2" />
                         Adicionar à Carteira
@@ -2310,6 +2342,29 @@ const WhatsAppChat = () => {
           onOpenChange={setShowLeadDetailsDialog}
           phone={selectedConversation.phone}
           name={selectedConversation.name}
+        />
+      )}
+
+      {/* Assign Attendant Dialog */}
+      {selectedConversation && (
+        <AssignAttendantDialog
+          open={showAssignAttendantDialog}
+          onOpenChange={setShowAssignAttendantDialog}
+          conversationPhone={selectedConversation.phone}
+          channelId={selectedConversation.channelId}
+          currentAssignedTo={selectedConversation.assignedTo}
+          currentAssignedToName={selectedConversation.assignedToName}
+          onAssigned={(assignedTo, assignedToName) => {
+            // Update the selected conversation
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo, assignedToName } : null);
+            // Update the conversations list
+            setConversations(prev => prev.map(c => 
+              c.channelId === selectedConversation.channelId && 
+              c.phone.replace(/\D/g, '') === selectedConversation.phone.replace(/\D/g, '')
+                ? { ...c, assignedTo, assignedToName }
+                : c
+            ));
+          }}
         />
       )}
     </MainLayout>
