@@ -1068,17 +1068,17 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // Get the actual mime type from the blob
-      const mimeType = audioBlob.type || 'audio/ogg';
-      const extension = mimeType.includes('ogg') ? 'ogg' : 
-                       mimeType.includes('webm') ? 'webm' : 
-                       mimeType.includes('mp4') ? 'm4a' : 'ogg';
+      // The audio should now be in MP3 format from the recording hook
+      const mimeType = audioBlob.type || 'audio/mp3';
+      const extension = mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3' : 
+                       mimeType.includes('ogg') ? 'ogg' : 
+                       mimeType.includes('m4a') || mimeType.includes('mp4') ? 'm4a' : 'mp3';
       
       // Generate unique file name
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('Uploading voice recording:', { mimeType, extension, fileName });
+      console.log('Uploading voice recording:', { mimeType, extension, fileName, blobSize: audioBlob.size });
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
@@ -1105,7 +1105,7 @@ const WhatsAppChat = () => {
 
       // Send as voice/ptt (push-to-talk) message
       await handleSendMedia({
-        mediaType: 'ptt', // Use 'ptt' for voice messages instead of 'audio'
+        mediaType: 'ptt', // Use 'ptt' for voice messages
         mediaUrl: publicUrl,
         fileName: `audio.${extension}`
       });
