@@ -153,6 +153,106 @@ async function sendWhatsAppMessage(phoneNumberId: string, accessToken: string, r
   }
 }
 
+// Helper function to download media from Meta and upload to Supabase Storage
+async function downloadAndStoreMedia(
+  mediaId: string, 
+  accessToken: string, 
+  organizationId: string,
+  mimeType?: string
+): Promise<string | null> {
+  try {
+    console.log('Downloading media from Meta, ID:', mediaId);
+    
+    // Step 1: Get media URL from Meta
+    const mediaInfoResponse = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+    
+    if (!mediaInfoResponse.ok) {
+      const errorText = await mediaInfoResponse.text();
+      console.error('Error getting media info:', errorText);
+      return null;
+    }
+    
+    const mediaInfo = await mediaInfoResponse.json();
+    const mediaUrl = mediaInfo.url;
+    const mediaMimeType = mimeType || mediaInfo.mime_type || 'application/octet-stream';
+    
+    console.log('Media info:', { url: mediaUrl, mimeType: mediaMimeType });
+    
+    // Step 2: Download media binary
+    const mediaDownloadResponse = await fetch(mediaUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+    
+    if (!mediaDownloadResponse.ok) {
+      console.error('Error downloading media:', await mediaDownloadResponse.text());
+      return null;
+    }
+    
+    const mediaBlob = await mediaDownloadResponse.blob();
+    const arrayBuffer = await mediaBlob.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Step 3: Determine file extension
+    let extension = 'bin';
+    if (mediaMimeType.includes('audio/ogg')) {
+      extension = 'ogg';
+    } else if (mediaMimeType.includes('audio/mpeg') || mediaMimeType.includes('audio/mp3')) {
+      extension = 'mp3';
+    } else if (mediaMimeType.includes('audio/mp4') || mediaMimeType.includes('audio/m4a')) {
+      extension = 'm4a';
+    } else if (mediaMimeType.includes('audio')) {
+      extension = 'ogg';
+    } else if (mediaMimeType.includes('image/jpeg')) {
+      extension = 'jpg';
+    } else if (mediaMimeType.includes('image/png')) {
+      extension = 'png';
+    } else if (mediaMimeType.includes('image/webp')) {
+      extension = 'webp';
+    } else if (mediaMimeType.includes('video/mp4')) {
+      extension = 'mp4';
+    } else if (mediaMimeType.includes('video')) {
+      extension = 'mp4';
+    } else if (mediaMimeType.includes('application/pdf')) {
+      extension = 'pdf';
+    }
+    
+    // Step 4: Upload to Supabase Storage
+    const fileName = `${organizationId}/inbound_${Date.now()}_${mediaId.slice(-8)}.${extension}`;
+    
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('whatsapp-media')
+      .upload(fileName, uint8Array, {
+        contentType: mediaMimeType,
+        upsert: false,
+      });
+    
+    if (uploadError) {
+      console.error('Error uploading to storage:', uploadError);
+      return null;
+    }
+    
+    // Step 5: Get public URL
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('whatsapp-media')
+      .getPublicUrl(fileName);
+    
+    console.log('Media stored successfully:', publicUrlData.publicUrl);
+    return publicUrlData.publicUrl;
+    
+  } catch (error) {
+    console.error('Error in downloadAndStoreMedia:', error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   
@@ -275,6 +375,8 @@ Deno.serve(async (req) => {
         // Extract content based on message type
         let content = '';
         let mediaUrl = '';
+        let mediaId = '';
+        let mediaMimeType = '';
 
         switch (messageType) {
           case 'text':
@@ -282,23 +384,28 @@ Deno.serve(async (req) => {
             break;
           case 'image':
             content = msg.image?.caption || '[Imagem]';
-            mediaUrl = msg.image?.id || ''; // Media ID, need to fetch URL
+            mediaId = msg.image?.id || '';
+            mediaMimeType = msg.image?.mime_type || '';
             break;
           case 'video':
             content = msg.video?.caption || '[Vídeo]';
-            mediaUrl = msg.video?.id || '';
+            mediaId = msg.video?.id || '';
+            mediaMimeType = msg.video?.mime_type || '';
             break;
           case 'audio':
             content = '[Áudio]';
-            mediaUrl = msg.audio?.id || '';
+            mediaId = msg.audio?.id || '';
+            mediaMimeType = msg.audio?.mime_type || '';
             break;
           case 'document':
             content = msg.document?.filename || '[Documento]';
-            mediaUrl = msg.document?.id || '';
+            mediaId = msg.document?.id || '';
+            mediaMimeType = msg.document?.mime_type || '';
             break;
           case 'sticker':
             content = '[Sticker]';
-            mediaUrl = msg.sticker?.id || '';
+            mediaId = msg.sticker?.id || '';
+            mediaMimeType = msg.sticker?.mime_type || 'image/webp';
             break;
           case 'location':
             const lat = msg.location?.latitude;
@@ -323,6 +430,25 @@ Deno.serve(async (req) => {
             break;
           default:
             content = `[${messageType}]`;
+        }
+
+        // If there's media, download and store it
+        if (mediaId && channel.access_token && channel.organization_id) {
+          console.log('Processing media:', { mediaId, mediaMimeType, messageType });
+          const storedMediaUrl = await downloadAndStoreMedia(
+            mediaId, 
+            channel.access_token, 
+            channel.organization_id,
+            mediaMimeType
+          );
+          
+          if (storedMediaUrl) {
+            mediaUrl = storedMediaUrl;
+          } else {
+            // Fallback: store media ID so we can try again later or show error
+            mediaUrl = mediaId;
+            console.warn('Failed to download media, storing ID only:', mediaId);
+          }
         }
 
         // Get sender name from contacts
