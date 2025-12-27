@@ -44,7 +44,15 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Channel {
   id: string;
@@ -57,6 +65,11 @@ interface Channel {
   waba_id: string | null;
   connected: boolean;
   created_at: string;
+  organization_id: string | null;
+  organization?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface MetaPhoneNumber {
@@ -83,7 +96,11 @@ const generateVerifyToken = () => {
 const Conexoes = () => {
   const { user } = useAuth();
   const { isSuperAdmin } = useUserRole();
+  const { organizations } = useSuperAdmin();
   const [channels, setChannels] = useState<Channel[]>([]);
+  
+  // For Super Admin: select which organization to assign new channels
+  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
@@ -133,18 +150,39 @@ const Conexoes = () => {
 
   const fetchChannels = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("channels")
-      .select("*")
-      .order("created_at", { ascending: false });
+    
+    // Super Admin sees all channels with organization info
+    if (isSuperAdmin) {
+      const { data, error } = await supabase
+        .from("channels")
+        .select(`
+          *,
+          organization:organizations(id, name)
+        `)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      toast.error("Erro ao carregar canais");
-      setLoading(false);
-      return;
+      if (error) {
+        toast.error("Erro ao carregar canais");
+        setLoading(false);
+        return;
+      }
+
+      setChannels((data as Channel[]) || []);
+    } else {
+      const { data, error } = await supabase
+        .from("channels")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        toast.error("Erro ao carregar canais");
+        setLoading(false);
+        return;
+      }
+
+      setChannels((data as Channel[]) || []);
     }
-
-    setChannels((data as Channel[]) || []);
+    
     setLoading(false);
   };
 
@@ -165,6 +203,7 @@ const Conexoes = () => {
     setAvailablePhones([]);
     setSelectedPhones([]);
     setSharedVerifyToken('');
+    setSelectedOrgId("");
   };
 
   // Handle Z-API connection
@@ -174,14 +213,29 @@ const Conexoes = () => {
       return;
     }
 
+    // Super Admin must select an organization
+    if (isSuperAdmin && !selectedOrgId) {
+      toast.error("Selecione a organização para esta conexão");
+      return;
+    }
+
     setIsConnecting(true);
 
     try {
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .maybeSingle();
+      let targetOrgId: string | null = null;
+      
+      if (isSuperAdmin && selectedOrgId) {
+        // Super Admin assigns to selected organization
+        targetOrgId = selectedOrgId;
+      } else {
+        // Regular user uses their own organization
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+        targetOrgId = profileData?.organization_id || null;
+      }
 
       // Format phone number
       let formattedPhone = zapiFormData.phone.replace(/\D/g, '');
@@ -191,7 +245,7 @@ const Conexoes = () => {
 
       const { error } = await supabase.from("channels").insert({
         user_id: user?.id,
-        organization_id: profileData?.organization_id || null,
+        organization_id: targetOrgId,
         name: zapiFormData.name.trim(),
         phone: formattedPhone,
         provider: "zapi",
@@ -472,14 +526,29 @@ const Conexoes = () => {
       return;
     }
 
+    // Super Admin must select an organization for Meta connections too
+    if (isSuperAdmin && !selectedOrgId) {
+      toast.error("Selecione a organização para esta conexão");
+      return;
+    }
+
     setIsConnecting(true);
 
     try {
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .maybeSingle();
+      let targetOrgId: string | null = null;
+      
+      if (isSuperAdmin && selectedOrgId) {
+        // Super Admin assigns to selected organization
+        targetOrgId = selectedOrgId;
+      } else {
+        // Regular user uses their own organization
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+        targetOrgId = profileData?.organization_id || null;
+      }
 
       const phonesToConnect = availablePhones.filter(p => selectedPhones.includes(p.id));
       const results = { success: 0, failed: 0 };
@@ -494,7 +563,7 @@ const Conexoes = () => {
 
         const { error } = await supabase.from("channels").insert({
           user_id: user?.id,
-          organization_id: profileData?.organization_id || null,
+          organization_id: targetOrgId,
           name: phone.customName || phone.verifiedName || `WhatsApp ${phone.displayPhoneNumber}`,
           phone: formattedPhone,
           provider: "meta",
@@ -822,9 +891,14 @@ const Conexoes = () => {
                         channel.connected ? "text-blue-500" : "text-amber-500"
                       )} />
                     </div>
-                    <div>
-                      <h4 className="font-medium text-foreground">{channel.name}</h4>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-foreground truncate">{channel.name}</h4>
                       <p className="text-sm text-muted-foreground">{channel.phone}</p>
+                      {isSuperAdmin && channel.organization && (
+                        <p className="text-xs text-primary/80 truncate mt-0.5">
+                          {channel.organization.name}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <DropdownMenu>
@@ -1013,6 +1087,26 @@ const Conexoes = () => {
                 </p>
               </div>
 
+              {/* Organization selector for Super Admin */}
+              <div className="space-y-2">
+                <Label className="text-foreground">Organização *</Label>
+                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+                  <SelectTrigger className="bg-muted/30 border-border">
+                    <SelectValue placeholder="Selecione a organização" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border z-[100]">
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Selecione para qual cliente esta conexão será destinada
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-foreground">Nome do Canal</Label>
                 <Input 
@@ -1074,7 +1168,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleConnectZapi} 
-                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone}
+                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone || !selectedOrgId}
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {isConnecting ? (
@@ -1105,6 +1199,28 @@ const Conexoes = () => {
                   {" "}e adicione o produto WhatsApp.
                 </p>
               </div>
+
+              {/* Organization selector for Super Admin */}
+              {isSuperAdmin && (
+                <div className="space-y-2">
+                  <Label className="text-foreground">Organização *</Label>
+                  <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+                    <SelectTrigger className="bg-muted/30 border-border">
+                      <SelectValue placeholder="Selecione a organização" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border z-[100]">
+                      {organizations.map((org) => (
+                        <SelectItem key={org.id} value={org.id}>
+                          {org.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Selecione para qual cliente esta conexão será destinada
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-foreground">WhatsApp Business Account ID (WABA ID)</Label>
@@ -1150,7 +1266,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleFetchPhones} 
-                  disabled={isFetchingPhones || !formData.wabaId || !formData.accessToken}
+                  disabled={isFetchingPhones || !formData.wabaId || !formData.accessToken || (isSuperAdmin && !selectedOrgId)}
                   className="gap-2"
                 >
                   {isFetchingPhones ? (
