@@ -8,25 +8,36 @@ const corsHeaders = {
 const META_API_VERSION = 'v18.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
+// Mime type fallback order for audio retries
+const AUDIO_MIME_FALLBACKS: { mimeType: string; filename: string }[] = [
+  { mimeType: 'audio/ogg', filename: 'audio.ogg' },
+  { mimeType: 'audio/opus', filename: 'audio.opus' },
+  { mimeType: 'audio/mpeg', filename: 'audio.mp3' },
+  { mimeType: 'audio/aac', filename: 'audio.aac' },
+];
+
 // Helper function to upload media to Meta and get media ID
 async function uploadMediaToMeta(
   phoneNumberId: string,
   accessToken: string,
   mediaUrl: string,
-  mimeType: string
-): Promise<string | null> {
+  mimeType: string,
+  arrayBuffer?: ArrayBuffer
+): Promise<{ mediaId: string | null; usedMimeType: string }> {
   try {
     console.log('Uploading media to Meta:', { mediaUrl, mimeType });
     
-    // Download the media from the URL
-    const mediaResponse = await fetch(mediaUrl);
-    if (!mediaResponse.ok) {
-      console.error('Failed to download media:', mediaResponse.status);
-      return null;
+    // Download the media from the URL if not provided
+    let buffer = arrayBuffer;
+    if (!buffer) {
+      const mediaResponse = await fetch(mediaUrl);
+      if (!mediaResponse.ok) {
+        console.error('Failed to download media:', mediaResponse.status);
+        return { mediaId: null, usedMimeType: mimeType };
+      }
+      const mediaBlob = await mediaResponse.blob();
+      buffer = await mediaBlob.arrayBuffer();
     }
-    
-    const mediaBlob = await mediaResponse.blob();
-    const arrayBuffer = await mediaBlob.arrayBuffer();
     
     // Create form data for Meta upload
     const formData = new FormData();
@@ -40,8 +51,9 @@ async function uploadMediaToMeta(
     } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
       filename = 'audio.mp3';
     } else if (mimeType === 'audio/opus') {
-      // OPUS codec - use .opus extension
       filename = 'audio.opus';
+    } else if (mimeType.includes('aac')) {
+      filename = 'audio.aac';
     } else if (mimeType.includes('ogg')) {
       filename = 'audio.ogg';
     }
@@ -49,7 +61,7 @@ async function uploadMediaToMeta(
     console.log('Creating blob with:', { mimeType, filename });
     
     // Create a proper File/Blob for upload
-    const file = new Blob([arrayBuffer], { type: mimeType });
+    const file = new Blob([buffer], { type: mimeType });
     formData.append('file', file, filename);
     
     // Upload to Meta
@@ -69,17 +81,66 @@ async function uploadMediaToMeta(
     
     if (!uploadResponse.ok) {
       console.error('Failed to upload media to Meta:', uploadText);
-      return null;
+      return { mediaId: null, usedMimeType: mimeType };
     }
     
     const uploadResult = JSON.parse(uploadText);
     console.log('Media uploaded successfully, ID:', uploadResult.id);
-    return uploadResult.id;
+    return { mediaId: uploadResult.id, usedMimeType: mimeType };
     
   } catch (error) {
     console.error('Error uploading media to Meta:', error);
-    return null;
+    return { mediaId: null, usedMimeType: mimeType };
   }
+}
+
+// Helper function to upload audio with automatic retry using different mime types
+async function uploadAudioWithRetry(
+  phoneNumberId: string,
+  accessToken: string,
+  mediaUrl: string,
+  initialMimeType: string
+): Promise<{ mediaId: string | null; usedMimeType: string }> {
+  console.log('Starting audio upload with retry logic:', { mediaUrl, initialMimeType });
+  
+  // First, download the media once to reuse
+  let arrayBuffer: ArrayBuffer;
+  try {
+    const mediaResponse = await fetch(mediaUrl);
+    if (!mediaResponse.ok) {
+      console.error('Failed to download media:', mediaResponse.status);
+      return { mediaId: null, usedMimeType: initialMimeType };
+    }
+    const mediaBlob = await mediaResponse.blob();
+    arrayBuffer = await mediaBlob.arrayBuffer();
+  } catch (error) {
+    console.error('Error downloading media:', error);
+    return { mediaId: null, usedMimeType: initialMimeType };
+  }
+  
+  // Try initial mime type first
+  let result = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, initialMimeType, arrayBuffer);
+  if (result.mediaId) {
+    console.log('Upload succeeded with initial mime type:', initialMimeType);
+    return result;
+  }
+  
+  // If initial failed, try fallback mime types
+  console.log('Initial upload failed, trying fallback mime types...');
+  for (const fallback of AUDIO_MIME_FALLBACKS) {
+    if (fallback.mimeType === initialMimeType) continue; // Skip already tried
+    
+    console.log('Trying fallback mime type:', fallback.mimeType);
+    result = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, fallback.mimeType, arrayBuffer);
+    
+    if (result.mediaId) {
+      console.log('Upload succeeded with fallback mime type:', fallback.mimeType);
+      return result;
+    }
+  }
+  
+  console.error('All mime type attempts failed');
+  return { mediaId: null, usedMimeType: initialMimeType };
 }
 
 Deno.serve(async (req) => {
@@ -350,51 +411,46 @@ Deno.serve(async (req) => {
           break;
         case 'ptt':
         case 'voice':
-          // Voice/PTT messages - upload to Meta first
-          // IMPORTANT: WebM with OPUS codec must be sent as audio/ogg or audio/opus
-          // because Meta doesn't accept audio/webm but the OPUS codec is the same
-          let audioMimeType = 'audio/ogg';
-          let audioFilename = 'audio.ogg';
+          // Voice/PTT messages - upload to Meta first with automatic retry
+          // Determine initial mime type based on file extension
+          let initialAudioMimeType = 'audio/ogg';
           
           if (mediaUrl.includes('.m4a')) {
-            audioMimeType = 'audio/mp4';
-            audioFilename = 'audio.m4a';
+            initialAudioMimeType = 'audio/mp4';
           } else if (mediaUrl.includes('.mp3')) {
-            audioMimeType = 'audio/mpeg';
-            audioFilename = 'audio.mp3';
+            initialAudioMimeType = 'audio/mpeg';
           } else if (mediaUrl.includes('.webm')) {
-            // WebM with OPUS codec - send as audio/opus which Meta accepts
-            audioMimeType = 'audio/opus';
-            audioFilename = 'audio.opus';
+            // WebM with OPUS codec - try audio/ogg first (most compatible)
+            initialAudioMimeType = 'audio/ogg';
           } else if (mediaUrl.includes('.ogg')) {
-            audioMimeType = 'audio/ogg';
-            audioFilename = 'audio.ogg';
+            initialAudioMimeType = 'audio/ogg';
           }
           
-          console.log('Processing voice message:', { mediaUrl, audioMimeType, audioFilename });
+          console.log('Processing voice message with retry:', { mediaUrl, initialAudioMimeType });
           
-          // Upload to Meta to get media ID
-          const mediaId = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, audioMimeType);
+          // Upload to Meta with automatic retry using different mime types
+          const uploadResult = await uploadAudioWithRetry(phoneNumberId, accessToken, mediaUrl, initialAudioMimeType);
           
-          if (mediaId) {
+          if (uploadResult.mediaId) {
             messagePayload = {
               ...messagePayload,
               type: 'audio',
               audio: {
-                id: mediaId
+                id: uploadResult.mediaId
               }
             };
-            console.log('Sending audio with media ID:', mediaId);
+            console.log('Sending audio with media ID:', uploadResult.mediaId, 'using mime type:', uploadResult.usedMimeType);
           } else {
-            // Fallback: try with link
-            console.log('Media upload failed, falling back to link');
-            messagePayload = {
-              ...messagePayload,
-              type: 'audio',
-              audio: {
-                link: mediaUrl
-              }
-            };
+            // All retries failed - return error instead of trying link (which will also fail)
+            console.error('All audio upload attempts failed');
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: 'Não foi possível enviar o áudio. Formato não suportado pelo WhatsApp.',
+                code: 'AUDIO_FORMAT_ERROR'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
           }
           break;
         case 'document':
