@@ -110,6 +110,8 @@ interface Conversation {
   unreadCount: number;
   channelId: string | null;
   status: "pending" | "in_progress" | "resolved" | "archived";
+  assignedTo: string | null;
+  assignedToName: string | null;
 }
 
 interface Channel {
@@ -355,20 +357,44 @@ const WhatsAppChat = () => {
       // Get all channel IDs
       const channelIds = channels.map(c => c.id);
 
-      // Fetch all messages (inbound and outbound) from all channels to build conversations
-      const { data, error } = await supabase
-        .from("whatsapp_messages")
-        .select("*")
-        .in("channel_id", channelIds)
-        .order("created_at", { ascending: false });
+      // Fetch all messages, assignments, and profiles in parallel
+      const [messagesResult, assignmentsResult, profilesResult] = await Promise.all([
+        supabase
+          .from("whatsapp_messages")
+          .select("*")
+          .in("channel_id", channelIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("conversation_assignments")
+          .select("conversation_phone, channel_id, assigned_to, status")
+          .in("channel_id", channelIds),
+        supabase
+          .from("profiles")
+          .select("user_id, display_name, email")
+      ]);
 
-      if (error) {
-        console.error("[WhatsAppChat] Error fetching conversations:", error);
+      if (messagesResult.error) {
+        console.error("[WhatsAppChat] Error fetching conversations:", messagesResult.error);
         setLoading(false);
         return;
       }
 
+      const data = messagesResult.data;
       console.log("[WhatsAppChat] Fetched messages:", data?.length, "messages");
+
+      // Build a map of assignments by channel_phone key
+      const assignmentsMap = new Map<string, { assignedTo: string | null }>();
+      assignmentsResult.data?.forEach((assignment) => {
+        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+        const key = `${assignment.channel_id}_${normalizedPhone}`;
+        assignmentsMap.set(key, { assignedTo: assignment.assigned_to });
+      });
+
+      // Build a map of profiles by user_id
+      const profilesMap = new Map<string, string>();
+      profilesResult.data?.forEach((profile) => {
+        profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
+      });
 
       const conversationsMap = new Map<string, Conversation>();
       
@@ -410,6 +436,11 @@ const WhatsAppChat = () => {
         // For display, format with + prefix
         const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + contactPhone.replace(/\D/g, '');
 
+        // Get assignment for this conversation
+        const assignment = assignmentsMap.get(conversationKey);
+        const assignedTo = assignment?.assignedTo || null;
+        const assignedToName = assignedTo ? profilesMap.get(assignedTo) || null : null;
+
         if (!conversationsMap.has(conversationKey)) {
           // Check stored status by conversation key only (old format keys are filtered out)
           const storedStatus = storedStatuses[conversationKey];
@@ -421,7 +452,9 @@ const WhatsAppChat = () => {
             lastInboundTime: msg.direction === "inbound" ? msg.created_at : null,
             unreadCount: msg.direction === "inbound" && msg.is_read === false ? 1 : 0,
             channelId: msg.channel_id,
-            status: storedStatus || "pending"
+            status: storedStatus || "pending",
+            assignedTo,
+            assignedToName
           });
         } else {
           const existing = conversationsMap.get(conversationKey)!;
@@ -721,7 +754,9 @@ const WhatsAppChat = () => {
                   lastInboundTime: newMsg.created_at,
                   unreadCount: 1,
                   channelId: newMsg.channel_id,
-                  status: "pending" as const
+                  status: "pending" as const,
+                  assignedTo: null,
+                  assignedToName: null
                 }, ...prev];
               }
             });
@@ -1583,11 +1618,19 @@ const WhatsAppChat = () => {
                             {conversation.lastMessage}
                           </p>
                           <div className="flex items-center justify-between">
-                            <Badge variant="outline" className={cn("text-xs", statusConfig[conversation.status].className)}>
-                              {statusConfig[conversation.status].label}
-                            </Badge>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="outline" className={cn("text-xs", statusConfig[conversation.status].className)}>
+                                {statusConfig[conversation.status].label}
+                              </Badge>
+                              {conversation.assignedToName && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-1">
+                                  <User className="w-2.5 h-2.5" />
+                                  {conversation.assignedToName.split(' ')[0]}
+                                </Badge>
+                              )}
+                            </div>
                             {conversation.unreadCount > 0 && (
-                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
                                 {conversation.unreadCount}
                               </span>
                             )}
