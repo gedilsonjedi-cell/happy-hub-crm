@@ -1142,29 +1142,40 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Upload the audio as-is (WebM with OPUS codec)
-      // The meta-send edge function will handle the conversion/upload to Meta
-      const finalBlob = audioBlob;
+      // Get the actual format from the recording
+      const actualMimeType = audioBlob.type || 'audio/webm';
+      const isWebM = actualMimeType.includes('webm');
       
-      console.log('Recording format:', audioBlob.type, 'size:', audioBlob.size);
+      // WebM is not supported by WhatsApp API - show error immediately
+      if (isWebM) {
+        console.error('WebM format not supported by WhatsApp');
+        toast.error('Gravação de voz não suportada neste navegador. Use a opção "Enviar Mídia" para enviar um arquivo de áudio OGG ou MP3.');
+        setUploadingMedia(false);
+        return;
+      }
+      
+      // Use the correct extension based on actual format
+      const extension = actualMimeType.includes('ogg') ? 'ogg' : (actualMimeType.includes('mp4') ? 'm4a' : 'mp3');
+      
+      console.log('Recording format:', actualMimeType, 'size:', audioBlob.size);
 
-      // Generate unique file name - always use .ogg extension
-      const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`;
+      // Generate unique file name with correct extension
+      const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
       console.log('Uploading voice recording:', { 
-        size: finalBlob.size,
-        type: finalBlob.type,
+        size: audioBlob.size,
+        type: actualMimeType,
         fileName 
       });
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage with the actual content type
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
-        .upload(filePath, finalBlob, {
+        .upload(filePath, audioBlob, {
           cacheControl: '3600',
           upsert: false,
-          contentType: 'audio/ogg'
+          contentType: actualMimeType
         });
 
       if (uploadError) {
@@ -1182,11 +1193,11 @@ const WhatsAppChat = () => {
       const publicUrl = urlData.publicUrl;
       console.log('Audio uploaded, public URL:', publicUrl);
 
-      // Send as audio message - same as file upload
+      // Send as audio message
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
-        fileName: 'gravacao.ogg'
+        fileName: `gravacao.${extension}`
       });
 
     } catch (error) {
