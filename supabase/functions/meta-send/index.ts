@@ -262,6 +262,10 @@ Deno.serve(async (req) => {
           };
           break;
         case 'audio':
+        case 'ptt':
+        case 'voice':
+          // For Meta API, audio type works for both regular audio and voice messages
+          // The format of the audio file determines if it plays inline
           messagePayload = {
             ...messagePayload,
             type: 'audio',

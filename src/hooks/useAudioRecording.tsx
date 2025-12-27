@@ -8,6 +8,25 @@ interface UseAudioRecordingReturn {
   cancelRecording: () => void;
 }
 
+// Get supported mime type for audio recording
+const getSupportedMimeType = (): string => {
+  const types = [
+    'audio/ogg;codecs=opus',
+    'audio/webm;codecs=opus',
+    'audio/mp4',
+    'audio/mpeg',
+    'audio/webm'
+  ];
+  
+  for (const type of types) {
+    if (MediaRecorder.isTypeSupported(type)) {
+      return type;
+    }
+  }
+  
+  return 'audio/webm'; // fallback
+};
+
 export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -16,15 +35,25 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mimeTypeRef = useRef<string>('audio/webm');
 
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true
+        } 
+      });
       streamRef.current = stream;
       
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      const mimeType = getSupportedMimeType();
+      mimeTypeRef.current = mimeType;
+      console.log('Recording with mimeType:', mimeType);
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -58,7 +87,8 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       }
 
       mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mimeType = mimeTypeRef.current;
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
         
         // Stop all tracks
@@ -76,6 +106,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         setIsRecording(false);
         setRecordingDuration(0);
         
+        console.log('Recording stopped, blob size:', audioBlob.size, 'type:', mimeType);
         resolve(audioBlob);
       };
 

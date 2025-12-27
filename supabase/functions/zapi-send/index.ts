@@ -221,6 +221,18 @@ Deno.serve(async (req) => {
           storedContent = '[Áudio]';
           storedMessageType = 'audio';
           break;
+        case 'ptt':
+        case 'voice':
+          // PTT (Push-to-Talk) for voice messages - appears as voice message bubble
+          endpoint = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${zapiToken}/send-audio`;
+          payload = {
+            phone: cleanDestination,
+            audio: mediaUrl,
+            ptt: true // This flag makes it appear as a voice message
+          };
+          storedContent = '[Mensagem de voz]';
+          storedMessageType = 'audio';
+          break;
         case 'document':
         case 'file':
           endpoint = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${zapiToken}/send-document`;

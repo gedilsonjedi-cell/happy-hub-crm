@@ -946,8 +946,8 @@ const WhatsAppChat = () => {
           message_id: data.messageId,
           sender_phone: conversationChannel?.phone || "",
           sender_name: null,
-          message_type: mediaData.mediaType,
-          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || (mediaData.mediaType === 'ptt' ? '[Mensagem de voz]' : `[${mediaData.mediaType}]`),
           media_url: mediaData.mediaUrl,
           direction: "outbound",
           status: "sent",
@@ -955,7 +955,7 @@ const WhatsAppChat = () => {
           metadata: { destination: selectedConversation.phone }
         };
         setMessages(prev => [...prev, optimisticMessage]);
-        toast.success("Mídia enviada!");
+        toast.success(mediaData.mediaType === 'ptt' ? "Áudio enviado!" : "Mídia enviada!");
       } else {
         toast.error(data.error || 'Erro ao enviar mídia');
       }
@@ -1068,9 +1068,17 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
+      // Get the actual mime type from the blob
+      const mimeType = audioBlob.type || 'audio/ogg';
+      const extension = mimeType.includes('ogg') ? 'ogg' : 
+                       mimeType.includes('webm') ? 'webm' : 
+                       mimeType.includes('mp4') ? 'm4a' : 'ogg';
+      
       // Generate unique file name
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.webm`;
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
+
+      console.log('Uploading voice recording:', { mimeType, extension, fileName });
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
@@ -1078,7 +1086,7 @@ const WhatsAppChat = () => {
         .upload(filePath, audioBlob, {
           cacheControl: '3600',
           upsert: false,
-          contentType: 'audio/webm'
+          contentType: mimeType
         });
 
       if (uploadError) {
@@ -1095,11 +1103,11 @@ const WhatsAppChat = () => {
 
       const publicUrl = urlData.publicUrl;
 
-      // Send the audio
+      // Send as voice/ptt (push-to-talk) message
       await handleSendMedia({
-        mediaType: 'audio',
+        mediaType: 'ptt', // Use 'ptt' for voice messages instead of 'audio'
         mediaUrl: publicUrl,
-        fileName: 'audio.webm'
+        fileName: `audio.${extension}`
       });
 
     } catch (error) {
