@@ -36,21 +36,19 @@ interface Template {
 interface ScheduleMessageDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSchedule: (data: {
-    templateName: string;
-    templateParams: string[];
-    scheduledAt: Date;
-  }) => void;
+  contactPhone: string;
   contactName?: string | null;
   channelId: string | null;
+  leadId?: string | null;
 }
 
 export const ScheduleMessageDialog = ({ 
   isOpen, 
   onClose, 
-  onSchedule,
+  contactPhone,
   contactName,
-  channelId
+  channelId,
+  leadId
 }: ScheduleMessageDialogProps) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,12 +58,29 @@ export const ScheduleMessageDialog = ({
   const [date, setDate] = useState<Date | undefined>(addHours(new Date(), 1));
   const [time, setTime] = useState("12:00");
   const [scheduling, setScheduling] = useState(false);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && channelId) {
       fetchTemplates();
+      fetchOrganizationId();
     }
   }, [isOpen, channelId]);
+
+  const fetchOrganizationId = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profile?.organization_id) {
+      setOrganizationId(profile.organization_id);
+    }
+  };
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -132,6 +147,11 @@ export const ScheduleMessageDialog = ({
       return;
     }
 
+    if (!channelId) {
+      toast.error("Canal não selecionado");
+      return;
+    }
+
     const [hours, minutes] = time.split(":").map(Number);
     const scheduledDate = setMinutes(setHours(date, hours), minutes);
 
@@ -140,11 +160,11 @@ export const ScheduleMessageDialog = ({
       return;
     }
 
+    // Check if all variables are filled
     const params = selectedTemplate.variables?.map((_, index) => 
       variableValues[`var_${index}`] || ""
     ) || [];
-
-    // Check if all variables are filled
+    
     const hasEmptyVars = params.some(p => !p.trim());
     if (hasEmptyVars && (selectedTemplate.variables?.length || 0) > 0) {
       toast.error("Preencha todas as variáveis do template");
@@ -154,11 +174,33 @@ export const ScheduleMessageDialog = ({
     setScheduling(true);
     
     try {
-      await onSchedule({
-        templateName: selectedTemplate.name,
-        templateParams: params,
-        scheduledAt: scheduledDate,
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      // Build variable values object for storage
+      const storedVariables: Record<string, string> = {};
+      selectedTemplate.variables?.forEach((_, index) => {
+        storedVariables[`${index + 1}`] = variableValues[`var_${index}`] || "";
       });
+
+      // Insert into scheduled_messages
+      const { error } = await supabase
+        .from("scheduled_messages")
+        .insert({
+          organization_id: organizationId,
+          channel_id: channelId,
+          lead_id: leadId || null,
+          template_id: selectedTemplate.id,
+          destination_phone: contactPhone,
+          destination_name: contactName || null,
+          variable_values: storedVariables,
+          scheduled_at: scheduledDate.toISOString(),
+          status: "pending",
+          created_by: user.id
+        });
+
+      if (error) throw error;
       
       toast.success("Mensagem agendada com sucesso!", {
         description: `Template "${selectedTemplate.name}" será enviado em ${format(scheduledDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
@@ -167,6 +209,7 @@ export const ScheduleMessageDialog = ({
       resetForm();
       onClose();
     } catch (error) {
+      console.error("Error scheduling message:", error);
       toast.error("Erro ao agendar mensagem");
     } finally {
       setScheduling(false);

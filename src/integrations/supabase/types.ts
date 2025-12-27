@@ -1741,6 +1741,89 @@ export type Database = {
           },
         ]
       }
+      scheduled_messages: {
+        Row: {
+          channel_id: string
+          created_at: string
+          created_by: string
+          destination_name: string | null
+          destination_phone: string
+          error_message: string | null
+          id: string
+          lead_id: string | null
+          organization_id: string | null
+          scheduled_at: string
+          sent_at: string | null
+          status: string
+          template_id: string
+          updated_at: string
+          variable_values: Json | null
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          created_by: string
+          destination_name?: string | null
+          destination_phone: string
+          error_message?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id?: string | null
+          scheduled_at: string
+          sent_at?: string | null
+          status?: string
+          template_id: string
+          updated_at?: string
+          variable_values?: Json | null
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          created_by?: string
+          destination_name?: string | null
+          destination_phone?: string
+          error_message?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+          template_id?: string
+          updated_at?: string
+          variable_values?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sectors: {
         Row: {
           created_at: string
