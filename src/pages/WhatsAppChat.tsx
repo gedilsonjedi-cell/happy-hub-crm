@@ -481,7 +481,7 @@ const WhatsAppChat = () => {
   useEffect(() => {
     if (channels.length === 0) return;
 
-    // Create subscriptions for all channels
+    // Create subscriptions for all channels - both INSERT and UPDATE events
     const channelSubscriptions = channels.map(ch => 
       supabase
         .channel(`whatsapp-messages-${ch.id}`)
@@ -606,6 +606,26 @@ const WhatsAppChat = () => {
               }
             });
           }
+        }
+      )
+      .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `channel_id=eq.${ch.id}`
+          },
+        (payload) => {
+          console.log('Message status updated:', payload);
+          const updatedMsg = payload.new as Message;
+          
+          // Update the message status in the current messages list
+          setMessages(prev => prev.map(m => 
+            m.message_id === updatedMsg.message_id 
+              ? { ...m, status: updatedMsg.status }
+              : m
+          ));
         }
       )
       .subscribe()
