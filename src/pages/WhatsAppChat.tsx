@@ -498,9 +498,28 @@ const WhatsAppChat = () => {
     fetchContactTags();
   }, [selectedConversation?.phone]);
 
+  // Ref to track selected conversation without causing re-subscriptions
+  const selectedConversationRef = useRef<Conversation | null>(null);
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation;
+  }, [selectedConversation]);
+
+  // Stable refs for callbacks to avoid re-subscriptions
+  const showNotificationRef = useRef(showNotification);
+  const soundEnabledRef = useRef(soundEnabled);
+  const playNotificationSoundRef = useRef(playNotificationSound);
+  
+  useEffect(() => {
+    showNotificationRef.current = showNotification;
+    soundEnabledRef.current = soundEnabled;
+    playNotificationSoundRef.current = playNotificationSound;
+  }, [showNotification, soundEnabled, playNotificationSound]);
+
   // Real-time subscription for new messages - listen to all channels
   useEffect(() => {
     if (channels.length === 0) return;
+
+    console.log("[WhatsAppChat] Setting up realtime subscriptions for", channels.length, "channels");
 
     // Create subscriptions for all channels - both INSERT and UPDATE events
     const channelSubscriptions = channels.map(ch => 
@@ -533,8 +552,11 @@ const WhatsAppChat = () => {
           
           // Normalize phone for comparison
           const normalizedContactPhone = contactPhone.replace(/\D/g, '');
-          const normalizedSelectedPhone = selectedConversation?.phone.replace(/\D/g, '') || '';
-          const selectedChannelId = selectedConversation?.channelId || '';
+          
+          // Use refs to get current values without causing re-subscriptions
+          const currentSelectedConv = selectedConversationRef.current;
+          const normalizedSelectedPhone = currentSelectedConv?.phone.replace(/\D/g, '') || '';
+          const selectedChannelId = currentSelectedConv?.channelId || '';
           
           // Create conversation keys for comparison (channelId + phone)
           const msgConversationKey = `${newMsg.channel_id}_${normalizedContactPhone}`;
@@ -542,11 +564,11 @@ const WhatsAppChat = () => {
           
           // Show notification only for inbound
           if (newMsg.direction === "inbound") {
-            showNotification(newMsg);
+            showNotificationRef.current(newMsg);
             
             // Play sound
-            if (soundEnabled) {
-              playNotificationSound();
+            if (soundEnabledRef.current) {
+              playNotificationSoundRef.current();
               toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
                 description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
               });
@@ -592,12 +614,25 @@ const WhatsAppChat = () => {
                 c.phone.replace(/\D/g, '') === normalizedContactPhone
               );
               if (existing) {
+                // Check if anything actually changed to avoid unnecessary updates
+                const msgTime = new Date(newMsg.created_at).getTime();
+                const existingTime = new Date(existing.lastMessageTime).getTime();
+                if (msgTime <= existingTime && existing.lastMessage === (newMsg.content || "")) {
+                  return prev; // No change needed
+                }
+                
                 // If archived and new inbound message comes, move to in_progress
                 let newStatus = existing.status;
                 if (existing.status === "archived") {
                   newStatus = "in_progress";
-                  updateConversationStatus(`${existing.channelId}_${existing.phone}`, "in_progress");
+                  // Update status in localStorage
+                  setConversationStatuses(prevStatuses => ({
+                    ...prevStatuses,
+                    [`${existing.channelId}_${existing.phone.replace(/\D/g, '')}`]: "in_progress"
+                  }));
                 }
+                
+                const isCurrentConversation = selectedConversationKey === msgConversationKey;
                 const updated = prev.map(c => 
                   c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
                     ? { 
@@ -605,15 +640,13 @@ const WhatsAppChat = () => {
                         lastMessage: newMsg.content || "", 
                         lastMessageTime: newMsg.created_at,
                         lastInboundTime: newMsg.created_at,
-                        unreadCount: selectedConversationKey !== msgConversationKey
-                          ? c.unreadCount + 1 
-                          : c.unreadCount,
+                        unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
                         status: newStatus,
-                        // Always prefer WhatsApp name over existing/fictitious name
                         name: contactName ? contactName : c.name
                       }
                     : c
                 );
+                
                 // Only sort if the updated conversation isn't already at the top
                 const updatedIndex = updated.findIndex(c => 
                   c.channelId === newMsg.channel_id && 
@@ -665,9 +698,10 @@ const WhatsAppChat = () => {
     );
 
     return () => {
+      console.log("[WhatsAppChat] Cleaning up realtime subscriptions");
       channelSubscriptions.forEach(sub => supabase.removeChannel(sub));
     };
-  }, [channels, selectedConversation, showNotification, soundEnabled, playNotificationSound]);
+  }, [channels]); // Only re-subscribe when channels change, not when selectedConversation changes
 
   // Scroll to bottom when messages change
   useEffect(() => {
