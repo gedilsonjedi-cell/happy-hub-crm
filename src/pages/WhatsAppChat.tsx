@@ -1188,9 +1188,9 @@ const WhatsAppChat = () => {
       const publicUrl = urlData.publicUrl;
       console.log('Audio uploaded, public URL:', publicUrl);
 
-      // Send as audio message
+      // Send as PTT (Push To Talk / voice message) for proper WhatsApp voice message format
       await handleSendMedia({
-        mediaType: 'audio',
+        mediaType: 'ptt',
         mediaUrl: publicUrl,
         fileName: `audio.${extension}`
       });
