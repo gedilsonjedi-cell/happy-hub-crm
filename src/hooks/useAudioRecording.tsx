@@ -8,54 +8,22 @@ interface UseAudioRecordingReturn {
   cancelRecording: () => void;
 }
 
-// Convert audio buffer to MP3 using lamejs
-const convertToMp3 = async (audioBuffer: AudioBuffer): Promise<Blob> => {
-  // @ts-ignore - lamejs doesn't have proper types
-  const lamejs = await import('lamejs');
-  
-  const mp3Encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, 128);
-  const samples = audioBuffer.getChannelData(0);
-  
-  // Convert float samples to 16-bit PCM
-  const sampleBlockSize = 1152;
-  const mp3Data: ArrayBuffer[] = [];
-  
-  const floatTo16BitPCM = (float32Array: Float32Array): Int16Array => {
-    const int16Array = new Int16Array(float32Array.length);
-    for (let i = 0; i < float32Array.length; i++) {
-      const s = Math.max(-1, Math.min(1, float32Array[i]));
-      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-    }
-    return int16Array;
-  };
-  
-  const samples16 = floatTo16BitPCM(samples);
-  
-  for (let i = 0; i < samples16.length; i += sampleBlockSize) {
-    const sampleChunk = samples16.subarray(i, i + sampleBlockSize);
-    const mp3buf = mp3Encoder.encodeBuffer(sampleChunk);
-    if (mp3buf.length > 0) {
-      // Convert Int8Array to ArrayBuffer
-      const buffer = new ArrayBuffer(mp3buf.length);
-      const view = new Uint8Array(buffer);
-      for (let j = 0; j < mp3buf.length; j++) {
-        view[j] = mp3buf[j];
-      }
-      mp3Data.push(buffer);
-    }
+// Get the best supported audio format for WhatsApp
+// WhatsApp supports: AAC, AMR, MP3, M4A, OGG (with OPUS codec)
+const getBestMimeType = (): { mimeType: string; extension: string } => {
+  // Prefer OGG with OPUS as it's natively supported by WhatsApp
+  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+    return { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg' };
   }
-  
-  const mp3buf = mp3Encoder.flush();
-  if (mp3buf.length > 0) {
-    const buffer = new ArrayBuffer(mp3buf.length);
-    const view = new Uint8Array(buffer);
-    for (let j = 0; j < mp3buf.length; j++) {
-      view[j] = mp3buf[j];
-    }
-    mp3Data.push(buffer);
+  // Some browsers support mp4/aac
+  if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    return { mimeType: 'audio/mp4', extension: 'm4a' };
   }
-  
-  return new Blob(mp3Data, { type: 'audio/mp3' });
+  // Fallback to webm (will need server-side conversion or may work as audio file)
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+    return { mimeType: 'audio/webm;codecs=opus', extension: 'webm' };
+  }
+  return { mimeType: 'audio/webm', extension: 'webm' };
 };
 
 export const useAudioRecording = (): UseAudioRecordingReturn => {
@@ -66,28 +34,30 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const formatRef = useRef<{ mimeType: string; extension: string }>({ mimeType: 'audio/webm', extension: 'webm' });
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           channelCount: 1,
-          sampleRate: 44100,
+          sampleRate: 48000, // Higher sample rate for better quality
           echoCancellation: true,
           noiseSuppression: true
         } 
       });
       streamRef.current = stream;
       
-      // Use any supported format - we'll convert to MP3 later
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' 
-        : 'audio/webm';
+      // Get the best format
+      const format = getBestMimeType();
+      formatRef.current = format;
       
-      console.log('Recording with mimeType:', mimeType);
+      console.log('Recording with format:', format);
       
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: format.mimeType,
+        audioBitsPerSecond: 128000 // 128kbps for good quality
+      });
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -98,7 +68,8 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         }
       };
       
-      mediaRecorder.start(100);
+      // Collect data more frequently for better responsiveness
+      mediaRecorder.start(250);
       setIsRecording(true);
       setRecordingDuration(0);
       
@@ -119,8 +90,8 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         return;
       }
 
-      mediaRecorderRef.current.onstop = async () => {
-        // Stop all tracks first
+      mediaRecorderRef.current.onstop = () => {
+        // Stop all tracks
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
@@ -135,33 +106,27 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         setIsRecording(false);
         setRecordingDuration(0);
 
-        try {
-          // Create blob from recorded chunks
-          const webmBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          audioChunksRef.current = [];
-          
-          console.log('Recorded webm blob size:', webmBlob.size);
-
-          // Convert webm to MP3 for WhatsApp compatibility
-          const audioContext = new AudioContext();
-          const arrayBuffer = await webmBlob.arrayBuffer();
-          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-          
-          console.log('Decoded audio buffer:', audioBuffer.duration, 'seconds');
-          
-          const mp3Blob = await convertToMp3(audioBuffer);
-          console.log('Converted to MP3, size:', mp3Blob.size);
-          
-          audioContext.close();
-          resolve(mp3Blob);
-          
-        } catch (error) {
-          console.error('Error converting audio:', error);
-          // Fallback: return original webm if conversion fails
-          const fallbackBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          audioChunksRef.current = [];
-          resolve(fallbackBlob);
+        // Create blob from recorded chunks
+        const chunks = audioChunksRef.current;
+        const format = formatRef.current;
+        
+        if (chunks.length === 0) {
+          console.error('No audio chunks recorded');
+          resolve(null);
+          return;
         }
+
+        const audioBlob = new Blob(chunks, { type: format.mimeType });
+        audioChunksRef.current = [];
+        
+        console.log('Recording completed:', {
+          format: format.mimeType,
+          extension: format.extension,
+          size: audioBlob.size,
+          chunks: chunks.length
+        });
+
+        resolve(audioBlob);
       };
 
       mediaRecorderRef.current.stop();

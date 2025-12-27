@@ -1068,17 +1068,39 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // The audio should now be in MP3 format from the recording hook
-      const mimeType = audioBlob.type || 'audio/mp3';
-      const extension = mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3' : 
-                       mimeType.includes('ogg') ? 'ogg' : 
-                       mimeType.includes('m4a') || mimeType.includes('mp4') ? 'm4a' : 'mp3';
+      // Get the format from the blob
+      const mimeType = audioBlob.type || 'audio/ogg';
+      
+      // Determine extension based on mime type
+      let extension = 'ogg';
+      if (mimeType.includes('ogg')) {
+        extension = 'ogg';
+      } else if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+        extension = 'm4a';
+      } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+        extension = 'mp3';
+      } else if (mimeType.includes('webm')) {
+        extension = 'webm';
+      }
       
       // Generate unique file name
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
+      const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('Uploading voice recording:', { mimeType, extension, fileName, blobSize: audioBlob.size });
+      console.log('Uploading voice recording:', { 
+        mimeType, 
+        extension, 
+        fileName, 
+        blobSize: audioBlob.size 
+      });
+
+      // Verify blob is not empty
+      if (audioBlob.size === 0) {
+        console.error('Audio blob is empty!');
+        toast.error('Erro: gravação vazia');
+        setUploadingMedia(false);
+        return;
+      }
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
@@ -1102,6 +1124,7 @@ const WhatsAppChat = () => {
         .getPublicUrl(filePath);
 
       const publicUrl = urlData.publicUrl;
+      console.log('Audio uploaded, public URL:', publicUrl);
 
       // Send as voice/ptt (push-to-talk) message
       await handleSendMedia({
