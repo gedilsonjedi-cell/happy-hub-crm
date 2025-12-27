@@ -39,11 +39,14 @@ async function uploadMediaToMeta(
       filename = 'audio.m4a';
     } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
       filename = 'audio.mp3';
-    } else if (mimeType.includes('webm')) {
-      filename = 'audio.webm';
+    } else if (mimeType === 'audio/opus') {
+      // OPUS codec - use .opus extension
+      filename = 'audio.opus';
     } else if (mimeType.includes('ogg')) {
       filename = 'audio.ogg';
     }
+    
+    console.log('Creating blob with:', { mimeType, filename });
     
     // Create a proper File/Blob for upload
     const file = new Blob([arrayBuffer], { type: mimeType });
@@ -347,26 +350,33 @@ Deno.serve(async (req) => {
           break;
         case 'ptt':
         case 'voice':
-          // Voice/PTT messages - upload to Meta first to avoid format issues
-          // Determine the mime type from the URL
+          // Voice/PTT messages - upload to Meta first
+          // IMPORTANT: WebM with OPUS codec must be sent as audio/ogg or audio/opus
+          // because Meta doesn't accept audio/webm but the OPUS codec is the same
           let audioMimeType = 'audio/ogg';
+          let audioFilename = 'audio.ogg';
+          
           if (mediaUrl.includes('.m4a')) {
             audioMimeType = 'audio/mp4';
+            audioFilename = 'audio.m4a';
           } else if (mediaUrl.includes('.mp3')) {
             audioMimeType = 'audio/mpeg';
+            audioFilename = 'audio.mp3';
           } else if (mediaUrl.includes('.webm')) {
-            audioMimeType = 'audio/webm';
+            // WebM with OPUS codec - send as audio/opus which Meta accepts
+            audioMimeType = 'audio/opus';
+            audioFilename = 'audio.opus';
           } else if (mediaUrl.includes('.ogg')) {
             audioMimeType = 'audio/ogg';
+            audioFilename = 'audio.ogg';
           }
           
-          console.log('Processing voice message, uploading to Meta first...');
+          console.log('Processing voice message:', { mediaUrl, audioMimeType, audioFilename });
           
           // Upload to Meta to get media ID
           const mediaId = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, audioMimeType);
           
           if (mediaId) {
-            // Use media ID instead of link
             messagePayload = {
               ...messagePayload,
               type: 'audio',
@@ -376,7 +386,7 @@ Deno.serve(async (req) => {
             };
             console.log('Sending audio with media ID:', mediaId);
           } else {
-            // Fallback: try with link (may fail for some formats)
+            // Fallback: try with link
             console.log('Media upload failed, falling back to link');
             messagePayload = {
               ...messagePayload,
