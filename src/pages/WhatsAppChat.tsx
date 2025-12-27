@@ -69,7 +69,6 @@ import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineS
 import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
-import { convertToOgg } from "@/lib/audioConverter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1063,7 +1062,6 @@ const WhatsAppChat = () => {
     }
 
     setUploadingMedia(true);
-    toast.info("Convertendo áudio...");
 
     try {
       // Get user for organization
@@ -1078,36 +1076,35 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Convert audio to OGG format using FFmpeg
-      console.log('Converting audio to OGG format...');
-      let convertedBlob: Blob;
-      try {
-        convertedBlob = await convertToOgg(audioBlob);
-        toast.dismiss();
-      } catch (conversionError) {
-        console.error('Audio conversion failed:', conversionError);
-        toast.error('Erro ao converter áudio. Tente novamente.');
-        setUploadingMedia(false);
-        return;
+      // Determine file extension based on blob type
+      let extension = 'webm';
+      let contentType = audioBlob.type || 'audio/webm';
+      
+      if (contentType.includes('ogg')) {
+        extension = 'ogg';
+      } else if (contentType.includes('mp4') || contentType.includes('m4a')) {
+        extension = 'm4a';
+      } else if (contentType.includes('webm')) {
+        extension = 'webm';
       }
 
-      // Generate unique file name with OGG extension
-      const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`;
+      // Generate unique file name
+      const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('Uploading converted voice recording:', { 
-        originalSize: audioBlob.size,
-        convertedSize: convertedBlob.size,
+      console.log('Uploading voice recording:', { 
+        size: audioBlob.size,
+        type: contentType,
         fileName 
       });
 
-      // Upload to Supabase Storage with correct content type
+      // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
-        .upload(filePath, convertedBlob, {
+        .upload(filePath, audioBlob, {
           cacheControl: '3600',
           upsert: false,
-          contentType: 'audio/ogg'
+          contentType
         });
 
       if (uploadError) {
@@ -1123,13 +1120,13 @@ const WhatsAppChat = () => {
         .getPublicUrl(filePath);
 
       const publicUrl = urlData.publicUrl;
-      console.log('Converted audio uploaded, public URL:', publicUrl);
+      console.log('Audio uploaded, public URL:', publicUrl);
 
       // Send as audio message
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
-        fileName: 'audio.ogg'
+        fileName: `audio.${extension}`
       });
 
     } catch (error) {
