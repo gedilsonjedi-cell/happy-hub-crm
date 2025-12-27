@@ -1936,15 +1936,10 @@ const WhatsAppChat = () => {
         <ScheduleMessageDialog
           isOpen={showScheduleDialog}
           onClose={() => setShowScheduleDialog(false)}
+          contactPhone={selectedConversation.phone}
           contactName={selectedConversation?.name}
           channelId={selectedConversation?.channelId || null}
-          onSchedule={async (data) => {
-            // For now, just show a toast - full implementation would require a scheduled_messages table
-            toast.success("Template agendado!", {
-              description: `"${data.templateName}" será enviado em ${format(data.scheduledAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
-            });
-            // TODO: Implement actual scheduling with a database table and cron job
-          }}
+          leadId={null}
         />
       )}
 

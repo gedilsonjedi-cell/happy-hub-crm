@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.create-user-role]
 verify_jwt = true
+
+[functions.scheduled-message-sender]
+verify_jwt = false
