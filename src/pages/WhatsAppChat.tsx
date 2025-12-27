@@ -94,6 +94,13 @@ interface Message {
   metadata: Record<string, unknown> | null;
 }
 
+interface ConversationNote {
+  id: string;
+  content: string;
+  created_at: string;
+  created_by: string;
+}
+
 interface Conversation {
   phone: string;
   name: string | null;
@@ -163,6 +170,7 @@ const WhatsAppChat = () => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [templates, setTemplates] = useState<Map<string, { 
     content: string; 
@@ -441,63 +449,81 @@ const WhatsAppChat = () => {
     fetchConversations();
   }, [channels]); // Fetch when channels are loaded
 
-  // Fetch messages for selected conversation and mark as read
-  useEffect(() => {
-    const fetchMessages = async () => {
-      if (!selectedConversation) return;
+  // Fetch messages and notes for selected conversation and mark as read
+  const fetchMessagesAndNotes = async () => {
+    if (!selectedConversation) {
+      setConversationNotes([]);
+      return;
+    }
 
-      // Normalize the phone number for queries (remove non-digits)
-      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+    // Normalize the phone number for queries (remove non-digits)
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
 
-      // Use the channel from the conversation
-      const conversationChannelId = selectedConversation.channelId;
-      if (!conversationChannelId) return;
+    // Use the channel from the conversation
+    const conversationChannelId = selectedConversation.channelId;
+    if (!conversationChannelId) return;
 
-      // Fetch all messages for the channel, then filter client-side for more accurate matching
-      const { data, error } = await supabase
+    // Fetch messages and notes in parallel
+    const [messagesResult, notesResult] = await Promise.all([
+      supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", conversationChannelId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("conversation_notes")
+        .select("id, content, created_at, created_by")
+        .eq("channel_id", conversationChannelId)
+        .eq("contact_phone", normalizedPhone)
+        .order("created_at", { ascending: true })
+    ]);
 
-      if (!error && data) {
-        // Filter messages that belong to this conversation
-        const conversationMessages = data.filter((msg) => {
-          if (msg.direction === "inbound") {
-            // For inbound, match sender_phone (normalized)
-            const msgPhone = msg.sender_phone.replace(/\D/g, '');
-            return msgPhone === normalizedPhone;
-          } else {
-            // For outbound, match metadata.destination (normalized)
-            const metadata = msg.metadata as { destination?: string } | null;
-            const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
-            return destPhone === normalizedPhone;
-          }
-        });
-
-        setMessages(conversationMessages as Message[]);
-        
-        // Mark inbound messages as read
-        const unreadMessageIds = conversationMessages
-          .filter((msg) => msg.direction === "inbound" && msg.is_read === false)
-          .map((msg) => msg.id);
-        
-        if (unreadMessageIds.length > 0) {
-          await supabase
-            .from("whatsapp_messages")
-            .update({ is_read: true })
-            .in("id", unreadMessageIds);
+    if (!messagesResult.error && messagesResult.data) {
+      // Filter messages that belong to this conversation
+      const conversationMessages = messagesResult.data.filter((msg) => {
+        if (msg.direction === "inbound") {
+          // For inbound, match sender_phone (normalized)
+          const msgPhone = msg.sender_phone.replace(/\D/g, '');
+          return msgPhone === normalizedPhone;
+        } else {
+          // For outbound, match metadata.destination (normalized)
+          const metadata = msg.metadata as { destination?: string } | null;
+          const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
+          return destPhone === normalizedPhone;
         }
-      }
+      });
 
-      // Mark as in_progress when selected
-      if (selectedConversation.status === "pending") {
-        const key = `${selectedConversation.channelId || 'unknown'}_${selectedConversation.phone.replace(/\D/g, '')}`;
-        updateConversationStatus(key, "in_progress");
+      setMessages(conversationMessages as Message[]);
+      
+      // Mark inbound messages as read
+      const unreadMessageIds = conversationMessages
+        .filter((msg) => msg.direction === "inbound" && msg.is_read === false)
+        .map((msg) => msg.id);
+      
+      if (unreadMessageIds.length > 0) {
+        await supabase
+          .from("whatsapp_messages")
+          .update({ is_read: true })
+          .in("id", unreadMessageIds);
       }
-    };
+    }
 
-    fetchMessages();
+    // Set notes
+    if (!notesResult.error && notesResult.data) {
+      setConversationNotes(notesResult.data as ConversationNote[]);
+    } else {
+      setConversationNotes([]);
+    }
+
+    // Mark as in_progress when selected
+    if (selectedConversation.status === "pending") {
+      const key = `${selectedConversation.channelId || 'unknown'}_${selectedConversation.phone.replace(/\D/g, '')}`;
+      updateConversationStatus(key, "in_progress");
+    }
+  };
+
+  useEffect(() => {
+    fetchMessagesAndNotes();
   }, [selectedConversation]);
 
   // Fetch contact tags when conversation is selected
@@ -1811,46 +1837,81 @@ const WhatsAppChat = () => {
                 </div>
               </div>
 
-              {/* Messages */}
+              {/* Messages and Notes */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={cn(
-                        "flex",
-                        message.direction === "outbound" ? "justify-end" : "justify-start"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "max-w-[70%] rounded-lg px-4 py-2",
-                          message.direction === "outbound"
-                            ? "bg-emerald-700 text-white"
-                            : "bg-muted"
-                        )}
-                      >
-                        {renderMessageContent(message)}
-                        <div className={cn(
-                          "flex items-center justify-end gap-1 mt-1",
-                          message.direction === "outbound" ? "text-white/70" : "text-muted-foreground"
-                        )}>
-                          <span className="text-xs">{formatMessageTime(message.created_at)}</span>
-                          {message.direction === "outbound" && (
-                            message.status === "read" ? (
-                              <CheckCheck className="w-3 h-3 text-blue-400" />
-                            ) : message.status === "delivered" ? (
-                              <CheckCheck className="w-3 h-3" />
-                            ) : message.status === "sent" ? (
-                              <Check className="w-3 h-3" />
-                            ) : (
-                              <Clock className="w-3 h-3" />
-                            )
+                  {/* Combine messages and notes, sorted by created_at */}
+                  {(() => {
+                    type TimelineItem = 
+                      | { type: 'message'; data: Message }
+                      | { type: 'note'; data: ConversationNote };
+                    
+                    const timeline: TimelineItem[] = [
+                      ...messages.map(m => ({ type: 'message' as const, data: m })),
+                      ...conversationNotes.map(n => ({ type: 'note' as const, data: n }))
+                    ].sort((a, b) => 
+                      new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime()
+                    );
+
+                    return timeline.map((item) => {
+                      if (item.type === 'note') {
+                        const note = item.data;
+                        return (
+                          <div key={`note-${note.id}`} className="flex justify-center">
+                            <div className="bg-warning/10 border border-warning/30 rounded-lg px-4 py-2 max-w-[80%] animate-fade-in">
+                              <div className="flex items-center gap-2 text-warning mb-1">
+                                <StickyNote className="w-3 h-3" />
+                                <span className="text-xs font-medium">Nota interna</span>
+                              </div>
+                              <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
+                              <span className="text-xs text-muted-foreground mt-1 block">
+                                {formatMessageTime(note.created_at)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const message = item.data;
+                      return (
+                        <div
+                          key={message.id}
+                          className={cn(
+                            "flex",
+                            message.direction === "outbound" ? "justify-end" : "justify-start"
                           )}
+                        >
+                          <div
+                            className={cn(
+                              "max-w-[70%] rounded-lg px-4 py-2",
+                              message.direction === "outbound"
+                                ? "bg-emerald-700 text-white"
+                                : "bg-muted"
+                            )}
+                          >
+                            {renderMessageContent(message)}
+                            <div className={cn(
+                              "flex items-center justify-end gap-1 mt-1",
+                              message.direction === "outbound" ? "text-white/70" : "text-muted-foreground"
+                            )}>
+                              <span className="text-xs">{formatMessageTime(message.created_at)}</span>
+                              {message.direction === "outbound" && (
+                                message.status === "read" ? (
+                                  <CheckCheck className="w-3 h-3 text-blue-400" />
+                                ) : message.status === "delivered" ? (
+                                  <CheckCheck className="w-3 h-3" />
+                                ) : message.status === "sent" ? (
+                                  <Check className="w-3 h-3" />
+                                ) : (
+                                  <Clock className="w-3 h-3" />
+                                )
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    });
+                  })()}
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
@@ -2194,6 +2255,8 @@ const WhatsAppChat = () => {
           onClose={() => setShowNotesDialog(false)}
           contactPhone={selectedConversation.phone}
           contactName={selectedConversation?.name}
+          channelId={selectedConversation?.channelId}
+          onNoteAdded={fetchMessagesAndNotes}
         />
       )}
 

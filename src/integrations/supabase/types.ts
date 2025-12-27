@@ -788,6 +788,51 @@ export type Database = {
           },
         ]
       }
+      conversation_notes: {
+        Row: {
+          channel_id: string | null
+          contact_phone: string
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          contact_phone: string
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          contact_phone?: string
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_notes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_costs: {
         Row: {
           campaign_id: string | null
