@@ -55,7 +55,6 @@ import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
-import { MediaUploadDialog } from "@/components/whatsapp/MediaUploadDialog";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
@@ -177,7 +176,6 @@ const WhatsAppChat = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
-  const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showManualSendDialog, setShowManualSendDialog] = useState(false);
   const [manualPhoneInput, setManualPhoneInput] = useState("");
@@ -191,7 +189,12 @@ const WhatsAppChat = () => {
   const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   
   const playNotificationSound = useNotificationSound();
 
@@ -953,6 +956,67 @@ const WhatsAppChat = () => {
     setSendingMessage(false);
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, mediaType: "image" | "video" | "audio" | "document") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input
+    e.target.value = '';
+
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    setUploadingMedia(true);
+
+    try {
+      // Get user for organization
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      // Generate unique file name
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        toast.error('Erro ao fazer upload do arquivo');
+        setUploadingMedia(false);
+        return;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('whatsapp-media')
+        .getPublicUrl(filePath);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Send the media
+      await handleSendMedia({
+        mediaType,
+        mediaUrl: publicUrl,
+        fileName: file.name
+      });
+
+    } catch (error) {
+      console.error('File upload error:', error);
+      toast.error('Erro ao enviar arquivo');
+    }
+
+    setUploadingMedia(false);
+  };
+
   const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
     const conversationChannelId = selectedConversation?.channelId;
     if (!selectedConversation || !conversationChannelId) return;
@@ -1706,41 +1770,29 @@ const WhatsAppChat = () => {
                         Enviar mídia
                       </DropdownMenuLabel>
                       <DropdownMenuItem 
-                        onClick={() => {
-                          setMediaDialogType("image");
-                          setShowMediaDialog(true);
-                        }} 
-                        disabled={isWindowExpired}
+                        onClick={() => imageInputRef.current?.click()} 
+                        disabled={isWindowExpired || uploadingMedia}
                       >
                         <Image className="w-4 h-4 mr-2 text-emerald-500" />
                         Imagem
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => {
-                          setMediaDialogType("video");
-                          setShowMediaDialog(true);
-                        }} 
-                        disabled={isWindowExpired}
+                        onClick={() => videoInputRef.current?.click()} 
+                        disabled={isWindowExpired || uploadingMedia}
                       >
                         <Video className="w-4 h-4 mr-2 text-blue-500" />
                         Vídeo
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => {
-                          setMediaDialogType("audio");
-                          setShowMediaDialog(true);
-                        }} 
-                        disabled={isWindowExpired}
+                        onClick={() => audioInputRef.current?.click()} 
+                        disabled={isWindowExpired || uploadingMedia}
                       >
                         <Music className="w-4 h-4 mr-2 text-purple-500" />
                         Áudio
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => {
-                          setMediaDialogType("document");
-                          setShowMediaDialog(true);
-                        }} 
-                        disabled={isWindowExpired}
+                        onClick={() => documentInputRef.current?.click()} 
+                        disabled={isWindowExpired || uploadingMedia}
                       >
                         <File className="w-4 h-4 mr-2 text-orange-500" />
                         Documento
@@ -1832,11 +1884,34 @@ const WhatsAppChat = () => {
         onSelectResponse={(content) => setNewMessage(content)}
       />
 
-      {/* Media Upload Dialog */}
-      <MediaUploadDialog
-        isOpen={showMediaDialog}
-        onClose={() => setShowMediaDialog(false)}
-        onSend={handleSendMedia}
+      {/* Hidden file inputs for media upload */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        className="hidden"
+        onChange={(e) => handleFileSelect(e, "image")}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/mp4,video/3gpp,video/quicktime"
+        className="hidden"
+        onChange={(e) => handleFileSelect(e, "video")}
+      />
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/mpeg,audio/mp3,audio/ogg,audio/wav,audio/aac"
+        className="hidden"
+        onChange={(e) => handleFileSelect(e, "audio")}
+      />
+      <input
+        ref={documentInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+        className="hidden"
+        onChange={(e) => handleFileSelect(e, "document")}
       />
 
       {/* Template Selector */}
