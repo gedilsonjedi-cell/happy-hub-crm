@@ -38,7 +38,10 @@ import {
   File,
   CalendarClock,
   StickyNote,
-  Plus
+  Plus,
+  Mic,
+  Square,
+  X
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -65,6 +68,7 @@ import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
 import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineStageDialog";
 import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
+import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -197,6 +201,13 @@ const WhatsAppChat = () => {
   const documentInputRef = useRef<HTMLInputElement>(null);
   
   const playNotificationSound = useNotificationSound();
+  const { 
+    isRecording, 
+    recordingDuration, 
+    startRecording, 
+    stopRecording, 
+    cancelRecording 
+  } = useAudioRecording();
 
   // Stored conversation statuses (in localStorage to persist across sessions)
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>(() => {
@@ -1017,6 +1028,93 @@ const WhatsAppChat = () => {
     setUploadingMedia(false);
   };
 
+  // Format recording duration as MM:SS
+  const formatRecordingDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartVoiceRecording = async () => {
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    try {
+      await startRecording();
+    } catch (error) {
+      console.error('Recording error:', error);
+      toast.error("Não foi possível acessar o microfone");
+    }
+  };
+
+  const handleSendVoiceRecording = async () => {
+    const audioBlob = await stopRecording();
+    if (!audioBlob) {
+      toast.error("Erro ao gravar áudio");
+      return;
+    }
+
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    setUploadingMedia(true);
+
+    try {
+      // Get user for organization
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      // Generate unique file name
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.webm`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, audioBlob, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: 'audio/webm'
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        toast.error('Erro ao fazer upload do áudio');
+        setUploadingMedia(false);
+        return;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('whatsapp-media')
+        .getPublicUrl(filePath);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Send the audio
+      await handleSendMedia({
+        mediaType: 'audio',
+        mediaUrl: publicUrl,
+        fileName: 'audio.webm'
+      });
+
+    } catch (error) {
+      console.error('Voice recording error:', error);
+      toast.error('Erro ao enviar áudio');
+    }
+
+    setUploadingMedia(false);
+  };
+
+  const handleCancelVoiceRecording = () => {
+    cancelRecording();
+    toast.info("Gravação cancelada");
+  };
+
   const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
     const conversationChannelId = selectedConversation?.channelId;
     if (!selectedConversation || !conversationChannelId) return;
@@ -1826,41 +1924,93 @@ const WhatsAppChat = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Textarea
-                    placeholder={isWindowExpired ? "Use um template para iniciar a conversa..." : "Digite sua mensagem... (use /atalho para respostas rápidas)"}
-                    className={cn(
-                      "min-h-[44px] max-h-32 resize-none bg-muted/30",
-                      isWindowExpired && "opacity-50 cursor-not-allowed"
-                    )}
-                    value={newMessage}
-                    onChange={(e) => !isWindowExpired && setNewMessage(e.target.value)}
-                    disabled={isWindowExpired}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey && !isWindowExpired) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                  />
-                  {isWindowExpired ? (
-                    <Button 
-                      onClick={() => setShowTemplateSelector(true)}
-                      className="h-11 px-4"
-                    >
-                      <FileText className="w-5 h-5" />
-                    </Button>
+                  
+                  {/* Voice Recording UI */}
+                  {isRecording ? (
+                    <div className="flex items-center gap-3 flex-1 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 border border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                        <span className="text-red-600 dark:text-red-400 font-medium">
+                          Gravando... {formatRecordingDuration(recordingDuration)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleCancelVoiceRecording}
+                          className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50"
+                          title="Cancelar"
+                        >
+                          <X className="w-5 h-5" />
+                        </Button>
+                        <Button
+                          onClick={handleSendVoiceRecording}
+                          disabled={uploadingMedia}
+                          className="h-9 px-4 bg-green-600 hover:bg-green-700"
+                          title="Enviar áudio"
+                        >
+                          {uploadingMedia ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Send className="w-5 h-5" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
-                    <Button 
-                      onClick={handleSendMessage} 
-                      disabled={!newMessage.trim() || sendingMessage}
-                      className="h-11 px-4"
-                    >
-                      {sendingMessage ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
+                    <>
+                      <Textarea
+                        placeholder={isWindowExpired ? "Use um template para iniciar a conversa..." : "Digite sua mensagem... (use /atalho para respostas rápidas)"}
+                        className={cn(
+                          "min-h-[44px] max-h-32 resize-none bg-muted/30",
+                          isWindowExpired && "opacity-50 cursor-not-allowed"
+                        )}
+                        value={newMessage}
+                        onChange={(e) => !isWindowExpired && setNewMessage(e.target.value)}
+                        disabled={isWindowExpired}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                      />
+                      {isWindowExpired ? (
+                        <Button 
+                          onClick={() => setShowTemplateSelector(true)}
+                          className="h-11 px-4"
+                        >
+                          <FileText className="w-5 h-5" />
+                        </Button>
+                      ) : newMessage.trim() ? (
+                        <Button 
+                          onClick={handleSendMessage} 
+                          disabled={sendingMessage}
+                          className="h-11 px-4"
+                        >
+                          {sendingMessage ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Send className="w-5 h-5" />
+                          )}
+                        </Button>
                       ) : (
-                        <Send className="w-5 h-5" />
+                        <Button 
+                          onClick={handleStartVoiceRecording}
+                          disabled={uploadingMedia}
+                          variant="default"
+                          className="h-11 px-4 bg-green-600 hover:bg-green-700"
+                          title="Gravar áudio"
+                        >
+                          {uploadingMedia ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Mic className="w-5 h-5" />
+                          )}
+                        </Button>
                       )}
-                    </Button>
+                    </>
                   )}
                 </div>
               </div>
