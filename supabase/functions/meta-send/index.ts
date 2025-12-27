@@ -72,10 +72,14 @@ Deno.serve(async (req) => {
       templateParams,
       templateLanguage = 'pt_BR',
       mediaType,
+      messageType,
       mediaUrl,
       mediaCaption,
       fileName
     } = await req.json();
+
+    // Support both mediaType and messageType parameters
+    const effectiveMediaType = mediaType || messageType;
 
     if (!channelId || !destination) {
       return new Response(
@@ -205,7 +209,7 @@ Deno.serve(async (req) => {
       destination: cleanDestination,
       hasTemplate: !!templateName,
       hasMedia: !!mediaUrl,
-      mediaType,
+      mediaType: effectiveMediaType,
       pricePerMessage
     });
 
@@ -240,7 +244,7 @@ Deno.serve(async (req) => {
       };
     } else if (mediaUrl) {
       // Send media message
-      switch (mediaType) {
+      switch (effectiveMediaType) {
         case 'image':
           messagePayload = {
             ...messagePayload,
@@ -387,8 +391,8 @@ Deno.serve(async (req) => {
       storedContent = `Template: ${templateName}`;
       storedMessageType = 'template';
     } else if (mediaUrl) {
-      storedContent = mediaCaption || `[${mediaType || 'file'}]`;
-      storedMessageType = mediaType || 'file';
+      storedContent = mediaCaption || `[${effectiveMediaType || 'file'}]`;
+      storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
     }
 
     // Store outbound message in database
@@ -409,7 +413,7 @@ Deno.serve(async (req) => {
           templateName, 
           templateParams,
           templateLanguage,
-          mediaType,
+          mediaType: effectiveMediaType,
           fileName,
           cost: pricePerMessage,
           provider: 'meta'
