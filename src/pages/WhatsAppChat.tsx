@@ -206,7 +206,8 @@ const WhatsAppChat = () => {
     recordingDuration, 
     startRecording, 
     stopRecording, 
-    cancelRecording 
+    cancelRecording,
+    getFormat
   } = useAudioRecording();
 
   // Stored conversation statuses (in localStorage to persist across sessions)
@@ -1068,18 +1069,17 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // Get the format from the blob - should always be OGG now
-      const mimeType = audioBlob.type || 'audio/ogg';
-      
-      // Always use OGG extension since we're recording in OGG format
-      const extension = 'ogg';
+      // Get the format info from the recording hook
+      const format = getFormat();
+      const extension = format.extension;
+      const contentType = format.storageMimeType;
       
       // Generate unique file name
       const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
       console.log('Uploading voice recording:', { 
-        mimeType, 
+        contentType, 
         extension, 
         fileName, 
         blobSize: audioBlob.size 
@@ -1093,13 +1093,13 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage with correct content type
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
         .upload(filePath, audioBlob, {
           cacheControl: '3600',
           upsert: false,
-          contentType: mimeType
+          contentType: contentType
         });
 
       if (uploadError) {
@@ -1117,9 +1117,10 @@ const WhatsAppChat = () => {
       const publicUrl = urlData.publicUrl;
       console.log('Audio uploaded, public URL:', publicUrl);
 
-      // Send as voice/ptt (push-to-talk) message
+      // Send as audio message (using 'audio' type which sends as regular audio file)
+      // PTT/voice messages require specific formats that browsers can't reliably produce
       await handleSendMedia({
-        mediaType: 'ptt', // Use 'ptt' for voice messages
+        mediaType: 'audio', // Send as regular audio, not PTT
         mediaUrl: publicUrl,
         fileName: `audio.${extension}`
       });
