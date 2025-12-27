@@ -68,6 +68,7 @@ import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
 import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineStageDialog";
 import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
+import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
@@ -190,6 +191,7 @@ const WhatsAppChat = () => {
   const [showPipelineStageDialog, setShowPipelineStageDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showNotesDialog, setShowNotesDialog] = useState(false);
+  const [showLeadDetailsDialog, setShowLeadDetailsDialog] = useState(false);
   const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
@@ -1496,21 +1498,6 @@ const WhatsAppChat = () => {
               </Button>
             </div>
             
-            {/* Atendimentos Fechados */}
-            <Button
-              variant={filterStatus === "resolved" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setFilterStatus("resolved")}
-              className="w-full text-xs h-7 gap-1.5 justify-start text-muted-foreground hover:text-foreground"
-            >
-              <CheckCircle2 className="w-3 h-3 shrink-0" />
-              Atendimentos Fechados
-              {resolvedCount > 0 && (
-                <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0 ml-auto">
-                  {resolvedCount}
-                </Badge>
-              )}
-            </Button>
           </div>
 
           {/* Conversations */}
@@ -1726,38 +1713,43 @@ const WhatsAppChat = () => {
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
-                        {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground">
-                        {selectedConversation.name || selectedConversation.phone}
-                      </h3>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {selectedConversation.phone}
-                      </p>
-                      {contactTags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {contactTags.slice(0, 3).map((tag) => (
-                            <Badge 
-                              key={tag} 
-                              variant="outline" 
-                              className="text-[10px] h-4 px-1.5 bg-muted/50"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                          {contactTags.length > 3 && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
-                              +{contactTags.length - 3}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setShowLeadDetailsDialog(true)}
+                      className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      <Avatar className="w-10 h-10">
+                        <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
+                          {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <h3 className="font-semibold text-foreground">
+                          {selectedConversation.name || selectedConversation.phone}
+                        </h3>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {selectedConversation.phone}
+                        </p>
+                        {contactTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {contactTags.slice(0, 3).map((tag) => (
+                              <Badge 
+                                key={tag} 
+                                variant="outline" 
+                                className="text-[10px] h-4 px-1.5 bg-muted/50"
+                              >
+                                {tag}
+                              </Badge>
+                            ))}
+                            {contactTags.length > 3 && (
+                              <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
+                                +{contactTags.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </button>
                   </div>
                   <div className="flex items-center gap-2">
                   <Button
@@ -2202,6 +2194,16 @@ const WhatsAppChat = () => {
           onClose={() => setShowNotesDialog(false)}
           contactPhone={selectedConversation.phone}
           contactName={selectedConversation?.name}
+        />
+      )}
+
+      {/* Lead Details Dialog */}
+      {selectedConversation && (
+        <LeadDetailsDialog
+          open={showLeadDetailsDialog}
+          onOpenChange={setShowLeadDetailsDialog}
+          phone={selectedConversation.phone}
+          name={selectedConversation.name}
         />
       )}
     </MainLayout>
