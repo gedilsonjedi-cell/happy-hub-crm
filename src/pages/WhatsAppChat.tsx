@@ -1142,28 +1142,11 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // ALWAYS convert audio to real OGG/OPUS format using FFmpeg
-      // Browser MediaRecorder produces WebM even when we request OGG
-      // This ensures the file is a real OPUS file that WhatsApp accepts
-      let finalBlob: Blob;
+      // Upload the audio as-is (WebM with OPUS codec)
+      // The meta-send edge function will handle the conversion/upload to Meta
+      const finalBlob = audioBlob;
       
-      console.log('Original recording format:', audioBlob.type, 'size:', audioBlob.size);
-      
-      try {
-        toast.info("Convertendo áudio...");
-        const { convertToOgg } = await import('@/lib/audioConverter');
-        finalBlob = await convertToOgg(audioBlob);
-        console.log('Audio converted to OGG/OPUS:', {
-          originalSize: audioBlob.size,
-          convertedSize: finalBlob.size,
-          convertedType: finalBlob.type
-        });
-      } catch (conversionError) {
-        console.error('Audio conversion failed:', conversionError);
-        toast.error('Erro ao converter áudio');
-        setUploadingMedia(false);
-        return;
-      }
+      console.log('Recording format:', audioBlob.type, 'size:', audioBlob.size);
 
       // Generate unique file name - always use .ogg extension
       const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.ogg`;

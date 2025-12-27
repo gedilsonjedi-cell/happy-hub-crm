@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 interface UseAudioRecordingReturn {
   isRecording: boolean;
@@ -8,45 +8,44 @@ interface UseAudioRecordingReturn {
   cancelRecording: () => void;
 }
 
-// Get the best supported audio format for recording
-// Prioritize OGG/OPUS which is natively supported by WhatsApp
-const getBestMimeType = (): string => {
-  // OGG with OPUS - WhatsApp native format, best compatibility
-  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-    return 'audio/ogg;codecs=opus';
-  }
-  // Try WebM with OPUS - works on most browsers
-  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-    return 'audio/webm;codecs=opus';
-  }
-  // MP4/AAC - Safari (also supported by WhatsApp)
-  if (MediaRecorder.isTypeSupported('audio/mp4')) {
-    return 'audio/mp4';
-  }
-  // Plain WebM
-  if (MediaRecorder.isTypeSupported('audio/webm')) {
-    return 'audio/webm';
-  }
-  return 'audio/webm';
-};
-
-// Get file extension based on mime type
-const getExtensionFromMime = (mimeType: string): string => {
-  if (mimeType.includes('ogg')) return 'ogg';
-  if (mimeType.includes('mp4') || mimeType.includes('m4a')) return 'm4a';
-  if (mimeType.includes('webm')) return 'webm';
-  return 'ogg';
-};
-
 export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const mimeTypeRef = useRef<string>('audio/webm');
+  const opusRecorderLoadedRef = useRef<boolean>(false);
+  const OpusMediaRecorderRef = useRef<any>(null);
+  const workerOptionsRef = useRef<any>(null);
+
+  // Preload opus-media-recorder on mount
+  useEffect(() => {
+    const loadOpusRecorder = async () => {
+      try {
+        // Load opus-media-recorder dynamically
+        const OpusMediaRecorder = (await import('opus-media-recorder')).default;
+        OpusMediaRecorderRef.current = OpusMediaRecorder;
+        
+        // Configure worker options using CDN paths
+        workerOptionsRef.current = {
+          encoderWorkerFactory: () => {
+            return new Worker('https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/encoderWorker.umd.js');
+          },
+          OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/OggOpusEncoder.wasm',
+          WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/WebMOpusEncoder.wasm'
+        };
+        
+        opusRecorderLoadedRef.current = true;
+        console.log('OpusMediaRecorder loaded successfully');
+      } catch (error) {
+        console.warn('Failed to load OpusMediaRecorder, will fall back to native:', error);
+      }
+    };
+    
+    loadOpusRecorder();
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -60,21 +59,50 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       });
       streamRef.current = stream;
       
-      const mimeType = getBestMimeType();
-      mimeTypeRef.current = mimeType;
+      let mediaRecorder: any;
       
-      console.log('Recording with format:', mimeType);
+      // Try to use OpusMediaRecorder for real OGG/OPUS format
+      if (opusRecorderLoadedRef.current && OpusMediaRecorderRef.current && workerOptionsRef.current) {
+        try {
+          const OpusMediaRecorder = OpusMediaRecorderRef.current;
+          const options = { mimeType: 'audio/ogg' };
+          mediaRecorder = new OpusMediaRecorder(stream, options, workerOptionsRef.current);
+          console.log('Using OpusMediaRecorder for real OGG/OPUS format');
+        } catch (opusError) {
+          console.warn('Failed to create OpusMediaRecorder, falling back to native:', opusError);
+        }
+      }
       
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType,
-        audioBitsPerSecond: 128000
-      });
+      // Fall back to native MediaRecorder if OpusMediaRecorder failed
+      if (!mediaRecorder) {
+        // Try different formats in order of preference
+        const mimeTypes = [
+          'audio/ogg;codecs=opus',
+          'audio/webm;codecs=opus',
+          'audio/mp4',
+          'audio/webm'
+        ];
+        
+        let selectedMime = 'audio/webm';
+        for (const mime of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(mime)) {
+            selectedMime = mime;
+            break;
+          }
+        }
+        
+        console.log('Using native MediaRecorder with format:', selectedMime);
+        mediaRecorder = new MediaRecorder(stream, { 
+          mimeType: selectedMime,
+          audioBitsPerSecond: 128000
+        });
+      }
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+      mediaRecorder.ondataavailable = (event: any) => {
+        if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
@@ -115,7 +143,6 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         setRecordingDuration(0);
 
         const chunks = audioChunksRef.current;
-        const mimeType = mimeTypeRef.current;
         
         if (chunks.length === 0) {
           console.error('No audio chunks recorded');
@@ -123,12 +150,13 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
           return;
         }
 
-        const audioBlob = new Blob(chunks, { type: mimeType });
+        // Create blob with explicit OGG mime type
+        const audioBlob = new Blob(chunks, { type: 'audio/ogg' });
         audioChunksRef.current = [];
         
         console.log('Recording completed:', {
-          format: mimeType,
           size: audioBlob.size,
+          type: audioBlob.type,
           chunks: chunks.length
         });
 
