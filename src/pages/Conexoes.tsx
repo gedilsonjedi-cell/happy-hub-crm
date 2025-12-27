@@ -1048,7 +1048,7 @@ const Conexoes = () => {
         }}
       >
         <DialogContent 
-          className="sm:max-w-lg bg-card border-border" 
+          className="sm:max-w-lg bg-card border-border max-h-[90vh] overflow-y-auto" 
           onInteractOutside={(e) => (isFetchingPhones || isConnecting) && e.preventDefault()}
         >
           <DialogHeader>
