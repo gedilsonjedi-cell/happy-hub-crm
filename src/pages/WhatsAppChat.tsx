@@ -1068,20 +1068,11 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // Get the format from the blob
+      // Get the format from the blob - should always be OGG now
       const mimeType = audioBlob.type || 'audio/ogg';
       
-      // Determine extension based on mime type
-      let extension = 'ogg';
-      if (mimeType.includes('ogg')) {
-        extension = 'ogg';
-      } else if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
-        extension = 'm4a';
-      } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
-        extension = 'mp3';
-      } else if (mimeType.includes('webm')) {
-        extension = 'webm';
-      }
+      // Always use OGG extension since we're recording in OGG format
+      const extension = 'ogg';
       
       // Generate unique file name
       const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
