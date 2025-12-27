@@ -848,6 +848,67 @@ const WhatsAppChat = () => {
     toast.success("Conversa marcada como resolvida");
   };
 
+  // Accept conversation - assign to current user
+  const handleAcceptConversation = async (conversation: Conversation, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    if (!user) {
+      toast.error("Erro ao identificar usuário");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id, display_name, email")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    const normalizedPhone = conversation.phone.replace(/\D/g, '');
+
+    try {
+      // Upsert assignment
+      const { error } = await supabase
+        .from("conversation_assignments")
+        .upsert({
+          conversation_phone: normalizedPhone,
+          channel_id: conversation.channelId,
+          assigned_to: user.id,
+          assigned_at: new Date().toISOString(),
+          status: "active"
+        }, {
+          onConflict: "conversation_phone,channel_id"
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      const userName = profile.display_name || profile.email || 'Você';
+      setConversations(prev => prev.map(c => {
+        const key = getConversationKey(c);
+        const convKey = getConversationKey(conversation);
+        return key === convKey 
+          ? { ...c, assignedTo: user.id, assignedToName: userName, status: "in_progress" as const }
+          : c;
+      }));
+
+      // Also update status
+      updateConversationStatus(getConversationKey(conversation), "in_progress");
+
+      toast.success("Atendimento aceito!");
+      
+      // Select this conversation
+      setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress" });
+    } catch (error) {
+      console.error("Erro ao aceitar atendimento:", error);
+      toast.error("Erro ao aceitar atendimento");
+    }
+  };
+
   const handleAddToBlacklist = async (conversation: Conversation) => {
     if (!user) {
       toast.error("Erro ao identificar usuário");
@@ -1672,6 +1733,19 @@ const WhatsAppChat = () => {
                         </div>
                       </div>
                     </button>
+                    {/* Accept button - only for new conversations without assignee */}
+                    {!conversation.assignedTo && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="absolute right-2 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2 text-xs gap-1"
+                        onClick={(e) => handleAcceptConversation(conversation, e)}
+                        title="Aceitar atendimento"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        Aceitar
+                      </Button>
+                    )}
                     {/* Archive button */}
                     <Button
                       variant="ghost"
