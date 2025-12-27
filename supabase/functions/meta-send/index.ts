@@ -8,6 +8,77 @@ const corsHeaders = {
 const META_API_VERSION = 'v18.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
+// Helper function to upload media to Meta and get media ID
+async function uploadMediaToMeta(
+  phoneNumberId: string,
+  accessToken: string,
+  mediaUrl: string,
+  mimeType: string
+): Promise<string | null> {
+  try {
+    console.log('Uploading media to Meta:', { mediaUrl, mimeType });
+    
+    // Download the media from the URL
+    const mediaResponse = await fetch(mediaUrl);
+    if (!mediaResponse.ok) {
+      console.error('Failed to download media:', mediaResponse.status);
+      return null;
+    }
+    
+    const mediaBlob = await mediaResponse.blob();
+    const arrayBuffer = await mediaBlob.arrayBuffer();
+    
+    // Create form data for Meta upload
+    const formData = new FormData();
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('type', mimeType);
+    
+    // Determine filename based on mime type
+    let filename = 'audio.ogg';
+    if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+      filename = 'audio.m4a';
+    } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+      filename = 'audio.mp3';
+    } else if (mimeType.includes('webm')) {
+      filename = 'audio.webm';
+    } else if (mimeType.includes('ogg')) {
+      filename = 'audio.ogg';
+    }
+    
+    // Create a proper File/Blob for upload
+    const file = new Blob([arrayBuffer], { type: mimeType });
+    formData.append('file', file, filename);
+    
+    // Upload to Meta
+    const uploadResponse = await fetch(
+      `${META_API_BASE}/${phoneNumberId}/media`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: formData,
+      }
+    );
+    
+    const uploadText = await uploadResponse.text();
+    console.log('Meta upload response:', uploadResponse.status, uploadText);
+    
+    if (!uploadResponse.ok) {
+      console.error('Failed to upload media to Meta:', uploadText);
+      return null;
+    }
+    
+    const uploadResult = JSON.parse(uploadText);
+    console.log('Media uploaded successfully, ID:', uploadResult.id);
+    return uploadResult.id;
+    
+  } catch (error) {
+    console.error('Error uploading media to Meta:', error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -276,24 +347,37 @@ Deno.serve(async (req) => {
           break;
         case 'ptt':
         case 'voice':
-          // Voice message (PTT) - requires audio to be in OGG/OPUS format
-          // Check the file extension to determine if we can send as voice
-          const isOggFormat = mediaUrl.toLowerCase().includes('.ogg') || 
-                              mediaUrl.toLowerCase().includes('opus');
+          // Voice/PTT messages - upload to Meta first to avoid format issues
+          // Determine the mime type from the URL
+          let audioMimeType = 'audio/ogg';
+          if (mediaUrl.includes('.m4a')) {
+            audioMimeType = 'audio/mp4';
+          } else if (mediaUrl.includes('.mp3')) {
+            audioMimeType = 'audio/mpeg';
+          } else if (mediaUrl.includes('.webm')) {
+            audioMimeType = 'audio/webm';
+          } else if (mediaUrl.includes('.ogg')) {
+            audioMimeType = 'audio/ogg';
+          }
           
-          if (isOggFormat) {
-            // OGG format - can send as voice message (PTT)
+          console.log('Processing voice message, uploading to Meta first...');
+          
+          // Upload to Meta to get media ID
+          const mediaId = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, audioMimeType);
+          
+          if (mediaId) {
+            // Use media ID instead of link
             messagePayload = {
               ...messagePayload,
               type: 'audio',
               audio: {
-                link: mediaUrl
+                id: mediaId
               }
             };
-            console.log('Sending as voice message (OGG format detected)');
+            console.log('Sending audio with media ID:', mediaId);
           } else {
-            // Non-OGG format (M4A, MP3, etc.) - send as regular audio file
-            // WhatsApp only shows PTT waveform for OGG/OPUS files
+            // Fallback: try with link (may fail for some formats)
+            console.log('Media upload failed, falling back to link');
             messagePayload = {
               ...messagePayload,
               type: 'audio',
@@ -301,7 +385,6 @@ Deno.serve(async (req) => {
                 link: mediaUrl
               }
             };
-            console.log('Sending as audio file (non-OGG format:', mediaUrl, ')');
           }
           break;
         case 'document':

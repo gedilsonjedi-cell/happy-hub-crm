@@ -10,18 +10,27 @@ interface UseAudioRecordingReturn {
 
 // Get the best supported audio format for WhatsApp
 // WhatsApp supports: AAC, AMR, MP3, M4A, OGG (with OPUS codec)
+// Priority: OGG/OPUS > WebM/OPUS > MP3
 const getBestMimeType = (): { mimeType: string; extension: string } => {
-  // Prefer OGG with OPUS as it's natively supported by WhatsApp
+  // Prefer OGG with OPUS as it's natively supported by WhatsApp for voice messages
   if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
     return { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg' };
   }
-  // Some browsers support mp4/aac
-  if (MediaRecorder.isTypeSupported('audio/mp4')) {
-    return { mimeType: 'audio/mp4', extension: 'm4a' };
-  }
-  // Fallback to webm (will need server-side conversion or may work as audio file)
+  // WebM with OPUS - most browsers support this
   if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
     return { mimeType: 'audio/webm;codecs=opus', extension: 'webm' };
+  }
+  // Plain WebM
+  if (MediaRecorder.isTypeSupported('audio/webm')) {
+    return { mimeType: 'audio/webm', extension: 'webm' };
+  }
+  // MP3 - widely supported
+  if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+    return { mimeType: 'audio/mpeg', extension: 'mp3' };
+  }
+  // Last resort: mp4/aac (Safari) - Note: May have compatibility issues with Meta API
+  if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    return { mimeType: 'audio/mp4', extension: 'm4a' };
   }
   return { mimeType: 'audio/webm', extension: 'webm' };
 };
