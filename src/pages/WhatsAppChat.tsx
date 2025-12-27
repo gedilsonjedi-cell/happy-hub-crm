@@ -1447,13 +1447,13 @@ const WhatsAppChat = () => {
     // Filter by tab
     let matchesFilter = false;
     if (filterStatus === "new") {
-      // "Novos" - conversas pendentes sem atendente atribuído
-      matchesFilter = (conv.status === "pending" || !conv.assignedTo);
+      // "Novos" - conversas SEM atendente atribuído
+      matchesFilter = !conv.assignedTo;
     } else if (filterStatus === "mine") {
       // "Meus" - conversas atribuídas ao usuário logado
       matchesFilter = conv.assignedTo === user?.id;
     } else if (filterStatus === "others") {
-      // "Outros" - conversas de outros atendentes (não pendentes e não minhas)
+      // "Outros" - conversas de outros atendentes
       matchesFilter = conv.assignedTo !== null && conv.assignedTo !== user?.id;
     }
     
@@ -1467,7 +1467,7 @@ const WhatsAppChat = () => {
   );
 
   // Get counts for filter badges
-  const newCount = activeConversations.filter(c => c.status === "pending" || !c.assignedTo).length;
+  const newCount = activeConversations.filter(c => !c.assignedTo).length;
   const mineCount = activeConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = activeConversations.filter(c => c.assignedTo !== null && c.assignedTo !== user?.id).length;
 
