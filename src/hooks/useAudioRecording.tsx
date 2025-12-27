@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 
 interface UseAudioRecordingReturn {
   isRecording: boolean;
@@ -12,40 +12,10 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   
-  const mediaRecorderRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const opusRecorderLoadedRef = useRef<boolean>(false);
-  const OpusMediaRecorderRef = useRef<any>(null);
-  const workerOptionsRef = useRef<any>(null);
-
-  // Preload opus-media-recorder on mount
-  useEffect(() => {
-    const loadOpusRecorder = async () => {
-      try {
-        // Load opus-media-recorder dynamically
-        const OpusMediaRecorder = (await import('opus-media-recorder')).default;
-        OpusMediaRecorderRef.current = OpusMediaRecorder;
-        
-        // Configure worker options using CDN paths
-        workerOptionsRef.current = {
-          encoderWorkerFactory: () => {
-            return new Worker('https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/encoderWorker.umd.js');
-          },
-          OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/OggOpusEncoder.wasm',
-          WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/WebMOpusEncoder.wasm'
-        };
-        
-        opusRecorderLoadedRef.current = true;
-        console.log('OpusMediaRecorder loaded successfully');
-      } catch (error) {
-        console.warn('Failed to load OpusMediaRecorder, will fall back to native:', error);
-      }
-    };
-    
-    loadOpusRecorder();
-  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -59,50 +29,34 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       });
       streamRef.current = stream;
       
-      let mediaRecorder: any;
+      // Try different formats - prefer WebM with OPUS which most browsers support
+      const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/ogg;codecs=opus',
+        'audio/webm',
+        'audio/mp4'
+      ];
       
-      // Try to use OpusMediaRecorder for real OGG/OPUS format
-      if (opusRecorderLoadedRef.current && OpusMediaRecorderRef.current && workerOptionsRef.current) {
-        try {
-          const OpusMediaRecorder = OpusMediaRecorderRef.current;
-          const options = { mimeType: 'audio/ogg' };
-          mediaRecorder = new OpusMediaRecorder(stream, options, workerOptionsRef.current);
-          console.log('Using OpusMediaRecorder for real OGG/OPUS format');
-        } catch (opusError) {
-          console.warn('Failed to create OpusMediaRecorder, falling back to native:', opusError);
+      let selectedMime = 'audio/webm';
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          selectedMime = mime;
+          break;
         }
       }
       
-      // Fall back to native MediaRecorder if OpusMediaRecorder failed
-      if (!mediaRecorder) {
-        // Try different formats in order of preference
-        const mimeTypes = [
-          'audio/ogg;codecs=opus',
-          'audio/webm;codecs=opus',
-          'audio/mp4',
-          'audio/webm'
-        ];
-        
-        let selectedMime = 'audio/webm';
-        for (const mime of mimeTypes) {
-          if (MediaRecorder.isTypeSupported(mime)) {
-            selectedMime = mime;
-            break;
-          }
-        }
-        
-        console.log('Using native MediaRecorder with format:', selectedMime);
-        mediaRecorder = new MediaRecorder(stream, { 
-          mimeType: selectedMime,
-          audioBitsPerSecond: 128000
-        });
-      }
+      console.log('Recording with format:', selectedMime);
+      
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: selectedMime,
+        audioBitsPerSecond: 128000
+      });
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       
-      mediaRecorder.ondataavailable = (event: any) => {
-        if (event.data && event.data.size > 0) {
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
@@ -150,13 +104,14 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
           return;
         }
 
-        // Create blob with explicit OGG mime type
-        const audioBlob = new Blob(chunks, { type: 'audio/ogg' });
+        // Keep the original mime type from the recording
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(chunks, { type: mimeType });
         audioChunksRef.current = [];
         
         console.log('Recording completed:', {
+          format: mimeType,
           size: audioBlob.size,
-          type: audioBlob.type,
           chunks: chunks.length
         });
 

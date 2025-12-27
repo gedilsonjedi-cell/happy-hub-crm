@@ -403,8 +403,22 @@ Deno.serve(async (req) => {
         case 'audio':
         case 'ptt':
         case 'voice':
+          // Check if the file is WebM format (not supported by WhatsApp)
+          const isWebMFile = mediaUrl.toLowerCase().includes('.webm');
+          
+          if (isWebMFile) {
+            console.error('WebM audio format is not supported by WhatsApp API');
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: 'Formato de áudio WebM não suportado pelo WhatsApp. Por favor, envie um arquivo de áudio no formato OGG, MP3 ou AAC.',
+                details: 'Browser recordings in WebM format cannot be sent via WhatsApp API. Use the media upload feature with a supported audio file instead.'
+              }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          
           // For audio messages, we need to upload to Meta first
-          // because direct links with WebM format may not work correctly
           console.log('Processing audio message, uploading to Meta first:', { mediaUrl });
           
           // Try to upload the audio with automatic mime type retry
