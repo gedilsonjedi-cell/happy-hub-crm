@@ -1142,29 +1142,27 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Convert audio to OGG/OPUS format using FFmpeg
-      // This ensures the file is a real OPUS file, just like when uploading a file manually
-      let finalBlob = audioBlob;
+      // ALWAYS convert audio to real OGG/OPUS format using FFmpeg
+      // Browser MediaRecorder produces WebM even when we request OGG
+      // This ensures the file is a real OPUS file that WhatsApp accepts
+      let finalBlob: Blob;
       
-      console.log('Original recording format:', audioBlob.type);
+      console.log('Original recording format:', audioBlob.type, 'size:', audioBlob.size);
       
-      // If not already OGG/OPUS, convert it
-      if (!audioBlob.type.includes('ogg') || audioBlob.type.includes('webm')) {
-        try {
-          toast.info("Convertendo áudio...");
-          const { convertToOgg } = await import('@/lib/audioConverter');
-          finalBlob = await convertToOgg(audioBlob);
-          console.log('Audio converted to OGG/OPUS:', {
-            originalSize: audioBlob.size,
-            convertedSize: finalBlob.size,
-            convertedType: finalBlob.type
-          });
-        } catch (conversionError) {
-          console.error('Audio conversion failed:', conversionError);
-          toast.error('Erro ao converter áudio');
-          setUploadingMedia(false);
-          return;
-        }
+      try {
+        toast.info("Convertendo áudio...");
+        const { convertToOgg } = await import('@/lib/audioConverter');
+        finalBlob = await convertToOgg(audioBlob);
+        console.log('Audio converted to OGG/OPUS:', {
+          originalSize: audioBlob.size,
+          convertedSize: finalBlob.size,
+          convertedType: finalBlob.type
+        });
+      } catch (conversionError) {
+        console.error('Audio conversion failed:', conversionError);
+        toast.error('Erro ao converter áudio');
+        setUploadingMedia(false);
+        return;
       }
 
       // Generate unique file name - always use .ogg extension
