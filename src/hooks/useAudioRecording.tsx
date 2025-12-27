@@ -9,16 +9,17 @@ interface UseAudioRecordingReturn {
 }
 
 // Get the best supported audio format for recording
+// Prioritize OGG/OPUS which is natively supported by WhatsApp
 const getBestMimeType = (): string => {
-  // Try WebM with OPUS - most widely supported in Chrome/Firefox
-  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-    return 'audio/webm;codecs=opus';
-  }
-  // Try OGG
+  // OGG with OPUS - WhatsApp native format, best compatibility
   if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
     return 'audio/ogg;codecs=opus';
   }
-  // MP4/AAC - Safari
+  // Try WebM with OPUS - works on most browsers
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+    return 'audio/webm;codecs=opus';
+  }
+  // MP4/AAC - Safari (also supported by WhatsApp)
   if (MediaRecorder.isTypeSupported('audio/mp4')) {
     return 'audio/mp4';
   }
@@ -27,6 +28,14 @@ const getBestMimeType = (): string => {
     return 'audio/webm';
   }
   return 'audio/webm';
+};
+
+// Get file extension based on mime type
+const getExtensionFromMime = (mimeType: string): string => {
+  if (mimeType.includes('ogg')) return 'ogg';
+  if (mimeType.includes('mp4') || mimeType.includes('m4a')) return 'm4a';
+  if (mimeType.includes('webm')) return 'webm';
+  return 'ogg';
 };
 
 export const useAudioRecording = (): UseAudioRecordingReturn => {

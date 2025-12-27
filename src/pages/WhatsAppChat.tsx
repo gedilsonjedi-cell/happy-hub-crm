@@ -1142,16 +1142,21 @@ const WhatsAppChat = () => {
         return;
       }
 
-      // Determine file extension based on blob type
-      let extension = 'webm';
-      let contentType = audioBlob.type || 'audio/webm';
+      // Determine file extension and content type based on blob type
+      // Prioritize OGG which is WhatsApp's native format
+      let extension = 'ogg';
+      let contentType = audioBlob.type || 'audio/ogg';
       
       if (contentType.includes('ogg')) {
         extension = 'ogg';
+        contentType = 'audio/ogg';
       } else if (contentType.includes('mp4') || contentType.includes('m4a')) {
         extension = 'm4a';
+        contentType = 'audio/mp4';
       } else if (contentType.includes('webm')) {
-        extension = 'webm';
+        // WebM needs to be sent as OGG for WhatsApp compatibility
+        extension = 'ogg';
+        contentType = 'audio/ogg; codecs=opus';
       }
 
       // Generate unique file name
