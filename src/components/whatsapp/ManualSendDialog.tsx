@@ -74,13 +74,15 @@ export const ManualSendDialog = ({
   const [step, setStep] = useState<"phone" | "template" | "variables">("phone");
 
   useEffect(() => {
-    if (isOpen && selectedChannel) {
-      fetchTemplates();
-      // If we have an initial phone, use it and skip to template selection
+    if (isOpen) {
+      // Pre-fill the phone number if provided, but always start at phone step
       if (initialPhone) {
         setPhoneNumber(initialPhone);
-        setStep("template");
         onPhoneUsed?.();
+      }
+      // Fetch templates if we have a channel selected
+      if (selectedChannel) {
+        fetchTemplates();
       }
     }
   }, [isOpen, selectedChannel, initialPhone]);
