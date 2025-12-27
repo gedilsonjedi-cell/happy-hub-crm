@@ -262,15 +262,25 @@ Deno.serve(async (req) => {
           };
           break;
         case 'audio':
-        case 'ptt':
-        case 'voice':
-          // For Meta API, audio type works for both regular audio and voice messages
-          // The format of the audio file determines if it plays inline
           messagePayload = {
             ...messagePayload,
             type: 'audio',
             audio: {
               link: mediaUrl
+            }
+          };
+          break;
+        case 'ptt':
+        case 'voice':
+          // Voice message (PTT) - requires voice: true parameter
+          // Note: For native voice message display, audio must be in OGG/OPUS format
+          // If not in correct format, it will be sent as regular audio
+          messagePayload = {
+            ...messagePayload,
+            type: 'audio',
+            audio: {
+              link: mediaUrl,
+              voice: true // This flag makes it appear as a voice message (if format supports it)
             }
           };
           break;
