@@ -736,7 +736,7 @@ const Conexoes = () => {
           <p className="text-muted-foreground">Conecte seus números via Meta Cloud API</p>
         </div>
         <div className="flex items-center gap-2">
-      <Button variant="outline" className="gap-2" onClick={fetchChannels}>
+          <Button variant="outline" className="gap-2" onClick={fetchChannels}>
             <RefreshCw className="w-4 h-4" />
             Atualizar
           </Button>
@@ -750,10 +750,6 @@ const Conexoes = () => {
               Sincronizar com Meta
             </Button>
           )}
-          <Button className="gap-2" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
-            <Plus className="w-4 h-4" />
-            Nova Conexão
-          </Button>
         </div>
       </div>
 
