@@ -186,7 +186,22 @@ const WhatsAppChat = () => {
   // Stored conversation statuses (in localStorage to persist across sessions)
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>(() => {
     const stored = localStorage.getItem("whatsapp-conversation-statuses");
-    return stored ? JSON.parse(stored) : {};
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as Record<string, string>;
+        // Filter out old-format keys (that don't contain underscore with channelId)
+        const validKeys = Object.entries(parsed).filter(([key, value]) => {
+          // Valid keys should have format: channelId_phone (UUID_digits)
+          const hasValidFormat = key.includes('_') && key.split('_')[0].length > 10;
+          const hasValidValue = ['pending', 'in_progress', 'resolved', 'archived'].includes(value);
+          return hasValidFormat && hasValidValue;
+        });
+        return Object.fromEntries(validKeys) as Record<string, Conversation["status"]>;
+      } catch {
+        return {};
+      }
+    }
+    return {};
   });
 
   // Save statuses to localStorage
@@ -360,8 +375,8 @@ const WhatsAppChat = () => {
         const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + contactPhone.replace(/\D/g, '');
 
         if (!conversationsMap.has(conversationKey)) {
-          // Check stored status by conversation key for backwards compatibility
-          const storedStatus = storedStatuses[conversationKey] || storedStatuses[displayPhone];
+          // Check stored status by conversation key only (old format keys are filtered out)
+          const storedStatus = storedStatuses[conversationKey];
           conversationsMap.set(conversationKey, {
             phone: displayPhone,
             name: contactName,
