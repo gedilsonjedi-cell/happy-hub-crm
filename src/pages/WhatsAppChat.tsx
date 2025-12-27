@@ -1708,8 +1708,8 @@ const WhatsAppChat = () => {
           setManualPhoneInput("");
         }}
         channels={channels}
-        selectedChannel={channels.find(c => c.id === selectedConversation?.channelId) || null}
-        onChannelChange={() => {}}
+        selectedChannel={selectedChannel}
+        onChannelChange={setSelectedChannel}
         initialPhone={manualPhoneInput}
         onPhoneUsed={() => setManualPhoneInput("")}
       />
