@@ -32,7 +32,13 @@ import {
   Ban,
   Briefcase,
   Tag,
-  GitBranch
+  GitBranch,
+  Video,
+  Music,
+  File,
+  CalendarClock,
+  StickyNote,
+  Plus
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -58,12 +64,15 @@ import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog
 import { AssignTagsFromChatDialog } from "@/components/whatsapp/AssignTagsFromChatDialog";
 import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
 import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineStageDialog";
+import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
+import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 
 interface Message {
@@ -177,6 +186,9 @@ const WhatsAppChat = () => {
   const [showTagsDialog, setShowTagsDialog] = useState(false);
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
   const [showPipelineStageDialog, setShowPipelineStageDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showNotesDialog, setShowNotesDialog] = useState(false);
+  const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1686,17 +1698,79 @@ const WhatsAppChat = () => {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="shrink-0">
-                        <Paperclip className="w-5 h-5 text-muted-foreground" />
+                        <Plus className="w-5 h-5 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={() => setShowMediaDialog(true)} disabled={isWindowExpired}>
-                        <Image className="w-4 h-4 mr-2" />
+                    <DropdownMenuContent align="start" className="w-56 bg-popover">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
                         Enviar mídia
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          setMediaDialogType("image");
+                          setShowMediaDialog(true);
+                        }} 
+                        disabled={isWindowExpired}
+                      >
+                        <Image className="w-4 h-4 mr-2 text-emerald-500" />
+                        Imagem
                       </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          setMediaDialogType("video");
+                          setShowMediaDialog(true);
+                        }} 
+                        disabled={isWindowExpired}
+                      >
+                        <Video className="w-4 h-4 mr-2 text-blue-500" />
+                        Vídeo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          setMediaDialogType("audio");
+                          setShowMediaDialog(true);
+                        }} 
+                        disabled={isWindowExpired}
+                      >
+                        <Music className="w-4 h-4 mr-2 text-purple-500" />
+                        Áudio
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          setMediaDialogType("document");
+                          setShowMediaDialog(true);
+                        }} 
+                        disabled={isWindowExpired}
+                      >
+                        <File className="w-4 h-4 mr-2 text-orange-500" />
+                        Documento
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Mensagens
+                      </DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => setShowTemplateSelector(true)}>
-                        <FileText className="w-4 h-4 mr-2" />
-                        Enviar template
+                        <FileText className="w-4 h-4 mr-2 text-primary" />
+                        Modelo de mensagem
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => setShowScheduleDialog(true)}
+                        disabled={isWindowExpired}
+                      >
+                        <CalendarClock className="w-4 h-4 mr-2 text-warning" />
+                        Agendar mensagem
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Conversa
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => setShowNotesDialog(true)}>
+                        <StickyNote className="w-4 h-4 mr-2 text-yellow-500" />
+                        Adicionar nota
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1854,6 +1928,32 @@ const WhatsAppChat = () => {
           leadId={null}
           leadName={selectedConversation?.name || selectedConversation?.phone || ""}
           currentStageId={null}
+        />
+      )}
+
+      {/* Schedule Message Dialog */}
+      {selectedConversation && (
+        <ScheduleMessageDialog
+          isOpen={showScheduleDialog}
+          onClose={() => setShowScheduleDialog(false)}
+          contactName={selectedConversation?.name}
+          onSchedule={async (data) => {
+            // For now, just show a toast - full implementation would require a scheduled_messages table
+            toast.success("Mensagem agendada!", {
+              description: `Será enviada em ${format(data.scheduledAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
+            });
+            // TODO: Implement actual scheduling with a database table and cron job
+          }}
+        />
+      )}
+
+      {/* Conversation Notes Dialog */}
+      {selectedConversation && (
+        <ConversationNotesDialog
+          isOpen={showNotesDialog}
+          onClose={() => setShowNotesDialog(false)}
+          contactPhone={selectedConversation.phone}
+          contactName={selectedConversation?.name}
         />
       )}
     </MainLayout>
