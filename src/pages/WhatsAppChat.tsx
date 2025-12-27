@@ -326,6 +326,11 @@ const WhatsAppChat = () => {
         // Remove all non-digit characters for a clean comparison key
         return phone.replace(/\D/g, '');
       };
+
+      // Helper function to create a unique key for conversation (channel + phone)
+      const createConversationKey = (channelId: string | null, phone: string): string => {
+        return `${channelId || 'unknown'}_${normalizePhoneForKey(phone)}`;
+      };
       
       // Get current statuses from localStorage to avoid dependency on state
       const storedStatuses = JSON.parse(localStorage.getItem("whatsapp-conversation-statuses") || "{}");
@@ -348,16 +353,16 @@ const WhatsAppChat = () => {
           }
         }
 
-        // Use normalized phone (digits only) as the map key to avoid duplicates
-        const phoneKey = normalizePhoneForKey(contactPhone);
+        // Use channel_id + normalized phone as the map key to separate conversations by channel
+        const conversationKey = createConversationKey(msg.channel_id, contactPhone);
         
         // For display, format with + prefix
         const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + contactPhone.replace(/\D/g, '');
 
-        if (!conversationsMap.has(phoneKey)) {
-          // Check stored status by both normalized key and display phone for backwards compatibility
-          const storedStatus = storedStatuses[phoneKey] || storedStatuses[displayPhone];
-          conversationsMap.set(phoneKey, {
+        if (!conversationsMap.has(conversationKey)) {
+          // Check stored status by conversation key for backwards compatibility
+          const storedStatus = storedStatuses[conversationKey] || storedStatuses[displayPhone];
+          conversationsMap.set(conversationKey, {
             phone: displayPhone,
             name: contactName,
             lastMessage: msg.content || "",
@@ -368,7 +373,7 @@ const WhatsAppChat = () => {
             status: storedStatus || "pending"
           });
         } else {
-          const existing = conversationsMap.get(phoneKey)!;
+          const existing = conversationsMap.get(conversationKey)!;
           // Always update name from inbound messages (WhatsApp real name replaces fictitious names)
           if (msg.direction === "inbound" && msg.sender_name) {
             existing.name = msg.sender_name;
@@ -444,7 +449,8 @@ const WhatsAppChat = () => {
 
       // Mark as in_progress when selected
       if (selectedConversation.status === "pending") {
-        updateConversationStatus(selectedConversation.phone, "in_progress");
+        const key = `${selectedConversation.channelId || 'unknown'}_${selectedConversation.phone.replace(/\D/g, '')}`;
+        updateConversationStatus(key, "in_progress");
       }
     };
 
@@ -513,6 +519,11 @@ const WhatsAppChat = () => {
           // Normalize phone for comparison
           const normalizedContactPhone = contactPhone.replace(/\D/g, '');
           const normalizedSelectedPhone = selectedConversation?.phone.replace(/\D/g, '') || '';
+          const selectedChannelId = selectedConversation?.channelId || '';
+          
+          // Create conversation keys for comparison (channelId + phone)
+          const msgConversationKey = `${newMsg.channel_id}_${normalizedContactPhone}`;
+          const selectedConversationKey = `${selectedChannelId}_${normalizedSelectedPhone}`;
           
           // Show notification only for inbound
           if (newMsg.direction === "inbound") {
@@ -527,8 +538,8 @@ const WhatsAppChat = () => {
             }
           }
           
-          // Update messages if in current conversation - avoid duplicates
-          if (normalizedSelectedPhone === normalizedContactPhone) {
+          // Update messages if in current conversation (same channel + phone) - avoid duplicates
+          if (selectedConversationKey === msgConversationKey) {
             setMessages(prev => {
               // Check if message already exists (by message_id or exact content+time match for optimistic updates)
               const exists = prev.some(m => 
@@ -560,22 +571,26 @@ const WhatsAppChat = () => {
           // Update conversations list - only for inbound messages to avoid flickering
           if (newMsg.direction === "inbound") {
             setConversations(prev => {
-              const existing = prev.find(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
+              // Find by channelId + phone
+              const existing = prev.find(c => 
+                c.channelId === newMsg.channel_id && 
+                c.phone.replace(/\D/g, '') === normalizedContactPhone
+              );
               if (existing) {
                 // If archived and new inbound message comes, move to in_progress
                 let newStatus = existing.status;
                 if (existing.status === "archived") {
                   newStatus = "in_progress";
-                  updateConversationStatus(existing.phone, "in_progress");
+                  updateConversationStatus(`${existing.channelId}_${existing.phone}`, "in_progress");
                 }
                 const updated = prev.map(c => 
-                  c.phone.replace(/\D/g, '') === normalizedContactPhone 
+                  c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
                     ? { 
                         ...c, 
                         lastMessage: newMsg.content || "", 
                         lastMessageTime: newMsg.created_at,
                         lastInboundTime: newMsg.created_at,
-                        unreadCount: normalizedSelectedPhone !== normalizedContactPhone
+                        unreadCount: selectedConversationKey !== msgConversationKey
                           ? c.unreadCount + 1 
                           : c.unreadCount,
                         status: newStatus,
@@ -585,7 +600,10 @@ const WhatsAppChat = () => {
                     : c
                 );
                 // Only sort if the updated conversation isn't already at the top
-                const updatedIndex = updated.findIndex(c => c.phone.replace(/\D/g, '') === normalizedContactPhone);
+                const updatedIndex = updated.findIndex(c => 
+                  c.channelId === newMsg.channel_id && 
+                  c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
                 if (updatedIndex > 0) {
                   return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
                 }
@@ -655,29 +673,36 @@ const WhatsAppChat = () => {
     }
   }, [newMessage, quickResponses]);
 
-  const updateConversationStatus = useCallback((phone: string, status: Conversation["status"]) => {
-    setConversationStatuses(prev => ({ ...prev, [phone]: status }));
-    setConversations(prev => prev.map(c => 
-      c.phone === phone ? { ...c, status } : c
-    ));
+  // Helper to create conversation key
+  const getConversationKey = useCallback((conversation: Conversation): string => {
+    return `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
   }, []);
 
-  const handleArchive = (phone: string) => {
-    updateConversationStatus(phone, "archived");
-    if (selectedConversation?.phone === phone) {
-      const nextConv = activeConversations.find(c => c.phone !== phone);
+  const updateConversationStatus = useCallback((conversationKey: string, status: Conversation["status"]) => {
+    setConversationStatuses(prev => ({ ...prev, [conversationKey]: status }));
+    setConversations(prev => prev.map(c => {
+      const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
+      return key === conversationKey ? { ...c, status } : c;
+    }));
+  }, []);
+
+  const handleArchive = (conversation: Conversation) => {
+    const key = getConversationKey(conversation);
+    updateConversationStatus(key, "archived");
+    if (selectedConversation && getConversationKey(selectedConversation) === key) {
+      const nextConv = activeConversations.find(c => getConversationKey(c) !== key);
       setSelectedConversation(nextConv || null);
     }
     toast.success("Conversa arquivada");
   };
 
-  const handleRestore = (phone: string) => {
-    updateConversationStatus(phone, "in_progress");
+  const handleRestore = (conversation: Conversation) => {
+    updateConversationStatus(getConversationKey(conversation), "in_progress");
     toast.success("Conversa restaurada");
   };
 
-  const handleResolve = (phone: string) => {
-    updateConversationStatus(phone, "resolved");
+  const handleResolve = (conversation: Conversation) => {
+    updateConversationStatus(getConversationKey(conversation), "resolved");
     toast.success("Conversa marcada como resolvida");
   };
 
@@ -1252,12 +1277,17 @@ const WhatsAppChat = () => {
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
-                filteredConversations.map((conversation) => (
+                filteredConversations.map((conversation) => {
+                  const conversationKey = getConversationKey(conversation);
+                  const channelInfo = channels.find(c => c.id === conversation.channelId);
+                  const isSelected = selectedConversation && getConversationKey(selectedConversation) === conversationKey;
+                  
+                  return (
                   <div
-                    key={conversation.phone}
+                    key={conversationKey}
                     className={cn(
                       "group relative",
-                      selectedConversation?.phone === conversation.phone && "bg-muted/30 border-l-2 border-l-primary"
+                      isSelected && "bg-muted/30 border-l-2 border-l-primary"
                     )}
                   >
                     <button
@@ -1279,6 +1309,11 @@ const WhatsAppChat = () => {
                               {formatConversationDate(conversation.lastMessageTime)}
                             </span>
                           </div>
+                          {channelInfo && channels.length > 1 && (
+                            <p className="text-[10px] text-primary/70 truncate mb-0.5">
+                              📱 {channelInfo.name}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground truncate mb-2">
                             {conversation.lastMessage}
                           </p>
@@ -1302,14 +1337,15 @@ const WhatsAppChat = () => {
                       className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleArchive(conversation.phone);
+                        handleArchive(conversation);
                       }}
                       title="Arquivar conversa"
                     >
                       <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
                     </Button>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </ScrollArea>
@@ -1358,9 +1394,13 @@ const WhatsAppChat = () => {
               {showArchived && (
                 <ScrollArea className="max-h-48">
                   <div className="divide-y divide-border bg-muted/20">
-                    {filteredArchived.map((conv) => (
+                    {filteredArchived.map((conv) => {
+                      const convKey = getConversationKey(conv);
+                      const channelInfo = channels.find(c => c.id === conv.channelId);
+                      
+                      return (
                       <div
-                        key={conv.phone}
+                        key={convKey}
                         className="group relative p-3 hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex items-center gap-3">
@@ -1373,6 +1413,11 @@ const WhatsAppChat = () => {
                             <span className="font-medium text-muted-foreground text-sm truncate block">
                               {conv.name || conv.phone}
                             </span>
+                            {channelInfo && channels.length > 1 && (
+                              <span className="text-[10px] text-primary/60 block">
+                                📱 {channelInfo.name}
+                              </span>
+                            )}
                             <span className="text-xs text-muted-foreground/70">
                               {formatConversationDate(conv.lastMessageTime)}
                             </span>
@@ -1381,14 +1426,15 @@ const WhatsAppChat = () => {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleRestore(conv.phone)}
+                            onClick={() => handleRestore(conv)}
                             title="Restaurar conversa"
                           >
                             <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
                           </Button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               )}
@@ -1499,11 +1545,11 @@ const WhatsAppChat = () => {
                         Follow-up Automático
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleResolve(selectedConversation.phone)}>
+                      <DropdownMenuItem onClick={() => handleResolve(selectedConversation)}>
                         <CheckCheck className="w-4 h-4 mr-2" />
                         Marcar como resolvido
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleArchive(selectedConversation.phone)}>
+                      <DropdownMenuItem onClick={() => handleArchive(selectedConversation)}>
                         <Archive className="w-4 h-4 mr-2" />
                         Arquivar conversa
                       </DropdownMenuItem>
