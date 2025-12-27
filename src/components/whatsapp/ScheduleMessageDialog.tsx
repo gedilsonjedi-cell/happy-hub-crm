@@ -265,7 +265,7 @@ export const ScheduleMessageDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-warning" />
@@ -336,8 +336,8 @@ export const ScheduleMessageDialog = ({
               </ScrollArea>
             </>
           ) : (
-            <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-4">
+            <ScrollArea className="flex-1 -mx-6 px-6 max-h-[60vh]">
+              <div className="space-y-4 pb-4">
                 <Button 
                   variant="ghost" 
                   size="sm" 
