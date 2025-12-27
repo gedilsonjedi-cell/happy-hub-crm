@@ -265,8 +265,8 @@ export const ScheduleMessageDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-warning" />
             Agendar Mensagem
@@ -279,10 +279,10 @@ export const ScheduleMessageDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {!selectedTemplate ? (
-            <>
-              <div className="relative mb-4">
+            <div className="space-y-4">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar templates..."
@@ -292,158 +292,154 @@ export const ScheduleMessageDialog = ({
                 />
               </div>
 
-              <ScrollArea className="flex-1 -mx-6 px-6">
-                {loading ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    Carregando templates...
-                  </div>
-                ) : filteredTemplates.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p>Nenhum template encontrado</p>
-                    <p className="text-sm mt-1">Sincronize os templates na página de Conexões</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {filteredTemplates.map(template => (
-                      <button
-                        key={template.id}
-                        className="w-full p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left group"
-                        onClick={() => handleSelectTemplate(template)}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-sm">{template.name}</span>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                          {template.content}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={cn("text-xs", getDispatchTypeClass(template.dispatch_type))}>
-                            {getDispatchTypeLabel(template.dispatch_type)}
+              {loading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  Carregando templates...
+                </div>
+              ) : filteredTemplates.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Nenhum template encontrado</p>
+                  <p className="text-sm mt-1">Sincronize os templates na página de Conexões</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredTemplates.map(template => (
+                    <button
+                      key={template.id}
+                      className="w-full p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left group"
+                      onClick={() => handleSelectTemplate(template)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{template.name}</span>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                        {template.content}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={cn("text-xs", getDispatchTypeClass(template.dispatch_type))}>
+                          {getDispatchTypeLabel(template.dispatch_type)}
+                        </Badge>
+                        {template.variables && template.variables.length > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {template.variables.length} variáveis
                           </Badge>
-                          {template.variables && template.variables.length > 0 && (
-                            <Badge variant="secondary" className="text-xs">
-                              {template.variables.length} variáveis
-                            </Badge>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
-            <ScrollArea className="flex-1 -mx-6 px-6 max-h-[60vh]">
-              <div className="space-y-4 pb-4">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setSelectedTemplate(null)}
-                >
-                  ← Voltar aos templates
-                </Button>
+            <div className="space-y-4 pb-2">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedTemplate(null)}
+              >
+                ← Voltar aos templates
+              </Button>
 
-                {/* Template Preview */}
-                <div className="p-4 rounded-lg bg-muted/30 border border-border">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="w-4 h-4 text-primary" />
-                    <h4 className="font-medium">{selectedTemplate.name}</h4>
-                  </div>
-                  <Badge variant="outline" className={cn("text-xs mb-3", getDispatchTypeClass(selectedTemplate.dispatch_type))}>
-                    {getDispatchTypeLabel(selectedTemplate.dispatch_type)}
-                  </Badge>
-                  
-                  <div className="p-3 rounded bg-card border border-border">
-                    <p className="text-sm whitespace-pre-wrap">{getPreviewContent()}</p>
-                  </div>
+              {/* Template Preview */}
+              <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  <h4 className="font-medium">{selectedTemplate.name}</h4>
                 </div>
-
-                {/* Variables */}
-                {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-sm">Variáveis do Template</h4>
-                    {selectedTemplate.variables.map((variable, index) => (
-                      <div key={index}>
-                        <label className="text-sm text-muted-foreground mb-1 block">
-                          {variable || `Variável ${index + 1}`}
-                        </label>
-                        <Input
-                          placeholder={`Valor para {{${index + 1}}}`}
-                          value={variableValues[`var_${index}`] || ""}
-                          onChange={(e) => setVariableValues(prev => ({
-                            ...prev,
-                            [`var_${index}`]: e.target.value
-                          }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Date & Time */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Data e Hora do Envio</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Data</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !date && "text-muted-foreground"
-                            )}
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {date ? format(date, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-popover" align="start">
-                          <CalendarComponent
-                            mode="single"
-                            selected={date}
-                            onSelect={setDate}
-                            disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                            locale={ptBR}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Hora</Label>
-                      <div className="relative">
-                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          type="time"
-                          value={time}
-                          onChange={(e) => setTime(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <Badge variant="outline" className={cn("text-xs mb-3", getDispatchTypeClass(selectedTemplate.dispatch_type))}>
+                  {getDispatchTypeLabel(selectedTemplate.dispatch_type)}
+                </Badge>
+                
+                <div className="p-3 rounded bg-card border border-border">
+                  <p className="text-sm whitespace-pre-wrap">{getPreviewContent()}</p>
                 </div>
-
-                {date && time && (
-                  <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
-                    <p className="text-sm text-warning">
-                      <strong>Envio programado:</strong>{" "}
-                      {format(
-                        setMinutes(setHours(date, parseInt(time.split(":")[0])), parseInt(time.split(":")[1])),
-                        "EEEE, dd 'de' MMMM 'às' HH:mm",
-                        { locale: ptBR }
-                      )}
-                    </p>
-                  </div>
-                )}
               </div>
-            </ScrollArea>
+
+              {/* Variables */}
+              {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">Variáveis do Template</h4>
+                  {selectedTemplate.variables.map((variable, index) => (
+                    <div key={index}>
+                      <label className="text-sm text-muted-foreground mb-1 block">
+                        {variable || `Variável ${index + 1}`}
+                      </label>
+                      <Input
+                        placeholder={`Valor para {{${index + 1}}}`}
+                        value={variableValues[`var_${index}`] || ""}
+                        onChange={(e) => setVariableValues(prev => ({
+                          ...prev,
+                          [`var_${index}`]: e.target.value
+                        }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Date & Time */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-sm">Data e Hora do Envio</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Data</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !date && "text-muted-foreground"
+                          )}
+                        >
+                          <Calendar className="mr-2 h-4 w-4" />
+                          {date ? format(date, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-popover" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={date}
+                          onSelect={setDate}
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          locale={ptBR}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Hora</Label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="time"
+                        value={time}
+                        onChange={(e) => setTime(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {date && time && (
+                <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                  <p className="text-sm text-warning">
+                    <strong>Envio programado:</strong>{" "}
+                    {format(
+                      setMinutes(setHours(date, parseInt(time.split(":")[0])), parseInt(time.split(":")[1])),
+                      "EEEE, dd 'de' MMMM 'às' HH:mm",
+                      { locale: ptBR }
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
