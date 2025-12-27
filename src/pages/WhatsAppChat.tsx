@@ -72,6 +72,7 @@ import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotes
 import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -135,7 +136,7 @@ const statusConfig = {
   archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
 };
 
-type FilterStatus = "all" | "pending" | "in_progress" | "resolved" | "mine";
+type FilterStatus = "new" | "mine" | "others";
 
 // Audio notification using Web Audio API
 const useNotificationSound = () => {
@@ -188,7 +189,7 @@ const WhatsAppChat = () => {
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("new");
   const [showArchived, setShowArchived] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   
@@ -1434,19 +1435,26 @@ const WhatsAppChat = () => {
   // Archived conversations
   const archivedConversations = conversations.filter(conv => conv.status === "archived");
 
-  // Filter active conversations by search and status
+  // Get user role for permission checks
+  const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
+  const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
+  
+  // Filter active conversations by search and tab
   const filteredConversations = activeConversations.filter(conv => {
     const matchesSearch = conv.phone.includes(searchTerm) || 
       conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Filter by status or "mine" (assigned to current user)
+    // Filter by tab
     let matchesFilter = false;
-    if (filterStatus === "all") {
-      matchesFilter = true;
+    if (filterStatus === "new") {
+      // "Novos" - conversas pendentes sem atendente atribuído
+      matchesFilter = (conv.status === "pending" || !conv.assignedTo);
     } else if (filterStatus === "mine") {
+      // "Meus" - conversas atribuídas ao usuário logado
       matchesFilter = conv.assignedTo === user?.id;
-    } else {
-      matchesFilter = conv.status === filterStatus;
+    } else if (filterStatus === "others") {
+      // "Outros" - conversas de outros atendentes (não pendentes e não minhas)
+      matchesFilter = conv.assignedTo !== null && conv.assignedTo !== user?.id;
     }
     
     return matchesSearch && matchesFilter;
@@ -1459,9 +1467,9 @@ const WhatsAppChat = () => {
   );
 
   // Get counts for filter badges
-  const pendingCount = activeConversations.filter(c => c.status === "pending").length;
-  const inProgressCount = activeConversations.filter(c => c.status === "in_progress").length;
+  const newCount = activeConversations.filter(c => c.status === "pending" || !c.assignedTo).length;
   const mineCount = activeConversations.filter(c => c.assignedTo === user?.id).length;
+  const othersCount = activeConversations.filter(c => c.assignedTo !== null && c.assignedTo !== user?.id).length;
 
   // Get conversation context for Sales Assistant
   const conversationContext = messages.map(m => 
@@ -1537,41 +1545,19 @@ const WhatsAppChat = () => {
               />
             </div>
             
-            {/* Status Filter Buttons */}
-            <div className="flex flex-wrap gap-1.5">
+            {/* Tab Filter Buttons */}
+            <div className="flex gap-1.5">
               <Button
-                variant={filterStatus === "all" ? "default" : "outline"}
+                variant={filterStatus === "new" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFilterStatus("all")}
-                className="text-xs px-3 h-7"
-              >
-                Todos
-              </Button>
-              <Button
-                variant={filterStatus === "pending" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilterStatus("pending")}
+                onClick={() => setFilterStatus("new")}
                 className="text-xs px-3 h-7 gap-1.5"
               >
                 <Clock className="w-3 h-3 shrink-0" />
-                Pendentes
-                {pendingCount > 0 && (
-                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
-                    {pendingCount}
-                  </Badge>
-                )}
-              </Button>
-              <Button
-                variant={filterStatus === "in_progress" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilterStatus("in_progress")}
-                className="text-xs px-3 h-7 gap-1.5"
-              >
-                <Play className="w-3 h-3 shrink-0" />
-                Em Andamento
-                {inProgressCount > 0 && (
-                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
-                    {inProgressCount}
+                Novos
+                {newCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0 bg-primary text-primary-foreground">
+                    {newCount}
                   </Badge>
                 )}
               </Button>
@@ -1582,13 +1568,29 @@ const WhatsAppChat = () => {
                 className="text-xs px-3 h-7 gap-1.5"
               >
                 <User className="w-3 h-3 shrink-0" />
-                Minhas
+                Meus
                 {mineCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {mineCount}
                   </Badge>
                 )}
               </Button>
+              {canSeeOthers && (
+                <Button
+                  variant={filterStatus === "others" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilterStatus("others")}
+                  className="text-xs px-3 h-7 gap-1.5"
+                >
+                  <UserCheck className="w-3 h-3 shrink-0" />
+                  Outros
+                  {othersCount > 0 && (
+                    <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
+                      {othersCount}
+                    </Badge>
+                  )}
+                </Button>
+              )}
             </div>
             
           </div>
