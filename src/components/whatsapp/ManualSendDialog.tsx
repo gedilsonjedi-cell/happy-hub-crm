@@ -42,6 +42,7 @@ interface Channel {
   id: string;
   name: string;
   phone: string;
+  provider: string;
 }
 
 interface ManualSendDialogProps {
