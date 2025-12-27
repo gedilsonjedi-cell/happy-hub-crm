@@ -109,11 +109,25 @@ export default function Loja() {
       const { data, error } = await supabase
         .from("store_products")
         .select("*")
-        .eq("is_active", true)
-        .order("product_type", { ascending: false });
+        .eq("is_active", true);
 
       if (error) throw error;
-      setProducts(data || []);
+      
+      // Custom sort order: 1. Plano Mensal, 2. Usuários Adicionais, 3. Higienização, 4. Criação da API Oficial
+      const sortOrder: Record<string, number> = {
+        "Plano Mensal": 1,
+        "Usuários Adicionais": 2,
+        "Higienização": 3,
+        "Criação da API Oficial": 4,
+      };
+      
+      const sortedProducts = (data || []).sort((a, b) => {
+        const orderA = sortOrder[a.name] || 99;
+        const orderB = sortOrder[b.name] || 99;
+        return orderA - orderB;
+      });
+      
+      setProducts(sortedProducts);
       
       // Initialize quantities
       const initialQuantities: Record<string, number> = {};
