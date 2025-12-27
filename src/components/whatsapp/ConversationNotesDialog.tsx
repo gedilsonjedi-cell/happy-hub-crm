@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { StickyNote, Loader2, Save, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { StickyNote, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -12,89 +12,76 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ConversationNotesDialogProps {
   isOpen: boolean;
   onClose: () => void;
   contactPhone: string;
   contactName?: string | null;
+  channelId?: string | null;
+  onNoteAdded?: () => void;
 }
 
 export const ConversationNotesDialog = ({ 
   isOpen, 
   onClose, 
   contactPhone,
-  contactName 
+  contactName,
+  channelId,
+  onNoteAdded
 }: ConversationNotesDialogProps) => {
-  const [notes, setNotes] = useState("");
-  const [originalNotes, setOriginalNotes] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && contactPhone) {
-      fetchNotes();
-    }
-  }, [isOpen, contactPhone]);
-
-  const fetchNotes = async () => {
-    setLoading(true);
-    try {
-      const normalizedPhone = contactPhone.replace(/\D/g, '');
-      
-      const { data, error } = await supabase
-        .from("leads")
-        .select("notes")
-        .eq("phone", normalizedPhone)
-        .maybeSingle();
-
-      if (!error && data) {
-        setNotes(data.notes || "");
-        setOriginalNotes(data.notes || "");
-      } else {
-        setNotes("");
-        setOriginalNotes("");
-      }
-    } catch (error) {
-      console.error("Error fetching notes:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSave = async () => {
+    if (!note.trim() || !user) return;
+
     setSaving(true);
     try {
+      // Get user's organization
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!profile?.organization_id) {
+        toast.error("Organização não encontrada");
+        return;
+      }
+
       const normalizedPhone = contactPhone.replace(/\D/g, '');
       
       const { error } = await supabase
-        .from("leads")
-        .update({ notes: notes.trim() || null })
-        .eq("phone", normalizedPhone);
+        .from("conversation_notes")
+        .insert({
+          organization_id: profile.organization_id,
+          channel_id: channelId || null,
+          contact_phone: normalizedPhone,
+          content: note.trim(),
+          created_by: user.id
+        });
 
       if (error) throw error;
 
-      setOriginalNotes(notes);
-      toast.success("Nota salva com sucesso!");
+      toast.success("Nota adicionada!");
+      setNote("");
+      onNoteAdded?.();
       onClose();
     } catch (error) {
-      console.error("Error saving notes:", error);
+      console.error("Error saving note:", error);
       toast.error("Erro ao salvar nota");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleClear = async () => {
-    setNotes("");
-  };
-
   const handleClose = () => {
-    setNotes(originalNotes);
+    setNote("");
     onClose();
   };
-
-  const hasChanges = notes !== originalNotes;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -102,49 +89,30 @@ export const ConversationNotesDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <StickyNote className="w-5 h-5 text-warning" />
-            Notas da Conversa
+            Adicionar Nota
           </DialogTitle>
           <DialogDescription>
             {contactName 
-              ? `Notas sobre ${contactName}`
-              : "Adicione observações sobre esta conversa"
+              ? `Nota sobre ${contactName}`
+              : "Adicione uma observação sobre esta conversa"
             }
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label>Observações</Label>
-                <Textarea
-                  placeholder="Ex: Cliente interessado em produto X, retornar na próxima semana..."
-                  className="min-h-[150px]"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Estas notas serão visíveis para todos os atendentes
-                </p>
-              </div>
-
-              {notes && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={handleClear}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Limpar nota
-                </Button>
-              )}
-            </>
-          )}
+          <div className="space-y-2">
+            <Label>Observação</Label>
+            <Textarea
+              placeholder="Ex: Cliente interessado em produto X, retornar na próxima semana..."
+              className="min-h-[120px]"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              A nota aparecerá no histórico da conversa
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -153,7 +121,7 @@ export const ConversationNotesDialog = ({
           </Button>
           <Button 
             onClick={handleSave} 
-            disabled={!hasChanges || saving}
+            disabled={!note.trim() || saving}
           >
             {saving ? (
               <>
@@ -162,8 +130,8 @@ export const ConversationNotesDialog = ({
               </>
             ) : (
               <>
-                <Save className="w-4 h-4 mr-2" />
-                Salvar
+                <Send className="w-4 h-4 mr-2" />
+                Adicionar Nota
               </>
             )}
           </Button>
