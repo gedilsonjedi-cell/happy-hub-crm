@@ -412,43 +412,27 @@ Deno.serve(async (req) => {
               JSON.stringify({ 
                 success: false, 
                 error: 'Formato de áudio WebM não suportado pelo WhatsApp. Por favor, envie um arquivo de áudio no formato OGG, MP3 ou AAC.',
-                details: 'Browser recordings in WebM format cannot be sent via WhatsApp API. Use the media upload feature with a supported audio file instead.'
+                details: 'Browser recordings in WebM format cannot be sent via WhatsApp API. Use the media upload feature with a supported audio file instead.',
+                code: 'WEBM_NOT_SUPPORTED'
               }),
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
           
-          // For audio messages, we need to upload to Meta first
-          console.log('Processing audio message, uploading to Meta first:', { mediaUrl });
+          // STRATEGY: Use direct link (URL) first - this is more stable in 2025
+          // WhatsApp Cloud API can download directly from public URLs
+          console.log('Processing audio message via direct link:', { mediaUrl });
           
-          // Try to upload the audio with automatic mime type retry
-          const audioUploadResult = await uploadAudioWithRetry(
-            phoneNumberId,
-            accessToken,
-            mediaUrl,
-            'audio/ogg' // Start with OGG which is WhatsApp's preferred format
-          );
+          // Use direct link for audio - Meta will download from our storage
+          messagePayload = {
+            ...messagePayload,
+            type: 'audio',
+            audio: {
+              link: mediaUrl
+            }
+          };
           
-          if (audioUploadResult.mediaId) {
-            console.log('Audio uploaded to Meta successfully, using media ID:', audioUploadResult.mediaId);
-            messagePayload = {
-              ...messagePayload,
-              type: 'audio',
-              audio: {
-                id: audioUploadResult.mediaId
-              }
-            };
-          } else {
-            // Fallback to direct link if upload fails
-            console.log('Audio upload failed, falling back to direct link');
-            messagePayload = {
-              ...messagePayload,
-              type: 'audio',
-              audio: {
-                link: mediaUrl
-              }
-            };
-          }
+          console.log('Audio message configured with direct link (recommended approach)');
           break;
         case 'document':
         case 'file':
