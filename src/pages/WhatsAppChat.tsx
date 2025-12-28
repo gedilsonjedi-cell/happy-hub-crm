@@ -1196,6 +1196,13 @@ const WhatsAppChat = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
+      // Get user's organization
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
+
       // Verify blob is not empty
       if (audioBlob.size === 0) {
         console.error('Audio blob is empty!');
@@ -1208,30 +1215,32 @@ const WhatsAppChat = () => {
       const actualMimeType = audioBlob.type || 'audio/webm';
       const isWebM = actualMimeType.includes('webm');
       
-      // WebM is not supported by WhatsApp API - show error immediately
-      if (isWebM) {
-        console.error('WebM format not supported by WhatsApp');
-        toast.error('Gravação de voz não suportada neste navegador. Use a opção "Enviar Mídia" para enviar um arquivo de áudio OGG ou MP3.');
-        setUploadingMedia(false);
-        return;
-      }
-      
-      // Use the correct extension based on actual format
-      const extension = actualMimeType.includes('ogg') ? 'ogg' : (actualMimeType.includes('mp4') ? 'm4a' : 'mp3');
-      
-      console.log('Recording format:', actualMimeType, 'size:', audioBlob.size);
+      console.log('Recording format:', actualMimeType, 'size:', audioBlob.size, 'isWebM:', isWebM);
 
-      // Generate unique file name with correct extension
+      // Determine extension
+      let extension = 'ogg';
+      if (actualMimeType.includes('ogg')) {
+        extension = 'ogg';
+      } else if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
+        extension = 'm4a';
+      } else if (actualMimeType.includes('mp3') || actualMimeType.includes('mpeg')) {
+        extension = 'mp3';
+      } else if (actualMimeType.includes('webm')) {
+        extension = 'webm';
+      }
+
+      // Generate unique file name
       const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
 
       console.log('Uploading voice recording:', { 
         size: audioBlob.size,
         type: actualMimeType,
-        fileName 
+        fileName,
+        isWebM
       });
 
-      // Upload to Supabase Storage with the actual content type
+      // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
         .upload(filePath, audioBlob, {
@@ -1252,14 +1261,53 @@ const WhatsAppChat = () => {
         .from('whatsapp-media')
         .getPublicUrl(filePath);
 
-      const publicUrl = urlData.publicUrl;
+      let publicUrl = urlData.publicUrl;
       console.log('Audio uploaded, public URL:', publicUrl);
 
-      // Send as audio message
+      // If WebM, try to convert on server
+      if (isWebM) {
+        console.log('WebM detected, attempting server-side conversion...');
+        toast.info('Convertendo áudio para formato compatível...');
+        
+        try {
+          const { data: convertData, error: convertError } = await supabase.functions.invoke('convert-audio', {
+            body: {
+              audioUrl: publicUrl,
+              organizationId: profile?.organization_id
+            }
+          });
+
+          if (convertError) {
+            console.error('Conversion error:', convertError);
+            toast.error('Erro na conversão do áudio. Configure uma API de conversão (CloudConvert ou Zamzar) ou use um dispositivo móvel para gravar.');
+            setUploadingMedia(false);
+            return;
+          }
+
+          if (!convertData?.success) {
+            console.error('Conversion failed:', convertData);
+            toast.error(convertData?.details || 'Formato de áudio não suportado pelo WhatsApp. Use um dispositivo móvel para gravar áudio.');
+            setUploadingMedia(false);
+            return;
+          }
+
+          // Use converted URL
+          publicUrl = convertData.convertedUrl;
+          console.log('Audio converted successfully:', publicUrl);
+          toast.success('Áudio convertido com sucesso!');
+        } catch (convError) {
+          console.error('Conversion exception:', convError);
+          toast.error('Seu navegador grava em formato WebM que não é suportado pelo WhatsApp. Use um dispositivo móvel ou envie um arquivo de áudio OGG/MP3.');
+          setUploadingMedia(false);
+          return;
+        }
+      }
+
+      // Send as audio message via URL (not media ID)
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
-        fileName: `gravacao.${extension}`
+        fileName: `gravacao.${extension === 'webm' ? 'ogg' : extension}`
       });
 
     } catch (error) {

@@ -5,9 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Use a cloud conversion API for reliable audio conversion
-// We'll use CloudConvert or a similar service, but for now let's use a simpler approach:
-// Re-encode using a public API or handle the format detection
+// Supported audio formats by WhatsApp
+const WHATSAPP_SUPPORTED_FORMATS = [
+  'audio/ogg',
+  'audio/mpeg', 
+  'audio/mp3',
+  'audio/mp4',
+  'audio/aac',
+  'audio/amr',
+  'audio/m4a',
+  'audio/opus'
+];
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -16,16 +24,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { audioUrl, organizationId } = await req.json();
+    const { audioUrl, organizationId, forceConvert } = await req.json();
 
-    if (!audioUrl || !organizationId) {
+    if (!audioUrl) {
       return new Response(
-        JSON.stringify({ error: 'audioUrl and organizationId are required' }),
+        JSON.stringify({ error: 'audioUrl is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Processing audio from:', audioUrl);
+    console.log('Processing audio:', { audioUrl, organizationId, forceConvert });
 
     // Download the original audio
     const audioResponse = await fetch(audioUrl);
@@ -37,10 +45,32 @@ Deno.serve(async (req) => {
     const arrayBuffer = await audioBlob.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
 
+    const originalMimeType = audioBlob.type.toLowerCase();
     console.log('Downloaded audio:', {
       size: uint8Array.length,
-      originalMimeType: audioBlob.type
+      originalMimeType
     });
+
+    // Check if format is already supported
+    const isSupported = WHATSAPP_SUPPORTED_FORMATS.some(f => 
+      originalMimeType.includes(f.replace('audio/', '')) || 
+      f.includes(originalMimeType.replace('audio/', ''))
+    );
+
+    // If already supported and not forcing conversion, return original URL
+    if (isSupported && !forceConvert) {
+      console.log('Audio format is already supported:', originalMimeType);
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          convertedUrl: audioUrl,
+          originalFormat: originalMimeType,
+          converted: false,
+          message: 'Formato já suportado'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Initialize Supabase client
     const supabase = createClient(
@@ -48,154 +78,218 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Since we can't convert in Deno without FFmpeg binary, 
-    // we'll use a cloud service. For now, let's try using the Zamzar API
-    // or return the original URL and let the frontend handle it differently
+    // Try CloudConvert API first (if available)
+    const cloudConvertApiKey = Deno.env.get('CLOUDCONVERT_API_KEY');
     
-    // Alternative approach: Use AAC.js or similar pure JS decoder
-    // But that's complex. Let's use a practical solution:
-    
-    // Option 1: Convert using a free API like audio.online-convert.com
-    // Option 2: Use a worker service like CloudConvert
-    // Option 3: Return error and ask user to record on mobile (which uses AAC/OGG)
-    
-    // For now, let's check if the format is already supported
-    const mimeType = audioBlob.type.toLowerCase();
-    const supportedFormats = ['audio/ogg', 'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/amr', 'audio/m4a'];
-    
-    const isSupported = supportedFormats.some(f => mimeType.includes(f.replace('audio/', '')));
-    
-    if (isSupported) {
-      console.log('Audio format is already supported:', mimeType);
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          convertedUrl: audioUrl,
-          originalFormat: mimeType,
-          converted: false
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (cloudConvertApiKey) {
+      console.log('Using CloudConvert API for conversion...');
+      
+      try {
+        // Create job
+        const createJobResponse = await fetch('https://api.cloudconvert.com/v2/jobs', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${cloudConvertApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tasks: {
+              'import-audio': {
+                operation: 'import/url',
+                url: audioUrl
+              },
+              'convert-audio': {
+                operation: 'convert',
+                input: 'import-audio',
+                output_format: 'ogg',
+                audio_codec: 'libopus',
+                audio_bitrate: 64
+              },
+              'export-audio': {
+                operation: 'export/url',
+                input: 'convert-audio'
+              }
+            }
+          })
+        });
+
+        if (createJobResponse.ok) {
+          const job = await createJobResponse.json();
+          console.log('CloudConvert job created:', job.data.id);
+
+          // Poll for completion
+          let attempts = 0;
+          while (attempts < 30) {
+            await new Promise(r => setTimeout(r, 2000));
+            
+            const statusResponse = await fetch(`https://api.cloudconvert.com/v2/jobs/${job.data.id}`, {
+              headers: { 'Authorization': `Bearer ${cloudConvertApiKey}` }
+            });
+            
+            const status = await statusResponse.json();
+            console.log('Job status:', status.data.status);
+            
+            if (status.data.status === 'finished') {
+              // Find export task with result
+              const exportTask = status.data.tasks.find((t: { name: string }) => t.name === 'export-audio');
+              if (exportTask?.result?.files?.[0]?.url) {
+                const convertedUrl = exportTask.result.files[0].url;
+                
+                // Download and upload to our storage
+                const convertedResponse = await fetch(convertedUrl);
+                const convertedBuffer = await convertedResponse.arrayBuffer();
+                
+                const fileName = `converted_${Date.now()}.ogg`;
+                const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
+                
+                const { error: uploadError } = await supabase.storage
+                  .from('whatsapp-media')
+                  .upload(filePath, new Uint8Array(convertedBuffer), {
+                    contentType: 'audio/ogg',
+                    cacheControl: '3600'
+                  });
+                
+                if (!uploadError) {
+                  const { data: urlData } = supabase.storage
+                    .from('whatsapp-media')
+                    .getPublicUrl(filePath);
+                  
+                  console.log('Conversion complete:', urlData.publicUrl);
+                  
+                  return new Response(
+                    JSON.stringify({ 
+                      success: true,
+                      convertedUrl: urlData.publicUrl,
+                      originalFormat: originalMimeType,
+                      convertedFormat: 'audio/ogg',
+                      converted: true
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                  );
+                }
+              }
+              break;
+            } else if (status.data.status === 'error') {
+              console.error('CloudConvert job failed');
+              break;
+            }
+            
+            attempts++;
+          }
+        }
+      } catch (cloudConvertError) {
+        console.error('CloudConvert error:', cloudConvertError);
+      }
     }
 
-    // For WebM, we need conversion. Use Zamzar API if available
+    // Try Zamzar API as fallback (if available)
     const zamzarApiKey = Deno.env.get('ZAMZAR_API_KEY');
     
     if (zamzarApiKey) {
       console.log('Using Zamzar API for conversion...');
       
-      // Start conversion job
-      const formData = new FormData();
-      formData.append('source_file', new Blob([uint8Array], { type: mimeType }), 'audio.webm');
-      formData.append('target_format', 'mp3');
-      
-      const jobResponse = await fetch('https://api.zamzar.com/v1/jobs', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(zamzarApiKey + ':')}`
-        },
-        body: formData
-      });
-      
-      if (!jobResponse.ok) {
-        const error = await jobResponse.text();
-        console.error('Zamzar job creation failed:', error);
-        throw new Error('Conversion service error');
-      }
-      
-      const job = await jobResponse.json();
-      console.log('Zamzar job created:', job.id);
-      
-      // Poll for completion (max 30 seconds)
-      let attempts = 0;
-      let completedJob = null;
-      
-      while (attempts < 15) {
-        await new Promise(r => setTimeout(r, 2000));
+      try {
+        const formData = new FormData();
+        formData.append('source_file', new Blob([uint8Array], { type: originalMimeType }), 'audio.webm');
+        formData.append('target_format', 'mp3');
         
-        const statusResponse = await fetch(`https://api.zamzar.com/v1/jobs/${job.id}`, {
+        const jobResponse = await fetch('https://api.zamzar.com/v1/jobs', {
+          method: 'POST',
           headers: {
             'Authorization': `Basic ${btoa(zamzarApiKey + ':')}`
+          },
+          body: formData
+        });
+        
+        if (jobResponse.ok) {
+          const job = await jobResponse.json();
+          console.log('Zamzar job created:', job.id);
+          
+          // Poll for completion
+          let attempts = 0;
+          while (attempts < 15) {
+            await new Promise(r => setTimeout(r, 2000));
+            
+            const statusResponse = await fetch(`https://api.zamzar.com/v1/jobs/${job.id}`, {
+              headers: { 'Authorization': `Basic ${btoa(zamzarApiKey + ':')}` }
+            });
+            
+            const status = await statusResponse.json();
+            
+            if (status.status === 'successful' && status.target_files?.[0]) {
+              const fileId = status.target_files[0].id;
+              const downloadResponse = await fetch(`https://api.zamzar.com/v1/files/${fileId}/content`, {
+                headers: { 'Authorization': `Basic ${btoa(zamzarApiKey + ':')}` }
+              });
+              
+              if (downloadResponse.ok) {
+                const convertedBuffer = await downloadResponse.arrayBuffer();
+                
+                const fileName = `converted_${Date.now()}.mp3`;
+                const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
+                
+                const { error: uploadError } = await supabase.storage
+                  .from('whatsapp-media')
+                  .upload(filePath, new Uint8Array(convertedBuffer), {
+                    contentType: 'audio/mpeg',
+                    cacheControl: '3600'
+                  });
+                
+                if (!uploadError) {
+                  const { data: urlData } = supabase.storage
+                    .from('whatsapp-media')
+                    .getPublicUrl(filePath);
+                  
+                  return new Response(
+                    JSON.stringify({ 
+                      success: true,
+                      convertedUrl: urlData.publicUrl,
+                      originalFormat: originalMimeType,
+                      convertedFormat: 'audio/mpeg',
+                      converted: true
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                  );
+                }
+              }
+              break;
+            } else if (status.status === 'failed') {
+              break;
+            }
+            
+            attempts++;
           }
-        });
-        
-        const status = await statusResponse.json();
-        console.log('Job status:', status.status);
-        
-        if (status.status === 'successful') {
-          completedJob = status;
-          break;
-        } else if (status.status === 'failed') {
-          throw new Error('Conversion failed');
         }
-        
-        attempts++;
+      } catch (zamzarError) {
+        console.error('Zamzar error:', zamzarError);
       }
-      
-      if (!completedJob || !completedJob.target_files?.[0]) {
-        throw new Error('Conversion timeout');
-      }
-      
-      // Download converted file
-      const fileId = completedJob.target_files[0].id;
-      const downloadResponse = await fetch(`https://api.zamzar.com/v1/files/${fileId}/content`, {
-        headers: {
-          'Authorization': `Basic ${btoa(zamzarApiKey + ':')}`
-        }
-      });
-      
-      if (!downloadResponse.ok) {
-        throw new Error('Failed to download converted file');
-      }
-      
-      const convertedBuffer = await downloadResponse.arrayBuffer();
-      const convertedUint8 = new Uint8Array(convertedBuffer);
-      
-      // Upload to Supabase Storage
-      const fileName = `converted_${Date.now()}.mp3`;
-      const filePath = `${organizationId}/${fileName}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, convertedUint8, {
-          contentType: 'audio/mpeg',
-          cacheControl: '3600'
-        });
-      
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        throw new Error('Failed to upload converted audio');
-      }
-      
-      const { data: urlData } = supabase.storage
-        .from('whatsapp-media')
-        .getPublicUrl(filePath);
-      
-      console.log('Conversion complete, new URL:', urlData.publicUrl);
-      
+    }
+
+    // No conversion service available or conversion failed
+    // For WebM, we can't send to WhatsApp without conversion
+    if (originalMimeType.includes('webm')) {
       return new Response(
         JSON.stringify({ 
-          success: true,
-          convertedUrl: urlData.publicUrl,
-          originalFormat: mimeType,
-          converted: true
+          success: false,
+          error: 'Formato WebM não suportado pelo WhatsApp',
+          details: 'Configure uma API de conversão (CLOUDCONVERT_API_KEY ou ZAMZAR_API_KEY) ou grave em um formato suportado (OGG, MP3).',
+          originalFormat: originalMimeType,
+          needsConversion: true
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    // No conversion service available - return error with supported formats
-    console.log('No conversion service available, format not supported:', mimeType);
-    
+
+    // Return original URL for other formats (might work)
     return new Response(
       JSON.stringify({ 
-        success: false,
-        error: 'Formato de áudio não suportado pelo WhatsApp',
-        details: `O formato ${mimeType} não é suportado. Formatos aceitos: OGG, MP3, MP4, AAC, AMR.`,
-        originalFormat: mimeType,
-        supportedFormats: ['audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr']
+        success: true,
+        convertedUrl: audioUrl,
+        originalFormat: originalMimeType,
+        converted: false,
+        warning: 'Formato pode não ser compatível com WhatsApp'
       }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
