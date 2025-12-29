@@ -9,13 +9,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Copy, Check, QrCode, Wallet, CreditCard } from "lucide-react";
+import { 
+  Loader2, 
+  Copy, 
+  Check, 
+  QrCode, 
+  Wallet, 
+  CreditCard, 
+  ArrowLeft, 
+  ArrowRight,
+  CheckCircle2,
+  Sparkles
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface PixPaymentDialogProps {
   open: boolean;
@@ -25,11 +36,15 @@ interface PixPaymentDialogProps {
 }
 
 const BALANCE_OPTIONS = [
-  { value: 50, label: "R$ 50" },
-  { value: 100, label: "R$ 100" },
-  { value: 200, label: "R$ 200" },
-  { value: 500, label: "R$ 500" },
+  { value: 50, label: "R$ 50", popular: false },
+  { value: 100, label: "R$ 100", popular: true },
+  { value: 200, label: "R$ 200", popular: false },
+  { value: 500, label: "R$ 500", popular: false },
 ];
+
+type Step = "amount" | "method" | "details" | "qrcode" | "success";
+type PaymentType = "balance" | "subscription";
+type PaymentMethod = "pix" | "card";
 
 export function PixPaymentDialog({
   open,
@@ -38,12 +53,13 @@ export function PixPaymentDialog({
   onPaymentCreated,
 }: PixPaymentDialogProps) {
   const { user } = useAuth();
-  const [step, setStep] = useState<"form" | "qrcode" | "card">("form");
+  const [step, setStep] = useState<Step>("amount");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [paymentType, setPaymentType] = useState<"balance" | "subscription">("balance");
-  const [paymentMethod, setPaymentMethod] = useState<"pix" | "card">("pix");
-  const [selectedAmount, setSelectedAmount] = useState<number>(100);
+  
+  const [paymentType, setPaymentType] = useState<PaymentType>("balance");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState("");
   const [payerName, setPayerName] = useState("");
   const [payerEmail, setPayerEmail] = useState(user?.email || "");
@@ -64,7 +80,7 @@ export function PixPaymentDialog({
   const getFinalAmount = () => {
     if (paymentType === "subscription") return 299;
     if (customAmount) return parseFloat(customAmount);
-    return selectedAmount;
+    return selectedAmount || 0;
   };
 
   const formatCardNumber = (value: string) => {
@@ -178,9 +194,8 @@ export function PixPaymentDialog({
       if (error) throw error;
 
       if (data.success) {
-        toast.success("Pagamento aprovado! Créditos adicionados.");
+        setStep("success");
         onPaymentCreated?.();
-        handleClose();
       } else if (data.status === "pending" || data.status === "in_process") {
         toast.info("Pagamento em processamento. Aguarde a confirmação.");
         handleClose();
@@ -206,7 +221,7 @@ export function PixPaymentDialog({
   };
 
   const handleClose = () => {
-    setStep("form");
+    setStep("amount");
     setPixData(null);
     setCopied(false);
     setCardNumber("");
@@ -214,314 +229,496 @@ export function PixPaymentDialog({
     setCardCvv("");
     setCardHolder("");
     setCpf("");
+    setSelectedAmount(null);
+    setCustomAmount("");
+    setPaymentMethod(null);
     onOpenChange(false);
   };
 
-  const handleSubmit = () => {
-    if (paymentMethod === "pix") {
-      handleGeneratePix();
-    } else {
-      handleCardPayment();
+  const handleNext = () => {
+    if (step === "amount") {
+      if (!getFinalAmount() || getFinalAmount() < 10) {
+        toast.error("Selecione um valor (mínimo R$ 10)");
+        return;
+      }
+      setStep("method");
+    } else if (step === "method") {
+      if (!paymentMethod) {
+        toast.error("Selecione uma forma de pagamento");
+        return;
+      }
+      setStep("details");
+    } else if (step === "details") {
+      if (paymentMethod === "pix") {
+        handleGeneratePix();
+      } else {
+        handleCardPayment();
+      }
     }
   };
 
+  const handleBack = () => {
+    if (step === "method") setStep("amount");
+    else if (step === "details") setStep("method");
+    else if (step === "qrcode") setStep("details");
+  };
+
+  const canProceed = () => {
+    if (step === "amount") return getFinalAmount() >= 10;
+    if (step === "method") return !!paymentMethod;
+    if (step === "details") {
+      if (paymentMethod === "pix") return !!payerEmail;
+      return !!payerEmail && !!cardNumber && !!cardExpiry && !!cardCvv && !!cardHolder && !!cpf;
+    }
+    return true;
+  };
+
+  const getStepNumber = () => {
+    const steps = ["amount", "method", "details"];
+    return steps.indexOf(step) + 1;
+  };
+
+  const renderStepIndicator = () => {
+    if (step === "qrcode" || step === "success") return null;
+    
+    const steps = [
+      { id: "amount", label: "Valor" },
+      { id: "method", label: "Pagamento" },
+      { id: "details", label: "Dados" },
+    ];
+
+    return (
+      <div className="flex items-center justify-center gap-2 mb-6">
+        {steps.map((s, index) => {
+          const isActive = s.id === step;
+          const isPast = steps.findIndex(st => st.id === step) > index;
+          
+          return (
+            <div key={s.id} className="flex items-center">
+              <div className={cn(
+                "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-all",
+                isActive && "bg-primary text-primary-foreground scale-110",
+                isPast && "bg-primary/20 text-primary",
+                !isActive && !isPast && "bg-muted text-muted-foreground"
+              )}>
+                {isPast ? <Check className="w-4 h-4" /> : index + 1}
+              </div>
+              {index < steps.length - 1 && (
+                <div className={cn(
+                  "w-8 h-0.5 mx-1",
+                  isPast ? "bg-primary/50" : "bg-muted"
+                )} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderAmountStep = () => (
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <h3 className="text-xl font-semibold">Quanto você quer adicionar?</h3>
+        <p className="text-sm text-muted-foreground">Selecione o valor da recarga</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {BALANCE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              setSelectedAmount(option.value);
+              setCustomAmount("");
+            }}
+            className={cn(
+              "relative p-4 rounded-xl border-2 transition-all text-left",
+              selectedAmount === option.value && !customAmount
+                ? "border-primary bg-primary/5 shadow-md"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+            )}
+          >
+            {option.popular && (
+              <span className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Popular
+              </span>
+            )}
+            <span className="text-2xl font-bold">{option.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">ou digite um valor</span>
+        </div>
+      </div>
+
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">R$</span>
+        <Input
+          type="number"
+          placeholder="0,00"
+          value={customAmount}
+          onChange={(e) => {
+            setCustomAmount(e.target.value);
+            setSelectedAmount(null);
+          }}
+          min={10}
+          className="pl-10 h-14 text-xl font-medium"
+        />
+      </div>
+
+      {getFinalAmount() > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4 flex items-center justify-between">
+            <span className="text-muted-foreground">Você receberá</span>
+            <span className="text-2xl font-bold text-primary">
+              R$ {getFinalAmount().toFixed(2)}
+            </span>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
+  const renderMethodStep = () => (
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <h3 className="text-xl font-semibold">Como você quer pagar?</h3>
+        <p className="text-sm text-muted-foreground">Escolha a forma de pagamento</p>
+      </div>
+
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setPaymentMethod("pix")}
+          className={cn(
+            "w-full p-5 rounded-xl border-2 transition-all flex items-center gap-4",
+            paymentMethod === "pix"
+              ? "border-primary bg-primary/5 shadow-md"
+              : "border-border hover:border-primary/50 hover:bg-muted/50"
+          )}
+        >
+          <div className={cn(
+            "w-14 h-14 rounded-xl flex items-center justify-center",
+            paymentMethod === "pix" ? "bg-primary text-primary-foreground" : "bg-muted"
+          )}>
+            <QrCode className="w-7 h-7" />
+          </div>
+          <div className="text-left flex-1">
+            <p className="text-lg font-semibold">PIX</p>
+            <p className="text-sm text-muted-foreground">Pagamento instantâneo via QR Code</p>
+          </div>
+          {paymentMethod === "pix" && (
+            <CheckCircle2 className="w-6 h-6 text-primary" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPaymentMethod("card")}
+          className={cn(
+            "w-full p-5 rounded-xl border-2 transition-all flex items-center gap-4",
+            paymentMethod === "card"
+              ? "border-primary bg-primary/5 shadow-md"
+              : "border-border hover:border-primary/50 hover:bg-muted/50"
+          )}
+        >
+          <div className={cn(
+            "w-14 h-14 rounded-xl flex items-center justify-center",
+            paymentMethod === "card" ? "bg-primary text-primary-foreground" : "bg-muted"
+          )}>
+            <CreditCard className="w-7 h-7" />
+          </div>
+          <div className="text-left flex-1">
+            <p className="text-lg font-semibold">Cartão de Crédito</p>
+            <p className="text-sm text-muted-foreground">Pagamento à vista, aprovação imediata</p>
+          </div>
+          {paymentMethod === "card" && (
+            <CheckCircle2 className="w-6 h-6 text-primary" />
+          )}
+        </button>
+      </div>
+
+      <Card className="bg-muted/50">
+        <CardContent className="p-4 flex items-center justify-between">
+          <span className="text-muted-foreground">Total</span>
+          <span className="text-xl font-bold">R$ {getFinalAmount().toFixed(2)}</span>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderDetailsStep = () => (
+    <div className="space-y-5">
+      <div className="text-center space-y-2">
+        <h3 className="text-xl font-semibold">
+          {paymentMethod === "pix" ? "Confirme seus dados" : "Dados do cartão"}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {paymentMethod === "pix" 
+            ? "Precisamos do seu email para enviar o comprovante"
+            : "Preencha os dados do cartão de crédito"
+          }
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="payerEmail">Email *</Label>
+          <Input
+            id="payerEmail"
+            type="email"
+            value={payerEmail}
+            onChange={(e) => setPayerEmail(e.target.value)}
+            placeholder="seu@email.com"
+            className="h-12"
+          />
+        </div>
+
+        {paymentMethod === "pix" && (
+          <div className="space-y-2">
+            <Label htmlFor="payerName">Nome (opcional)</Label>
+            <Input
+              id="payerName"
+              value={payerName}
+              onChange={(e) => setPayerName(e.target.value)}
+              placeholder="Seu nome completo"
+              className="h-12"
+            />
+          </div>
+        )}
+
+        {paymentMethod === "card" && (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="cardNumber">Número do Cartão *</Label>
+              <Input
+                id="cardNumber"
+                value={cardNumber}
+                onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                placeholder="0000 0000 0000 0000"
+                maxLength={19}
+                className="h-12 font-mono"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="cardExpiry">Validade *</Label>
+                <Input
+                  id="cardExpiry"
+                  value={cardExpiry}
+                  onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                  placeholder="MM/AA"
+                  maxLength={5}
+                  className="h-12"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cardCvv">CVV *</Label>
+                <Input
+                  id="cardCvv"
+                  value={cardCvv}
+                  onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="123"
+                  maxLength={4}
+                  className="h-12"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cardHolder">Nome no Cartão *</Label>
+              <Input
+                id="cardHolder"
+                value={cardHolder}
+                onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                placeholder="NOME COMO NO CARTÃO"
+                className="h-12"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cpf">CPF do Titular *</Label>
+              <Input
+                id="cpf"
+                value={cpf}
+                onChange={(e) => setCpf(formatCpf(e.target.value))}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                className="h-12"
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <Card className="bg-primary/5 border-primary/20">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-muted-foreground">Valor</span>
+            <span className="font-medium">R$ {getFinalAmount().toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Forma de pagamento</span>
+            <span className="font-medium flex items-center gap-1.5">
+              {paymentMethod === "pix" ? (
+                <><QrCode className="w-4 h-4" /> PIX</>
+              ) : (
+                <><CreditCard className="w-4 h-4" /> Cartão</>
+              )}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderQRCodeStep = () => (
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+        <h3 className="text-xl font-semibold">PIX gerado com sucesso!</h3>
+        <p className="text-sm text-muted-foreground">Escaneie o QR Code ou copie o código</p>
+      </div>
+
+      {pixData?.qrCodeBase64 && (
+        <div className="flex justify-center">
+          <div className="p-4 bg-white rounded-2xl shadow-lg">
+            <img
+              src={`data:image/png;base64,${pixData.qrCodeBase64}`}
+              alt="QR Code PIX"
+              className="w-48 h-48"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label>Código PIX (Copia e Cola)</Label>
+        <div className="flex gap-2">
+          <Input
+            value={pixData?.qrCode || ""}
+            readOnly
+            className="font-mono text-xs"
+          />
+          <Button 
+            onClick={handleCopyPix} 
+            variant={copied ? "default" : "outline"} 
+            size="icon" 
+            className="shrink-0"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          </Button>
+        </div>
+      </div>
+
+      <Card className="bg-muted/50">
+        <CardContent className="p-4 text-center space-y-1">
+          <p className="text-sm text-muted-foreground">
+            Após o pagamento, o saldo será creditado automaticamente.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            O QR Code expira em 30 minutos.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Button onClick={handleClose} variant="outline" className="w-full">
+        Fechar
+      </Button>
+    </div>
+  );
+
+  const renderSuccessStep = () => (
+    <div className="space-y-6 text-center py-6">
+      <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto">
+        <CheckCircle2 className="w-10 h-10 text-green-500" />
+      </div>
+      
+      <div className="space-y-2">
+        <h3 className="text-2xl font-bold">Pagamento aprovado!</h3>
+        <p className="text-muted-foreground">
+          R$ {getFinalAmount().toFixed(2)} foram adicionados ao seu saldo
+        </p>
+      </div>
+
+      <Card className="bg-green-500/5 border-green-500/20">
+        <CardContent className="p-4">
+          <p className="text-sm text-green-600">
+            Seus créditos já estão disponíveis para uso.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Button onClick={handleClose} className="w-full" size="lg">
+        Concluir
+      </Button>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] p-0">
-        <DialogHeader className="p-4 sm:p-6 pb-0">
-          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-            {paymentMethod === "pix" ? <QrCode className="w-5 h-5" /> : <CreditCard className="w-5 h-5" />}
-            {paymentMethod === "pix" ? "Pagamento via PIX" : "Pagamento com Cartão"}
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-5 pb-0">
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <Wallet className="w-5 h-5 text-primary" />
+            Adicionar Créditos
           </DialogTitle>
-          <DialogDescription className="text-sm">
-            {step === "form" 
-              ? "Escolha o valor e forma de pagamento" 
-              : step === "qrcode"
-              ? "Escaneie o QR Code ou copie o código"
-              : "Preencha os dados do cartão"}
+          <DialogDescription className="sr-only">
+            Adicione créditos à sua conta
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-8rem)]">
-          <div className="p-4 sm:p-6 pt-4">
-            {step === "form" ? (
-              <div className="space-y-4">
-                {/* Payment Type Selection */}
-                <div className="space-y-2">
-                  <Label className="text-sm">Tipo de Pagamento</Label>
-                  <RadioGroup 
-                    value={paymentType} 
-                    onValueChange={(v) => setPaymentType(v as "balance" | "subscription")}
-                    className="grid grid-cols-2 gap-2"
-                  >
-                    <Label 
-                      htmlFor="balance" 
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        paymentType === "balance" 
-                          ? "border-primary bg-primary/5" 
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="balance" id="balance" className="sr-only" />
-                      <Wallet className="w-5 h-5" />
-                      <span className="font-medium text-sm">Recarga</span>
-                      <span className="text-xs text-muted-foreground">Créditos</span>
-                    </Label>
-                    <Label 
-                      htmlFor="subscription" 
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        paymentType === "subscription" 
-                          ? "border-primary bg-primary/5" 
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="subscription" id="subscription" className="sr-only" />
-                      <CreditCard className="w-5 h-5" />
-                      <span className="font-medium text-sm">Assinatura</span>
-                      <span className="text-xs text-muted-foreground">R$ 299/mês</span>
-                    </Label>
-                  </RadioGroup>
-                </div>
-
-                {/* Payment Method */}
-                <div className="space-y-2">
-                  <Label className="text-sm">Forma de Pagamento</Label>
-                  <RadioGroup 
-                    value={paymentMethod} 
-                    onValueChange={(v) => setPaymentMethod(v as "pix" | "card")}
-                    className="grid grid-cols-2 gap-2"
-                  >
-                    <Label 
-                      htmlFor="pix" 
-                      className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        paymentMethod === "pix" 
-                          ? "border-primary bg-primary/5" 
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="pix" id="pix" className="sr-only" />
-                      <QrCode className="w-4 h-4" />
-                      <span className="font-medium text-sm">PIX</span>
-                    </Label>
-                    <Label 
-                      htmlFor="card" 
-                      className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        paymentMethod === "card" 
-                          ? "border-primary bg-primary/5" 
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="card" id="card" className="sr-only" />
-                      <CreditCard className="w-4 h-4" />
-                      <span className="font-medium text-sm">Cartão</span>
-                    </Label>
-                  </RadioGroup>
-                </div>
-
-                {/* Amount Selection (only for balance) */}
-                {paymentType === "balance" && (
-                  <div className="space-y-2">
-                    <Label className="text-sm">Valor da Recarga</Label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {BALANCE_OPTIONS.map((option) => (
-                        <Button
-                          key={option.value}
-                          type="button"
-                          variant={selectedAmount === option.value && !customAmount ? "default" : "outline"}
-                          className="h-10 text-sm px-2"
-                          onClick={() => {
-                            setSelectedAmount(option.value);
-                            setCustomAmount("");
-                          }}
-                        >
-                          {option.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground shrink-0">ou</span>
-                      <Input
-                        type="number"
-                        placeholder="Outro valor"
-                        value={customAmount}
-                        onChange={(e) => setCustomAmount(e.target.value)}
-                        min={10}
-                        className="flex-1 h-9"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Payer Info */}
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="payerName" className="text-sm">Nome</Label>
-                    <Input
-                      id="payerName"
-                      value={payerName}
-                      onChange={(e) => setPayerName(e.target.value)}
-                      placeholder="Seu nome completo"
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="payerEmail" className="text-sm">Email *</Label>
-                    <Input
-                      id="payerEmail"
-                      type="email"
-                      value={payerEmail}
-                      onChange={(e) => setPayerEmail(e.target.value)}
-                      placeholder="seu@email.com"
-                      required
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-
-                {/* Card Fields (only for card payment) */}
-                {paymentMethod === "card" && (
-                  <div className="space-y-3 pt-2 border-t">
-                    <p className="text-sm font-medium">Dados do Cartão</p>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cardNumber" className="text-sm">Número do Cartão *</Label>
-                      <Input
-                        id="cardNumber"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                        placeholder="0000 0000 0000 0000"
-                        maxLength={19}
-                        className="h-9"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cardExpiry" className="text-sm">Validade *</Label>
-                        <Input
-                          id="cardExpiry"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
-                          placeholder="MM/AA"
-                          maxLength={5}
-                          className="h-9"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cardCvv" className="text-sm">CVV *</Label>
-                        <Input
-                          id="cardCvv"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                          placeholder="123"
-                          maxLength={4}
-                          className="h-9"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cardHolder" className="text-sm">Nome no Cartão *</Label>
-                      <Input
-                        id="cardHolder"
-                        value={cardHolder}
-                        onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-                        placeholder="NOME COMO NO CARTÃO"
-                        className="h-9"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cpf" className="text-sm">CPF do Titular *</Label>
-                      <Input
-                        id="cpf"
-                        value={cpf}
-                        onChange={(e) => setCpf(formatCpf(e.target.value))}
-                        placeholder="000.000.000-00"
-                        maxLength={14}
-                        className="h-9"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary */}
-                <Card>
-                  <CardContent className="p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Total a pagar</span>
-                      <span className="text-xl font-bold text-primary">
-                        R$ {getFinalAmount().toFixed(2)}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Button onClick={handleSubmit} disabled={loading} className="w-full">
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processando...
-                    </>
-                  ) : paymentMethod === "pix" ? (
-                    <>
-                      <QrCode className="w-4 h-4 mr-2" />
-                      Gerar QR Code PIX
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Pagar com Cartão
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* QR Code Display */}
-                {pixData?.qrCodeBase64 && (
-                  <div className="flex justify-center">
-                    <div className="p-3 bg-white rounded-lg">
-                      <img
-                        src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                        alt="QR Code PIX"
-                        className="w-40 h-40 sm:w-48 sm:h-48"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Copy Button */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Código PIX (Copia e Cola)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={pixData?.qrCode || ""}
-                      readOnly
-                      className="font-mono text-xs h-9"
-                    />
-                    <Button onClick={handleCopyPix} variant="outline" size="icon" className="h-9 w-9 shrink-0">
-                      {copied ? (
-                        <Check className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="text-center space-y-1">
-                  <p className="text-sm text-muted-foreground">
-                    Após o pagamento, o saldo será creditado automaticamente.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    O QR Code expira em 30 minutos.
-                  </p>
-                </div>
-
-                <Button onClick={handleClose} variant="outline" className="w-full">
-                  Fechar
-                </Button>
-              </div>
-            )}
+        <ScrollArea className="max-h-[calc(90vh-10rem)]">
+          <div className="p-5">
+            {renderStepIndicator()}
+            
+            {step === "amount" && renderAmountStep()}
+            {step === "method" && renderMethodStep()}
+            {step === "details" && renderDetailsStep()}
+            {step === "qrcode" && renderQRCodeStep()}
+            {step === "success" && renderSuccessStep()}
           </div>
         </ScrollArea>
+
+        {step !== "qrcode" && step !== "success" && (
+          <div className="p-5 pt-0 flex gap-3">
+            {step !== "amount" && (
+              <Button 
+                variant="outline" 
+                onClick={handleBack}
+                className="flex-1"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Voltar
+              </Button>
+            )}
+            <Button 
+              onClick={handleNext}
+              disabled={!canProceed() || loading}
+              className="flex-1"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : step === "details" ? (
+                paymentMethod === "pix" ? "Gerar PIX" : "Pagar"
+              ) : (
+                <>
+                  Continuar
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
