@@ -141,6 +141,13 @@ export default function SuperAdmin() {
   const [editOrgExpiryDate, setEditOrgExpiryDate] = useState<Date | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Edit admin fields
+  const [editAdminUserId, setEditAdminUserId] = useState<string | null>(null);
+  const [editAdminName, setEditAdminName] = useState("");
+  const [editAdminEmail, setEditAdminEmail] = useState("");
+  const [editAdminPassword, setEditAdminPassword] = useState("");
+  const [loadingAdminData, setLoadingAdminData] = useState(false);
+  
   // Balance/Recharge dialog
   const [isBalanceDialogOpen, setIsBalanceDialogOpen] = useState(false);
   const [selectedOrgForBalance, setSelectedOrgForBalance] = useState<Organization | null>(null);
@@ -358,13 +365,34 @@ export default function SuperAdmin() {
     setGeneratedPassword("");
   };
 
-  const handleOpenEditDialog = (org: Organization) => {
+  const handleOpenEditDialog = async (org: Organization) => {
     setEditingOrg(org);
     setEditOrgName(org.name);
     setEditOrgMaxUsers(org.max_users);
     setEditOrgMaxChannels(org.max_channels);
     setEditOrgExpiryDate(org.subscription_ends_at ? new Date(org.subscription_ends_at) : undefined);
     setIsEditDialogOpen(true);
+    
+    // Fetch admin user data
+    setLoadingAdminData(true);
+    try {
+      const { data: adminProfile, error } = await supabase
+        .from("profiles")
+        .select("user_id, display_name, email")
+        .eq("organization_id", org.id)
+        .limit(1)
+        .single();
+      
+      if (!error && adminProfile) {
+        setEditAdminUserId(adminProfile.user_id);
+        setEditAdminName(adminProfile.display_name || "");
+        setEditAdminEmail(adminProfile.email || "");
+      }
+    } catch (err) {
+      console.error("Error fetching admin data:", err);
+    } finally {
+      setLoadingAdminData(false);
+    }
   };
 
   const handleCloseEditDialog = () => {
@@ -374,6 +402,10 @@ export default function SuperAdmin() {
     setEditOrgMaxUsers(1);
     setEditOrgMaxChannels(1);
     setEditOrgExpiryDate(undefined);
+    setEditAdminUserId(null);
+    setEditAdminName("");
+    setEditAdminEmail("");
+    setEditAdminPassword("");
   };
 
   const handleSaveOrganization = async () => {
@@ -381,6 +413,7 @@ export default function SuperAdmin() {
     
     setIsSaving(true);
     try {
+      // Update organization
       const { error } = await supabase
         .from("organizations")
         .update({
@@ -392,12 +425,44 @@ export default function SuperAdmin() {
         .eq("id", editingOrg.id);
 
       if (error) {
-        toast.error("Erro ao salvar alterações");
+        toast.error("Erro ao salvar alterações da organização");
         console.error("Error updating organization:", error);
         return;
       }
 
-      toast.success("Organização atualizada com sucesso!");
+      // Update admin user if we have their data
+      if (editAdminUserId) {
+        const { data: currentSession } = await supabase.auth.getSession();
+        const superAdminToken = currentSession?.session?.access_token;
+
+        if (superAdminToken) {
+          const updateResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user-role`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${superAdminToken}`,
+              },
+              body: JSON.stringify({
+                action: "update_user",
+                user_id: editAdminUserId,
+                display_name: editAdminName.trim(),
+                email: editAdminEmail.trim(),
+                password: editAdminPassword.trim() || undefined,
+              }),
+            }
+          );
+
+          if (!updateResponse.ok) {
+            const errorData = await updateResponse.json();
+            toast.error(`Erro ao atualizar admin: ${errorData.error}`);
+            return;
+          }
+        }
+      }
+
+      toast.success("Cliente atualizado com sucesso!");
       fetchOrganizations();
       handleCloseEditDialog();
     } catch (err) {
@@ -1124,15 +1189,15 @@ export default function SuperAdmin() {
 
         {/* Edit Organization Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={handleCloseEditDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
+          <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Editar Cliente</DialogTitle>
               <DialogDescription>
-                Altere os dados da organização
+                Altere os dados da organização e do administrador
               </DialogDescription>
             </DialogHeader>
             
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               <div className="space-y-2">
                 <Label>Nome da Empresa</Label>
                 <Input
@@ -1200,9 +1265,63 @@ export default function SuperAdmin() {
                   </p>
                 </div>
               )}
+
+              {/* Admin User Section */}
+              <div className="pt-2 border-t">
+                <p className="text-sm font-medium text-muted-foreground mb-3">Dados do Administrador</p>
+                
+                {loadingAdminData ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Nome do Admin</Label>
+                      <Input
+                        value={editAdminName}
+                        onChange={(e) => setEditAdminName(e.target.value)}
+                        placeholder="Nome do administrador"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Email do Admin</Label>
+                      <Input
+                        type="email"
+                        value={editAdminEmail}
+                        onChange={(e) => setEditAdminEmail(e.target.value)}
+                        placeholder="email@empresa.com"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Nova Senha (deixe vazio para manter)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="text"
+                          value={editAdminPassword}
+                          onChange={(e) => setEditAdminPassword(e.target.value)}
+                          placeholder="Mínimo 6 caracteres"
+                        />
+                        <Button 
+                          type="button" 
+                          variant="outline"
+                          onClick={() => setEditAdminPassword(generateSecurePassword())}
+                        >
+                          Gerar
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Deixe em branco para manter a senha atual.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 pt-4 border-t">
               <Button variant="outline" onClick={handleCloseEditDialog}>
                 Cancelar
               </Button>
