@@ -150,6 +150,59 @@ export type Database = {
           },
         ]
       }
+      auto_recharge_config: {
+        Row: {
+          card_brand: string | null
+          card_last_four: string | null
+          card_token: string | null
+          cardholder_name: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          is_enabled: boolean | null
+          min_balance_threshold: number | null
+          organization_id: string
+          recharge_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          card_brand?: string | null
+          card_last_four?: string | null
+          card_token?: string | null
+          cardholder_name?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          min_balance_threshold?: number | null
+          organization_id: string
+          recharge_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          card_brand?: string | null
+          card_last_four?: string | null
+          card_token?: string | null
+          cardholder_name?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          min_balance_threshold?: number | null
+          organization_id?: string
+          recharge_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auto_recharge_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       away_message_config: {
         Row: {
           created_at: string
