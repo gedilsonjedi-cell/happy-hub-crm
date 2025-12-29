@@ -16,7 +16,8 @@ import {
   AlertTriangle,
   X,
   Plus,
-  ArrowLeft
+  ArrowLeft,
+  Route
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,8 @@ export interface AgentConfig {
   out_of_hours_message: string;
   auto_greet_enabled: boolean;
   greeting_delay_seconds: number;
+  service_guide_enabled: boolean;
+  service_guide: string;
 }
 
 interface ChatbotEditorFormProps {
@@ -112,6 +115,8 @@ const defaultConfig: AgentConfig = {
   out_of_hours_message: "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve!",
   auto_greet_enabled: true,
   greeting_delay_seconds: 2,
+  service_guide_enabled: false,
+  service_guide: "",
 };
 
 export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFormProps) {
@@ -174,6 +179,8 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
           out_of_hours_message: data.out_of_hours_message || "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve!",
           auto_greet_enabled: data.auto_greet_enabled ?? true,
           greeting_delay_seconds: data.greeting_delay_seconds ?? 2,
+          service_guide_enabled: data.service_guide_enabled ?? false,
+          service_guide: data.service_guide || "",
         });
       }
     } catch (error) {
@@ -216,6 +223,8 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
         out_of_hours_message: config.out_of_hours_message,
         auto_greet_enabled: config.auto_greet_enabled,
         greeting_delay_seconds: config.greeting_delay_seconds,
+        service_guide_enabled: config.service_guide_enabled,
+        service_guide: config.service_guide,
       };
 
       if (config.id) {
@@ -294,6 +303,24 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
         </Card>
 
         <p className="text-xs text-muted-foreground px-2 pt-4">Configurações avançadas (Opcional)</p>
+
+        <Card 
+          className={cn(
+            "cursor-pointer transition-all",
+            activeTab === "guia" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+          )}
+          onClick={() => setActiveTab("guia")}
+        >
+          <CardHeader className="p-4">
+            <div className="flex items-center gap-3">
+              <Route className="w-5 h-5 text-muted-foreground" />
+              <div>
+                <CardTitle className="text-sm">Guia de Atendimento</CardTitle>
+                <CardDescription className="text-xs">Roteiro estruturado para o bot</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
 
         <Card 
           className={cn(
@@ -474,6 +501,90 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === "guia" && (
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold">Guia de Atendimento</h2>
+                <p className="text-sm text-muted-foreground">
+                  Configure um roteiro estruturado para o atendimento. Se desabilitado, o bot terá um comportamento mais livre e interativo.
+                </p>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Route className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">Habilitar Guia de Atendimento</CardTitle>
+                          <CardDescription className="text-xs">
+                            {config.service_guide_enabled 
+                              ? "O bot seguirá o roteiro estruturado abaixo"
+                              : "O bot terá um comportamento mais livre e interativo"}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={config.service_guide_enabled}
+                        onCheckedChange={(checked) => updateConfig("service_guide_enabled", checked)}
+                      />
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                {config.service_guide_enabled && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <BookOpen className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">Roteiro de Atendimento</CardTitle>
+                          <CardDescription className="text-xs">
+                            Descreva o passo a passo que o bot deve seguir. A IA adaptará a linguagem mantendo a essência do script.
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Textarea
+                        placeholder={`Exemplo de roteiro:
+
+1. SAUDAÇÃO
+- Cumprimentar o cliente e se apresentar
+- Perguntar como posso ajudar
+
+2. IDENTIFICAÇÃO DA NECESSIDADE
+- Perguntar qual produto/serviço tem interesse
+- Entender o problema ou necessidade do cliente
+
+3. APRESENTAÇÃO DA SOLUÇÃO
+- Apresentar as opções disponíveis
+- Destacar benefícios e diferenciais
+
+4. QUALIFICAÇÃO
+- Verificar se o cliente tem interesse em avançar
+- Coletar informações de contato se necessário
+
+5. ENCERRAMENTO
+- Agradecer pelo contato
+- Informar próximos passos`}
+                        value={config.service_guide}
+                        onChange={(e) => updateConfig("service_guide", e.target.value)}
+                        rows={16}
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        💡 Dica: O bot seguirá este roteiro de forma natural, adaptando a linguagem conforme o estilo de comunicação definido. 
+                        Se o cliente fizer perguntas fora do script, o bot responderá e voltará ao roteiro.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             )}
 
@@ -919,6 +1030,8 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
               agentProfile={config.agent_profile}
               objective={config.objective}
               companyInfo={config.company_info}
+              serviceGuideEnabled={config.service_guide_enabled}
+              serviceGuide={config.service_guide}
             />
           </div>
         </SheetContent>
