@@ -71,6 +71,7 @@ import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDial
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
 import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
+import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import { useUserRole } from "@/hooks/useUserRole";
 import {
@@ -206,6 +207,8 @@ const WhatsAppChat = () => {
   const [showNotesDialog, setShowNotesDialog] = useState(false);
   const [showLeadDetailsDialog, setShowLeadDetailsDialog] = useState(false);
   const [showAssignAttendantDialog, setShowAssignAttendantDialog] = useState(false);
+  const [showSaleConfirmationDialog, setShowSaleConfirmationDialog] = useState(false);
+  const [conversationToArchive, setConversationToArchive] = useState<Conversation | null>(null);
   const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
@@ -829,13 +832,22 @@ const WhatsAppChat = () => {
   }, []);
 
   const handleArchive = (conversation: Conversation) => {
-    const key = getConversationKey(conversation);
+    // Show sale confirmation dialog before archiving
+    setConversationToArchive(conversation);
+    setShowSaleConfirmationDialog(true);
+  };
+
+  const handleConfirmArchive = (saleCompleted: boolean) => {
+    if (!conversationToArchive) return;
+    
+    const key = getConversationKey(conversationToArchive);
     updateConversationStatus(key, "archived");
     if (selectedConversation && getConversationKey(selectedConversation) === key) {
       const nextConv = activeConversations.find(c => getConversationKey(c) !== key);
       setSelectedConversation(nextConv || null);
     }
     toast.success("Conversa arquivada");
+    setConversationToArchive(null);
   };
 
   const handleRestore = (conversation: Conversation) => {
@@ -2496,6 +2508,18 @@ const WhatsAppChat = () => {
           }}
         />
       )}
+
+      {/* Sale Confirmation Dialog */}
+      <SaleConfirmationDialog
+        open={showSaleConfirmationDialog}
+        onOpenChange={(open) => {
+          setShowSaleConfirmationDialog(open);
+          if (!open) setConversationToArchive(null);
+        }}
+        contactPhone={conversationToArchive?.phone || ""}
+        contactName={conversationToArchive?.name || null}
+        onConfirm={handleConfirmArchive}
+      />
     </MainLayout>
   );
 };
