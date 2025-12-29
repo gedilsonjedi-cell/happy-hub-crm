@@ -32,6 +32,9 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { LeadCardMenu } from "@/components/pipeline/LeadCardMenu";
+import { LeadDetailsDialog } from "@/components/pipeline/LeadDetailsDialog";
+import { EditLeadDialog } from "@/components/leads/EditLeadDialog";
 
 interface PipelineStage {
   id: string;
@@ -49,14 +52,20 @@ interface Lead {
   stage_id: string | null;
   tags: string[] | null;
   created_at: string;
+  notes: string | null;
+  city: string | null;
+  state: string | null;
+  document: string | null;
+  custom_fields: Record<string, string> | null;
 }
 
 const DEFAULT_STAGES = [
-  { name: "Pré-atendimento", color: "#3b82f6", order_index: 0 },
-  { name: "Vendas", color: "#22c55e", order_index: 1 },
-  { name: "Não finalizou venda", color: "#ef4444", order_index: 2 },
-  { name: "Follow-up", color: "#f59e0b", order_index: 3 },
-  { name: "Cliente", color: "#8b5cf6", order_index: 4 },
+  { name: "Pré-Atendimento", color: "#3b82f6", order_index: 0 },
+  { name: "Qualificação", color: "#f59e0b", order_index: 1 },
+  { name: "Vendas", color: "#22c55e", order_index: 2 },
+  { name: "Não finalizou venda", color: "#ef4444", order_index: 3 },
+  { name: "Follow-up", color: "#8b5cf6", order_index: 4 },
+  { name: "Cliente", color: "#10b981", order_index: 5 },
 ];
 
 const Pipeline = () => {
@@ -69,6 +78,11 @@ const Pipeline = () => {
   const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  // Lead management dialogs
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [editLeadDialogOpen, setEditLeadDialogOpen] = useState(false);
 
   const [stageForm, setStageForm] = useState({ name: "", color: "#22c55e" });
   const [leadForm, setLeadForm] = useState({ 
@@ -114,7 +128,7 @@ const Pipeline = () => {
       console.error("Error fetching leads:", leadsError);
     }
 
-    setLeads(leadsData || []);
+    setLeads((leadsData || []) as Lead[]);
     setLoading(false);
   };
 
@@ -229,7 +243,7 @@ const Pipeline = () => {
       return;
     }
 
-    setLeads([data, ...leads]);
+    setLeads([data as Lead, ...leads]);
     setLeadDialogOpen(false);
     setLeadForm({ name: "", phone: "", email: "", stageId: "" });
     toast.success("Lead criado!");
@@ -291,6 +305,26 @@ const Pipeline = () => {
   const openNewLead = (stageId?: string) => {
     setLeadForm({ name: "", phone: "", email: "", stageId: stageId || "" });
     setLeadDialogOpen(true);
+  };
+
+  const handleEditLead = (lead: Lead) => {
+    setSelectedLead(lead);
+    setEditLeadDialogOpen(true);
+  };
+
+  const handleViewDetails = (lead: Lead) => {
+    setSelectedLead(lead);
+    setDetailsDialogOpen(true);
+  };
+
+  const handleLeadDeleted = () => {
+    fetchData();
+  };
+
+  const handleLeadUpdated = () => {
+    fetchData();
+    setDetailsDialogOpen(false);
+    setEditLeadDialogOpen(false);
   };
 
   return (
@@ -359,12 +393,20 @@ const Pipeline = () => {
                   key={lead.id}
                   draggable
                   onDragStart={() => handleDragStart(lead)}
-                  className="bg-muted/50 rounded-lg p-3 cursor-grab active:cursor-grabbing hover:bg-muted transition-colors"
+                  className="group bg-muted/50 rounded-lg p-3 cursor-grab active:cursor-grabbing hover:bg-muted transition-colors"
                 >
                   <div className="flex items-start gap-2">
                     <GripVertical className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground text-sm truncate">{lead.name}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-foreground text-sm truncate">{lead.name}</p>
+                        <LeadCardMenu
+                          lead={lead}
+                          onEdit={handleEditLead}
+                          onViewDetails={handleViewDetails}
+                          onDeleted={handleLeadDeleted}
+                        />
+                      </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                         <Phone className="w-3 h-3" />
                         <span>{lead.phone}</span>
@@ -438,12 +480,20 @@ const Pipeline = () => {
                     key={lead.id}
                     draggable
                     onDragStart={() => handleDragStart(lead)}
-                    className="bg-muted/50 rounded-lg p-3 cursor-grab active:cursor-grabbing hover:bg-muted transition-colors"
+                    className="group bg-muted/50 rounded-lg p-3 cursor-grab active:cursor-grabbing hover:bg-muted transition-colors"
                   >
                     <div className="flex items-start gap-2">
                       <GripVertical className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground text-sm truncate">{lead.name}</p>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-foreground text-sm truncate">{lead.name}</p>
+                          <LeadCardMenu
+                            lead={lead}
+                            onEdit={handleEditLead}
+                            onViewDetails={handleViewDetails}
+                            onDeleted={handleLeadDeleted}
+                          />
+                        </div>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                           <Phone className="w-3 h-3" />
                           <span>{lead.phone}</span>
@@ -587,6 +637,22 @@ const Pipeline = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Lead Details Dialog */}
+      <LeadDetailsDialog
+        isOpen={detailsDialogOpen}
+        onClose={() => setDetailsDialogOpen(false)}
+        lead={selectedLead}
+        onUpdated={handleLeadUpdated}
+      />
+
+      {/* Edit Lead Dialog */}
+      <EditLeadDialog
+        open={editLeadDialogOpen}
+        onOpenChange={setEditLeadDialogOpen}
+        lead={selectedLead}
+        onSuccess={handleLeadUpdated}
+      />
     </MainLayout>
   );
 };
