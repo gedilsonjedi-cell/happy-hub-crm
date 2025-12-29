@@ -392,9 +392,9 @@ export default function Loja() {
                 const isMonthly = isSubscription || isAddon;
                 const quantity = isMonthly ? 1 : (quantities[product.id] || 1);
                 
-                // For subscription, use promotional price if first subscription
-                const displayPrice = isSubscription && isFirstSubscription && subscriptionPricing
-                  ? subscriptionPricing.promotional_price
+                // Use the real price from subscription_pricing for subscriptions
+                const displayPrice = isSubscription && subscriptionPricing
+                  ? subscriptionPricing.base_price
                   : product.price;
                 const totalPrice = displayPrice * quantity;
                 const canAfford = currentBalance >= totalPrice;
@@ -404,10 +404,7 @@ export default function Loja() {
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         {getProductIcon(product.product_type, product.name)}
-                        {isSubscription && isFirstSubscription && (
-                          <Badge variant="default" className="bg-green-600">Promoção!</Badge>
-                        )}
-                        {isSubscription && !isFirstSubscription && (
+                        {isSubscription && (
                           <Badge variant="secondary">Mensal</Badge>
                         )}
                         {isAddon && (
@@ -415,39 +412,23 @@ export default function Loja() {
                         )}
                       </div>
                       <CardTitle className="mt-2">{product.name}</CardTitle>
-                      <CardDescription>{product.description}</CardDescription>
+                      <CardDescription>Acesso completo à plataforma por 30 dias.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        {isSubscription && isFirstSubscription && subscriptionPricing ? (
-                          <>
-                            <div className="text-3xl font-bold text-green-600">
-                              {formatCurrency(subscriptionPricing.promotional_price)}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1 line-through">
-                              {formatCurrency(subscriptionPricing.base_price)}
-                            </p>
-                            <p className="text-xs text-primary mt-1">
-                              Primeiro mês promocional! Depois R$ {subscriptionPricing.base_price.toFixed(2).replace(".", ",")}/mês
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <div className="text-3xl font-bold text-primary">
-                              {formatCurrency(displayPrice)}
-                              {isMonthly && <span className="text-sm font-normal text-muted-foreground">/mês</span>}
-                            </div>
-                            {isSubscription && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Renovação mensal usando saldo
-                              </p>
-                            )}
-                            {isAddon && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Cobrado mensalmente junto com sua assinatura
-                              </p>
-                            )}
-                          </>
+                        <div className="text-3xl font-bold text-primary">
+                          {formatCurrency(displayPrice)}
+                          {isMonthly && <span className="text-sm font-normal text-muted-foreground">/mês</span>}
+                        </div>
+                        {isSubscription && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Renovação mensal usando saldo
+                          </p>
+                        )}
+                        {isAddon && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Cobrado mensalmente junto com sua assinatura
+                          </p>
                         )}
                       </div>
 
