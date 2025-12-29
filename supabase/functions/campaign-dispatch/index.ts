@@ -355,6 +355,41 @@ Deno.serve(async (req) => {
           sentCount++;
           deliveredCount++;
           console.log(`✓ Message sent to ${formattedPhone} - Message ID: ${metaSendResult.messageId || 'N/A'}`);
+
+          // If campaign has chatbot enabled and a custom chatbot, create/update conversation assignment
+          if (campaign.chatbot_enabled && campaign.chatbot_id) {
+            const { data: existingAssignment } = await supabase
+              .from('conversation_assignments')
+              .select('id')
+              .eq('conversation_phone', formattedPhone)
+              .eq('channel_id', channel.id)
+              .single();
+
+            if (existingAssignment) {
+              // Update existing assignment with campaign chatbot
+              await supabase
+                .from('conversation_assignments')
+                .update({ 
+                  campaign_chatbot_id: campaign.chatbot_id,
+                  is_bot_handling: true,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', existingAssignment.id);
+              console.log(`Updated assignment with campaign chatbot for ${formattedPhone}`);
+            } else {
+              // Create new assignment with campaign chatbot
+              await supabase
+                .from('conversation_assignments')
+                .insert({
+                  conversation_phone: formattedPhone,
+                  channel_id: channel.id,
+                  campaign_chatbot_id: campaign.chatbot_id,
+                  is_bot_handling: true,
+                  status: 'pending'
+                });
+              console.log(`Created assignment with campaign chatbot for ${formattedPhone}`);
+            }
+          }
         } else {
           failedCount++;
           const errorDetails = metaSendResult.details ? JSON.stringify(metaSendResult.details) : '';
