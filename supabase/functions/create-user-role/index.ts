@@ -52,6 +52,57 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // Handle updating existing user
+    if (action === "update_user") {
+      const { user_id, display_name, email, password } = body;
+
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: "Missing user_id" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Update user auth data (email and/or password)
+      const updateData: { email?: string; password?: string } = {};
+      if (email) updateData.email = email;
+      if (password && password.length >= 6) updateData.password = password;
+
+      if (Object.keys(updateData).length > 0) {
+        const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(user_id, updateData);
+        
+        if (authUpdateError) {
+          console.error("Error updating user auth:", authUpdateError);
+          return new Response(JSON.stringify({ error: authUpdateError.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Update profile
+      const { error: profileError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          display_name: display_name || null,
+          email: email || null,
+        })
+        .eq("user_id", user_id);
+
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+        return new Response(JSON.stringify({ error: profileError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Handle creating user with role (full flow)
     if (action === "create_user_with_role") {
       const { email, password, display_name, organization_id, role } = body;
