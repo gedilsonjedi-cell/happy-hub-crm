@@ -15,12 +15,22 @@ interface DispatchCostsByType {
   service: number;
 }
 
+interface DispatchCountsByType {
+  marketing: number;
+  utility: number;
+  service: number;
+}
+
 interface DispatchCostsState {
   summary: DispatchCostSummary;
   byType: DispatchCostsByType;
+  counts: DispatchCountsByType;
   loading: boolean;
   refetch: () => void;
 }
+
+// Taxa de conversão USD para BRL (você pode ajustar ou buscar dinamicamente)
+const USD_TO_BRL_RATE = 6.0;
 
 export function useDispatchCosts(): DispatchCostsState {
   const { user } = useAuth();
@@ -31,6 +41,11 @@ export function useDispatchCosts(): DispatchCostsState {
     total: 0,
   });
   const [byType, setByType] = useState<DispatchCostsByType>({
+    marketing: 0,
+    utility: 0,
+    service: 0,
+  });
+  const [counts, setCounts] = useState<DispatchCountsByType>({
     marketing: 0,
     utility: 0,
     service: 0,
@@ -51,20 +66,24 @@ export function useDispatchCosts(): DispatchCostsState {
       startOfWeek.setHours(0, 0, 0, 0);
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      // Fetch all costs for the user
+      // Buscar mensagens enviadas com sucesso (entregues via Meta)
       const { data, error } = await supabase
-        .from("dispatch_costs")
-        .select("total_cost, dispatch_type, dispatch_date")
-        .eq("user_id", user.id);
+        .from("whatsapp_messages")
+        .select("metadata, created_at")
+        .eq("direction", "outbound")
+        .in("status", ["delivered", "sent", "read"]);
 
       if (error) {
-        console.error("Error fetching dispatch costs:", error);
+        console.error("Error fetching dispatch data:", error);
+        setLoading(false);
         return;
       }
 
       if (!data || data.length === 0) {
         setSummary({ daily: 0, weekly: 0, monthly: 0, total: 0 });
         setByType({ marketing: 0, utility: 0, service: 0 });
+        setCounts({ marketing: 0, utility: 0, service: 0 });
+        setLoading(false);
         return;
       }
 
@@ -73,35 +92,44 @@ export function useDispatchCosts(): DispatchCostsState {
       let monthly = 0;
       let total = 0;
       const typeBreakdown: DispatchCostsByType = { marketing: 0, utility: 0, service: 0 };
+      const typeCounts: DispatchCountsByType = { marketing: 0, utility: 0, service: 0 };
 
-      data.forEach((cost) => {
-        const costDate = new Date(cost.dispatch_date);
-        const costValue = Number(cost.total_cost);
-        
-        total += costValue;
-        
-        // Add to type breakdown
-        if (cost.dispatch_type === "marketing") {
-          typeBreakdown.marketing += costValue;
-        } else if (cost.dispatch_type === "utility") {
-          typeBreakdown.utility += costValue;
-        } else if (cost.dispatch_type === "service") {
-          typeBreakdown.service += costValue;
+      data.forEach((msg) => {
+        const metadata = msg.metadata as Record<string, unknown> | null;
+        if (!metadata) return;
+
+        const costUSD = Number(metadata.cost || 0);
+        const costBRL = costUSD * USD_TO_BRL_RATE;
+        const dispatchType = (metadata.dispatch_type as string) || "service";
+        const msgDate = new Date(msg.created_at);
+
+        total += costBRL;
+
+        // Adicionar ao breakdown por tipo
+        if (dispatchType === "marketing") {
+          typeBreakdown.marketing += costBRL;
+          typeCounts.marketing += 1;
+        } else if (dispatchType === "utility") {
+          typeBreakdown.utility += costBRL;
+          typeCounts.utility += 1;
+        } else {
+          typeBreakdown.service += costBRL;
+          typeCounts.service += 1;
         }
 
-        // Daily
-        if (costDate >= startOfDay) {
-          daily += costValue;
+        // Diário
+        if (msgDate >= startOfDay) {
+          daily += costBRL;
         }
 
-        // Weekly
-        if (costDate >= startOfWeek) {
-          weekly += costValue;
+        // Semanal
+        if (msgDate >= startOfWeek) {
+          weekly += costBRL;
         }
 
-        // Monthly
-        if (costDate >= startOfMonth) {
-          monthly += costValue;
+        // Mensal
+        if (msgDate >= startOfMonth) {
+          monthly += costBRL;
         }
       });
 
@@ -116,6 +144,7 @@ export function useDispatchCosts(): DispatchCostsState {
         utility: Math.round(typeBreakdown.utility * 100) / 100,
         service: Math.round(typeBreakdown.service * 100) / 100,
       });
+      setCounts(typeCounts);
     } catch (err) {
       console.error("Error fetching dispatch costs:", err);
     } finally {
@@ -127,5 +156,5 @@ export function useDispatchCosts(): DispatchCostsState {
     fetchCosts();
   }, [user]);
 
-  return { summary, byType, loading, refetch: fetchCosts };
+  return { summary, byType, counts, loading, refetch: fetchCosts };
 }
