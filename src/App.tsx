@@ -38,6 +38,7 @@ import CamposPersonalizados from "./pages/personalizacao/CamposPersonalizados";
 import RespostasRapidas from "./pages/personalizacao/RespostasRapidas";
 import ContatoDetalhes from "./pages/ContatoDetalhes";
 import LandingPage from "./pages/LandingPage";
+import Cadastro from "./pages/Cadastro";
 import NotFound from "./pages/NotFound";
 import FollowUp from "./pages/FollowUp";
 
@@ -134,6 +135,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/cadastro" element={<Cadastro />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/" element={<HomeRoute />} />

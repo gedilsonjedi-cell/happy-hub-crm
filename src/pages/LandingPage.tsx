@@ -228,7 +228,7 @@ const LandingPage = () => {
                       Entrar
                     </Button>
                   </Link>
-                  <Link to="/auth">
+                  <Link to="/cadastro">
                     <Button size="sm" className="bg-primary hover:bg-primary/90">
                       Começar Grátis
                     </Button>
@@ -308,7 +308,7 @@ const LandingPage = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-              <Link to={user ? "/dashboard" : "/auth"}>
+              <Link to={user ? "/dashboard" : "/cadastro"}>
                 <Button size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
                   <Rocket className="w-5 h-5 mr-2" />
                   {user ? "Acessar Dashboard" : "Começar Agora — É Grátis"}
@@ -571,7 +571,7 @@ const LandingPage = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-              <Link to={user ? "/dashboard" : "/auth"}>
+              <Link to={user ? "/dashboard" : "/cadastro"}>
                 <Button size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25">
                   {user ? "Acessar Dashboard" : "Começar Gratuitamente"}
                   <ArrowRight className="w-5 h-5 ml-2" />
