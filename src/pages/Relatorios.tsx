@@ -1,13 +1,11 @@
-import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
-import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench } from "lucide-react";
+import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export default function Relatorios() {
-  const { summary, byType, loading } = useDispatchCosts();
+  const { summary, byType, counts, loading } = useDispatchCosts();
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString("pt-BR", {
@@ -17,6 +15,8 @@ export default function Relatorios() {
   };
 
   const totalByType = byType.marketing + byType.utility + byType.service;
+  const totalCounts = counts.marketing + counts.utility + counts.service;
+  
   const getPercentage = (value: number) => {
     if (totalByType === 0) return 0;
     return Math.round((value / totalByType) * 100);
@@ -38,7 +38,7 @@ export default function Relatorios() {
         <div>
           <h1 className="text-2xl font-bold">Relatórios de Investimento</h1>
           <p className="text-muted-foreground">
-            Acompanhe seus gastos com disparos de mensagens
+            Acompanhe seus gastos com disparos de mensagens (Meta WhatsApp API)
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export default function Relatorios() {
             <CardContent>
               <div className="text-2xl font-bold text-primary">{formatCurrency(summary.total)}</div>
               <p className="text-xs text-muted-foreground">
-                Total investido em disparos
+                {totalCounts} disparos realizados
               </p>
             </CardContent>
           </Card>
@@ -102,7 +102,7 @@ export default function Relatorios() {
           <CardHeader>
             <CardTitle>Investimento por Tipo de Disparo</CardTitle>
             <CardDescription>
-              Distribuição dos gastos por categoria de mensagem
+              Distribuição dos gastos por categoria de mensagem (valores em BRL convertidos de USD)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -120,7 +120,12 @@ export default function Relatorios() {
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">{formatCurrency(byType.marketing)}</p>
-                  <p className="text-xs text-muted-foreground">{getPercentage(byType.marketing)}%</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
+                    <Hash className="w-3 h-3" />
+                    <span>{counts.marketing} disparos</span>
+                    <span className="mx-1">•</span>
+                    <span>{getPercentage(byType.marketing)}%</span>
+                  </div>
                 </div>
               </div>
               <Progress value={getPercentage(byType.marketing)} className="h-2" />
@@ -140,7 +145,12 @@ export default function Relatorios() {
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">{formatCurrency(byType.utility)}</p>
-                  <p className="text-xs text-muted-foreground">{getPercentage(byType.utility)}%</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
+                    <Hash className="w-3 h-3" />
+                    <span>{counts.utility} disparos</span>
+                    <span className="mx-1">•</span>
+                    <span>{getPercentage(byType.utility)}%</span>
+                  </div>
                 </div>
               </div>
               <Progress value={getPercentage(byType.utility)} className="h-2" />
@@ -160,7 +170,12 @@ export default function Relatorios() {
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">{formatCurrency(byType.service)}</p>
-                  <p className="text-xs text-muted-foreground">{getPercentage(byType.service)}%</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground justify-end">
+                    <Hash className="w-3 h-3" />
+                    <span>{counts.service} disparos</span>
+                    <span className="mx-1">•</span>
+                    <span>{getPercentage(byType.service)}%</span>
+                  </div>
                 </div>
               </div>
               <Progress value={getPercentage(byType.service)} className="h-2" />
