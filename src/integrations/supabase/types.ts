@@ -419,6 +419,7 @@ export type Database = {
       campaigns: {
         Row: {
           chatbot_enabled: boolean
+          chatbot_id: string | null
           completed_at: string | null
           created_at: string
           delivered_count: number
@@ -442,6 +443,7 @@ export type Database = {
         }
         Insert: {
           chatbot_enabled?: boolean
+          chatbot_id?: string | null
           completed_at?: string | null
           created_at?: string
           delivered_count?: number
@@ -465,6 +467,7 @@ export type Database = {
         }
         Update: {
           chatbot_enabled?: boolean
+          chatbot_id?: string | null
           completed_at?: string | null
           created_at?: string
           delivered_count?: number
@@ -487,6 +490,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "campaigns_chatbot_id_fkey"
+            columns: ["chatbot_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "campaigns_organization_id_fkey"
             columns: ["organization_id"]

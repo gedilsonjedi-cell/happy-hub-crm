@@ -18,7 +18,8 @@ import {
   Timer,
   Smartphone,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Bot
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,12 @@ interface ChannelTemplate {
   template_id: string;
 }
 
+interface AIAgent {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
 interface Campaign {
   id: string;
   name: string;
@@ -107,6 +114,7 @@ const Disparos = () => {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channelTemplateRelations, setChannelTemplateRelations] = useState<ChannelTemplate[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -123,6 +131,8 @@ const Disparos = () => {
     campaignName: "",
     team: "",
     chatbot: "disabled",
+    chatbotSource: "channel" as "channel" | "custom",
+    selectedChatbotId: "",
     startTime: "now",
     unifiedTemplate: "",
     minInterval: "5",
@@ -195,6 +205,12 @@ const Disparos = () => {
       .select("*")
       .order("created_at", { ascending: false });
 
+    // Fetch AI agents
+    const { data: agentsData } = await supabase
+      .from("ai_agents")
+      .select("id, name, is_active")
+      .eq("is_active", true);
+
     // Combine real data with demo data
     const realChannels = channelsData || [];
     const realTemplates = templatesData || [];
@@ -207,6 +223,7 @@ const Disparos = () => {
       ...c,
       status: c.status as Campaign["status"]
     })));
+    setAiAgents(agentsData || []);
     setLoading(false);
   };
 
@@ -368,6 +385,11 @@ const Disparos = () => {
         }
       }
 
+      // Determine chatbot_id based on selection
+      const chatbotId = formData.chatbot === "enabled" && formData.chatbotSource === "custom" 
+        ? formData.selectedChatbotId || null 
+        : null;
+
       // Create campaign with min/max intervals
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
@@ -376,6 +398,7 @@ const Disparos = () => {
           name: formData.campaignName,
           team: formData.team || null,
           chatbot_enabled: formData.chatbot === "enabled",
+          chatbot_id: chatbotId,
           dispatch_interval: parseInt(formData.minInterval),
           min_interval: parseInt(formData.minInterval),
           max_interval: parseInt(formData.maxInterval),
@@ -457,6 +480,8 @@ const Disparos = () => {
       campaignName: "",
       team: "",
       chatbot: "disabled",
+      chatbotSource: "channel",
+      selectedChatbotId: "",
       startTime: "now",
       unifiedTemplate: "",
       minInterval: "5",
@@ -715,11 +740,11 @@ const Disparos = () => {
                 )}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Label className="text-foreground">Habilitar chatbot</Label>
                 <Select 
                   value={formData.chatbot} 
-                  onValueChange={(value) => setFormData({ ...formData, chatbot: value })}
+                  onValueChange={(value) => setFormData({ ...formData, chatbot: value, chatbotSource: "channel", selectedChatbotId: "" })}
                 >
                   <SelectTrigger className="bg-card border-border">
                     <SelectValue />
@@ -729,6 +754,67 @@ const Disparos = () => {
                     <SelectItem value="enabled">Habilitado</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {formData.chatbot === "enabled" && (
+                  <div className="space-y-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                    <div className="flex items-center gap-2 text-sm text-primary">
+                      <Bot className="w-4 h-4" />
+                      <span className="font-medium">Configuração do Chatbot</span>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        variant={formData.chatbotSource === "channel" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setFormData({ ...formData, chatbotSource: "channel", selectedChatbotId: "" })}
+                      >
+                        Usar do canal
+                      </Button>
+                      <Button
+                        variant={formData.chatbotSource === "custom" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setFormData({ ...formData, chatbotSource: "custom" })}
+                      >
+                        Escolher outro
+                      </Button>
+                    </div>
+
+                    {formData.chatbotSource === "channel" ? (
+                      <p className="text-xs text-muted-foreground">
+                        O chatbot configurado em cada canal será usado automaticamente.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        <Select 
+                          value={formData.selectedChatbotId} 
+                          onValueChange={(value) => setFormData({ ...formData, selectedChatbotId: value })}
+                        >
+                          <SelectTrigger className="bg-card border-border">
+                            <SelectValue placeholder="Selecione o chatbot" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            {aiAgents.length === 0 ? (
+                              <div className="p-3 text-center text-muted-foreground text-sm">
+                                Nenhum chatbot configurado
+                              </div>
+                            ) : (
+                              aiAgents.map(agent => (
+                                <SelectItem key={agent.id} value={agent.id}>
+                                  {agent.name}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Este chatbot será usado para todos os contatos desta campanha, independente da configuração do canal.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
