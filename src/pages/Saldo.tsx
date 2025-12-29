@@ -177,8 +177,8 @@ export default function Saldo() {
             </p>
           </div>
           <Button onClick={handleOpenPixDialog} className="gap-2">
-            <QrCode className="w-4 h-4" />
-            Pagar via PIX
+            <CreditCard className="w-4 h-4" />
+            Adicionar Créditos
           </Button>
         </div>
 
