@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
 import { z } from "zod";
+import optimusLogo from "@/assets/optimus-logo.png";
 
 const authSchema = z.object({
   email: z.string().email("Email inválido").max(255),
@@ -85,7 +86,11 @@ const Auth = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary">OptimusCRM</h1>
+          <img 
+            src={optimusLogo} 
+            alt="Optimus CRM" 
+            className="h-12 w-auto mx-auto mb-4"
+          />
           <p className="text-muted-foreground mt-2">
             {isLogin ? "Acesse sua conta" : "Crie sua conta"}
           </p>
