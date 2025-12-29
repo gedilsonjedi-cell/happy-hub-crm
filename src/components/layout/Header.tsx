@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useSidebarState } from "@/hooks/useSidebarState";
 import { useTheme } from "next-themes";
 import optimusLogo from "@/assets/optimus-logo.png";
+import optimusLogoDark from "@/assets/optimus-logo-dark.png";
 export function Header() {
   const { user, signOut } = useAuth();
   const { syncing } = useUserRole();
@@ -43,7 +44,7 @@ export function Header() {
         {/* Logo */}
         <Link to="/" className="flex items-center">
           <img 
-            src={optimusLogo} 
+            src={theme === "dark" ? optimusLogo : optimusLogoDark} 
             alt="Optimus CRM" 
             className="h-8 w-auto object-contain"
           />
