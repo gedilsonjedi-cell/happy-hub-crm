@@ -1698,6 +1698,7 @@ export type Database = {
           name: string
           order_index: number
           organization_id: string | null
+          pipeline_id: string | null
           user_id: string
         }
         Insert: {
@@ -1707,6 +1708,7 @@ export type Database = {
           name: string
           order_index?: number
           organization_id?: string | null
+          pipeline_id?: string | null
           user_id: string
         }
         Update: {
@@ -1716,11 +1718,60 @@ export type Database = {
           name?: string
           order_index?: number
           organization_id?: string | null
+          pipeline_id?: string | null
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "pipeline_stages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_stages_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipelines: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"

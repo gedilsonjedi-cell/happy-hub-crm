@@ -40,38 +40,22 @@ export function SaleConfirmationDialog({
 
   useEffect(() => {
     const fetchStages = async () => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .maybeSingle();
+      // Always fetch from the default pipeline for sale confirmation
+      const DEFAULT_PIPELINE_ID = "00000000-0000-0000-0000-000000000001";
+      
+      const { data: stagesData, error } = await supabase
+        .from("pipeline_stages")
+        .select("id, name, order_index")
+        .eq("pipeline_id", DEFAULT_PIPELINE_ID)
+        .order("order_index");
 
-      // Fetch stages - try with organization_id first, then without
-      let stagesData: PipelineStage[] | null = null;
-
-      if (profile?.organization_id) {
-        const { data } = await supabase
-          .from("pipeline_stages")
-          .select("id, name, order_index")
-          .eq("organization_id", profile.organization_id)
-          .order("order_index");
-        stagesData = data;
-      }
-
-      // If no stages found with organization_id, try with null organization_id
-      if (!stagesData || stagesData.length === 0) {
-        const { data } = await supabase
-          .from("pipeline_stages")
-          .select("id, name, order_index")
-          .is("organization_id", null)
-          .order("order_index");
-        stagesData = data;
-      }
+      console.log("Fetched stages for default pipeline:", stagesData, "error:", error);
 
       if (stagesData && stagesData.length > 0) {
         const vendasStage = stagesData.find(s => s.name.toLowerCase() === "vendas");
         const naoFinalizouStage = stagesData.find(s => s.name.toLowerCase() === "não finalizou venda");
         
-        console.log("Found stages:", { vendasStage, naoFinalizouStage, all: stagesData });
+        console.log("Found stages:", { vendasStage, naoFinalizouStage });
         
         setStages({
           vendas: vendasStage || null,
