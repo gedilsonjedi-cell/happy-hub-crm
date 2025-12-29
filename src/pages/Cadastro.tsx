@@ -60,6 +60,7 @@ const Cadastro = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [direction, setDirection] = useState(1);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -186,7 +187,6 @@ const Cadastro = () => {
     }),
   };
 
-  const [direction, setDirection] = useState(1);
 
   const goNext = () => {
     setDirection(1);
