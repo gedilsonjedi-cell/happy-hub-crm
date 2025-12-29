@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageSquare, LogOut, User, RefreshCw, Menu, Sun, Moon } from "lucide-react";
+import { LogOut, User, RefreshCw, Menu, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useSidebarState } from "@/hooks/useSidebarState";
 import { useTheme } from "next-themes";
-
+import optimusLogo from "@/assets/optimus-logo.png";
 export function Header() {
   const { user, signOut } = useAuth();
   const { syncing } = useUserRole();
@@ -41,14 +41,12 @@ export function Header() {
         )}
         
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center">
-            <MessageSquare className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold">
-            <span className="text-foreground">Optimus</span>
-            <span className="text-primary">CRM</span>
-          </span>
+        <Link to="/" className="flex items-center">
+          <img 
+            src={optimusLogo} 
+            alt="Optimus CRM" 
+            className="h-8 w-auto object-contain"
+          />
         </Link>
       </div>
 

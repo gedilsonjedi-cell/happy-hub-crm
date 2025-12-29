@@ -26,6 +26,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import optimusLogo from "@/assets/optimus-logo.png";
 
 // Parallax hook
 const useParallax = (speed: number = 0.5) => {
@@ -195,14 +196,12 @@ const LandingPage = () => {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold">
-                <span className="text-foreground">Optimus</span>
-                <span className="text-primary">CRM</span>
-              </span>
+            <div className="flex items-center">
+              <img 
+                src={optimusLogo} 
+                alt="Optimus CRM" 
+                className="h-10 w-auto object-contain"
+              />
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -602,14 +601,12 @@ const LandingPage = () => {
       <footer className="relative py-12 border-t border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold">
-                <span className="text-foreground">Optimus</span>
-                <span className="text-primary">CRM</span>
-              </span>
+            <div className="flex items-center">
+              <img 
+                src={optimusLogo} 
+                alt="Optimus CRM" 
+                className="h-10 w-auto object-contain"
+              />
             </div>
             
             <div className="flex items-center gap-8 text-sm text-muted-foreground">
