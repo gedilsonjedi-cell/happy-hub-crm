@@ -43,19 +43,35 @@ export function SaleConfirmationDialog({
       const { data: profile } = await supabase
         .from("profiles")
         .select("organization_id")
-        .single();
+        .maybeSingle();
 
-      if (!profile?.organization_id) return;
+      // Fetch stages - try with organization_id first, then without
+      let stagesData: PipelineStage[] | null = null;
 
-      const { data: stagesData } = await supabase
-        .from("pipeline_stages")
-        .select("id, name, order_index")
-        .eq("organization_id", profile.organization_id)
-        .order("order_index");
+      if (profile?.organization_id) {
+        const { data } = await supabase
+          .from("pipeline_stages")
+          .select("id, name, order_index")
+          .eq("organization_id", profile.organization_id)
+          .order("order_index");
+        stagesData = data;
+      }
 
-      if (stagesData) {
-        const vendasStage = stagesData.find(s => s.name.toLowerCase().includes("vendas") && !s.name.toLowerCase().includes("não"));
-        const naoFinalizouStage = stagesData.find(s => s.name.toLowerCase().includes("não finalizou"));
+      // If no stages found with organization_id, try with null organization_id
+      if (!stagesData || stagesData.length === 0) {
+        const { data } = await supabase
+          .from("pipeline_stages")
+          .select("id, name, order_index")
+          .is("organization_id", null)
+          .order("order_index");
+        stagesData = data;
+      }
+
+      if (stagesData && stagesData.length > 0) {
+        const vendasStage = stagesData.find(s => s.name.toLowerCase() === "vendas");
+        const naoFinalizouStage = stagesData.find(s => s.name.toLowerCase() === "não finalizou venda");
+        
+        console.log("Found stages:", { vendasStage, naoFinalizouStage, all: stagesData });
         
         setStages({
           vendas: vendasStage || null,
