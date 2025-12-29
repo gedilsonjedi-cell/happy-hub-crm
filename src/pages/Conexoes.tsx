@@ -828,16 +828,50 @@ const Conexoes = () => {
         </div>
       )}
 
-      {/* Setup Guide */}
-      <div className="p-4 bg-muted/20 rounded-lg border border-border mb-6">
-        <h4 className="font-medium text-foreground mb-3">Como configurar seu App Meta?</h4>
-        <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-          <li>Acesse o <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Meta Developer Console</a> e crie um novo app (tipo: Business)</li>
-          <li>Adicione o produto <strong>WhatsApp</strong> ao seu app</li>
-          <li>Em <strong>API Setup</strong>, copie o <strong>WhatsApp Business Account ID</strong></li>
-          <li>Gere um <strong>Access Token permanente</strong> em Business Settings → System Users</li>
-          <li>Conecte aqui e selecione os números que deseja adicionar</li>
-        </ol>
+      {/* Setup Guide with Video Tutorial */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Instructions */}
+        <div className="p-5 bg-muted/20 rounded-lg border border-border">
+          <h4 className="font-medium text-foreground mb-3">Como configurar seu App Meta?</h4>
+          <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+            <li>Acesse o <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Meta Developer Console</a> e crie um novo app (tipo: Business)</li>
+            <li>Adicione o produto <strong>WhatsApp</strong> ao seu app</li>
+            <li>Em <strong>API Setup</strong>, copie o <strong>WhatsApp Business Account ID</strong></li>
+            <li>Gere um <strong>Access Token permanente</strong> em Business Settings → System Users</li>
+            <li>Conecte aqui e selecione os números que deseja adicionar</li>
+          </ol>
+        </div>
+
+        {/* Video Tutorial */}
+        <div className="p-5 bg-muted/20 rounded-lg border border-border">
+          <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            Tutorial em Vídeo
+          </h4>
+          <div className="relative aspect-video bg-black/50 rounded-lg overflow-hidden border border-border/50">
+            {/* Placeholder Video - Replace with actual video URL later */}
+            <video 
+              className="w-full h-full object-cover"
+              controls
+              poster="https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80"
+            >
+              {/* Add your video source here */}
+              <source src="" type="video/mp4" />
+              Seu navegador não suporta vídeos.
+            </video>
+            
+            {/* Overlay for empty state */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white">
+              <div className="w-16 h-16 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center mb-3">
+                <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium">Vídeo Tutorial</p>
+              <p className="text-xs text-white/60 mt-1">Em breve</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Connected Numbers Section */}
