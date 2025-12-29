@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
-  Loader2, 
   Copy, 
   Check, 
   QrCode, 
@@ -28,6 +27,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { PaymentProcessingSkeleton } from "./PaymentProcessingSkeleton";
+import { ConfettiEffect } from "./ConfettiEffect";
 
 const slideVariants = {
   enter: (direction: number) => ({
@@ -70,7 +71,7 @@ const BALANCE_OPTIONS = [
   { value: 500, label: "R$ 500", popular: false },
 ];
 
-type Step = "amount" | "method" | "details" | "qrcode" | "success";
+type Step = "amount" | "method" | "details" | "processing" | "qrcode" | "success";
 type PaymentType = "balance" | "subscription";
 type PaymentMethod = "pix" | "card";
 
@@ -147,7 +148,10 @@ export function PixPaymentDialog({
       return;
     }
 
+    setDirection(1);
+    setStep("processing");
     setLoading(true);
+    
     try {
       const { data, error } = await supabase.functions.invoke("mercadopago-pix", {
         body: {
@@ -179,6 +183,7 @@ export function PixPaymentDialog({
       console.error("Error generating PIX:", err);
       const errorMessage = err instanceof Error ? err.message : "Erro ao gerar PIX";
       toast.error(errorMessage);
+      setStep("details");
     } finally {
       setLoading(false);
     }
@@ -197,7 +202,10 @@ export function PixPaymentDialog({
       return;
     }
 
+    setDirection(1);
+    setStep("processing");
     setLoading(true);
+    
     try {
       const [expiryMonth, expiryYear] = cardExpiry.split("/");
       
@@ -235,6 +243,7 @@ export function PixPaymentDialog({
       console.error("Error processing card payment:", err);
       const errorMessage = err instanceof Error ? err.message : "Erro ao processar pagamento";
       toast.error(errorMessage);
+      setStep("details");
     } finally {
       setLoading(false);
     }
@@ -807,8 +816,14 @@ export function PixPaymentDialog({
     </div>
   );
 
+  const renderProcessingStep = () => (
+    <PaymentProcessingSkeleton />
+  );
+
   const renderSuccessStep = () => (
     <div className="space-y-6 text-center py-6">
+      <ConfettiEffect trigger={step === "success"} />
+      
       <motion.div 
         className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto"
         initial={{ scale: 0 }}
@@ -931,6 +946,18 @@ export function PixPaymentDialog({
                   {renderQRCodeStep()}
                 </motion.div>
               )}
+              {step === "processing" && (
+                <motion.div
+                  key="processing"
+                  variants={scaleIn}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                >
+                  {renderProcessingStep()}
+                </motion.div>
+              )}
               {step === "success" && (
                 <motion.div
                   key="success"
@@ -947,7 +974,7 @@ export function PixPaymentDialog({
           </div>
         </ScrollArea>
 
-        {step !== "qrcode" && step !== "success" && (
+        {step !== "qrcode" && step !== "success" && step !== "processing" && (
           <div className="p-5 pt-0 flex gap-3">
             {step !== "amount" && (
               <Button 
@@ -964,12 +991,7 @@ export function PixPaymentDialog({
               disabled={!canProceed() || loading}
               className="flex-1"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processando...
-                </>
-              ) : step === "details" ? (
+              {step === "details" ? (
                 paymentMethod === "pix" ? "Gerar PIX" : "Pagar"
               ) : (
                 <>
