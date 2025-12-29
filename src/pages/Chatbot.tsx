@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bot, Plus, Loader2, Search } from "lucide-react";
+import { Bot, Plus, Loader2, Search, Link2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { ChatbotEditorForm } from "@/components/chatbot/ChatbotEditorForm";
 import { ChatbotListItem } from "@/components/chatbot/ChatbotListItem";
+import { ChatbotChannelAssignment } from "@/components/chatbot/ChatbotChannelAssignment";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +39,7 @@ const Chatbot = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
   const [channelCounts, setChannelCounts] = useState<Record<string, number>>({});
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -57,17 +59,25 @@ const Chatbot = () => {
 
       // Load channel counts for each agent
       if (data && data.length > 0) {
-        const { data: channelData } = await supabase
+        const { data: configData } = await supabase
           .from("chatbot_config")
-          .select("channel_id")
-          .not("channel_id", "is", null);
+          .select("agent_id")
+          .not("agent_id", "is", null);
         
-        // For now, we'll count channels with chatbot enabled
-        // This could be extended to track which agent is assigned to which channel
         const counts: Record<string, number> = {};
         data.forEach(agent => {
-          counts[agent.id] = 0; // Will be updated when we implement agent-channel association
+          counts[agent.id] = 0;
         });
+        
+        // Count how many channels each agent is assigned to
+        if (configData) {
+          configData.forEach((config: { agent_id: string | null }) => {
+            if (config.agent_id && counts[config.agent_id] !== undefined) {
+              counts[config.agent_id]++;
+            }
+          });
+        }
+        
         setChannelCounts(counts);
       }
     } catch (error) {
@@ -182,10 +192,18 @@ const Chatbot = () => {
               Crie e gerencie seus agentes de atendimento inteligentes
             </p>
           </div>
-          <Button onClick={handleCreateNew} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Novo Chatbot
-          </Button>
+          <div className="flex gap-2">
+            {agents.length > 0 && (
+              <Button variant="outline" onClick={() => setAssignDialogOpen(true)} className="gap-2">
+                <Link2 className="w-4 h-4" />
+                Vincular a Canal
+              </Button>
+            )}
+            <Button onClick={handleCreateNew} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Novo Chatbot
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -257,6 +275,13 @@ const Chatbot = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Channel Assignment Dialog */}
+      <ChatbotChannelAssignment
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        onAssigned={loadAgents}
+      />
     </MainLayout>
   );
 };

@@ -611,6 +611,7 @@ export type Database = {
       }
       chatbot_config: {
         Row: {
+          agent_id: string | null
           auto_qualify_enabled: boolean | null
           auto_reply_when_unavailable: boolean | null
           away_message: string | null
@@ -628,6 +629,7 @@ export type Database = {
           welcome_message: string | null
         }
         Insert: {
+          agent_id?: string | null
           auto_qualify_enabled?: boolean | null
           auto_reply_when_unavailable?: boolean | null
           away_message?: string | null
@@ -645,6 +647,7 @@ export type Database = {
           welcome_message?: string | null
         }
         Update: {
+          agent_id?: string | null
           auto_qualify_enabled?: boolean | null
           auto_reply_when_unavailable?: boolean | null
           away_message?: string | null
@@ -662,6 +665,13 @@ export type Database = {
           welcome_message?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "chatbot_config_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "chatbot_config_channel_id_fkey"
             columns: ["channel_id"]
