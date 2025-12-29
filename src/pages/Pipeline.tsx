@@ -8,13 +8,16 @@ import {
   GripVertical,
   Trash2,
   Edit,
-  Settings
+  Settings,
+  ChevronDown,
+  GitBranch
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +30,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,11 +47,20 @@ import { LeadCardMenu } from "@/components/pipeline/LeadCardMenu";
 import { LeadDetailsDialog } from "@/components/pipeline/LeadDetailsDialog";
 import { EditLeadDialog } from "@/components/leads/EditLeadDialog";
 
+interface Pipeline {
+  id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  organization_id: string | null;
+}
+
 interface PipelineStage {
   id: string;
   name: string;
   color: string;
   order_index: number;
+  pipeline_id: string | null;
 }
 
 interface Lead {
@@ -59,22 +79,18 @@ interface Lead {
   custom_fields: Record<string, string> | null;
 }
 
-const DEFAULT_STAGES = [
-  { name: "Pré-Atendimento", color: "#3b82f6", order_index: 0 },
-  { name: "Qualificação", color: "#f59e0b", order_index: 1 },
-  { name: "Vendas", color: "#22c55e", order_index: 2 },
-  { name: "Não finalizou venda", color: "#ef4444", order_index: 3 },
-  { name: "Follow-up", color: "#8b5cf6", order_index: 4 },
-  { name: "Cliente", color: "#10b981", order_index: 5 },
-];
+const DEFAULT_PIPELINE_ID = "00000000-0000-0000-0000-000000000001";
 
 const Pipeline = () => {
   const { user } = useAuth();
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [selectedPipeline, setSelectedPipeline] = useState<string>(DEFAULT_PIPELINE_ID);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [stageDialogOpen, setStageDialogOpen] = useState(false);
   const [leadDialogOpen, setLeadDialogOpen] = useState(false);
+  const [pipelineDialogOpen, setPipelineDialogOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -91,34 +107,63 @@ const Pipeline = () => {
     email: "",
     stageId: ""
   });
+  const [pipelineForm, setPipelineForm] = useState({ name: "", description: "" });
+
+  const currentPipeline = pipelines.find(p => p.id === selectedPipeline);
+  const isDefaultPipeline = currentPipeline?.is_default ?? true;
 
   useEffect(() => {
     if (user) {
-      fetchData();
+      fetchPipelines();
     }
   }, [user]);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    if (selectedPipeline) {
+      fetchStages();
+    }
+  }, [selectedPipeline]);
+
+  const fetchPipelines = async () => {
+    const { data, error } = await supabase
+      .from("pipelines")
+      .select("*")
+      .order("is_default", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching pipelines:", error);
+      return;
+    }
+
+    setPipelines(data || []);
+    
+    // Select default pipeline if none selected
+    if (data && data.length > 0 && !selectedPipeline) {
+      setSelectedPipeline(data[0].id);
+    }
+    
+    fetchLeads();
+  };
+
+  const fetchStages = async () => {
     setLoading(true);
 
-    // Fetch stages
+    // Fetch stages for selected pipeline
     const { data: stagesData, error: stagesError } = await supabase
       .from("pipeline_stages")
       .select("*")
+      .eq("pipeline_id", selectedPipeline)
       .order("order_index");
 
     if (stagesError) {
       console.error("Error fetching stages:", stagesError);
     }
 
-    // If no stages, create default ones
-    if (!stagesData || stagesData.length === 0) {
-      await createDefaultStages();
-    } else {
-      setStages(stagesData);
-    }
+    setStages(stagesData || []);
+    setLoading(false);
+  };
 
-    // Fetch leads
+  const fetchLeads = async () => {
     const { data: leadsData, error: leadsError } = await supabase
       .from("leads")
       .select("*")
@@ -129,31 +174,76 @@ const Pipeline = () => {
     }
 
     setLeads((leadsData || []) as Lead[]);
-    setLoading(false);
   };
 
-  const createDefaultStages = async () => {
-    const inserts = DEFAULT_STAGES.map(stage => ({
-      ...stage,
-      user_id: user?.id,
-    }));
-
-    const { data, error } = await supabase
-      .from("pipeline_stages")
-      .insert(inserts)
-      .select();
-
-    if (error) {
-      toast.error("Erro ao criar estágios padrão");
+  const handleCreatePipeline = async () => {
+    if (!pipelineForm.name.trim()) {
+      toast.error("Preencha o nome do pipeline");
       return;
     }
 
-    setStages(data || []);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .maybeSingle();
+
+    const { data, error } = await supabase
+      .from("pipelines")
+      .insert({
+        name: pipelineForm.name.trim(),
+        description: pipelineForm.description.trim() || null,
+        organization_id: profile?.organization_id,
+        is_default: false,
+        created_by: user?.id,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error("Erro ao criar pipeline");
+      console.error(error);
+      return;
+    }
+
+    setPipelines([...pipelines, data]);
+    setSelectedPipeline(data.id);
+    setPipelineDialogOpen(false);
+    setPipelineForm({ name: "", description: "" });
+    toast.success("Pipeline criado!");
+  };
+
+  const handleDeletePipeline = async (id: string) => {
+    const pipeline = pipelines.find(p => p.id === id);
+    if (pipeline?.is_default) {
+      toast.error("Não é possível excluir o pipeline padrão");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("pipelines")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Erro ao excluir pipeline");
+      return;
+    }
+
+    setPipelines(pipelines.filter(p => p.id !== id));
+    if (selectedPipeline === id) {
+      setSelectedPipeline(DEFAULT_PIPELINE_ID);
+    }
+    toast.success("Pipeline excluído!");
   };
 
   const handleCreateStage = async () => {
     if (!stageForm.name.trim()) {
       toast.error("Preencha o nome do estágio");
+      return;
+    }
+
+    if (isDefaultPipeline) {
+      toast.error("Não é possível adicionar estágios ao pipeline padrão");
       return;
     }
 
@@ -166,6 +256,7 @@ const Pipeline = () => {
         name: stageForm.name.trim(),
         color: stageForm.color,
         order_index: maxOrder + 1,
+        pipeline_id: selectedPipeline,
       })
       .select()
       .single();
@@ -287,6 +378,16 @@ const Pipeline = () => {
   };
 
   const getLeadsForStage = (stageId: string | null) => {
+    if (stageId === null) {
+      // For "unassigned" column, show leads that are either:
+      // 1. Have no stage_id
+      // 2. Have a stage_id that belongs to the current pipeline
+      const currentPipelineStageIds = stages.map(s => s.id);
+      return leads.filter(l => 
+        l.stage_id === null || 
+        !currentPipelineStageIds.includes(l.stage_id)
+      );
+    }
     return leads.filter(l => l.stage_id === stageId);
   };
 
@@ -318,11 +419,11 @@ const Pipeline = () => {
   };
 
   const handleLeadDeleted = () => {
-    fetchData();
+    fetchLeads();
   };
 
   const handleLeadUpdated = () => {
-    fetchData();
+    fetchLeads();
     setDetailsDialogOpen(false);
     setEditLeadDialogOpen(false);
   };
@@ -331,17 +432,66 @@ const Pipeline = () => {
     <MainLayout>
       {/* Header */}
       <div className="flex items-center justify-between mb-6 animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Pipeline</h1>
-          <p className="text-muted-foreground">
-            {leads.length} leads • {stages.length} estágios
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground mb-1">Pipeline</h1>
+            <p className="text-muted-foreground">
+              {leads.length} leads • {stages.length} estágios
+            </p>
+          </div>
+          
+          {/* Pipeline Selector */}
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <GitBranch className="w-4 h-4" />
+                  {currentPipeline?.name || "Pipeline Padrão"}
+                  {currentPipeline?.is_default && (
+                    <Badge variant="secondary" className="ml-1 text-xs">Padrão</Badge>
+                  )}
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {pipelines.map((pipeline) => (
+                  <DropdownMenuItem
+                    key={pipeline.id}
+                    onClick={() => setSelectedPipeline(pipeline.id)}
+                    className="flex items-center justify-between"
+                  >
+                    <span>{pipeline.name}</span>
+                    {pipeline.is_default && (
+                      <Badge variant="secondary" className="text-xs">Padrão</Badge>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setPipelineDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Novo Pipeline
+                </DropdownMenuItem>
+                {!isDefaultPipeline && (
+                  <DropdownMenuItem 
+                    onClick={() => handleDeletePipeline(selectedPipeline)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Excluir Pipeline
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
+        
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={openNewStage}>
-            <Settings className="w-4 h-4" />
-            Novo Estágio
-          </Button>
+          {!isDefaultPipeline && (
+            <Button variant="outline" className="gap-2" onClick={openNewStage}>
+              <Settings className="w-4 h-4" />
+              Novo Estágio
+            </Button>
+          )}
           <Button className="gap-2" onClick={() => openNewLead()}>
             <Plus className="w-4 h-4" />
             Novo Lead
@@ -653,6 +803,44 @@ const Pipeline = () => {
         lead={selectedLead}
         onSuccess={handleLeadUpdated}
       />
+
+      {/* Create Pipeline Dialog */}
+      <Dialog open={pipelineDialogOpen} onOpenChange={setPipelineDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Pipeline</DialogTitle>
+            <DialogDescription>
+              Crie um novo pipeline personalizado para organizar seus leads
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                placeholder="Ex: Pipeline de Vendas"
+                value={pipelineForm.name}
+                onChange={(e) => setPipelineForm({ ...pipelineForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição (opcional)</Label>
+              <Textarea
+                placeholder="Descreva o propósito deste pipeline"
+                value={pipelineForm.description}
+                onChange={(e) => setPipelineForm({ ...pipelineForm, description: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPipelineDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreatePipeline}>
+                Criar Pipeline
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };
