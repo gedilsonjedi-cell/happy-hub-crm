@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,33 @@ import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 100 : -100,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? 100 : -100,
+    opacity: 0,
+  }),
+};
+
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 },
+};
+
+const scaleIn = {
+  initial: { scale: 0.9, opacity: 0 },
+  animate: { scale: 1, opacity: 1 },
+  exit: { scale: 0.9, opacity: 0 },
+};
+
 interface PixPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,6 +82,7 @@ export function PixPaymentDialog({
 }: PixPaymentDialogProps) {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>("amount");
+  const [direction, setDirection] = useState(0);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   
@@ -241,14 +270,17 @@ export function PixPaymentDialog({
         toast.error("Selecione um valor (mínimo R$ 10)");
         return;
       }
+      setDirection(1);
       setStep("method");
     } else if (step === "method") {
       if (!paymentMethod) {
         toast.error("Selecione uma forma de pagamento");
         return;
       }
+      setDirection(1);
       setStep("details");
     } else if (step === "details") {
+      setDirection(1);
       if (paymentMethod === "pix") {
         handleGeneratePix();
       } else {
@@ -258,6 +290,7 @@ export function PixPaymentDialog({
   };
 
   const handleBack = () => {
+    setDirection(-1);
     if (step === "method") setStep("amount");
     else if (step === "details") setStep("method");
     else if (step === "qrcode") setStep("details");
@@ -318,48 +351,73 @@ export function PixPaymentDialog({
 
   const renderAmountStep = () => (
     <div className="space-y-6">
-      <div className="text-center space-y-2">
+      <motion.div 
+        className="text-center space-y-2"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
         <h3 className="text-xl font-semibold">Quanto você quer adicionar?</h3>
         <p className="text-sm text-muted-foreground">Selecione o valor da recarga</p>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-2 gap-3">
-        {BALANCE_OPTIONS.map((option) => (
-          <button
+        {BALANCE_OPTIONS.map((option, index) => (
+          <motion.button
             key={option.value}
             type="button"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.1 + index * 0.05 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => {
               setSelectedAmount(option.value);
               setCustomAmount("");
             }}
             className={cn(
-              "relative p-4 rounded-xl border-2 transition-all text-left",
+              "relative p-4 rounded-xl border-2 transition-colors text-left",
               selectedAmount === option.value && !customAmount
                 ? "border-primary bg-primary/5 shadow-md"
                 : "border-border hover:border-primary/50 hover:bg-muted/50"
             )}
           >
             {option.popular && (
-              <span className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full flex items-center gap-1">
+              <motion.span 
+                className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full flex items-center gap-1"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.3, type: "spring" }}
+              >
                 <Sparkles className="w-3 h-3" />
                 Popular
-              </span>
+              </motion.span>
             )}
             <span className="text-2xl font-bold">{option.label}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 
-      <div className="relative">
+      <motion.div 
+        className="relative"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+      >
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-border" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
           <span className="bg-background px-2 text-muted-foreground">ou digite um valor</span>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="relative">
+      <motion.div 
+        className="relative"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">R$</span>
         <Input
           type="number"
@@ -372,92 +430,158 @@ export function PixPaymentDialog({
           min={10}
           className="pl-10 h-14 text-xl font-medium"
         />
-      </div>
+      </motion.div>
 
-      {getFinalAmount() > 0 && (
-        <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="p-4 flex items-center justify-between">
-            <span className="text-muted-foreground">Você receberá</span>
-            <span className="text-2xl font-bold text-primary">
-              R$ {getFinalAmount().toFixed(2)}
-            </span>
-          </CardContent>
-        </Card>
-      )}
+      <AnimatePresence>
+        {getFinalAmount() > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 24 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="p-4 flex items-center justify-between">
+                <span className="text-muted-foreground">Você receberá</span>
+                <motion.span 
+                  key={getFinalAmount()}
+                  initial={{ scale: 1.2, color: "hsl(var(--primary))" }}
+                  animate={{ scale: 1 }}
+                  className="text-2xl font-bold text-primary"
+                >
+                  R$ {getFinalAmount().toFixed(2)}
+                </motion.span>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
   const renderMethodStep = () => (
     <div className="space-y-6">
-      <div className="text-center space-y-2">
+      <motion.div 
+        className="text-center space-y-2"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
         <h3 className="text-xl font-semibold">Como você quer pagar?</h3>
         <p className="text-sm text-muted-foreground">Escolha a forma de pagamento</p>
-      </div>
+      </motion.div>
 
       <div className="space-y-3">
-        <button
+        <motion.button
           type="button"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.15 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
           onClick={() => setPaymentMethod("pix")}
           className={cn(
-            "w-full p-5 rounded-xl border-2 transition-all flex items-center gap-4",
+            "w-full p-5 rounded-xl border-2 transition-colors flex items-center gap-4",
             paymentMethod === "pix"
               ? "border-primary bg-primary/5 shadow-md"
               : "border-border hover:border-primary/50 hover:bg-muted/50"
           )}
         >
-          <div className={cn(
-            "w-14 h-14 rounded-xl flex items-center justify-center",
-            paymentMethod === "pix" ? "bg-primary text-primary-foreground" : "bg-muted"
-          )}>
+          <motion.div 
+            className={cn(
+              "w-14 h-14 rounded-xl flex items-center justify-center transition-colors",
+              paymentMethod === "pix" ? "bg-primary text-primary-foreground" : "bg-muted"
+            )}
+            animate={paymentMethod === "pix" ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.3 }}
+          >
             <QrCode className="w-7 h-7" />
-          </div>
+          </motion.div>
           <div className="text-left flex-1">
             <p className="text-lg font-semibold">PIX</p>
             <p className="text-sm text-muted-foreground">Pagamento instantâneo via QR Code</p>
           </div>
-          {paymentMethod === "pix" && (
-            <CheckCircle2 className="w-6 h-6 text-primary" />
-          )}
-        </button>
+          <AnimatePresence>
+            {paymentMethod === "pix" && (
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <CheckCircle2 className="w-6 h-6 text-primary" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.button>
 
-        <button
+        <motion.button
           type="button"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
           onClick={() => setPaymentMethod("card")}
           className={cn(
-            "w-full p-5 rounded-xl border-2 transition-all flex items-center gap-4",
+            "w-full p-5 rounded-xl border-2 transition-colors flex items-center gap-4",
             paymentMethod === "card"
               ? "border-primary bg-primary/5 shadow-md"
               : "border-border hover:border-primary/50 hover:bg-muted/50"
           )}
         >
-          <div className={cn(
-            "w-14 h-14 rounded-xl flex items-center justify-center",
-            paymentMethod === "card" ? "bg-primary text-primary-foreground" : "bg-muted"
-          )}>
+          <motion.div 
+            className={cn(
+              "w-14 h-14 rounded-xl flex items-center justify-center transition-colors",
+              paymentMethod === "card" ? "bg-primary text-primary-foreground" : "bg-muted"
+            )}
+            animate={paymentMethod === "card" ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.3 }}
+          >
             <CreditCard className="w-7 h-7" />
-          </div>
+          </motion.div>
           <div className="text-left flex-1">
             <p className="text-lg font-semibold">Cartão de Crédito</p>
             <p className="text-sm text-muted-foreground">Pagamento à vista, aprovação imediata</p>
           </div>
-          {paymentMethod === "card" && (
-            <CheckCircle2 className="w-6 h-6 text-primary" />
-          )}
-        </button>
+          <AnimatePresence>
+            {paymentMethod === "card" && (
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <CheckCircle2 className="w-6 h-6 text-primary" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.button>
       </div>
 
-      <Card className="bg-muted/50">
-        <CardContent className="p-4 flex items-center justify-between">
-          <span className="text-muted-foreground">Total</span>
-          <span className="text-xl font-bold">R$ {getFinalAmount().toFixed(2)}</span>
-        </CardContent>
-      </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <Card className="bg-muted/50">
+          <CardContent className="p-4 flex items-center justify-between">
+            <span className="text-muted-foreground">Total</span>
+            <span className="text-xl font-bold">R$ {getFinalAmount().toFixed(2)}</span>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 
   const renderDetailsStep = () => (
     <div className="space-y-5">
-      <div className="text-center space-y-2">
+      <motion.div 
+        className="text-center space-y-2"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
         <h3 className="text-xl font-semibold">
           {paymentMethod === "pix" ? "Confirme seus dados" : "Dados do cartão"}
         </h3>
@@ -467,9 +591,14 @@ export function PixPaymentDialog({
             : "Preencha os dados do cartão de crédito"
           }
         </p>
-      </div>
+      </motion.div>
 
-      <div className="space-y-4">
+      <motion.div 
+        className="space-y-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.15 }}
+      >
         <div className="space-y-2">
           <Label htmlFor="payerEmail">Email *</Label>
           <Input
@@ -483,7 +612,11 @@ export function PixPaymentDialog({
         </div>
 
         {paymentMethod === "pix" && (
-          <div className="space-y-2">
+          <motion.div 
+            className="space-y-2"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+          >
             <Label htmlFor="payerName">Nome (opcional)</Label>
             <Input
               id="payerName"
@@ -492,11 +625,16 @@ export function PixPaymentDialog({
               placeholder="Seu nome completo"
               className="h-12"
             />
-          </div>
+          </motion.div>
         )}
 
         {paymentMethod === "card" && (
-          <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="cardNumber">Número do Cartão *</Label>
               <Input
@@ -553,41 +691,63 @@ export function PixPaymentDialog({
                 className="h-12"
               />
             </div>
-          </>
+          </motion.div>
         )}
-      </div>
+      </motion.div>
 
-      <Card className="bg-primary/5 border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-muted-foreground">Valor</span>
-            <span className="font-medium">R$ {getFinalAmount().toFixed(2)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Forma de pagamento</span>
-            <span className="font-medium flex items-center gap-1.5">
-              {paymentMethod === "pix" ? (
-                <><QrCode className="w-4 h-4" /> PIX</>
-              ) : (
-                <><CreditCard className="w-4 h-4" /> Cartão</>
-              )}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-muted-foreground">Valor</span>
+              <span className="font-medium">R$ {getFinalAmount().toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Forma de pagamento</span>
+              <span className="font-medium flex items-center gap-1.5">
+                {paymentMethod === "pix" ? (
+                  <><QrCode className="w-4 h-4" /> PIX</>
+                ) : (
+                  <><CreditCard className="w-4 h-4" /> Cartão</>
+                )}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 
   const renderQRCodeStep = () => (
     <div className="space-y-6">
-      <div className="text-center space-y-2">
-        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+      <motion.div 
+        className="text-center space-y-2"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
+        >
+          <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+        </motion.div>
         <h3 className="text-xl font-semibold">PIX gerado com sucesso!</h3>
         <p className="text-sm text-muted-foreground">Escaneie o QR Code ou copie o código</p>
-      </div>
+      </motion.div>
 
       {pixData?.qrCodeBase64 && (
-        <div className="flex justify-center">
+        <motion.div 
+          className="flex justify-center"
+          initial={{ opacity: 0, scale: 0.8, rotateY: 90 }}
+          animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+          transition={{ delay: 0.3, duration: 0.5, type: "spring" }}
+        >
           <div className="p-4 bg-white rounded-2xl shadow-lg">
             <img
               src={`data:image/png;base64,${pixData.qrCodeBase64}`}
@@ -595,10 +755,15 @@ export function PixPaymentDialog({
               className="w-48 h-48"
             />
           </div>
-        </div>
+        </motion.div>
       )}
 
-      <div className="space-y-2">
+      <motion.div 
+        className="space-y-2"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
         <Label>Código PIX (Copia e Cola)</Label>
         <div className="flex gap-2">
           <Input
@@ -606,27 +771,35 @@ export function PixPaymentDialog({
             readOnly
             className="font-mono text-xs"
           />
-          <Button 
-            onClick={handleCopyPix} 
-            variant={copied ? "default" : "outline"} 
-            size="icon" 
-            className="shrink-0"
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-          </Button>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button 
+              onClick={handleCopyPix} 
+              variant={copied ? "default" : "outline"} 
+              size="icon" 
+              className="shrink-0"
+            >
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </Button>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
-      <Card className="bg-muted/50">
-        <CardContent className="p-4 text-center space-y-1">
-          <p className="text-sm text-muted-foreground">
-            Após o pagamento, o saldo será creditado automaticamente.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            O QR Code expira em 30 minutos.
-          </p>
-        </CardContent>
-      </Card>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+      >
+        <Card className="bg-muted/50">
+          <CardContent className="p-4 text-center space-y-1">
+            <p className="text-sm text-muted-foreground">
+              Após o pagamento, o saldo será creditado automaticamente.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              O QR Code expira em 30 minutos.
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       <Button onClick={handleClose} variant="outline" className="w-full">
         Fechar
@@ -636,28 +809,56 @@ export function PixPaymentDialog({
 
   const renderSuccessStep = () => (
     <div className="space-y-6 text-center py-6">
-      <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto">
-        <CheckCircle2 className="w-10 h-10 text-green-500" />
-      </div>
+      <motion.div 
+        className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto"
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+      >
+        <motion.div
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ delay: 0.2, type: "spring" }}
+        >
+          <CheckCircle2 className="w-10 h-10 text-green-500" />
+        </motion.div>
+      </motion.div>
       
-      <div className="space-y-2">
+      <motion.div 
+        className="space-y-2"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
         <h3 className="text-2xl font-bold">Pagamento aprovado!</h3>
         <p className="text-muted-foreground">
           R$ {getFinalAmount().toFixed(2)} foram adicionados ao seu saldo
         </p>
-      </div>
+      </motion.div>
 
-      <Card className="bg-green-500/5 border-green-500/20">
-        <CardContent className="p-4">
-          <p className="text-sm text-green-600">
-            Seus créditos já estão disponíveis para uso.
-          </p>
-        </CardContent>
-      </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <Card className="bg-green-500/5 border-green-500/20">
+          <CardContent className="p-4">
+            <p className="text-sm text-green-600">
+              Seus créditos já estão disponíveis para uso.
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-      <Button onClick={handleClose} className="w-full" size="lg">
-        Concluir
-      </Button>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+      >
+        <Button onClick={handleClose} className="w-full" size="lg">
+          Concluir
+        </Button>
+      </motion.div>
     </div>
   );
 
@@ -675,14 +876,74 @@ export function PixPaymentDialog({
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-10rem)]">
-          <div className="p-5">
+          <div className="p-5 overflow-hidden">
             {renderStepIndicator()}
             
-            {step === "amount" && renderAmountStep()}
-            {step === "method" && renderMethodStep()}
-            {step === "details" && renderDetailsStep()}
-            {step === "qrcode" && renderQRCodeStep()}
-            {step === "success" && renderSuccessStep()}
+            <AnimatePresence mode="wait" custom={direction}>
+              {step === "amount" && (
+                <motion.div
+                  key="amount"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  {renderAmountStep()}
+                </motion.div>
+              )}
+              {step === "method" && (
+                <motion.div
+                  key="method"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  {renderMethodStep()}
+                </motion.div>
+              )}
+              {step === "details" && (
+                <motion.div
+                  key="details"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  {renderDetailsStep()}
+                </motion.div>
+              )}
+              {step === "qrcode" && (
+                <motion.div
+                  key="qrcode"
+                  variants={scaleIn}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                >
+                  {renderQRCodeStep()}
+                </motion.div>
+              )}
+              {step === "success" && (
+                <motion.div
+                  key="success"
+                  variants={scaleIn}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                >
+                  {renderSuccessStep()}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </ScrollArea>
 
