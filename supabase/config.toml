@@ -59,3 +59,12 @@ verify_jwt = true
 
 [functions.scheduled-message-sender]
 verify_jwt = false
+
+[functions.mercadopago-card]
+verify_jwt = true
+
+[functions.mercadopago-save-card]
+verify_jwt = true
+
+[functions.auto-recharge-check]
+verify_jwt = false

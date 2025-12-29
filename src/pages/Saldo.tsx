@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PixPaymentDialog } from "@/components/payment/PixPaymentDialog";
+import { AutoRechargeConfig } from "@/components/payment/AutoRechargeConfig";
 
 interface BalanceData {
   balance: number;
@@ -371,6 +372,14 @@ export default function Saldo() {
             )}
           </CardContent>
         </Card>
+
+        {/* Auto Recharge Config */}
+        {organizationId && user?.email && (
+          <AutoRechargeConfig 
+            organizationId={organizationId} 
+            userEmail={user.email} 
+          />
+        )}
 
         {/* Pricing Info */}
         <Card>
