@@ -46,7 +46,7 @@ export function Header() {
           <img 
             src={theme === "dark" ? optimusLogo : optimusLogoDark} 
             alt="Optimus CRM" 
-            className="h-10 w-auto object-contain"
+            className="h-[60px] w-auto object-contain"
           />
         </Link>
       </div>
