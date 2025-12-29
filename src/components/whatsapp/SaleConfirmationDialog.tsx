@@ -90,42 +90,62 @@ export function SaleConfirmationDialog({
     try {
       const targetStage = saleCompleted ? stages.vendas : stages.naoFinalizou;
 
+      console.log("Target stage:", targetStage);
+      console.log("All stages:", stages);
+
       if (!targetStage) {
         toast.error(`Estágio ${saleCompleted ? "Vendas" : "Não finalizou venda"} não encontrado`);
+        onConfirm(saleCompleted);
+        onOpenChange(false);
         setLoading(false);
         return;
       }
 
       // Find the lead by phone
       const normalizedPhone = contactPhone.replace(/\D/g, "");
+      console.log("Looking for lead with phone:", normalizedPhone);
       
-      // Search for lead with this phone (try multiple approaches)
+      // Search for lead with this phone
       const { data: leads, error: leadsError } = await supabase
         .from("leads")
-        .select("id, phone");
+        .select("id, phone, stage_id, name");
+
+      console.log("Found leads:", leads);
 
       if (leadsError) {
         console.error("Error fetching leads:", leadsError);
         toast.error("Erro ao buscar lead");
+        onConfirm(saleCompleted);
+        onOpenChange(false);
         setLoading(false);
         return;
       }
 
       // Find lead by normalized phone
-      const lead = leads?.find(l => l.phone.replace(/\D/g, "") === normalizedPhone);
+      const matchingLeads = leads?.filter(l => l.phone.replace(/\D/g, "") === normalizedPhone) || [];
+      console.log("Matching leads:", matchingLeads);
 
-      if (lead) {
-        // Update lead stage
-        const { error: updateError } = await supabase
-          .from("leads")
-          .update({ stage_id: targetStage.id })
-          .eq("id", lead.id);
+      if (matchingLeads.length > 0) {
+        // Update all matching leads
+        let updateSuccess = false;
+        for (const lead of matchingLeads) {
+          const { error: updateError } = await supabase
+            .from("leads")
+            .update({ stage_id: targetStage.id })
+            .eq("id", lead.id);
 
-        if (updateError) {
-          console.error("Error updating lead:", updateError);
-          toast.error("Erro ao atualizar estágio do lead");
-        } else {
+          if (updateError) {
+            console.error("Error updating lead:", lead.id, updateError);
+          } else {
+            console.log("Successfully updated lead:", lead.id, "to stage:", targetStage.id);
+            updateSuccess = true;
+          }
+        }
+        
+        if (updateSuccess) {
           toast.success(`Lead movido para "${targetStage.name}"`);
+        } else {
+          toast.error("Erro ao atualizar estágio do lead");
         }
       } else {
         toast.info("Lead não encontrado - conversa arquivada sem atualização de pipeline");
@@ -136,6 +156,8 @@ export function SaleConfirmationDialog({
     } catch (error) {
       console.error("Error in sale confirmation:", error);
       toast.error("Erro ao processar confirmação");
+      onConfirm(saleCompleted);
+      onOpenChange(false);
     } finally {
       setLoading(false);
     }
