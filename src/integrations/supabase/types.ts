@@ -811,6 +811,7 @@ export type Database = {
         Row: {
           assigned_at: string | null
           assigned_to: string | null
+          campaign_chatbot_id: string | null
           channel_id: string | null
           conversation_phone: string
           created_at: string
@@ -823,6 +824,7 @@ export type Database = {
         Insert: {
           assigned_at?: string | null
           assigned_to?: string | null
+          campaign_chatbot_id?: string | null
           channel_id?: string | null
           conversation_phone: string
           created_at?: string
@@ -835,6 +837,7 @@ export type Database = {
         Update: {
           assigned_at?: string | null
           assigned_to?: string | null
+          campaign_chatbot_id?: string | null
           channel_id?: string | null
           conversation_phone?: string
           created_at?: string
@@ -845,6 +848,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "conversation_assignments_campaign_chatbot_id_fkey"
+            columns: ["campaign_chatbot_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "conversation_assignments_channel_id_fkey"
             columns: ["channel_id"]

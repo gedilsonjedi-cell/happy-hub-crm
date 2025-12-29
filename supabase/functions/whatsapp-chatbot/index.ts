@@ -79,28 +79,10 @@ Deno.serve(async (req) => {
 
     const chatbotConfig = config as ChatbotConfig;
 
-    // Determine which agent to use: campaign override > channel config > default AI
-    let agentToUse: AIAgent | null = null;
-    const agentIdToUse = campaignChatbotId || chatbotConfig.agent_id;
-
-    if (agentIdToUse) {
-      const { data: agent } = await supabase
-        .from('ai_agents')
-        .select('id, name, agent_profile, communication_style, objective, company_info, products_services, faq')
-        .eq('id', agentIdToUse)
-        .eq('is_active', true)
-        .single();
-
-      if (agent) {
-        agentToUse = agent;
-        console.log('Using AI agent:', agent.name, campaignChatbotId ? '(from campaign)' : '(from channel config)');
-      }
-    }
-
-    // Check or create conversation assignment
+    // Check or create conversation assignment first to get potential campaign_chatbot_id
     let { data: assignment } = await supabase
       .from('conversation_assignments')
-      .select('*')
+      .select('*, campaign_chatbot_id')
       .eq('conversation_phone', senderPhone)
       .eq('channel_id', channelId)
       .single();
@@ -117,13 +99,35 @@ Deno.serve(async (req) => {
           is_bot_handling: true,
           status: 'pending'
         })
-        .select()
+        .select('*, campaign_chatbot_id')
         .single();
 
       if (assignError) {
         console.error('Error creating assignment:', assignError);
       }
       assignment = newAssignment;
+    }
+
+    // Determine which agent to use: 
+    // Priority: 1) campaignChatbotId param, 2) assignment.campaign_chatbot_id, 3) channel config agent_id, 4) default AI
+    let agentToUse: AIAgent | null = null;
+    const agentIdToUse = campaignChatbotId || assignment?.campaign_chatbot_id || chatbotConfig.agent_id;
+
+    if (agentIdToUse) {
+      const { data: agent } = await supabase
+        .from('ai_agents')
+        .select('id, name, agent_profile, communication_style, objective, company_info, products_services, faq')
+        .eq('id', agentIdToUse)
+        .eq('is_active', true)
+        .single();
+
+      if (agent) {
+        agentToUse = agent;
+        const source = campaignChatbotId ? 'from param' : 
+                       assignment?.campaign_chatbot_id ? 'from campaign assignment' : 
+                       'from channel config';
+        console.log('Using AI agent:', agent.name, `(${source})`);
+      }
     }
 
     // Check if a human is handling this conversation
