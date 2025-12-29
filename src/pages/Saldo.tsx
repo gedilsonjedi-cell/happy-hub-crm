@@ -12,6 +12,14 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { 
   Wallet, 
   TrendingUp, 
@@ -56,6 +64,8 @@ export default function Saldo() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const transactionsPerPage = 5;
 
   useEffect(() => {
     if (user) {
@@ -165,6 +175,13 @@ export default function Saldo() {
   };
 
   const status = getBalanceStatus();
+
+  // Pagination logic
+  const totalPages = Math.ceil(transactions.length / transactionsPerPage);
+  const paginatedTransactions = transactions.slice(
+    (currentPage - 1) * transactionsPerPage,
+    currentPage * transactionsPerPage
+  );
 
   return (
     <MainLayout>
@@ -296,7 +313,15 @@ export default function Saldo() {
           </Card>
         )}
 
-        {/* Transaction History */}
+        {/* Auto Recharge Config - Above Transaction History */}
+        {organizationId && user?.email && (
+          <AutoRechargeConfig 
+            organizationId={organizationId} 
+            userEmail={user.email} 
+          />
+        )}
+
+        {/* Transaction History with Pagination */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -304,7 +329,10 @@ export default function Saldo() {
               Histórico de Transações
             </CardTitle>
             <CardDescription>
-              Últimas 50 transações da sua organização
+              {transactions.length > 0 
+                ? `Mostrando ${Math.min(transactionsPerPage, paginatedTransactions.length)} de ${transactions.length} transações`
+                : "Suas transações aparecerão aqui"
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -321,65 +349,92 @@ export default function Saldo() {
                 <p className="text-sm">As transações aparecerão aqui quando você adicionar créditos ou trocar mensagens</p>
               </div>
             ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead className="text-right">Saldo Após</TableHead>
-                      <TableHead className="text-right">Data</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {transactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getTransactionIcon(transaction.type)}
-                            {getTransactionBadge(transaction.type)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">
-                            {transaction.description || 
-                              (transaction.type === "credit" ? "Adição de créditos" : "Troca de mensagens")}
-                          </span>
-                          {transaction.reference_type && (
-                            <span className="text-xs text-muted-foreground block">
-                              {transaction.reference_type}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className={transaction.type === "credit" ? "text-green-500" : "text-red-500"}>
-                            {transaction.type === "credit" ? "+" : "-"}
-                            {formatCurrency(transaction.amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(transaction.balance_after)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">
-                          {format(new Date(transaction.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                        </TableCell>
+              <div className="space-y-4">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                        <TableHead className="text-right">Saldo Após</TableHead>
+                        <TableHead className="text-right">Data</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getTransactionIcon(transaction.type)}
+                              {getTransactionBadge(transaction.type)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {transaction.description || 
+                                (transaction.type === "credit" ? "Adição de créditos" : "Troca de mensagens")}
+                            </span>
+                            {transaction.reference_type && (
+                              <span className="text-xs text-muted-foreground block">
+                                {transaction.reference_type}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={transaction.type === "credit" ? "text-green-500" : "text-red-500"}>
+                              {transaction.type === "credit" ? "+" : "-"}
+                              {formatCurrency(transaction.amount)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(transaction.balance_after)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {format(new Date(transaction.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious 
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                      
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page)}
+                            isActive={currentPage === page}
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      
+                      <PaginationItem>
+                        <PaginationNext 
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
-
-        {/* Auto Recharge Config */}
-        {organizationId && user?.email && (
-          <AutoRechargeConfig 
-            organizationId={organizationId} 
-            userEmail={user.email} 
-          />
-        )}
 
         {/* Pricing Info */}
         <Card>
