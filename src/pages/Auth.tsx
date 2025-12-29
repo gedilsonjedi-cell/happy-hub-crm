@@ -67,14 +67,14 @@ const Auth = () => {
         } else {
           toast.error(error.message);
         }
+        setLoading(false);
         return;
       }
 
-      // Show splash screen before navigating
+      // Show splash screen before navigating (don't setLoading false here)
       setShowSplash(true);
     } catch (error) {
       toast.error("Ocorreu um erro. Tente novamente.");
-    } finally {
       setLoading(false);
     }
   };
