@@ -25,6 +25,7 @@ import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
 import optimusLogo from "@/assets/optimus-logo.png";
 import { cn } from "@/lib/utils";
+import { SplashScreen } from "@/components/splash/SplashScreen";
 
 const stepSchemas = {
   1: z.object({
@@ -61,6 +62,7 @@ const Cadastro = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [direction, setDirection] = useState(1);
+  const [showSplash, setShowSplash] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -85,6 +87,15 @@ const Cadastro = () => {
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
+  }
+
+  const handleSplashComplete = () => {
+    navigate("/dashboard");
+  };
+
+  // Show splash screen
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} duration={2500} />;
   }
 
   const validateStep = () => {
@@ -552,7 +563,7 @@ const Cadastro = () => {
                   transition={{ delay: 0.6 }}
                 >
                   <Button 
-                    onClick={() => navigate("/dashboard")}
+                    onClick={() => setShowSplash(true)}
                     className="w-full h-14 text-lg gap-2 bg-gradient-to-r from-primary to-primary/80"
                   >
                     Acessar minha conta

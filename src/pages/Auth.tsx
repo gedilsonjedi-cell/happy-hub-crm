@@ -10,6 +10,7 @@ import { Eye, EyeOff, Mail, Lock, Loader2, ArrowRight, Sparkles } from "lucide-r
 import { z } from "zod";
 import { motion } from "framer-motion";
 import optimusLogo from "@/assets/optimus-logo.png";
+import { SplashScreen } from "@/components/splash/SplashScreen";
 
 const authSchema = z.object({
   email: z.string().email("Email inválido").max(255),
@@ -21,6 +22,7 @@ const Auth = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showSplash, setShowSplash] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -68,14 +70,24 @@ const Auth = () => {
         return;
       }
 
-      toast.success("Login realizado com sucesso!");
-      navigate("/dashboard");
+      // Show splash screen before navigating
+      setShowSplash(true);
     } catch (error) {
       toast.error("Ocorreu um erro. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSplashComplete = () => {
+    toast.success("Login realizado com sucesso!");
+    navigate("/dashboard");
+  };
+
+  // Show splash screen
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} duration={2500} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
