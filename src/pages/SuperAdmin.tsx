@@ -1251,7 +1251,17 @@ export default function SuperAdmin() {
                 </Popover>
               </div>
 
-              {subscriptionPricing && (
+              {editingOrg?.is_partner ? (
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <p className="text-sm font-medium text-primary">Plano Parceiro</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sem cobrança de assinatura. O cliente só paga por recursos adicionais.
+                  </p>
+                </div>
+              ) : subscriptionPricing && (
                 <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                   <p className="text-sm font-medium text-primary">
                     Valor mensal: R$ {calculateMonthlyCost(editOrgMaxUsers, editOrgMaxChannels).toFixed(2)}
