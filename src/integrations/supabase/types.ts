@@ -37,6 +37,8 @@ export type Database = {
           products_services: string | null
           response_delay_max: number | null
           response_delay_min: number | null
+          service_guide: string | null
+          service_guide_enabled: boolean | null
           sign_conversations: boolean | null
           simulate_typing: boolean | null
           updated_at: string
@@ -65,6 +67,8 @@ export type Database = {
           products_services?: string | null
           response_delay_max?: number | null
           response_delay_min?: number | null
+          service_guide?: string | null
+          service_guide_enabled?: boolean | null
           sign_conversations?: boolean | null
           simulate_typing?: boolean | null
           updated_at?: string
@@ -93,6 +97,8 @@ export type Database = {
           products_services?: string | null
           response_delay_max?: number | null
           response_delay_min?: number | null
+          service_guide?: string | null
+          service_guide_enabled?: boolean | null
           sign_conversations?: boolean | null
           simulate_typing?: boolean | null
           updated_at?: string

@@ -19,6 +19,8 @@ interface AgentConfig {
   agent_profile?: string;
   objective?: string;
   company_info?: string;
+  service_guide_enabled?: boolean;
+  service_guide?: string;
 }
 
 function validateInput(body: unknown): { valid: boolean; error?: string; data?: { message: string; agentConfig: AgentConfig; conversationHistory: Message[] } } {
@@ -50,6 +52,8 @@ function validateInput(body: unknown): { valid: boolean; error?: string; data?: 
     agent_profile: typeof config.agent_profile === 'string' ? config.agent_profile.slice(0, 50) : undefined,
     objective: typeof config.objective === 'string' ? config.objective.slice(0, 500) : undefined,
     company_info: typeof config.company_info === 'string' ? config.company_info.slice(0, 2000) : undefined,
+    service_guide_enabled: typeof config.service_guide_enabled === 'boolean' ? config.service_guide_enabled : false,
+    service_guide: typeof config.service_guide === 'string' ? config.service_guide.slice(0, 5000) : undefined,
   };
 
   // Validate conversationHistory
@@ -172,6 +176,9 @@ serve(async (req) => {
       outro: "Você é um assistente virtual.",
     };
 
+    // Check if service guide is enabled
+    const hasServiceGuide = agentConfig.service_guide_enabled && agentConfig.service_guide;
+
     const systemPrompt = `Você é ${agentConfig.name || "um assistente virtual"}${agentConfig.nickname ? ` (pode se apresentar como ${agentConfig.nickname})` : ""}.
 
 ${styleMap[agentConfig.communication_style || ''] || styleMap.consultivo}
@@ -181,6 +188,16 @@ ${agentConfig.objective ? `Seu objetivo: ${agentConfig.objective}` : ""}
 
 ${agentConfig.company_info ? `Informações sobre a empresa:\n${agentConfig.company_info}` : ""}
 
+${hasServiceGuide ? `## GUIA DE ATENDIMENTO (SIGA ESTE ROTEIRO)
+${agentConfig.service_guide}
+
+### INSTRUÇÕES DO GUIA
+- Você DEVE seguir o roteiro acima de forma estruturada durante o atendimento
+- Conduza a conversa passo a passo conforme descrito no guia
+- Se o cliente fizer perguntas fora do script, responda brevemente e volte ao roteiro
+- Adapte a linguagem ao seu estilo de comunicação, mas mantenha a estrutura do roteiro
+- Seu objetivo é completar todas as etapas do guia para um atendimento de qualidade
+` : ''}
 Diretrizes:
 - Responda de forma natural e conversacional (português brasileiro)
 - Seja conciso mas completo

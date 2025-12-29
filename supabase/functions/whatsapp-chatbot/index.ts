@@ -36,6 +36,8 @@ interface AIAgent {
   company_info: string | null;
   products_services: string | null;
   faq: string | null;
+  service_guide_enabled: boolean | null;
+  service_guide: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -116,7 +118,7 @@ Deno.serve(async (req) => {
     if (agentIdToUse) {
       const { data: agent } = await supabase
         .from('ai_agents')
-        .select('id, name, agent_profile, communication_style, objective, company_info, products_services, faq')
+        .select('id, name, agent_profile, communication_style, objective, company_info, products_services, faq, service_guide_enabled, service_guide')
         .eq('id', agentIdToUse)
         .eq('is_active', true)
         .single();
@@ -269,6 +271,9 @@ Se o cliente perguntar sobre preços, produtos ou quiser falar com um humano, in
 Não invente informações sobre produtos ou preços específicos.`;
 
             if (agentToUse) {
+              // Check if service guide is enabled
+              const hasServiceGuide = agentToUse.service_guide_enabled && agentToUse.service_guide;
+              
               systemPrompt = `Você é ${agentToUse.name}, um assistente virtual de atendimento ao cliente via WhatsApp.
 
 ${agentToUse.agent_profile ? `## Perfil\n${agentToUse.agent_profile}\n` : ''}
@@ -277,7 +282,16 @@ ${agentToUse.objective ? `## Objetivo\n${agentToUse.objective}\n` : ''}
 ${agentToUse.company_info ? `## Sobre a Empresa\n${agentToUse.company_info}\n` : ''}
 ${agentToUse.products_services ? `## Produtos e Serviços\n${agentToUse.products_services}\n` : ''}
 ${agentToUse.faq ? `## FAQ\n${agentToUse.faq}\n` : ''}
+${hasServiceGuide ? `## GUIA DE ATENDIMENTO (SIGA ESTE ROTEIRO)
+${agentToUse.service_guide}
 
+### INSTRUÇÕES DO GUIA
+- Você DEVE seguir o roteiro acima de forma estruturada durante o atendimento
+- Conduza a conversa passo a passo conforme descrito no guia
+- Se o cliente fizer perguntas fora do script, responda brevemente e volte ao roteiro
+- Adapte a linguagem ao seu estilo de comunicação, mas mantenha a estrutura do roteiro
+- Seu objetivo é completar todas as etapas do guia para um atendimento de qualidade
+` : ''}
 ## Diretrizes
 - Mantenha respostas curtas (máximo 2-3 frases) e objetivas
 - Se não souber responder, ofereça transferir para um atendente humano

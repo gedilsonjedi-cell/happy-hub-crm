@@ -15,6 +15,8 @@ interface AgentPreviewProps {
   agentProfile: string;
   objective: string;
   companyInfo: string;
+  serviceGuideEnabled?: boolean;
+  serviceGuide?: string;
 }
 
 interface Message {
@@ -35,6 +37,8 @@ export const AgentPreview = ({
   agentProfile,
   objective,
   companyInfo,
+  serviceGuideEnabled,
+  serviceGuide,
 }: AgentPreviewProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -69,6 +73,8 @@ export const AgentPreview = ({
             agent_profile: agentProfile,
             objective,
             company_info: companyInfo,
+            service_guide_enabled: serviceGuideEnabled,
+            service_guide: serviceGuide,
           },
           conversationHistory: messages,
         }
