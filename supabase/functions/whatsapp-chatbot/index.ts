@@ -15,6 +15,7 @@ interface ChatbotConfig {
   auto_qualify_enabled: boolean;
   initial_stage_id: string | null;
   qualified_stage_id: string | null;
+  agent_id: string | null;
 }
 
 interface ConversationAssignment {
@@ -24,6 +25,17 @@ interface ConversationAssignment {
   assigned_to: string | null;
   is_bot_handling: boolean;
   lead_id: string | null;
+}
+
+interface AIAgent {
+  id: string;
+  name: string;
+  agent_profile: string | null;
+  communication_style: string | null;
+  objective: string | null;
+  company_info: string | null;
+  products_services: string | null;
+  faq: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -38,10 +50,11 @@ Deno.serve(async (req) => {
       senderName,
       messageContent,
       messageId,
-      organizationId 
+      organizationId,
+      campaignChatbotId // Optional: chatbot ID from campaign
     } = await req.json();
 
-    console.log('Chatbot processing message:', { channelId, senderPhone, messageContent });
+    console.log('Chatbot processing message:', { channelId, senderPhone, messageContent, campaignChatbotId });
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -65,6 +78,24 @@ Deno.serve(async (req) => {
     }
 
     const chatbotConfig = config as ChatbotConfig;
+
+    // Determine which agent to use: campaign override > channel config > default AI
+    let agentToUse: AIAgent | null = null;
+    const agentIdToUse = campaignChatbotId || chatbotConfig.agent_id;
+
+    if (agentIdToUse) {
+      const { data: agent } = await supabase
+        .from('ai_agents')
+        .select('id, name, agent_profile, communication_style, objective, company_info, products_services, faq')
+        .eq('id', agentIdToUse)
+        .eq('is_active', true)
+        .single();
+
+      if (agent) {
+        agentToUse = agent;
+        console.log('Using AI agent:', agent.name, campaignChatbotId ? '(from campaign)' : '(from channel config)');
+      }
+    }
 
     // Check or create conversation assignment
     let { data: assignment } = await supabase
@@ -227,14 +258,30 @@ Deno.serve(async (req) => {
               .order('created_at', { ascending: true })
               .limit(10);
 
-            const messages = [
-              {
-                role: 'system',
-                content: `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
+            // Build system prompt based on agent configuration
+            let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
 Seja cordial, objetivo e útil. Mantenha respostas curtas (máximo 2-3 frases).
 Se o cliente perguntar sobre preços, produtos ou quiser falar com um humano, informe que irá transferir para um atendente.
-Não invente informações sobre produtos ou preços específicos.`
-              },
+Não invente informações sobre produtos ou preços específicos.`;
+
+            if (agentToUse) {
+              systemPrompt = `Você é ${agentToUse.name}, um assistente virtual de atendimento ao cliente via WhatsApp.
+
+${agentToUse.agent_profile ? `## Perfil\n${agentToUse.agent_profile}\n` : ''}
+${agentToUse.communication_style ? `## Estilo de Comunicação\n${agentToUse.communication_style}\n` : ''}
+${agentToUse.objective ? `## Objetivo\n${agentToUse.objective}\n` : ''}
+${agentToUse.company_info ? `## Sobre a Empresa\n${agentToUse.company_info}\n` : ''}
+${agentToUse.products_services ? `## Produtos e Serviços\n${agentToUse.products_services}\n` : ''}
+${agentToUse.faq ? `## FAQ\n${agentToUse.faq}\n` : ''}
+
+## Diretrizes
+- Mantenha respostas curtas (máximo 2-3 frases) e objetivas
+- Se não souber responder, ofereça transferir para um atendente humano
+- Não invente informações que não foram fornecidas acima`;
+            }
+
+            const messages = [
+              { role: 'system', content: systemPrompt },
               ...(history || []).map(msg => ({
                 role: msg.direction === 'inbound' ? 'user' : 'assistant',
                 content: msg.content || ''
