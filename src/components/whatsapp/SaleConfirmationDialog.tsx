@@ -99,22 +99,10 @@ export function SaleConfirmationDialog({
       // Find the lead by phone
       const normalizedPhone = contactPhone.replace(/\D/g, "");
       
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .single();
-
-      if (!profile?.organization_id) {
-        toast.error("Erro ao identificar organização");
-        setLoading(false);
-        return;
-      }
-
-      // Search for lead with this phone
+      // Search for lead with this phone (try multiple approaches)
       const { data: leads, error: leadsError } = await supabase
         .from("leads")
-        .select("id, phone")
-        .eq("organization_id", profile.organization_id);
+        .select("id, phone");
 
       if (leadsError) {
         console.error("Error fetching leads:", leadsError);
