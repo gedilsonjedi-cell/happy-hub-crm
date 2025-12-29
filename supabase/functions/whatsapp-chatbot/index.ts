@@ -152,15 +152,52 @@ Deno.serve(async (req) => {
 
       if (existingLead) {
         leadId = existingLead.id;
+        
+        // Move lead to "Pré-Atendimento" stage if it has no stage
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('stage_id')
+          .eq('id', leadId)
+          .single();
+        
+        if (leadData && !leadData.stage_id) {
+          // Find "Pré-Atendimento" stage
+          const { data: preAtendimentoStage } = await supabase
+            .from('pipeline_stages')
+            .select('id')
+            .ilike('name', '%pré-atendimento%')
+            .limit(1)
+            .single();
+          
+          if (preAtendimentoStage) {
+            await supabase
+              .from('leads')
+              .update({ stage_id: preAtendimentoStage.id })
+              .eq('id', leadId);
+            
+            console.log('Lead moved to Pré-Atendimento stage');
+          }
+        }
       } else {
         // Get channel owner to assign as lead owner
         const { data: channel } = await supabase
           .from('channels')
-          .select('user_id')
+          .select('user_id, organization_id')
           .eq('id', channelId)
           .single();
 
         if (channel) {
+          // Find "Pré-Atendimento" stage for new leads
+          const { data: preAtendimentoStage } = await supabase
+            .from('pipeline_stages')
+            .select('id')
+            .eq('organization_id', channel.organization_id)
+            .ilike('name', '%pré-atendimento%')
+            .limit(1)
+            .single();
+          
+          const stageToUse = preAtendimentoStage?.id || chatbotConfig.initial_stage_id;
+          
           const { data: newLead } = await supabase
             .from('leads')
             .insert({
@@ -168,13 +205,14 @@ Deno.serve(async (req) => {
               phone: senderPhone,
               user_id: channel.user_id,
               organization_id: organizationId,
-              stage_id: chatbotConfig.initial_stage_id
+              stage_id: stageToUse
             })
             .select()
             .single();
 
           if (newLead) {
             leadId = newLead.id;
+            console.log('New lead created in Pré-Atendimento stage');
           }
         }
       }
@@ -241,6 +279,35 @@ Deno.serve(async (req) => {
           last_assignment_at: new Date().toISOString()
         })
         .eq('id', attendant.id);
+
+      // Move lead to "Qualificação" stage when transferred to human attendant
+      if (leadId) {
+        // Get organization from channel
+        const { data: channelData } = await supabase
+          .from('channels')
+          .select('organization_id')
+          .eq('id', channelId)
+          .single();
+        
+        if (channelData?.organization_id) {
+          const { data: qualificacaoStage } = await supabase
+            .from('pipeline_stages')
+            .select('id')
+            .eq('organization_id', channelData.organization_id)
+            .ilike('name', '%qualificação%')
+            .limit(1)
+            .single();
+          
+          if (qualificacaoStage) {
+            await supabase
+              .from('leads')
+              .update({ stage_id: qualificacaoStage.id })
+              .eq('id', leadId);
+            
+            console.log('Lead moved to Qualificação stage after transfer');
+          }
+        }
+      }
 
       responseMessage = chatbotConfig.transfer_message;
       shouldTransfer = true;
