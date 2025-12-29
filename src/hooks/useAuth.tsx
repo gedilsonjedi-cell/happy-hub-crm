@@ -8,31 +8,6 @@ export const useAuth = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        
-        // Redirect to auth page on sign out
-        if (event === "SIGNED_OUT") {
-          window.location.href = "/auth";
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -43,14 +18,34 @@ export const useAuth = () => {
         return;
       }
       
-      // Force redirect in case onAuthStateChange doesn't trigger
       window.location.href = "/auth";
     } catch (error) {
       console.error("Error signing out:", error);
       toast.error("Erro ao sair. Tente novamente.");
-      // Force redirect anyway
       window.location.href = "/auth";
     }
+  }, []);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+        
+        if (event === "SIGNED_OUT") {
+          window.location.href = "/auth";
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return { user, session, loading, signOut };
