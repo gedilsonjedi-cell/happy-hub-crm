@@ -581,8 +581,7 @@ const LandingPage = () => {
                 <div className="space-y-4 mb-8">
                   {[
                     "WhatsApp ilimitado",
-                    "Foco em Contingência",
-                    "Higienização de números",
+                    "Disparos de WhatsApp [Foco em Contingência]",
                     "Lista negra",
                     "Follow-up automático",
                     "Pipeline com IA",
