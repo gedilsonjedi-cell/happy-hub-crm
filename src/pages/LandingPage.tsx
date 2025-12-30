@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { motion, useInView as useFramerInView, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
   Bot,
@@ -41,6 +42,38 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+
+// Animation variants with proper typing
+const fadeInUp = {
+  hidden: { opacity: 0, y: 40 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] as const } }
+};
+
+const fadeInLeft = {
+  hidden: { opacity: 0, x: -40 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] as const } }
+};
+
+const fadeInRight = {
+  hidden: { opacity: 0, x: 40 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] as const } }
+};
+
+const scaleIn = {
+  hidden: { opacity: 0, scale: 0.8 },
+  visible: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as const } }
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2
+    }
+  }
+};
 
 // Intersection Observer hook for animations
 const useInView = (threshold: number = 0.1) => {
@@ -308,90 +341,158 @@ const LandingPage = () => {
 
         {/* Hero Content */}
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className={cn(
-            "transition-all duration-1000",
-            heroSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-          )}>
+          <motion.div
+            initial="hidden"
+            animate={heroSection.isInView ? "visible" : "hidden"}
+            variants={staggerContainer}
+          >
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-8">
-              <Sparkles className="w-4 h-4 text-[#04f59c]" />
+            <motion.div 
+              variants={fadeInUp}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-8"
+            >
+              <motion.div
+                animate={{ rotate: [0, 15, -15, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <Sparkles className="w-4 h-4 text-[#04f59c]" />
+              </motion.div>
               <span className="text-sm text-[#04f59c]">Único CRM com disparos alternados</span>
-            </div>
+            </motion.div>
             
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-tight">
+            <motion.h1 
+              variants={fadeInUp}
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-tight"
+            >
               <span className="text-white">Dispare com</span>
               <br />
-              <span className="bg-gradient-to-r from-[#04f59c] via-[#03d989] to-[#02b872] bg-clip-text text-transparent">
+              <motion.span 
+                className="bg-gradient-to-r from-[#04f59c] via-[#03d989] to-[#02b872] bg-clip-text text-transparent inline-block"
+                animate={{ 
+                  backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                }}
+                transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+                style={{ backgroundSize: "200% 200%" }}
+              >
                 inteligência
-              </span>
+              </motion.span>
               <span className="text-white">, não com medo</span>
-            </h1>
+            </motion.h1>
             
-            <p className="text-lg sm:text-xl text-white/60 max-w-3xl mx-auto mb-10 leading-relaxed">
+            <motion.p 
+              variants={fadeInUp}
+              className="text-lg sm:text-xl text-white/60 max-w-3xl mx-auto mb-10 leading-relaxed"
+            >
               O OptimusCRM é o único CRM focado em <span className="text-white font-medium">contingência</span>. 
               Disparos alternados, proteção contra bloqueios e <span className="text-[#04f59c] font-medium">WhatsApp API Oficial Ilimitado</span> para 
               <span className="text-[#04f59c] font-medium"> escalar suas vendas com segurança</span>.
-            </p>
+            </motion.p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <motion.div 
+              variants={fadeInUp}
+              className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
+            >
               <Link to={user ? "/dashboard" : "/cadastro"}>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button 
+                    size="lg" 
+                    className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
+                  >
+                    <motion.div
+                      animate={{ rotate: [0, -10, 10, 0] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <Rocket className="w-5 h-5 mr-2" />
+                    </motion.div>
+                    {user ? "Acessar Dashboard" : "Testar 7 Dias Grátis"}
+                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </motion.div>
+              </Link>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
                 <Button 
                   size="lg" 
-                  className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
+                  variant="outline" 
+                  className="text-lg px-8 py-6 border-white/10 bg-white/5 hover:bg-white/10 text-white"
+                  onClick={() => scrollToSection("how-it-works")}
                 >
-                  <Rocket className="w-5 h-5 mr-2 group-hover:animate-pulse" />
-                  {user ? "Acessar Dashboard" : "Testar 7 Dias Grátis"}
-                  <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  <Play className="w-5 h-5 mr-2" />
+                  Ver Como Funciona
                 </Button>
-              </Link>
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="text-lg px-8 py-6 border-white/10 bg-white/5 hover:bg-white/10 text-white"
-                onClick={() => scrollToSection("how-it-works")}
-              >
-                <Play className="w-5 h-5 mr-2" />
-                Ver Como Funciona
-              </Button>
-            </div>
+              </motion.div>
+            </motion.div>
 
             {/* Trial Badge */}
-            <div className="inline-flex items-center gap-4 px-10 py-6 rounded-3xl bg-gradient-to-r from-[#04f59c]/15 to-[#02b872]/15 border-2 border-[#04f59c]/30">
-              <Gift className="w-8 h-8 text-[#04f59c]" />
+            <motion.div 
+              variants={scaleIn}
+              animate={{ 
+                boxShadow: [
+                  "0 0 20px rgba(4, 245, 156, 0.2)",
+                  "0 0 40px rgba(4, 245, 156, 0.4)",
+                  "0 0 20px rgba(4, 245, 156, 0.2)"
+                ]
+              }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="inline-flex items-center gap-4 px-10 py-6 rounded-3xl bg-gradient-to-r from-[#04f59c]/15 to-[#02b872]/15 border-2 border-[#04f59c]/30"
+            >
+              <motion.div 
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 2.5, repeat: Infinity }}
+              >
+                <Gift className="w-8 h-8 text-[#04f59c]" />
+              </motion.div>
               <span className="text-xl text-white/80">
                 <span className="text-white font-bold text-2xl">7 dias grátis</span> + R$10 de saldo bônus
               </span>
-            </div>
+            </motion.div>
 
             {/* Stats */}
-            <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-16 mt-24 mb-16">
-              <div className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-white mb-1">99.9%</div>
-                <div className="text-sm text-white/40">Taxa de entrega</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-white mb-1">∞</div>
-                <div className="text-sm text-white/40">WhatsApp API Oficial</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-white mb-1">24/7</div>
-                <div className="text-sm text-white/40">Atendimento IA</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-white mb-1">0</div>
-                <div className="text-sm text-white/40">Bloqueios com alternância</div>
-              </div>
-            </div>
-          </div>
+            <motion.div 
+              variants={staggerContainer}
+              className="flex flex-wrap items-center justify-center gap-8 sm:gap-16 mt-24 mb-16"
+            >
+              {[
+                { value: "99.9%", label: "Taxa de entrega" },
+                { value: "∞", label: "WhatsApp API Oficial" },
+                { value: "24/7", label: "Atendimento IA" },
+                { value: "0", label: "Bloqueios com alternância" },
+              ].map((stat, index) => (
+                <motion.div 
+                  key={stat.label}
+                  variants={fadeInUp}
+                  whileHover={{ scale: 1.1, y: -5 }}
+                  className="text-center cursor-default"
+                >
+                  <motion.div 
+                    className="text-3xl sm:text-4xl font-bold text-white mb-1"
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={heroSection.isInView ? { opacity: 1, scale: 1 } : {}}
+                    transition={{ delay: 0.5 + index * 0.1, type: "spring", stiffness: 200 }}
+                  >
+                    {stat.value}
+                  </motion.div>
+                  <div className="text-sm text-white/40">{stat.label}</div>
+                </motion.div>
+              ))}
+            </motion.div>
+          </motion.div>
         </div>
 
         {/* Scroll Indicator */}
-        <button 
+        <motion.button 
           onClick={() => scrollToSection("features")}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/30 hover:text-white/60 transition-colors animate-bounce"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/30 hover:text-white/60 transition-colors"
+          animate={{ y: [0, 10, 0] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
         >
           <ChevronDown className="w-8 h-8" />
-        </button>
+        </motion.button>
       </section>
 
       {/* Features Section */}
@@ -426,44 +527,65 @@ const LandingPage = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <motion.div 
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            variants={staggerContainer}
+            initial="hidden"
+            animate={featuresSection.isInView ? "visible" : "hidden"}
+          >
             {features.map((feature, index) => (
-              <Card 
+              <motion.div
                 key={feature.title}
-                className={cn(
-                  "group relative overflow-hidden border-white/5 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] transition-all duration-500 hover:border-[#04f59c]/30",
-                  feature.highlight && "border-[#04f59c]/20 bg-[#04f59c]/[0.03]",
-                  featuresSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-                )}
-                style={{ 
-                  transitionDelay: featuresSection.isInView ? `${index * 50}ms` : "0ms" 
-                }}
+                variants={fadeInUp}
+                whileHover={{ y: -8, transition: { duration: 0.2 } }}
               >
-                <CardContent className="p-6">
-                  <div className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110",
-                    feature.highlight 
-                      ? "bg-gradient-to-br from-[#04f59c] to-[#02b872]" 
-                      : "bg-white/5 border border-white/10"
-                  )}>
-                    <feature.icon className={cn(
-                      "w-6 h-6",
-                      feature.highlight ? "text-black" : "text-[#04f59c]"
-                    )} />
-                  </div>
-                  {feature.highlight && (
-                    <Badge className="mb-3 bg-[#04f59c]/10 text-[#04f59c] border-[#04f59c]/20 text-xs">
-                      Exclusivo
-                    </Badge>
+                <Card 
+                  className={cn(
+                    "group relative overflow-hidden border-white/5 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] transition-all duration-500 hover:border-[#04f59c]/30 h-full",
+                    feature.highlight && "border-[#04f59c]/20 bg-[#04f59c]/[0.03]"
                   )}
-                  <h3 className="text-lg font-semibold mb-2 text-white">{feature.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{feature.description}</p>
-                </CardContent>
-                {/* Hover Glow */}
-                <div className="absolute inset-0 bg-gradient-to-br from-[#04f59c]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </Card>
+                >
+                  <CardContent className="p-6">
+                    <motion.div 
+                      className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
+                        feature.highlight 
+                          ? "bg-gradient-to-br from-[#04f59c] to-[#02b872]" 
+                          : "bg-white/5 border border-white/10"
+                      )}
+                      whileHover={{ scale: 1.1, rotate: 5 }}
+                      transition={{ type: "spring", stiffness: 400 }}
+                    >
+                      <feature.icon className={cn(
+                        "w-6 h-6",
+                        feature.highlight ? "text-black" : "text-[#04f59c]"
+                      )} />
+                    </motion.div>
+                    {feature.highlight && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 }}
+                      >
+                        <Badge className="mb-3 bg-[#04f59c]/10 text-[#04f59c] border-[#04f59c]/20 text-xs">
+                          Exclusivo
+                        </Badge>
+                      </motion.div>
+                    )}
+                    <h3 className="text-lg font-semibold mb-2 text-white">{feature.title}</h3>
+                    <p className="text-white/50 text-sm leading-relaxed">{feature.description}</p>
+                  </CardContent>
+                  {/* Hover Glow */}
+                  <motion.div 
+                    className="absolute inset-0 bg-gradient-to-br from-[#04f59c]/5 to-transparent pointer-events-none"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </Card>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -493,19 +615,38 @@ const LandingPage = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* OptimusCRM Column */}
-            <div className="relative">
-              <div className="absolute -inset-1 bg-gradient-to-r from-[#04f59c]/20 to-[#02b872]/20 rounded-3xl blur-xl" />
+            <motion.div 
+              className="relative"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              variants={fadeInLeft}
+            >
+              <motion.div 
+                className="absolute -inset-1 bg-gradient-to-r from-[#04f59c]/20 to-[#02b872]/20 rounded-3xl blur-xl"
+                animate={{ 
+                  opacity: [0.5, 0.8, 0.5],
+                  scale: [1, 1.02, 1]
+                }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              />
               <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-b from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm h-full">
                 <CardContent className="p-8">
                   <div className="flex items-center gap-3 mb-8">
-                    <img 
+                    <motion.img 
                       src={optimusLogo} 
                       alt="Optimus CRM" 
                       className="h-8 w-auto object-contain"
+                      whileHover={{ scale: 1.1 }}
                     />
-                    <Badge className="bg-[#04f59c] text-black border-0 font-semibold">
-                      Recomendado
-                    </Badge>
+                    <motion.div
+                      animate={{ scale: [1, 1.05, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    >
+                      <Badge className="bg-[#04f59c] text-black border-0 font-semibold">
+                        Recomendado
+                      </Badge>
+                    </motion.div>
                   </div>
                   
                   <div className="space-y-5">
@@ -519,10 +660,24 @@ const LandingPage = () => {
                       { feature: "Relatórios", value: "Completos e em tempo real", highlight: false },
                       { feature: "Suporte", value: "Prioritário", highlight: false },
                     ].map((item, index) => (
-                      <div key={index} className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0">
+                      <motion.div 
+                        key={index} 
+                        className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0"
+                        initial={{ opacity: 0, x: -20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.05 }}
+                      >
                         <span className="text-white/70">{item.feature}</span>
                         <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-5 h-5 text-[#04f59c] flex-shrink-0" />
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            whileInView={{ scale: 1 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: index * 0.05 + 0.2, type: "spring" }}
+                          >
+                            <CheckCircle2 className="w-5 h-5 text-[#04f59c] flex-shrink-0" />
+                          </motion.div>
                           <span className={cn(
                             "font-medium text-right",
                             item.highlight ? "text-[#04f59c]" : "text-white"
@@ -530,79 +685,116 @@ const LandingPage = () => {
                             {item.value}
                           </span>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
 
                   <div className="mt-8 pt-6 border-t border-[#04f59c]/20">
                     <div className="text-center">
-                      <div className="text-3xl font-bold text-white mb-2">R$ 229,90<span className="text-lg text-white/50">/mês</span></div>
+                      <motion.div 
+                        className="text-3xl font-bold text-white mb-2"
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        whileInView={{ scale: 1, opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ type: "spring", stiffness: 200 }}
+                      >
+                        R$ 229,90<span className="text-lg text-white/50">/mês</span>
+                      </motion.div>
                       <p className="text-[#04f59c] text-sm">Tudo incluído, sem surpresas</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </motion.div>
 
             {/* Competitors Column */}
-            <Card className="overflow-hidden border-white/10 bg-white/[0.02] backdrop-blur-sm h-full">
-              <CardContent className="p-8">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                    <span className="text-white/50 text-lg">?</span>
-                  </div>
-                  <span className="text-white/50 font-medium text-lg">Outros CRMs do mercado</span>
-                </div>
-                
-                <div className="space-y-5">
-                  {[
-                    { feature: "WhatsApp API Oficial", value: "R$ 50-100/número" },
-                    { feature: "Disparos em massa", value: "Sem alternância" },
-                    { feature: "Chatbot com IA", value: "Pago à parte" },
-                    { feature: "Higienização de números", value: "Não oferece" },
-                    { feature: "Pipeline automático", value: "Manual apenas" },
-                    { feature: "Follow-up automático", value: "Limitado ou pago" },
-                    { feature: "Relatórios", value: "Básicos" },
-                    { feature: "Suporte", value: "Ticket comum" },
-                  ].map((item, index) => (
-                    <div key={index} className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0">
-                      <span className="text-white/50">{item.feature}</span>
-                      <div className="flex items-center gap-2">
-                        <Minus className="w-5 h-5 text-red-400/70 flex-shrink-0" />
-                        <span className="font-medium text-white/40 text-right">
-                          {item.value}
-                        </span>
-                      </div>
+            <motion.div
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              variants={fadeInRight}
+            >
+              <Card className="overflow-hidden border-white/10 bg-white/[0.02] backdrop-blur-sm h-full">
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                      <span className="text-white/50 text-lg">?</span>
                     </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-white/10">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-white/40 mb-2">R$ 300-500+<span className="text-lg text-white/30">/mês</span></div>
-                    <p className="text-white/30 text-sm">Custos extras por recurso</p>
+                    <span className="text-white/50 font-medium text-lg">Outros CRMs do mercado</span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                  
+                  <div className="space-y-5">
+                    {[
+                      { feature: "WhatsApp API Oficial", value: "R$ 50-100/número" },
+                      { feature: "Disparos em massa", value: "Sem alternância" },
+                      { feature: "Chatbot com IA", value: "Pago à parte" },
+                      { feature: "Higienização de números", value: "Não oferece" },
+                      { feature: "Pipeline automático", value: "Manual apenas" },
+                      { feature: "Follow-up automático", value: "Limitado ou pago" },
+                      { feature: "Relatórios", value: "Básicos" },
+                      { feature: "Suporte", value: "Ticket comum" },
+                    ].map((item, index) => (
+                      <motion.div 
+                        key={index} 
+                        className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0"
+                        initial={{ opacity: 0, x: 20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.05 }}
+                      >
+                        <span className="text-white/50">{item.feature}</span>
+                        <div className="flex items-center gap-2">
+                          <Minus className="w-5 h-5 text-red-400/70 flex-shrink-0" />
+                          <span className="font-medium text-white/40 text-right">
+                            {item.value}
+                          </span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-white/10">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-white/40 mb-2">R$ 300-500+<span className="text-lg text-white/30">/mês</span></div>
+                      <p className="text-white/30 text-sm">Custos extras por recurso</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
           </div>
 
           {/* Bottom CTA */}
-          <div className="text-center mt-12">
+          <motion.div 
+            className="text-center mt-12"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+          >
             <p className="text-white/50 mb-6">
-              Economize até <span className="text-[#04f59c] font-semibold">60%</span> comparado a outras soluções do mercado
+              Economize até <motion.span 
+                className="text-[#04f59c] font-semibold"
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >60%</motion.span> comparado a outras soluções do mercado
             </p>
             <Link to={user ? "/dashboard" : "/cadastro"}>
-              <Button 
-                size="lg" 
-                className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                <Rocket className="w-5 h-5 mr-2" />
-                Migrar para o OptimusCRM
-                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
+                <Button 
+                  size="lg" 
+                  className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
+                >
+                  <Rocket className="w-5 h-5 mr-2" />
+                  Migrar para o OptimusCRM
+                  <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </motion.div>
             </Link>
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -633,35 +825,56 @@ const LandingPage = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <motion.div 
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            variants={staggerContainer}
+            initial="hidden"
+            animate={howItWorksSection.isInView ? "visible" : "hidden"}
+          >
             {howItWorks.map((item, index) => (
-              <div 
+              <motion.div 
                 key={item.step}
-                className={cn(
-                  "relative text-center transition-all duration-500",
-                  howItWorksSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-                )}
-                style={{ 
-                  transitionDelay: howItWorksSection.isInView ? `${index * 150}ms` : "0ms" 
-                }}
+                className="relative text-center"
+                variants={fadeInUp}
               >
                 {/* Connector Line */}
                 {index < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-[#04f59c]/30 to-transparent" />
+                  <motion.div 
+                    className="hidden md:block absolute top-12 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-[#04f59c]/30 to-transparent"
+                    initial={{ scaleX: 0 }}
+                    whileInView={{ scaleX: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.5 + index * 0.2, duration: 0.5 }}
+                    style={{ transformOrigin: "left" }}
+                  />
                 )}
                 
-                <div className="relative mb-6">
-                  <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-[#04f59c]/20 to-[#02b872]/10 border border-[#04f59c]/20 flex items-center justify-center">
+                <motion.div 
+                  className="relative mb-6"
+                  whileHover={{ scale: 1.1 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <motion.div 
+                    className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-[#04f59c]/20 to-[#02b872]/10 border border-[#04f59c]/20 flex items-center justify-center"
+                    animate={{ 
+                      boxShadow: [
+                        "0 0 0px rgba(4, 245, 156, 0)",
+                        "0 0 20px rgba(4, 245, 156, 0.3)",
+                        "0 0 0px rgba(4, 245, 156, 0)"
+                      ]
+                    }}
+                    transition={{ duration: 2, repeat: Infinity, delay: index * 0.3 }}
+                  >
                     <span className="text-3xl font-bold bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                       {item.step}
                     </span>
-                  </div>
-                </div>
+                  </motion.div>
+                </motion.div>
                 <h3 className="text-xl font-semibold text-white mb-3">{item.title}</h3>
                 <p className="text-white/50">{item.description}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -692,72 +905,114 @@ const LandingPage = () => {
           </div>
 
           {/* Pricing Card */}
-          <div className={cn(
-            "max-w-lg mx-auto transition-all duration-700",
-            pricingSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-          )}>
-            <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-b from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm">
-              {/* Popular Badge */}
-              <div className="absolute top-0 right-0 px-4 py-1 bg-[#04f59c] text-black text-sm font-medium rounded-bl-xl">
-                Mais Popular
-              </div>
-              
-              <CardContent className="p-8">
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold text-white mb-2">Plano Completo</h3>
-                  <p className="text-white/50">Tudo que você precisa para escalar</p>
-                </div>
-
-                <div className="text-center mb-8">
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-2xl text-white/50">R$</span>
-                    <span className="text-6xl font-bold text-white">229</span>
-                    <span className="text-2xl text-white/50">,90</span>
+          <motion.div 
+            className="max-w-lg mx-auto"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            variants={scaleIn}
+          >
+            <motion.div
+              whileHover={{ y: -5 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-b from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm">
+                {/* Popular Badge */}
+                <motion.div 
+                  className="absolute top-0 right-0 px-4 py-1 bg-[#04f59c] text-black text-sm font-medium rounded-bl-xl"
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  Mais Popular
+                </motion.div>
+                
+                <CardContent className="p-8">
+                  <div className="text-center mb-8">
+                    <h3 className="text-2xl font-bold text-white mb-2">Plano Completo</h3>
+                    <p className="text-white/50">Tudo que você precisa para escalar</p>
                   </div>
-                  <p className="text-white/40 mt-2">por mês</p>
-                </div>
 
-                <div className="space-y-4 mb-8">
-                  {[
-                    "WhatsApp API Oficial Ilimitado",
-                    "Disparos de WhatsApp API [Foco em Contingência]",
-                    "Lista negra",
-                    "Follow-up automático",
-                    "Pipeline com IA",
-                    "Chatbot inteligente",
-                    "Relatórios completos",
-                    "Suporte prioritário",
-                  ].map((feature, index) => (
-                    <div key={index} className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full bg-[#04f59c]/20 flex items-center justify-center flex-shrink-0">
-                        <Check className="w-3 h-3 text-[#04f59c]" />
-                      </div>
-                      <span className="text-white/70">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <Link to={user ? "/dashboard" : "/cadastro"} className="block">
-                  <Button 
-                    size="lg" 
-                    className="w-full text-lg py-6 bg-[#04f59c] hover:bg-[#03d989] text-black border-0"
+                  <motion.div 
+                    className="text-center mb-8"
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    whileInView={{ scale: 1, opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
                   >
-                    {user ? "Acessar Dashboard" : "Começar 7 Dias Grátis"}
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </Link>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-2xl text-white/50">R$</span>
+                      <span className="text-6xl font-bold text-white">229</span>
+                      <span className="text-2xl text-white/50">,90</span>
+                    </div>
+                    <p className="text-white/40 mt-2">por mês</p>
+                  </motion.div>
 
-                <p className="text-center text-white/40 text-sm mt-4">
-                  + R$10 de saldo bônus • Cancele quando quiser
-                </p>
-              </CardContent>
-            </Card>
+                  <div className="space-y-4 mb-8">
+                    {[
+                      "WhatsApp API Oficial Ilimitado",
+                      "Disparos de WhatsApp API [Foco em Contingência]",
+                      "Lista negra",
+                      "Follow-up automático",
+                      "Pipeline com IA",
+                      "Chatbot inteligente",
+                      "Relatórios completos",
+                      "Suporte prioritário",
+                    ].map((feature, index) => (
+                      <motion.div 
+                        key={index} 
+                        className="flex items-center gap-3"
+                        initial={{ opacity: 0, x: -20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.05 }}
+                      >
+                        <motion.div 
+                          className="w-5 h-5 rounded-full bg-[#04f59c]/20 flex items-center justify-center flex-shrink-0"
+                          initial={{ scale: 0 }}
+                          whileInView={{ scale: 1 }}
+                          viewport={{ once: true }}
+                          transition={{ delay: index * 0.05 + 0.1, type: "spring" }}
+                        >
+                          <Check className="w-3 h-3 text-[#04f59c]" />
+                        </motion.div>
+                        <span className="text-white/70">{feature}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <Link to={user ? "/dashboard" : "/cadastro"} className="block">
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <Button 
+                        size="lg" 
+                        className="w-full text-lg py-6 bg-[#04f59c] hover:bg-[#03d989] text-black border-0"
+                      >
+                        {user ? "Acessar Dashboard" : "Começar 7 Dias Grátis"}
+                        <ArrowRight className="w-5 h-5 ml-2" />
+                      </Button>
+                    </motion.div>
+                  </Link>
+
+                  <p className="text-center text-white/40 text-sm mt-4">
+                    + R$10 de saldo bônus • Cancele quando quiser
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
 
             {/* Additional Resources Note */}
-            <p className="text-center text-white/40 mt-6">
+            <motion.p 
+              className="text-center text-white/40 mt-6"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.5 }}
+            >
               Precisa de mais? Adicione recursos extras conforme sua necessidade.
-            </p>
-          </div>
+            </motion.p>
+          </motion.div>
         </div>
       </section>
 
