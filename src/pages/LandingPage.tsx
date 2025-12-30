@@ -192,7 +192,7 @@ const LandingPage = () => {
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <img 
@@ -581,7 +581,7 @@ const LandingPage = () => {
                 <div className="space-y-4 mb-8">
                   {[
                     "WhatsApp ilimitado",
-                    "Disparos alternados (anti-contingência)",
+                    "Foco em Contingência",
                     "Higienização de números",
                     "Lista negra",
                     "Follow-up automático",
