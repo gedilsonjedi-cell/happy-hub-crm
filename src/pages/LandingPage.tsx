@@ -467,6 +467,145 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* Comparison Section */}
+      <section className="relative py-24 sm:py-32 overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#04f59c]/5 to-transparent" />
+        </div>
+
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
+              <Target className="w-4 h-4 text-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Por que somos diferentes</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+              OptimusCRM vs{" "}
+              <span className="bg-gradient-to-r from-white/40 to-white/20 bg-clip-text text-transparent">
+                Outros CRMs
+              </span>
+            </h2>
+            <p className="text-lg text-white/50 max-w-2xl mx-auto">
+              Veja por que empresas estão migrando para o OptimusCRM.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* OptimusCRM Column */}
+            <div className="relative">
+              <div className="absolute -inset-1 bg-gradient-to-r from-[#04f59c]/20 to-[#02b872]/20 rounded-3xl blur-xl" />
+              <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-b from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm h-full">
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-8">
+                    <img 
+                      src={optimusLogo} 
+                      alt="Optimus CRM" 
+                      className="h-8 w-auto object-contain"
+                    />
+                    <Badge className="bg-[#04f59c] text-black border-0 font-semibold">
+                      Recomendado
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-5">
+                    {[
+                      { feature: "WhatsApp API Oficial", value: "Ilimitado", highlight: true },
+                      { feature: "Disparos em massa", value: "Alternados (anti-bloqueio)", highlight: true },
+                      { feature: "Chatbot com IA", value: "Incluído no plano", highlight: false },
+                      { feature: "Higienização de números", value: "Incluída", highlight: false },
+                      { feature: "Pipeline automático", value: "Com IA integrada", highlight: false },
+                      { feature: "Follow-up automático", value: "Ilimitado", highlight: false },
+                      { feature: "Relatórios", value: "Completos e em tempo real", highlight: false },
+                      { feature: "Suporte", value: "Prioritário", highlight: false },
+                    ].map((item, index) => (
+                      <div key={index} className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0">
+                        <span className="text-white/70">{item.feature}</span>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-5 h-5 text-[#04f59c] flex-shrink-0" />
+                          <span className={cn(
+                            "font-medium text-right",
+                            item.highlight ? "text-[#04f59c]" : "text-white"
+                          )}>
+                            {item.value}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-[#04f59c]/20">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-white mb-2">R$ 229,90<span className="text-lg text-white/50">/mês</span></div>
+                      <p className="text-[#04f59c] text-sm">Tudo incluído, sem surpresas</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Competitors Column */}
+            <Card className="overflow-hidden border-white/10 bg-white/[0.02] backdrop-blur-sm h-full">
+              <CardContent className="p-8">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                    <span className="text-white/50 text-lg">?</span>
+                  </div>
+                  <span className="text-white/50 font-medium text-lg">Outros CRMs do mercado</span>
+                </div>
+                
+                <div className="space-y-5">
+                  {[
+                    { feature: "WhatsApp API Oficial", value: "R$ 50-100/número" },
+                    { feature: "Disparos em massa", value: "Sem alternância" },
+                    { feature: "Chatbot com IA", value: "Pago à parte" },
+                    { feature: "Higienização de números", value: "Não oferece" },
+                    { feature: "Pipeline automático", value: "Manual apenas" },
+                    { feature: "Follow-up automático", value: "Limitado ou pago" },
+                    { feature: "Relatórios", value: "Básicos" },
+                    { feature: "Suporte", value: "Ticket comum" },
+                  ].map((item, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4 py-3 border-b border-white/5 last:border-0">
+                      <span className="text-white/50">{item.feature}</span>
+                      <div className="flex items-center gap-2">
+                        <Minus className="w-5 h-5 text-red-400/70 flex-shrink-0" />
+                        <span className="font-medium text-white/40 text-right">
+                          {item.value}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-white/10">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-white/40 mb-2">R$ 300-500+<span className="text-lg text-white/30">/mês</span></div>
+                    <p className="text-white/30 text-sm">Custos extras por recurso</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Bottom CTA */}
+          <div className="text-center mt-12">
+            <p className="text-white/50 mb-6">
+              Economize até <span className="text-[#04f59c] font-semibold">60%</span> comparado a outras soluções do mercado
+            </p>
+            <Link to={user ? "/dashboard" : "/cadastro"}>
+              <Button 
+                size="lg" 
+                className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
+              >
+                <Rocket className="w-5 h-5 mr-2" />
+                Migrar para o OptimusCRM
+                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* How It Works Section */}
       <section 
         id="how-it-works"
