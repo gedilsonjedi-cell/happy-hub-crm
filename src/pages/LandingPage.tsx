@@ -76,7 +76,7 @@ const features = [
   },
   {
     icon: Shield,
-    title: "Anti-Contingência",
+    title: "Foco em Contingência",
     description: "Foco total em manter seus números seguros. Disparos mais certeiros e proteção contra bloqueios.",
     highlight: true,
   },
@@ -328,7 +328,7 @@ const LandingPage = () => {
             </h1>
             
             <p className="text-lg sm:text-xl text-white/60 max-w-3xl mx-auto mb-10 leading-relaxed">
-              O OptimusCRM é o único CRM focado em <span className="text-white font-medium">anti-contingência</span>. 
+              O OptimusCRM é o único CRM focado em <span className="text-white font-medium">contingência</span>. 
               Disparos alternados, proteção contra bloqueios e WhatsApp ilimitado para 
               <span className="text-violet-400 font-medium"> escalar suas vendas com segurança</span>.
             </p>
