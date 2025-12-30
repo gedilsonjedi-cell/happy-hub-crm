@@ -230,7 +230,7 @@ const LandingPage = () => {
             <div className="flex items-center gap-3">
               {user ? (
                 <Link to="/dashboard">
-                  <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white border-0">
+                  <Button size="sm" className="bg-[#04f59c] hover:bg-[#03d989] text-black border-0">
                     Ir para Dashboard
                   </Button>
                 </Link>
@@ -242,7 +242,7 @@ const LandingPage = () => {
                     </Button>
                   </Link>
                   <Link to="/cadastro">
-                    <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white border-0">
+                    <Button size="sm" className="bg-[#04f59c] hover:bg-[#03d989] text-black border-0">
                       Começar Grátis
                     </Button>
                   </Link>
@@ -262,14 +262,14 @@ const LandingPage = () => {
         <div className="absolute inset-0 overflow-hidden">
           {/* Gradient Orbs */}
           <div 
-            className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-violet-600/20 blur-[150px]"
+            className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full bg-[#04f59c]/20 blur-[150px]"
             style={{ 
               transform: `translate(${mousePosition.x}px, ${mousePosition.y}px)`,
               transition: "transform 0.5s ease-out"
             }}
           />
           <div 
-            className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-500/15 blur-[120px]"
+            className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-[#04f59c]/15 blur-[120px]"
             style={{ 
               transform: `translate(${-mousePosition.x}px, ${-mousePosition.y}px)`,
               transition: "transform 0.5s ease-out"
@@ -294,7 +294,7 @@ const LandingPage = () => {
             {[...Array(20)].map((_, i) => (
               <div
                 key={i}
-                className="absolute w-1 h-1 bg-violet-400/30 rounded-full animate-pulse"
+                className="absolute w-1 h-1 bg-[#04f59c]/30 rounded-full animate-pulse"
                 style={{
                   left: `${Math.random() * 100}%`,
                   top: `${Math.random() * 100}%`,
@@ -313,15 +313,15 @@ const LandingPage = () => {
             heroSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/20 mb-8">
-              <Sparkles className="w-4 h-4 text-violet-400" />
-              <span className="text-sm text-violet-300">Único CRM com disparos alternados</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-8">
+              <Sparkles className="w-4 h-4 text-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Único CRM com disparos alternados</span>
             </div>
             
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-tight">
               <span className="text-white">Dispare com</span>
               <br />
-              <span className="bg-gradient-to-r from-violet-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] via-[#03d989] to-[#02b872] bg-clip-text text-transparent">
                 inteligência
               </span>
               <span className="text-white">, não com medo</span>
@@ -330,14 +330,14 @@ const LandingPage = () => {
             <p className="text-lg sm:text-xl text-white/60 max-w-3xl mx-auto mb-10 leading-relaxed">
               O OptimusCRM é o único CRM focado em <span className="text-white font-medium">contingência</span>. 
               Disparos alternados, proteção contra bloqueios e WhatsApp ilimitado para 
-              <span className="text-violet-400 font-medium"> escalar suas vendas com segurança</span>.
+              <span className="text-[#04f59c] font-medium"> escalar suas vendas com segurança</span>.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
               <Link to={user ? "/dashboard" : "/cadastro"}>
                 <Button 
                   size="lg" 
-                  className="text-lg px-8 py-6 bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/25 border-0 group"
+                  className="text-lg px-8 py-6 bg-[#04f59c] hover:bg-[#03d989] text-black shadow-lg shadow-[#04f59c]/25 border-0 group"
                 >
                   <Rocket className="w-5 h-5 mr-2 group-hover:animate-pulse" />
                   {user ? "Acessar Dashboard" : "Testar 7 Dias Grátis"}
@@ -356,8 +356,8 @@ const LandingPage = () => {
             </div>
 
             {/* Trial Badge */}
-            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20">
-              <Gift className="w-5 h-5 text-violet-400" />
+            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#04f59c]/10 to-[#02b872]/10 border border-[#04f59c]/20">
+              <Gift className="w-5 h-5 text-[#04f59c]" />
               <span className="text-white/80">
                 <span className="text-white font-semibold">7 dias grátis</span> + R$10 de saldo bônus
               </span>
@@ -402,8 +402,8 @@ const LandingPage = () => {
       >
         {/* Background */}
         <div className="absolute inset-0">
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-violet-600/5 blur-[150px]" />
-          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-purple-500/5 blur-[120px]" />
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-[#04f59c]/5 blur-[150px]" />
+          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-[#04f59c]/5 blur-[120px]" />
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -411,13 +411,13 @@ const LandingPage = () => {
             "text-center mb-16 transition-all duration-700",
             featuresSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/20 mb-6">
-              <Zap className="w-4 h-4 text-violet-400" />
-              <span className="text-sm text-violet-300">Recursos Poderosos</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
+              <Zap className="w-4 h-4 text-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Recursos Poderosos</span>
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
               Tudo para{" "}
-              <span className="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                 escalar suas vendas
               </span>
             </h2>
@@ -431,8 +431,8 @@ const LandingPage = () => {
               <Card 
                 key={feature.title}
                 className={cn(
-                  "group relative overflow-hidden border-white/5 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] transition-all duration-500 hover:border-violet-500/30",
-                  feature.highlight && "border-violet-500/20 bg-violet-500/[0.03]",
+                  "group relative overflow-hidden border-white/5 bg-white/[0.02] backdrop-blur-sm hover:bg-white/[0.05] transition-all duration-500 hover:border-[#04f59c]/30",
+                  feature.highlight && "border-[#04f59c]/20 bg-[#04f59c]/[0.03]",
                   featuresSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
                 )}
                 style={{ 
@@ -443,16 +443,16 @@ const LandingPage = () => {
                   <div className={cn(
                     "w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110",
                     feature.highlight 
-                      ? "bg-gradient-to-br from-violet-500 to-purple-600" 
+                      ? "bg-gradient-to-br from-[#04f59c] to-[#02b872]" 
                       : "bg-white/5 border border-white/10"
                   )}>
                     <feature.icon className={cn(
                       "w-6 h-6",
-                      feature.highlight ? "text-white" : "text-violet-400"
+                      feature.highlight ? "text-black" : "text-[#04f59c]"
                     )} />
                   </div>
                   {feature.highlight && (
-                    <Badge className="mb-3 bg-violet-500/10 text-violet-300 border-violet-500/20 text-xs">
+                    <Badge className="mb-3 bg-[#04f59c]/10 text-[#04f59c] border-[#04f59c]/20 text-xs">
                       Exclusivo
                     </Badge>
                   )}
@@ -460,7 +460,7 @@ const LandingPage = () => {
                   <p className="text-white/50 text-sm leading-relaxed">{feature.description}</p>
                 </CardContent>
                 {/* Hover Glow */}
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#04f59c]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </Card>
             ))}
           </div>
@@ -475,7 +475,7 @@ const LandingPage = () => {
       >
         {/* Background */}
         <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 via-transparent to-purple-500/5" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#04f59c]/5 via-transparent to-[#02b872]/5" />
         </div>
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -485,7 +485,7 @@ const LandingPage = () => {
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
               Como{" "}
-              <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                 funciona?
               </span>
             </h2>
@@ -508,12 +508,12 @@ const LandingPage = () => {
               >
                 {/* Connector Line */}
                 {index < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-violet-500/30 to-transparent" />
+                  <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-[#04f59c]/30 to-transparent" />
                 )}
                 
                 <div className="relative mb-6">
-                  <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 border border-violet-500/20 flex items-center justify-center">
-                    <span className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+                  <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-[#04f59c]/20 to-[#02b872]/10 border border-[#04f59c]/20 flex items-center justify-center">
+                    <span className="text-3xl font-bold bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                       {item.step}
                     </span>
                   </div>
@@ -533,7 +533,7 @@ const LandingPage = () => {
         className="relative py-24 sm:py-32 overflow-hidden"
       >
         <div className="absolute inset-0">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-violet-600/10 blur-[180px]" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#04f59c]/10 blur-[180px]" />
         </div>
 
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -543,7 +543,7 @@ const LandingPage = () => {
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
               Preço{" "}
-              <span className="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                 simples e transparente
               </span>
             </h2>
@@ -557,9 +557,9 @@ const LandingPage = () => {
             "max-w-lg mx-auto transition-all duration-700",
             pricingSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
-            <Card className="relative overflow-hidden border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-purple-500/5 backdrop-blur-sm">
+            <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-b from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm">
               {/* Popular Badge */}
-              <div className="absolute top-0 right-0 px-4 py-1 bg-violet-500 text-white text-sm font-medium rounded-bl-xl">
+              <div className="absolute top-0 right-0 px-4 py-1 bg-[#04f59c] text-black text-sm font-medium rounded-bl-xl">
                 Mais Popular
               </div>
               
@@ -590,8 +590,8 @@ const LandingPage = () => {
                     "Suporte prioritário",
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
-                        <Check className="w-3 h-3 text-violet-400" />
+                      <div className="w-5 h-5 rounded-full bg-[#04f59c]/20 flex items-center justify-center flex-shrink-0">
+                        <Check className="w-3 h-3 text-[#04f59c]" />
                       </div>
                       <span className="text-white/70">{feature}</span>
                     </div>
@@ -601,7 +601,7 @@ const LandingPage = () => {
                 <Link to={user ? "/dashboard" : "/cadastro"} className="block">
                   <Button 
                     size="lg" 
-                    className="w-full text-lg py-6 bg-violet-600 hover:bg-violet-700 text-white border-0"
+                    className="w-full text-lg py-6 bg-[#04f59c] hover:bg-[#03d989] text-black border-0"
                   >
                     {user ? "Acessar Dashboard" : "Começar 7 Dias Grátis"}
                     <ArrowRight className="w-5 h-5 ml-2" />
@@ -635,7 +635,7 @@ const LandingPage = () => {
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
               Dúvidas?{" "}
-              <span className="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                 A gente responde!
               </span>
             </h2>
@@ -657,7 +657,7 @@ const LandingPage = () => {
                   transitionDelay: faqSection.isInView ? `${index * 100}ms` : "0ms" 
                 }}
               >
-                <AccordionTrigger className="text-left text-white hover:text-violet-300 hover:no-underline py-5">
+                <AccordionTrigger className="text-left text-white hover:text-[#04f59c] hover:no-underline py-5">
                   {faq.question}
                 </AccordionTrigger>
                 <AccordionContent className="text-white/50 pb-5">
@@ -675,8 +675,8 @@ const LandingPage = () => {
         className="relative py-24 sm:py-32 overflow-hidden"
       >
         <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-t from-violet-600/20 via-purple-500/10 to-transparent" />
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full bg-violet-600/20 blur-[150px]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#04f59c]/20 via-[#02b872]/10 to-transparent" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full bg-[#04f59c]/20 blur-[150px]" />
         </div>
 
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -686,7 +686,7 @@ const LandingPage = () => {
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
               Pronto para{" "}
-              <span className="bg-gradient-to-r from-violet-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#04f59c] via-[#03d989] to-[#02b872] bg-clip-text text-transparent">
                 escalar suas vendas?
               </span>
             </h2>
@@ -698,7 +698,7 @@ const LandingPage = () => {
               <Link to={user ? "/dashboard" : "/cadastro"}>
                 <Button 
                   size="lg" 
-                  className="text-lg px-10 py-6 bg-white text-violet-900 hover:bg-white/90 shadow-xl shadow-white/10 border-0"
+                  className="text-lg px-10 py-6 bg-white text-black hover:bg-white/90 shadow-xl shadow-white/10 border-0"
                 >
                   <Rocket className="w-5 h-5 mr-2" />
                   {user ? "Acessar Dashboard" : "Começar 7 Dias Grátis"}
@@ -708,15 +708,15 @@ const LandingPage = () => {
 
             <div className="flex items-center justify-center gap-6 mt-8 text-white/40 text-sm">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-violet-400" />
+                <CheckCircle2 className="w-4 h-4 text-[#04f59c]" />
                 <span>Sem cartão de crédito</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-violet-400" />
+                <CheckCircle2 className="w-4 h-4 text-[#04f59c]" />
                 <span>Setup em 5 minutos</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-violet-400" />
+                <CheckCircle2 className="w-4 h-4 text-[#04f59c]" />
                 <span>Cancele quando quiser</span>
               </div>
             </div>
