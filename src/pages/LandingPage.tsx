@@ -34,7 +34,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import optimusLogoDark from "@/assets/optimus-logo-dark.png";
+import optimusLogo from "@/assets/optimus-logo.png";
 import {
   Accordion,
   AccordionContent,
@@ -196,7 +196,7 @@ const LandingPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <img 
-                src={optimusLogoDark} 
+                src={optimusLogo} 
                 alt="Optimus CRM" 
                 className="h-8 w-auto object-contain"
               />
@@ -730,7 +730,7 @@ const LandingPage = () => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <img 
-                src={optimusLogoDark} 
+                src={optimusLogo} 
                 alt="Optimus CRM" 
                 className="h-6 w-auto object-contain opacity-60"
               />
