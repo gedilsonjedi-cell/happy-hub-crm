@@ -356,10 +356,10 @@ const LandingPage = () => {
             </div>
 
             {/* Trial Badge */}
-            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#04f59c]/10 to-[#02b872]/10 border border-[#04f59c]/20">
-              <Gift className="w-5 h-5 text-[#04f59c]" />
-              <span className="text-white/80">
-                <span className="text-white font-semibold">7 dias grátis</span> + R$10 de saldo bônus
+            <div className="inline-flex items-center gap-4 px-10 py-6 rounded-3xl bg-gradient-to-r from-[#04f59c]/15 to-[#02b872]/15 border-2 border-[#04f59c]/30">
+              <Gift className="w-8 h-8 text-[#04f59c]" />
+              <span className="text-xl text-white/80">
+                <span className="text-white font-bold text-2xl">7 dias grátis</span> + R$10 de saldo bônus
               </span>
             </div>
 
