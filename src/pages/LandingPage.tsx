@@ -82,8 +82,8 @@ const features = [
   },
   {
     icon: Phone,
-    title: "WhatsApp Ilimitado",
-    description: "Pague o plano e conecte quantos números quiser. Sem limites, sem surpresas na fatura.",
+    title: "WhatsApp API Oficial Ilimitado",
+    description: "API Oficial do WhatsApp Business. Conecte quantos números quiser sem limites e sem surpresas na fatura.",
   },
   {
     icon: Filter,
@@ -329,7 +329,7 @@ const LandingPage = () => {
             
             <p className="text-lg sm:text-xl text-white/60 max-w-3xl mx-auto mb-10 leading-relaxed">
               O OptimusCRM é o único CRM focado em <span className="text-white font-medium">contingência</span>. 
-              Disparos alternados, proteção contra bloqueios e WhatsApp ilimitado para 
+              Disparos alternados, proteção contra bloqueios e <span className="text-[#04f59c] font-medium">WhatsApp API Oficial Ilimitado</span> para 
               <span className="text-[#04f59c] font-medium"> escalar suas vendas com segurança</span>.
             </p>
 
@@ -371,7 +371,7 @@ const LandingPage = () => {
               </div>
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold text-white mb-1">∞</div>
-                <div className="text-sm text-white/40">WhatsApp ilimitados</div>
+                <div className="text-sm text-white/40">WhatsApp API Oficial</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-bold text-white mb-1">24/7</div>
@@ -580,8 +580,8 @@ const LandingPage = () => {
 
                 <div className="space-y-4 mb-8">
                   {[
-                    "WhatsApp ilimitado",
-                    "Disparos de WhatsApp [Foco em Contingência]",
+                    "WhatsApp API Oficial Ilimitado",
+                    "Disparos de WhatsApp API [Foco em Contingência]",
                     "Lista negra",
                     "Follow-up automático",
                     "Pipeline com IA",
