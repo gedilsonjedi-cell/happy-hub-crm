@@ -256,7 +256,7 @@ const LandingPage = () => {
       {/* Hero Section */}
       <section 
         ref={heroSection.ref}
-        className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden"
+        className="relative min-h-screen flex items-center justify-center pt-32 overflow-hidden"
       >
         {/* Animated Background */}
         <div className="absolute inset-0 overflow-hidden">
