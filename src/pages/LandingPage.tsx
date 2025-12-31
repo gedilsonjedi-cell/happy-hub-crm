@@ -499,7 +499,7 @@ const LandingPage = () => {
       <section 
         id="features" 
         ref={featuresSection.ref}
-        className="relative py-24 sm:py-32 overflow-hidden"
+        className="relative py-16 sm:py-20 overflow-hidden"
       >
         {/* Background */}
         <div className="absolute inset-0">
@@ -509,7 +509,7 @@ const LandingPage = () => {
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={cn(
-            "text-center mb-16 transition-all duration-700",
+            "text-center mb-10 transition-all duration-700",
             featuresSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
@@ -590,14 +590,14 @@ const LandingPage = () => {
       </section>
 
       {/* Comparison Section */}
-      <section className="relative py-24 sm:py-32 overflow-hidden">
+      <section className="relative py-16 sm:py-20 overflow-hidden">
         {/* Background */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#04f59c]/5 to-transparent" />
         </div>
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-10">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
               <Target className="w-4 h-4 text-[#04f59c]" />
               <span className="text-sm text-[#04f59c]">Por que somos diferentes</span>
@@ -799,7 +799,7 @@ const LandingPage = () => {
       </section>
 
       {/* Pricing Model Section - Pay per Message */}
-      <section className="relative py-24 sm:py-32 overflow-hidden bg-gradient-to-b from-[#0a0a0f] via-[#0d1117] to-[#0a0a0f]">
+      <section className="relative py-16 sm:py-20 overflow-hidden bg-gradient-to-b from-[#0a0a0f] via-[#0d1117] to-[#0a0a0f]">
         {/* Background Effects */}
         <div className="absolute inset-0">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#04f59c]/10 blur-[200px]" />
@@ -807,7 +807,7 @@ const LandingPage = () => {
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div 
-            className="text-center mb-16"
+            className="text-center mb-10"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -1030,7 +1030,7 @@ const LandingPage = () => {
       <section 
         id="how-it-works"
         ref={howItWorksSection.ref}
-        className="relative py-24 sm:py-32 overflow-hidden"
+        className="relative py-16 sm:py-20 overflow-hidden"
       >
         {/* Background */}
         <div className="absolute inset-0">
@@ -1039,7 +1039,7 @@ const LandingPage = () => {
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={cn(
-            "text-center mb-16 transition-all duration-700",
+            "text-center mb-10 transition-all duration-700",
             howItWorksSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
@@ -1110,7 +1110,7 @@ const LandingPage = () => {
       <section 
         id="pricing"
         ref={pricingSection.ref}
-        className="relative py-24 sm:py-32 overflow-hidden"
+        className="relative py-16 sm:py-20 overflow-hidden"
       >
         <div className="absolute inset-0">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#04f59c]/10 blur-[180px]" />
@@ -1118,7 +1118,7 @@ const LandingPage = () => {
 
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={cn(
-            "text-center mb-16 transition-all duration-700",
+            "text-center mb-10 transition-all duration-700",
             pricingSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
@@ -1248,11 +1248,11 @@ const LandingPage = () => {
       <section 
         id="faq"
         ref={faqSection.ref}
-        className="relative py-24 sm:py-32 overflow-hidden"
+        className="relative py-16 sm:py-20 overflow-hidden"
       >
         <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={cn(
-            "text-center mb-16 transition-all duration-700",
+            "text-center mb-10 transition-all duration-700",
             faqSection.isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
           )}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
@@ -1294,7 +1294,7 @@ const LandingPage = () => {
       {/* CTA Section */}
       <section 
         ref={ctaSection.ref}
-        className="relative py-24 sm:py-32 overflow-hidden"
+        className="relative py-16 sm:py-20 overflow-hidden"
       >
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-t from-[#04f59c]/20 via-[#02b872]/10 to-transparent" />
