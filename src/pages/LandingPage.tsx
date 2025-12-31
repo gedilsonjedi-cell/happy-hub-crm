@@ -798,6 +798,234 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* Pricing Model Section - Pay per Message */}
+      <section className="relative py-24 sm:py-32 overflow-hidden bg-gradient-to-b from-[#0a0a0f] via-[#0d1117] to-[#0a0a0f]">
+        {/* Background Effects */}
+        <div className="absolute inset-0">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#04f59c]/10 blur-[200px]" />
+        </div>
+
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
+              <TrendingUp className="w-4 h-4 text-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Modelo Inteligente</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+              Números{" "}
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
+                ilimitados
+              </span>
+              , pague por{" "}
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
+                uso
+              </span>
+            </h2>
+            <p className="text-lg text-white/50 max-w-3xl mx-auto">
+              Conecte quantos números quiser sem pagar a mais. Você só paga pelas mensagens que envia.
+              <span className="text-white font-medium"> Mensagens recebidas são gratuitas!</span>
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            {/* Our Model */}
+            <motion.div
+              initial={{ opacity: 0, x: -40 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <Card className="relative overflow-hidden border-[#04f59c]/30 bg-gradient-to-br from-[#04f59c]/10 to-[#02b872]/5 backdrop-blur-sm">
+                <motion.div 
+                  className="absolute -inset-1 bg-gradient-to-r from-[#04f59c]/20 to-[#02b872]/20 rounded-3xl blur-xl -z-10"
+                  animate={{ opacity: [0.3, 0.6, 0.3] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                />
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-6">
+                    <motion.img 
+                      src={optimusLogo} 
+                      alt="Optimus CRM" 
+                      className="h-8 w-auto object-contain"
+                      whileHover={{ scale: 1.1 }}
+                    />
+                    <Badge className="bg-[#04f59c] text-black border-0 font-semibold">
+                      Nosso modelo
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-6">
+                    <motion.div 
+                      className="text-center p-6 rounded-2xl bg-[#04f59c]/10 border border-[#04f59c]/20"
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      <div className="text-sm text-[#04f59c] mb-2">Custo por mensagem enviada</div>
+                      <motion.div 
+                        className="text-5xl font-bold text-white"
+                        initial={{ scale: 0.5 }}
+                        whileInView={{ scale: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ type: "spring", stiffness: 200 }}
+                      >
+                        R$ 0,007
+                      </motion.div>
+                      <div className="text-white/50 text-sm mt-2">Por mensagem enviada</div>
+                    </motion.div>
+
+                    <div className="space-y-4">
+                      {[
+                        { icon: Phone, text: "Números ilimitados inclusos no plano" },
+                        { icon: MessageSquare, text: "Mensagens recebidas são GRÁTIS" },
+                        { icon: TrendingUp, text: "Pague apenas pelo que usar" },
+                        { icon: Shield, text: "Sem surpresas na fatura" },
+                      ].map((item, index) => (
+                        <motion.div 
+                          key={index}
+                          className="flex items-center gap-3"
+                          initial={{ opacity: 0, x: -20 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          viewport={{ once: true }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-[#04f59c]/20 flex items-center justify-center">
+                            <item.icon className="w-4 h-4 text-[#04f59c]" />
+                          </div>
+                          <span className="text-white/80">{item.text}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+
+                    {/* Example Calculation */}
+                    <div className="pt-6 border-t border-[#04f59c]/20">
+                      <div className="text-sm text-white/50 mb-3">Exemplo: 10.000 mensagens/mês</div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-white/70">Custo total:</span>
+                        <motion.span 
+                          className="text-2xl font-bold text-[#04f59c]"
+                          initial={{ opacity: 0 }}
+                          whileInView={{ opacity: 1 }}
+                          viewport={{ once: true }}
+                        >
+                          R$ 70,00
+                        </motion.span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Competitors Model */}
+            <motion.div
+              initial={{ opacity: 0, x: 40 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <Card className="relative overflow-hidden border-white/10 bg-white/[0.02] backdrop-blur-sm">
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                      <span className="text-white/50 text-lg">?</span>
+                    </div>
+                    <span className="text-white/50 font-medium">Modelo do mercado</span>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="text-center p-6 rounded-2xl bg-red-500/10 border border-red-500/20">
+                      <div className="text-sm text-red-400/70 mb-2">Custo por número conectado</div>
+                      <div className="text-5xl font-bold text-white/40">
+                        R$ 50-100
+                      </div>
+                      <div className="text-white/30 text-sm mt-2">Por cada número/mês</div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {[
+                        { text: "Cada número = custo fixo mensal" },
+                        { text: "3 números = R$ 150-300/mês só em números" },
+                        { text: "Custo fixo mesmo sem usar" },
+                        { text: "Escalar = gastar muito mais" },
+                      ].map((item, index) => (
+                        <motion.div 
+                          key={index}
+                          className="flex items-center gap-3"
+                          initial={{ opacity: 0, x: 20 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          viewport={{ once: true }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                            <Minus className="w-4 h-4 text-red-400/70" />
+                          </div>
+                          <span className="text-white/40">{item.text}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+
+                    {/* Example Calculation */}
+                    <div className="pt-6 border-t border-white/10">
+                      <div className="text-sm text-white/30 mb-3">Exemplo: 3 números conectados</div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-white/40">Custo mensal:</span>
+                        <span className="text-2xl font-bold text-red-400/70 line-through">
+                          R$ 150-300
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Savings Banner */}
+          <motion.div 
+            className="mt-12 p-8 rounded-3xl bg-gradient-to-r from-[#04f59c]/10 via-[#04f59c]/5 to-[#04f59c]/10 border border-[#04f59c]/20 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12">
+              <div className="flex items-center gap-4">
+                <motion.div 
+                  className="w-16 h-16 rounded-2xl bg-[#04f59c]/20 flex items-center justify-center"
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                >
+                  <TrendingUp className="w-8 h-8 text-[#04f59c]" />
+                </motion.div>
+                <div className="text-left">
+                  <div className="text-white/50 text-sm">Com OptimusCRM você economiza</div>
+                  <motion.div 
+                    className="text-3xl font-bold text-[#04f59c]"
+                    animate={{ scale: [1, 1.05, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    Até 80%
+                  </motion.div>
+                </div>
+              </div>
+              
+              <div className="hidden md:block w-px h-16 bg-[#04f59c]/20" />
+              
+              <div className="text-center md:text-left">
+                <p className="text-white/70 max-w-md">
+                  Quanto mais números você conecta, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por número.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* How It Works Section */}
       <section 
         id="how-it-works"
