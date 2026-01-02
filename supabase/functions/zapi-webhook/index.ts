@@ -118,12 +118,19 @@ async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; 
 async function sendZApiMessage(instanceId: string, token: string, recipientPhone: string, message: string): Promise<boolean> {
   try {
     const cleanPhone = recipientPhone.replace(/\D/g, '');
+    const clientToken = Deno.env.get('ZAPI_CLIENT_TOKEN');
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (clientToken) {
+      headers['Client-Token'] = clientToken;
+    }
     
     const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         message: message
