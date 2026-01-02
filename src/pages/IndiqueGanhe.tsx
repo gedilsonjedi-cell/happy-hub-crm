@@ -59,9 +59,9 @@ const IndiqueGanhe = () => {
     .filter(r => r.status === 'credited')
     .reduce((sum, r) => sum + (r.commission_amount || 0), 0);
 
-  // Use short URL format: domain.com/r/CODE
+  // Use short URL format: domain.com/indique-ganhe/CODE
   const referralLink = referralCode 
-    ? `${window.location.origin}/r/${referralCode}` 
+    ? `${window.location.origin}/indique-ganhe/${referralCode}` 
     : '';
 
   useEffect(() => {
