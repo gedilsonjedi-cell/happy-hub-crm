@@ -40,6 +40,28 @@ interface AIAgent {
   service_guide: string | null;
 }
 
+// Cache for processed message IDs to prevent duplicates
+const processedMessages = new Map<string, number>();
+const MESSAGE_CACHE_TTL = 60000; // 1 minute TTL
+
+function isMessageProcessed(messageId: string): boolean {
+  const now = Date.now();
+  
+  // Clean old entries
+  for (const [key, timestamp] of processedMessages.entries()) {
+    if (now - timestamp > MESSAGE_CACHE_TTL) {
+      processedMessages.delete(key);
+    }
+  }
+  
+  if (processedMessages.has(messageId)) {
+    return true;
+  }
+  
+  processedMessages.set(messageId, now);
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -56,12 +78,38 @@ Deno.serve(async (req) => {
       campaignChatbotId // Optional: chatbot ID from campaign
     } = await req.json();
 
-    console.log('Chatbot processing message:', { channelId, senderPhone, messageContent, campaignChatbotId });
+    console.log('Chatbot processing message:', { channelId, senderPhone, messageContent, messageId, campaignChatbotId });
+
+    // Check for duplicate message processing
+    if (messageId && isMessageProcessed(messageId)) {
+      console.log('Message already processed, skipping:', messageId);
+      return new Response(
+        JSON.stringify({ handled: false, reason: 'Duplicate message' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    // Check if this message was already processed (database check for persistence)
+    if (messageId) {
+      const { data: existingMessage } = await supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('message_id', messageId)
+        .single();
+      
+      if (existingMessage) {
+        console.log('Message already exists in database, skipping:', messageId);
+        return new Response(
+          JSON.stringify({ handled: false, reason: 'Message already processed' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     // Get chatbot config for this channel
     const { data: config } = await supabase
@@ -314,34 +362,37 @@ Deno.serve(async (req) => {
       console.log('Conversation transferred to attendant:', attendant.user_id);
     } else {
       // No attendants available - bot handles with AI
-      if (isNewConversation) {
-        responseMessage = chatbotConfig.welcome_message;
-      } else {
-        // Generate AI response
-        const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-        
-        if (LOVABLE_API_KEY) {
-          try {
-            // Get conversation history
-            const { data: history } = await supabase
-              .from('whatsapp_messages')
-              .select('content, direction')
-              .eq('channel_id', channelId)
-              .or(`sender_phone.eq.${senderPhone},metadata->>destination.eq.${senderPhone.replace(/\D/g, '')}`)
-              .order('created_at', { ascending: true })
-              .limit(10);
+      // Generate AI response (for ALL messages, including new conversations)
+      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+      
+      if (LOVABLE_API_KEY) {
+        try {
+          // Get conversation history
+          const { data: history } = await supabase
+            .from('whatsapp_messages')
+            .select('content, direction, created_at')
+            .eq('channel_id', channelId)
+            .or(`sender_phone.eq.${senderPhone},metadata->>destination.eq.${senderPhone.replace(/\D/g, '')}`)
+            .order('created_at', { ascending: true })
+            .limit(20);
 
-            // Build system prompt based on agent configuration
-            let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
+          // Determine if this is the first message (no previous bot messages)
+          const hasPreviousBotMessages = history?.some(msg => msg.direction === 'outbound') || false;
+
+          // Build system prompt based on agent configuration
+          let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
 Seja cordial, objetivo e útil. Mantenha respostas curtas (máximo 2-3 frases).
 Se o cliente perguntar sobre preços, produtos ou quiser falar com um humano, informe que irá transferir para um atendente.
-Não invente informações sobre produtos ou preços específicos.`;
+Não invente informações sobre produtos ou preços específicos.
 
-            if (agentToUse) {
-              // Check if service guide is enabled
-              const hasServiceGuide = agentToUse.service_guide_enabled && agentToUse.service_guide;
-              
-              systemPrompt = `Você é ${agentToUse.name}, um assistente virtual de atendimento ao cliente via WhatsApp.
+## IMPORTANTE - Regras de Saudação
+${hasPreviousBotMessages ? '- Esta conversa já está em andamento. NÃO se apresente novamente. NÃO diga "olá" ou "oi" novamente. Continue a conversa de forma natural, respondendo diretamente à pergunta/mensagem do cliente.' : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente.'}`;
+
+          if (agentToUse) {
+            // Check if service guide is enabled
+            const hasServiceGuide = agentToUse.service_guide_enabled && agentToUse.service_guide;
+            
+            systemPrompt = `Você é ${agentToUse.name}, um assistente virtual de atendimento ao cliente via WhatsApp.
 
 ${agentToUse.agent_profile ? `## Perfil\n${agentToUse.agent_profile}\n` : ''}
 ${agentToUse.communication_style ? `## Estilo de Comunicação\n${agentToUse.communication_style}\n` : ''}
@@ -359,48 +410,55 @@ ${agentToUse.service_guide}
 - Adapte a linguagem ao seu estilo de comunicação, mas mantenha a estrutura do roteiro
 - Seu objetivo é completar todas as etapas do guia para um atendimento de qualidade
 ` : ''}
+## IMPORTANTE - Regras de Saudação e Continuidade
+${hasPreviousBotMessages ? `- Esta conversa já está em andamento. NÃO se apresente novamente. 
+- NÃO diga "olá", "oi", "bom dia", "boa tarde" ou qualquer saudação novamente.
+- NÃO repita seu nome ou quem você é.
+- Continue a conversa de forma natural, respondendo DIRETAMENTE à pergunta/mensagem do cliente.
+- Mantenha o contexto da conversa anterior.` : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente uma única vez.'}
+
 ## Diretrizes
 - Mantenha respostas curtas (máximo 2-3 frases) e objetivas
 - Se não souber responder, ofereça transferir para um atendente humano
 - Não invente informações que não foram fornecidas acima`;
-            }
+          }
 
-            const messages = [
-              { role: 'system', content: systemPrompt },
-              ...(history || []).map(msg => ({
-                role: msg.direction === 'inbound' ? 'user' : 'assistant',
-                content: msg.content || ''
-              })),
-              { role: 'user', content: messageContent }
-            ];
+          const messages = [
+            { role: 'system', content: systemPrompt },
+            ...(history || []).map(msg => ({
+              role: msg.direction === 'inbound' ? 'user' : 'assistant',
+              content: msg.content || ''
+            })),
+            { role: 'user', content: messageContent }
+          ];
 
-            const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'google/gemini-2.5-flash',
-                messages,
-                max_tokens: 150,
-              }),
-            });
+          console.log('Calling Lovable AI with history context, hasPreviousBotMessages:', hasPreviousBotMessages);
+          const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages,
+              max_tokens: 200,
+            }),
+          });
 
-            if (aiResponse.ok) {
-              const aiData = await aiResponse.json();
-              responseMessage = aiData.choices?.[0]?.message?.content || chatbotConfig.away_message;
-            } else {
-              console.error('AI API error:', aiResponse.status);
-              responseMessage = chatbotConfig.away_message;
-            }
-          } catch (aiError) {
-            console.error('AI error:', aiError);
+          if (aiResponse.ok) {
+            const aiData = await aiResponse.json();
+            responseMessage = aiData.choices?.[0]?.message?.content || chatbotConfig.away_message;
+          } else {
+            console.error('AI API error:', aiResponse.status);
             responseMessage = chatbotConfig.away_message;
           }
-        } else {
+        } catch (aiError) {
+          console.error('AI error:', aiError);
           responseMessage = chatbotConfig.away_message;
         }
+      } else {
+        responseMessage = chatbotConfig.away_message;
       }
     }
 
@@ -454,7 +512,7 @@ ${agentToUse.service_guide}
           .insert({
             channel_id: channelId,
             organization_id: organizationId,
-            message_id: responseJson.messageId || `bot_${Date.now()}`,
+            message_id: responseJson.messageId || `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             sender_phone: channel.phone,
             message_type: 'text',
             content: responseMessage,
