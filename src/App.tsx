@@ -42,6 +42,8 @@ import Cadastro from "./pages/Cadastro";
 import NotFound from "./pages/NotFound";
 import FollowUp from "./pages/FollowUp";
 import WhatsAppOficial from "./pages/WhatsAppOficial";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 
 const queryClient = new QueryClient();
 
@@ -140,6 +142,8 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/whatsapp-oficial" element={<WhatsAppOficial />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
