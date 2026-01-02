@@ -368,7 +368,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Handle conversation assignment (similar to meta-webhook)
+      // Handle conversation assignment and chatbot (similar to meta-webhook)
       if (leadId && channel.organization_id) {
         const { data: portfolioEntry } = await supabase
           .from('client_portfolios')
@@ -409,6 +409,49 @@ Deno.serve(async (req) => {
               });
           }
         }
+      }
+
+      // Check chatbot config and invoke chatbot if enabled
+      const { data: chatbotConfig } = await supabase
+        .from('chatbot_config')
+        .select('*')
+        .eq('channel_id', channel.id)
+        .eq('is_enabled', true)
+        .single();
+
+      if (chatbotConfig) {
+        console.log('Chatbot enabled for this channel, invoking chatbot...');
+        
+        try {
+          // Call the chatbot edge function
+          const chatbotResponse = await fetch(
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/zapi-chatbot`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              },
+              body: JSON.stringify({
+                channelId: channel.id,
+                senderPhone: senderPhone,
+                senderName: senderName,
+                messageContent: content,
+                messageId: messageId,
+                organizationId: channel.organization_id,
+                instanceId: channel.app_name,
+                token: channel.access_token,
+              }),
+            }
+          );
+
+          const chatbotResult = await chatbotResponse.json();
+          console.log('Chatbot response:', chatbotResult);
+        } catch (chatbotError) {
+          console.error('Error calling chatbot:', chatbotError);
+        }
+      } else {
+        console.log('No chatbot config for this channel or chatbot disabled');
       }
 
       return new Response('OK', { status: 200, headers: corsHeaders });
