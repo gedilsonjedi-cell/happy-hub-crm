@@ -35,20 +35,20 @@ export function ClientSwitcher() {
   if (!isSuperAdmin) return null;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1 sm:gap-2">
       {isImpersonating && (
-        <div className="flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-lg border border-warning/20">
-          <Eye className="w-4 h-4" />
-          <span className="text-sm font-medium">
-            Visualizando: {selectedOrganization?.name}
+        <div className="hidden sm:flex items-center gap-2 bg-warning/10 text-warning px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-warning/20">
+          <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+          <span className="text-xs sm:text-sm font-medium max-w-[100px] truncate">
+            {selectedOrganization?.name}
           </span>
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 hover:bg-warning/20"
+            className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-warning/20"
             onClick={() => setSelectedOrganization(null)}
           >
-            <X className="w-3 h-3" />
+            <X className="w-2 h-2 sm:w-3 sm:h-3" />
           </Button>
         </div>
       )}
@@ -59,13 +59,13 @@ export function ClientSwitcher() {
             variant="outline" 
             size="sm" 
             className={cn(
-              "gap-2",
+              "gap-1 sm:gap-2 h-8 px-2 sm:px-3",
               isImpersonating && "border-warning/50"
             )}
           >
-            <Building2 className="w-4 h-4" />
-            <span className="hidden md:inline">
-              {isImpersonating ? "Trocar Cliente" : "Clientes"}
+            <Building2 className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden lg:inline text-xs sm:text-sm">
+              {isImpersonating ? "Trocar" : "Clientes"}
             </span>
             <ChevronDown className="w-3 h-3" />
           </Button>

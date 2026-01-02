@@ -26,16 +26,16 @@ export function Header() {
   };
 
   return (
-    <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
+    <header className="h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-2 sm:px-4 fixed top-0 left-0 right-0 z-50">
       {/* Left Section */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1 sm:gap-3">
         {/* Mobile menu button */}
         {isMobile && (
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setMobileOpen(true)}
-            className="h-9 w-9 text-sidebar-muted hover:text-sidebar-foreground"
+            className="h-8 w-8 sm:h-9 sm:w-9 text-sidebar-muted hover:text-sidebar-foreground shrink-0"
           >
             <Menu className="w-5 h-5" />
           </Button>
@@ -46,19 +46,19 @@ export function Header() {
           <img 
             src={theme === "dark" ? optimusLogo : optimusLogoDark} 
             alt="Optimus CRM" 
-            className="h-[60px] w-auto object-contain"
+            className="h-10 sm:h-[60px] w-auto object-contain"
           />
         </Link>
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
         {/* Sync Indicator */}
         {syncing && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <RefreshCw className={cn("w-4 h-4 animate-spin")} />
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <RefreshCw className={cn("w-3 h-3 sm:w-4 sm:h-4 animate-spin")} />
                 <span className="text-xs hidden md:inline">Sincronizando...</span>
               </div>
             </TooltipTrigger>
@@ -75,12 +75,12 @@ export function Header() {
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 sm:h-9 sm:w-9 text-muted-foreground hover:text-foreground"
             >
               {theme === "dark" ? (
-                <Sun className="w-5 h-5" />
+                <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
               ) : (
-                <Moon className="w-5 h-5" />
+                <Moon className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
             </Button>
           </TooltipTrigger>
@@ -99,24 +99,23 @@ export function Header() {
         {user && (
           <Link 
             to="/perfil" 
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 sm:gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <User className="w-4 h-4 text-primary" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <User className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />
             </div>
-            <span className="hidden md:block">{user.email?.substring(0, 20)}...</span>
+            <span className="hidden lg:block text-xs">{user.email?.substring(0, 15)}...</span>
           </Link>
         )}
 
         {/* Logout */}
         <Button 
           variant="ghost" 
-          size="sm" 
-          className="gap-2 text-muted-foreground hover:text-foreground"
+          size="icon"
+          className="h-8 w-8 sm:h-9 sm:w-9 text-muted-foreground hover:text-foreground"
           onClick={signOut}
         >
           <LogOut className="w-4 h-4" />
-          <span className="hidden md:inline">Sair</span>
         </Button>
       </div>
     </header>

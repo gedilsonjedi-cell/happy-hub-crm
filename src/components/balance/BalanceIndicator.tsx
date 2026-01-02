@@ -20,9 +20,9 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-lg border border-border/50 animate-pulse">
-        <Wallet className="w-4 h-4 text-muted-foreground" />
-        <span className="text-sm font-semibold text-muted-foreground">...</span>
+      <div className="flex items-center gap-1 sm:gap-2 bg-muted/50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-border/50 animate-pulse">
+        <Wallet className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground" />
+        <span className="text-xs sm:text-sm font-semibold text-muted-foreground">...</span>
       </div>
     );
   }
@@ -49,16 +49,16 @@ export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps)
         <Link 
           to="/saldo"
           className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors",
+            "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border transition-colors",
             getStatusStyles()
           )}
         >
           {hasNoBalance ? (
-            <AlertTriangle className="w-4 h-4" />
+            <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4" />
           ) : (
-            <Wallet className="w-4 h-4" />
+            <Wallet className="w-3 h-3 sm:w-4 sm:h-4" />
           )}
-          <span className="text-sm font-semibold">
+          <span className="text-xs sm:text-sm font-semibold">
             {formatCurrency(currentBalance)}
           </span>
         </Link>
