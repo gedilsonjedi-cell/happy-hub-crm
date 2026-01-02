@@ -1621,22 +1621,22 @@ const WhatsAppChat = () => {
 
   return (
     <MainLayout>
-      <div className="flex h-[calc(100vh-4rem)] gap-4 animate-fade-in w-full">
+      <div className="flex h-[calc(100vh-4.5rem)] sm:h-[calc(100vh-5rem)] gap-2 sm:gap-4 animate-fade-in w-full">
         {/* Conversations List */}
         <div className={cn(
           "w-full md:w-80 lg:w-96 shrink-0 bg-card rounded-lg border border-border flex flex-col overflow-hidden",
           selectedConversation ? "hidden md:flex" : "flex"
         )}>
           {/* Header */}
-          <div className="p-4 border-b border-border space-y-3">
+          <div className="p-3 sm:p-4 border-b border-border space-y-2 sm:space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-foreground">WhatsApp</h2>
-              <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-foreground text-sm sm:text-base">WhatsApp</h2>
+              <div className="flex items-center gap-1 sm:gap-2">
                 <BalanceIndicator />
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7 sm:h-8 sm:w-8"
                   onClick={() => setSoundEnabled(!soundEnabled)}
                   title={soundEnabled ? "Desativar som" : "Ativar som"}
                 >
@@ -1650,7 +1650,7 @@ const WhatsAppChat = () => {
                   variant="ghost"
                   size="icon"
                   onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : requestNotificationPermission}
-                  className={cn("h-8 w-8", notificationsEnabled ? "text-primary" : "text-muted-foreground")}
+                  className={cn("h-7 w-7 sm:h-8 sm:w-8", notificationsEnabled ? "text-primary" : "text-muted-foreground")}
                 >
                   {notificationsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
                 </Button>
@@ -1660,22 +1660,22 @@ const WhatsAppChat = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar..."
-                className="pl-10 bg-muted/30 border-border"
+                className="pl-10 bg-muted/30 border-border h-9 sm:h-10 text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             
             {/* Tab Filter Buttons */}
-            <div className="flex gap-1.5">
+            <div className="flex gap-1 sm:gap-1.5 overflow-x-auto">
               <Button
                 variant={filterStatus === "new" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("new")}
-                className="text-xs px-3 h-7 gap-1.5"
+                className="text-xs px-2 sm:px-3 h-7 gap-1 shrink-0"
               >
                 <Clock className="w-3 h-3 shrink-0" />
-                Novos
+                <span className="hidden xs:inline">Novos</span>
                 {newCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0 bg-primary text-primary-foreground">
                     {newCount}
@@ -1686,10 +1686,10 @@ const WhatsAppChat = () => {
                 variant={filterStatus === "mine" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setFilterStatus("mine")}
-                className="text-xs px-3 h-7 gap-1.5"
+                className="text-xs px-2 sm:px-3 h-7 gap-1 shrink-0"
               >
                 <User className="w-3 h-3 shrink-0" />
-                Meus
+                <span className="hidden xs:inline">Meus</span>
                 {mineCount > 0 && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                     {mineCount}
@@ -1701,10 +1701,10 @@ const WhatsAppChat = () => {
                   variant={filterStatus === "others" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setFilterStatus("others")}
-                  className="text-xs px-3 h-7 gap-1.5"
+                  className="text-xs px-2 sm:px-3 h-7 gap-1 shrink-0"
                 >
                   <UserCheck className="w-3 h-3 shrink-0" />
-                  Outros
+                  <span className="hidden xs:inline">Outros</span>
                   {othersCount > 0 && (
                     <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] shrink-0">
                       {othersCount}
@@ -1926,50 +1926,50 @@ const WhatsAppChat = () => {
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-border">
+              <div className="p-2 sm:p-3 md:p-4 border-b border-border">
                 {/* Channel indicator */}
                 {selectedConversationChannel && (
-                  <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-xs font-medium text-primary">
-                      Canal: {selectedConversationChannel.name}
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3 p-1.5 sm:p-2 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="text-xs font-medium text-primary truncate">
+                      {selectedConversationChannel.name}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
                       ({selectedConversationChannel.phone})
                     </span>
                   </div>
                 )}
                 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="md:hidden"
+                      className="md:hidden h-8 w-8 shrink-0"
                       onClick={() => setSelectedConversation(null)}
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <button
                       onClick={() => setShowLeadDetailsDialog(true)}
-                      className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+                      className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0"
                     >
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold">
-                          {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                      <Avatar className="w-8 h-8 sm:w-10 sm:h-10 shrink-0">
+                        <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold text-xs sm:text-sm">
+                          {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-3 h-3 sm:w-4 sm:h-4" />}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0 text-left">
-                        <h3 className="font-semibold text-foreground">
+                        <h3 className="font-semibold text-foreground text-sm sm:text-base truncate">
                           {selectedConversation.name || selectedConversation.phone}
                         </h3>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {selectedConversation.phone}
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                          <Phone className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{selectedConversation.phone}</span>
                         </p>
                         {contactTags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {contactTags.slice(0, 3).map((tag) => (
+                          <div className="flex flex-wrap gap-1 mt-1 hidden sm:flex">
+                            {contactTags.slice(0, 2).map((tag) => (
                               <Badge 
                                 key={tag} 
                                 variant="outline" 
@@ -1978,9 +1978,9 @@ const WhatsAppChat = () => {
                                 {tag}
                               </Badge>
                             ))}
-                            {contactTags.length > 3 && (
+                            {contactTags.length > 2 && (
                               <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">
-                                +{contactTags.length - 3}
+                                +{contactTags.length - 2}
                               </Badge>
                             )}
                           </div>
@@ -1988,23 +1988,23 @@ const WhatsAppChat = () => {
                       </div>
                     </button>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                   <Button
                     variant={showSalesAssistant ? "default" : "outline"}
                     size="sm"
                     onClick={() => setShowSalesAssistant(!showSalesAssistant)}
-                    className="gap-2"
+                    className="gap-1 sm:gap-2 h-8 px-2 sm:px-3"
                   >
                     <Sparkles className="w-4 h-4" />
                     <span className="hidden sm:inline">IA</span>
                   </Button>
-                  <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className)}>
+                  <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className, "text-xs hidden sm:inline-flex")}>
                     {statusConfig[selectedConversation.status].label}
                   </Badge>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="w-5 h-5" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -2054,7 +2054,7 @@ const WhatsAppChat = () => {
               </div>
 
               {/* Messages and Notes */}
-              <ScrollArea className="flex-1 p-4">
+              <ScrollArea className="flex-1 p-2 sm:p-4">
                 <div className="space-y-4">
                   {/* Combine messages and notes, sorted by created_at */}
                   {(() => {
@@ -2099,7 +2099,7 @@ const WhatsAppChat = () => {
                         >
                           <div
                             className={cn(
-                              "max-w-[70%] rounded-lg px-4 py-2",
+                              "max-w-[85%] sm:max-w-[70%] rounded-lg px-3 py-2 sm:px-4",
                               message.direction === "outbound"
                                 ? "bg-emerald-700 text-white"
                                 : "bg-muted"
@@ -2133,12 +2133,12 @@ const WhatsAppChat = () => {
               </ScrollArea>
 
               {/* Message Input */}
-              <div className="p-4 border-t border-border space-y-2">
+              <div className="p-2 sm:p-4 border-t border-border space-y-2">
                 {/* 24-hour window indicator */}
                 {isWindowExpired ? (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <p className="text-sm">
+                  <div className="flex items-start sm:items-center gap-2 p-2 sm:p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0" />
+                    <p className="text-xs sm:text-sm">
                       Janela de 24h expirada. Use um <button 
                         onClick={() => setShowTemplateSelector(true)}
                         className="font-semibold underline hover:no-underline"
@@ -2148,15 +2148,15 @@ const WhatsAppChat = () => {
                 ) : windowTimeRemaining && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock className="w-3 h-3" />
-                    <span>Janela de resposta expira em {windowTimeRemaining}</span>
+                    <span>Expira em {windowTimeRemaining}</span>
                   </div>
                 )}
 
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-1 sm:gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="shrink-0">
-                        <Plus className="w-5 h-5 text-muted-foreground" />
+                      <Button variant="ghost" size="icon" className="shrink-0 h-9 w-9 sm:h-10 sm:w-10">
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-56 bg-popover">
@@ -2223,33 +2223,33 @@ const WhatsAppChat = () => {
                   
                   {/* Voice Recording UI */}
                   {isRecording ? (
-                    <div className="flex items-center gap-3 flex-1 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 border border-red-200 dark:border-red-800">
-                      <div className="flex items-center gap-2 flex-1">
-                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-red-600 dark:text-red-400 font-medium">
-                          Gravando... {formatRecordingDuration(recordingDuration)}
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 bg-red-50 dark:bg-red-950/30 rounded-lg px-2 sm:px-4 py-2 border border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-2 h-2 sm:w-3 sm:h-3 bg-red-500 rounded-full animate-pulse shrink-0" />
+                        <span className="text-red-600 dark:text-red-400 font-medium text-xs sm:text-sm truncate">
+                          {formatRecordingDuration(recordingDuration)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 sm:gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={handleCancelVoiceRecording}
-                          className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50"
+                          className="h-8 w-8 sm:h-9 sm:w-9 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50"
                           title="Cancelar"
                         >
-                          <X className="w-5 h-5" />
+                          <X className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
                         <Button
                           onClick={handleSendVoiceRecording}
                           disabled={uploadingMedia}
-                          className="h-9 px-4 bg-green-600 hover:bg-green-700"
+                          className="h-8 sm:h-9 px-3 sm:px-4 bg-green-600 hover:bg-green-700"
                           title="Enviar áudio"
                         >
                           {uploadingMedia ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                           ) : (
-                            <Send className="w-5 h-5" />
+                            <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                           )}
                         </Button>
                       </div>
@@ -2257,9 +2257,9 @@ const WhatsAppChat = () => {
                   ) : (
                     <>
                       <Textarea
-                        placeholder={isWindowExpired ? "Use um template para iniciar a conversa..." : "Digite sua mensagem... (use /atalho para respostas rápidas)"}
+                        placeholder={isWindowExpired ? "Use um template..." : "Mensagem..."}
                         className={cn(
-                          "min-h-[44px] max-h-32 resize-none bg-muted/30",
+                          "min-h-[40px] sm:min-h-[44px] max-h-24 sm:max-h-32 resize-none bg-muted/30 text-sm",
                           isWindowExpired && "opacity-50 cursor-not-allowed"
                         )}
                         value={newMessage}
@@ -2275,20 +2275,20 @@ const WhatsAppChat = () => {
                       {isWindowExpired ? (
                         <Button 
                           onClick={() => setShowTemplateSelector(true)}
-                          className="h-11 px-4"
+                          className="h-10 sm:h-11 px-3 sm:px-4 shrink-0"
                         >
-                          <FileText className="w-5 h-5" />
+                          <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
                       ) : newMessage.trim() ? (
                         <Button 
                           onClick={handleSendMessage} 
                           disabled={sendingMessage}
-                          className="h-11 px-4"
+                          className="h-10 sm:h-11 px-3 sm:px-4 shrink-0"
                         >
                           {sendingMessage ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                           ) : (
-                            <Send className="w-5 h-5" />
+                            <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                           )}
                         </Button>
                       ) : (
@@ -2296,13 +2296,13 @@ const WhatsAppChat = () => {
                           onClick={handleStartVoiceRecording}
                           disabled={uploadingMedia}
                           variant="default"
-                          className="h-11 px-4 bg-green-600 hover:bg-green-700"
+                          className="h-10 sm:h-11 px-3 sm:px-4 bg-green-600 hover:bg-green-700 shrink-0"
                           title="Gravar áudio"
                         >
                           {uploadingMedia ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                           ) : (
-                            <Mic className="w-5 h-5" />
+                            <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
                           )}
                         </Button>
                       )}
