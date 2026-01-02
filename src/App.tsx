@@ -40,6 +40,7 @@ import RespostasRapidas from "./pages/personalizacao/RespostasRapidas";
 import ContatoDetalhes from "./pages/ContatoDetalhes";
 import LandingPage from "./pages/LandingPage";
 import Cadastro from "./pages/Cadastro";
+import ReferralRedirect from "./pages/ReferralRedirect";
 import NotFound from "./pages/NotFound";
 import FollowUp from "./pages/FollowUp";
 import WhatsAppOficial from "./pages/WhatsAppOficial";
@@ -145,6 +146,7 @@ const App = () => (
           <Route path="/whatsapp-oficial" element={<WhatsAppOficial />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/r/:code" element={<ReferralRedirect />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
