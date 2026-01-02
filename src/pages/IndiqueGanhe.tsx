@@ -59,8 +59,9 @@ const IndiqueGanhe = () => {
     .filter(r => r.status === 'credited')
     .reduce((sum, r) => sum + (r.commission_amount || 0), 0);
 
+  // Use short URL format: domain.com/r/CODE
   const referralLink = referralCode 
-    ? `${window.location.origin}/cadastro?ref=${referralCode}` 
+    ? `${window.location.origin}/r/${referralCode}` 
     : '';
 
   useEffect(() => {
