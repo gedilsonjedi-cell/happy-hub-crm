@@ -34,18 +34,25 @@ interface AIAgent {
 }
 
 // Helper function to send WhatsApp message via Z-API
-async function sendZApiMessage(instanceId: string, token: string, recipientPhone: string, message: string): Promise<boolean> {
+async function sendZApiMessage(instanceId: string, token: string, recipientPhone: string, message: string, clientToken?: string): Promise<boolean> {
   try {
     const cleanPhone = recipientPhone.replace(/\D/g, '');
     
     console.log('Sending Z-API message to:', cleanPhone);
     console.log('Instance ID:', instanceId);
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add client-token header if provided
+    if (clientToken) {
+      headers['Client-Token'] = clientToken;
+    }
+    
     const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         message: message
@@ -367,7 +374,8 @@ ${agentToUse.service_guide}
 
     // Send the response via Z-API
     if (responseMessage && instanceId && token) {
-      const sent = await sendZApiMessage(instanceId, token, senderPhone, responseMessage);
+      const clientToken = Deno.env.get('ZAPI_CLIENT_TOKEN');
+      const sent = await sendZApiMessage(instanceId, token, senderPhone, responseMessage, clientToken);
       
       if (sent) {
         // Store bot message
