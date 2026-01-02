@@ -73,6 +73,10 @@ const Cadastro = () => {
 
   const totalSteps = 3;
 
+  // Get referral code from URL
+  const searchParams = new URLSearchParams(window.location.search);
+  const referralCodeFromUrl = searchParams.get('ref');
+
   // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
@@ -152,7 +156,7 @@ const Cadastro = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
@@ -161,6 +165,7 @@ const Cadastro = () => {
             display_name: formData.name,
             phone: formData.phone,
             referral_source: formData.referralSource,
+            referral_code: referralCodeFromUrl || null,
           },
         },
       });
@@ -172,6 +177,30 @@ const Cadastro = () => {
           toast.error(error.message);
         }
         return;
+      }
+
+      // If referral code exists and user was created, register the referral
+      if (referralCodeFromUrl && signUpData.user) {
+        try {
+          // Get the referrer's organization from the code
+          const { data: referralCodeData } = await supabase
+            .from('referral_codes')
+            .select('organization_id')
+            .eq('code', referralCodeFromUrl)
+            .maybeSingle();
+
+          if (referralCodeData) {
+            // We'll need to wait for the profile to be created, then register referral
+            // This is done via a database trigger or we do it after profile creation
+            sessionStorage.setItem('pending_referral', JSON.stringify({
+              referrerOrgId: referralCodeData.organization_id,
+              userId: signUpData.user.id
+            }));
+          }
+        } catch (refError) {
+          console.error('Error processing referral:', refError);
+          // Don't block signup if referral fails
+        }
       }
 
       // Move to success step

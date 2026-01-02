@@ -33,6 +33,7 @@ import {
   Tag,
   RotateCcw,
   Zap,
+  Gift,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ const personalizacaoSubmenu = [
 const bottomMenuItems = [
   { icon: ShoppingBag, label: "Loja", path: "/loja", permission: null },
   { icon: CreditCard, label: "Minha Assinatura", path: "/minha-assinatura", permission: null },
+  { icon: Gift, label: "Indique e Ganhe", path: "/indique-ganhe", permission: null },
   { icon: Wallet, label: "Saldo", path: "/saldo", permission: null },
   { icon: Shield, label: "Super Admin", path: "/super-admin", permission: "canAccessSuperAdmin" },
 ];

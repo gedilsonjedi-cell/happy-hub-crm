@@ -1926,6 +1926,92 @@ export type Database = {
           },
         ]
       }
+      referral_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_codes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          commission_amount: number | null
+          commission_percentage: number
+          created_at: string
+          credited_at: string | null
+          id: string
+          referred_organization_id: string
+          referred_user_id: string
+          referrer_organization_id: string
+          status: string
+          subscription_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          commission_amount?: number | null
+          commission_percentage?: number
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          referred_organization_id: string
+          referred_user_id: string
+          referrer_organization_id: string
+          status?: string
+          subscription_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          commission_amount?: number | null
+          commission_percentage?: number
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          referred_organization_id?: string
+          referred_user_id?: string
+          referrer_organization_id?: string
+          status?: string
+          subscription_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_organization_id_fkey"
+            columns: ["referred_organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_organization_id_fkey"
+            columns: ["referrer_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_messages: {
         Row: {
           channel_id: string
@@ -2377,6 +2463,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      generate_referral_code: { Args: never; Returns: string }
+      get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -2392,6 +2480,10 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      process_referral_commission: {
+        Args: { referred_org_id: string; subscription_amount: number }
+        Returns: boolean
+      }
       purchase_product:
         | {
             Args: { _organization_id: string; _product_id: string }

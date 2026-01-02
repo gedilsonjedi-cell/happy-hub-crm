@@ -28,6 +28,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Saldo from "./pages/Saldo";
 import Loja from "./pages/Loja";
 import MinhaAssinatura from "./pages/MinhaAssinatura";
+import IndiqueGanhe from "./pages/IndiqueGanhe";
 import ListaNegra from "./pages/ListaNegra";
 import Higienizacao from "./pages/Higienizacao";
 import Horarios from "./pages/personalizacao/Horarios";
@@ -54,7 +55,7 @@ const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
 };
 
 // Pages that are allowed even when subscription is expired
-const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password", "/minha-assinatura", "/landing"];
+const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password", "/minha-assinatura", "/indique-ganhe", "/landing"];
 
 // Component to check subscription and redirect if expired
 const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
@@ -162,6 +163,7 @@ const App = () => (
           <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
           <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
           <Route path="/minha-assinatura" element={<ProtectedRoute><MinhaAssinatura /></ProtectedRoute>} />
+          <Route path="/indique-ganhe" element={<ProtectedRoute><IndiqueGanhe /></ProtectedRoute>} />
           <Route path="/lista-negra" element={<ProtectedRoute><ListaNegra /></ProtectedRoute>} />
           <Route path="/higienizacao" element={<ProtectedRoute><Higienizacao /></ProtectedRoute>} />
           <Route path="/personalizacao/horarios" element={<ProtectedRoute><Horarios /></ProtectedRoute>} />
