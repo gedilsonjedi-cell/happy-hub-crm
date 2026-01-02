@@ -132,20 +132,43 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Check if this message was already processed (database check for persistence)
+    // Check if we already RESPONDED to this message (look for bot outbound message after this one)
     if (messageId) {
-      const { data: existingMessage } = await supabase
+      const { data: botResponse } = await supabase
         .from('whatsapp_messages')
         .select('id')
+        .eq('channel_id', channelId)
+        .eq('direction', 'outbound')
+        .contains('metadata', { is_bot: true })
+        .gt('created_at', new Date(Date.now() - 60000).toISOString()) // Last minute
+        .limit(1);
+      
+      // Check if there's a recent bot response for this conversation
+      const { data: recentBotMessages } = await supabase
+        .from('whatsapp_messages')
+        .select('id, created_at')
+        .eq('channel_id', channelId)
+        .eq('direction', 'outbound')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      const { data: inboundMessage } = await supabase
+        .from('whatsapp_messages')
+        .select('id, created_at')
         .eq('message_id', messageId)
         .single();
       
-      if (existingMessage) {
-        console.log('Message already exists in database, skipping:', messageId);
-        return new Response(
-          JSON.stringify({ handled: false, reason: 'Message already processed' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      // If we found the inbound message and there's a bot response after it, skip
+      if (inboundMessage && recentBotMessages?.[0]) {
+        const inboundTime = new Date(inboundMessage.created_at).getTime();
+        const botTime = new Date(recentBotMessages[0].created_at).getTime();
+        if (botTime > inboundTime) {
+          console.log('Already responded to this message, skipping:', messageId);
+          return new Response(
+            JSON.stringify({ handled: false, reason: 'Already responded' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
