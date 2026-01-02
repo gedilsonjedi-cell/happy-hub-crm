@@ -2217,6 +2217,36 @@ export type Database = {
           },
         ]
       }
+      user_sessions: {
+        Row: {
+          device_info: string | null
+          id: string
+          ip_address: string | null
+          last_active_at: string
+          logged_in_at: string
+          session_token: string
+          user_id: string
+        }
+        Insert: {
+          device_info?: string | null
+          id?: string
+          ip_address?: string | null
+          last_active_at?: string
+          logged_in_at?: string
+          session_token: string
+          user_id: string
+        }
+        Update: {
+          device_info?: string | null
+          id?: string
+          ip_address?: string | null
+          last_active_at?: string
+          logged_in_at?: string
+          session_token?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           channel_id: string | null
@@ -2375,6 +2405,19 @@ export type Database = {
             }
             Returns: boolean
           }
+      register_user_session: {
+        Args: {
+          _device_info?: string
+          _ip_address?: string
+          _session_token: string
+        }
+        Returns: boolean
+      }
+      update_session_activity: { Args: never; Returns: boolean }
+      validate_user_session: {
+        Args: { _session_token: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "supervisor" | "atendente" | "super_admin"
