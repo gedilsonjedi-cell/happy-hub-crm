@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
     // Check or create conversation assignment
     let { data: assignment } = await supabase
       .from('conversation_assignments')
-      .select('*, campaign_chatbot_id')
+      .select('*, campaign_chatbot_id, bot_paused_until')
       .eq('conversation_phone', senderPhone)
       .eq('channel_id', channelId)
       .single();
@@ -236,13 +236,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Check if a human is handling this conversation
+    // Check if a human is handling this conversation OR if bot is paused
     if (assignment && !assignment.is_bot_handling && assignment.assigned_to) {
       console.log('Human is handling this conversation');
       return new Response(
         JSON.stringify({ handled: false, reason: 'Human handling' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+    
+    // Check if bot is paused (human sent a message recently)
+    if (assignment?.bot_paused_until) {
+      const pausedUntil = new Date(assignment.bot_paused_until);
+      if (pausedUntil > new Date()) {
+        console.log('Bot is paused until:', pausedUntil.toISOString(), '- human is handling');
+        return new Response(
+          JSON.stringify({ handled: false, reason: 'Bot paused - human handling' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Find or create lead

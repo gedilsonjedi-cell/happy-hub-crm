@@ -817,6 +817,7 @@ export type Database = {
         Row: {
           assigned_at: string | null
           assigned_to: string | null
+          bot_paused_until: string | null
           campaign_chatbot_id: string | null
           channel_id: string | null
           conversation_phone: string
@@ -830,6 +831,7 @@ export type Database = {
         Insert: {
           assigned_at?: string | null
           assigned_to?: string | null
+          bot_paused_until?: string | null
           campaign_chatbot_id?: string | null
           channel_id?: string | null
           conversation_phone: string
@@ -843,6 +845,7 @@ export type Database = {
         Update: {
           assigned_at?: string | null
           assigned_to?: string | null
+          bot_paused_until?: string | null
           campaign_chatbot_id?: string | null
           channel_id?: string | null
           conversation_phone?: string
