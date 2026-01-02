@@ -243,6 +243,20 @@ const WhatsAppOficial = () => {
         </header>
 
         <main>
+          {/* Breadcrumb Navigation */}
+          <nav className="container mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li>
+                <Link to="/" className="hover:text-foreground transition-colors">
+                  Início
+                </Link>
+              </li>
+              <li className="flex items-center gap-2">
+                <span>/</span>
+                <span className="text-foreground font-medium">WhatsApp Oficial</span>
+              </li>
+            </ol>
+          </nav>
           {/* Hero Section */}
           <section className="py-12 sm:py-20 lg:py-28 bg-gradient-to-b from-primary/5 to-background" aria-labelledby="hero-heading">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
