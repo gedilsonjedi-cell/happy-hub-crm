@@ -367,17 +367,35 @@ Deno.serve(async (req) => {
       
       if (LOVABLE_API_KEY) {
         try {
-          // Get conversation history
+          // Get conversation history - fetch all messages for this contact
+          // Inbound: sender_phone is the customer
+          // Outbound: metadata->destination is the customer (without +)
+          const customerPhoneClean = senderPhone.replace(/\D/g, '');
+          
           const { data: history } = await supabase
             .from('whatsapp_messages')
-            .select('content, direction, created_at')
+            .select('content, direction, created_at, sender_phone, metadata')
             .eq('channel_id', channelId)
-            .or(`sender_phone.eq.${senderPhone},metadata->>destination.eq.${senderPhone.replace(/\D/g, '')}`)
             .order('created_at', { ascending: true })
-            .limit(20);
+            .limit(50);
+          
+          // Filter to only messages for THIS conversation
+          const conversationHistory = (history || []).filter(msg => {
+            if (msg.direction === 'inbound') {
+              // Inbound: check if sender matches customer
+              const msgPhone = (msg.sender_phone || '').replace(/\D/g, '');
+              return msgPhone === customerPhoneClean || msgPhone.endsWith(customerPhoneClean.slice(-9));
+            } else {
+              // Outbound: check if destination matches customer
+              const destination = ((msg.metadata as any)?.destination || '').replace(/\D/g, '');
+              return destination === customerPhoneClean || destination.endsWith(customerPhoneClean.slice(-9));
+            }
+          });
+          
+          console.log('Conversation history found:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
 
           // Determine if this is the first message (no previous bot messages)
-          const hasPreviousBotMessages = history?.some(msg => msg.direction === 'outbound') || false;
+          const hasPreviousBotMessages = conversationHistory.some(msg => msg.direction === 'outbound');
 
           // Build system prompt based on agent configuration
           let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
@@ -425,14 +443,14 @@ ${hasPreviousBotMessages ? `- Esta conversa já está em andamento. NÃO se apre
 
           const messages = [
             { role: 'system', content: systemPrompt },
-            ...(history || []).map(msg => ({
+            ...conversationHistory.map(msg => ({
               role: msg.direction === 'inbound' ? 'user' : 'assistant',
               content: msg.content || ''
             })),
             { role: 'user', content: messageContent }
           ];
 
-          console.log('Calling Lovable AI with history context, hasPreviousBotMessages:', hasPreviousBotMessages);
+          console.log('Sending', messages.length, 'messages to AI, hasPreviousBotMessages:', hasPreviousBotMessages);
           const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
             method: 'POST',
             headers: {
