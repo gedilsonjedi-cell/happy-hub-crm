@@ -1,7 +1,18 @@
+# OptimusCRM - Robots.txt
+# https://optimuscrm.com.br
+
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 1
 
 User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
 Allow: /
 
 User-agent: Twitterbot
@@ -10,5 +21,30 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
 User-agent: *
 Allow: /
+
+# Sitemap location
+Sitemap: https://optimuscrm.com.br/sitemap.xml
+
+# Disallow admin and private areas
+Disallow: /dashboard
+Disallow: /perfil
+Disallow: /usuarios
+Disallow: /leads
+Disallow: /pipeline
+Disallow: /disparos
+Disallow: /conexoes
+Disallow: /chatbot
+Disallow: /templates
+Disallow: /relatorios
+Disallow: /saldo

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -222,74 +223,95 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
+    <>
+      <Helmet>
+        <title>OptimusCRM - CRM WhatsApp com Disparos Alternados e IA | 7 Dias Grátis</title>
+        <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias + R$10 de bônus." />
+        <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático" />
+        <link rel="canonical" href="https://optimuscrm.com.br/" />
+        <meta property="og:title" content="OptimusCRM - CRM WhatsApp com Disparos Alternados e IA" />
+        <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis + R$10 de bônus." />
+        <meta property="og:url" content="https://optimuscrm.com.br/" />
+        <meta property="og:type" content="website" />
+      </Helmet>
+      <main className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden" role="main">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <img 
-                src={optimusLogo} 
-                alt="Optimus CRM" 
-                className="h-6 sm:h-8 w-auto object-contain"
-              />
-            </div>
-            <div className="hidden md:flex items-center gap-8">
-              <button 
-                onClick={() => scrollToSection("features")} 
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                Recursos
-              </button>
-              <button 
-                onClick={() => scrollToSection("how-it-works")} 
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                Como Funciona
-              </button>
-              <button 
-                onClick={() => scrollToSection("pricing")} 
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                Preços
-              </button>
-              <button 
-                onClick={() => scrollToSection("faq")} 
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                FAQ
-              </button>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {user ? (
-                <Link to="/dashboard">
-                  <Button size="sm" className="bg-[#04f59c] hover:bg-[#03d989] text-black border-0 text-xs sm:text-sm px-3 sm:px-4">
-                    Dashboard
-                  </Button>
-                </Link>
-              ) : (
-                <>
-                  <Link to="/auth" className="hidden sm:block">
-                    <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/5">
-                      Entrar
-                    </Button>
-                  </Link>
-                  <Link to="/cadastro">
+      <header role="banner">
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5" aria-label="Navegação principal">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <img 
+                  src={optimusLogo} 
+                  alt="OptimusCRM - CRM WhatsApp com Disparos Alternados" 
+                  className="h-6 sm:h-8 w-auto object-contain"
+                  width="120"
+                  height="32"
+                  loading="eager"
+                />
+              </div>
+              <div className="hidden md:flex items-center gap-8" role="navigation">
+                <button 
+                  onClick={() => scrollToSection("features")} 
+                  className="text-sm text-white/60 hover:text-white transition-colors"
+                  aria-label="Ver recursos do OptimusCRM"
+                >
+                  Recursos
+                </button>
+                <button 
+                  onClick={() => scrollToSection("how-it-works")} 
+                  className="text-sm text-white/60 hover:text-white transition-colors"
+                  aria-label="Como funciona o OptimusCRM"
+                >
+                  Como Funciona
+                </button>
+                <button 
+                  onClick={() => scrollToSection("pricing")} 
+                  className="text-sm text-white/60 hover:text-white transition-colors"
+                  aria-label="Ver preços e planos"
+                >
+                  Preços
+                </button>
+                <button 
+                  onClick={() => scrollToSection("faq")} 
+                  className="text-sm text-white/60 hover:text-white transition-colors"
+                  aria-label="Perguntas frequentes"
+                >
+                  FAQ
+                </button>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                {user ? (
+                  <Link to="/dashboard" aria-label="Acessar painel de controle">
                     <Button size="sm" className="bg-[#04f59c] hover:bg-[#03d989] text-black border-0 text-xs sm:text-sm px-3 sm:px-4">
-                      Começar Grátis
+                      Dashboard
                     </Button>
                   </Link>
-                </>
-              )}
+                ) : (
+                  <>
+                    <Link to="/auth" className="hidden sm:block" aria-label="Fazer login no OptimusCRM">
+                      <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/5">
+                        Entrar
+                      </Button>
+                    </Link>
+                    <Link to="/cadastro" aria-label="Criar conta gratuita no OptimusCRM">
+                      <Button size="sm" className="bg-[#04f59c] hover:bg-[#03d989] text-black border-0 text-xs sm:text-sm px-3 sm:px-4">
+                        Começar Grátis
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </header>
 
       {/* Hero Section */}
       <section 
         ref={heroSection.ref}
         className="relative min-h-screen flex items-center justify-center pt-32 overflow-hidden"
+        aria-labelledby="hero-heading"
       >
         {/* Animated Background */}
         <div className="absolute inset-0 overflow-hidden">
@@ -361,6 +383,7 @@ const LandingPage = () => {
             </motion.div>
             
             <motion.h1 
+              id="hero-heading"
               variants={fadeInUp}
               className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight mb-4 sm:mb-6 leading-tight px-2"
             >
@@ -501,6 +524,7 @@ const LandingPage = () => {
         id="features" 
         ref={featuresSection.ref}
         className="relative py-16 sm:py-20 overflow-hidden"
+        aria-labelledby="features-heading"
       >
         {/* Background */}
         <div className="absolute inset-0">
@@ -517,7 +541,7 @@ const LandingPage = () => {
               <Zap className="w-4 h-4 text-[#04f59c]" />
               <span className="text-sm text-[#04f59c]">Recursos Poderosos</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-5xl font-bold mb-4 px-2">
+            <h2 id="features-heading" className="text-2xl sm:text-3xl lg:text-5xl font-bold mb-4 px-2">
               Tudo para{" "}
               <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
                 escalar suas vendas
@@ -533,12 +557,15 @@ const LandingPage = () => {
             variants={staggerContainer}
             initial="hidden"
             animate={featuresSection.isInView ? "visible" : "hidden"}
+            role="list"
+            aria-label="Lista de recursos do OptimusCRM"
           >
             {features.map((feature, index) => (
-              <motion.div
+              <motion.article
                 key={feature.title}
                 variants={fadeInUp}
                 whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                role="listitem"
               >
                 <Card 
                   className={cn(
@@ -584,7 +611,7 @@ const LandingPage = () => {
                     transition={{ duration: 0.3 }}
                   />
                 </Card>
-              </motion.div>
+              </motion.article>
             ))}
           </motion.div>
         </div>
@@ -1348,37 +1375,43 @@ const LandingPage = () => {
       </section>
 
       {/* Footer */}
-      <footer className="relative border-t border-white/5 py-8 sm:py-12">
+      <footer className="relative border-t border-white/5 py-8 sm:py-12" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-center gap-6 text-center">
             <div className="flex items-center gap-3">
               <img 
                 src={optimusLogo} 
-                alt="Optimus CRM" 
+                alt="OptimusCRM - CRM WhatsApp com Disparos Alternados" 
                 className="h-5 sm:h-6 w-auto object-contain opacity-60"
+                width="100"
+                height="24"
+                loading="lazy"
               />
             </div>
             
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8">
+            <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-8" aria-label="Links do rodapé">
               <button 
                 onClick={() => scrollToSection("features")} 
                 className="text-xs sm:text-sm text-white/40 hover:text-white/60 transition-colors"
+                aria-label="Ver recursos"
               >
                 Recursos
               </button>
               <button 
                 onClick={() => scrollToSection("pricing")} 
                 className="text-xs sm:text-sm text-white/40 hover:text-white/60 transition-colors"
+                aria-label="Ver preços"
               >
                 Preços
               </button>
               <button 
                 onClick={() => scrollToSection("faq")} 
                 className="text-xs sm:text-sm text-white/40 hover:text-white/60 transition-colors"
+                aria-label="Perguntas frequentes"
               >
                 FAQ
               </button>
-            </div>
+            </nav>
 
             <p className="text-xs sm:text-sm text-white/30">
               © {new Date().getFullYear()} OptimusCRM. Todos os direitos reservados.
@@ -1386,7 +1419,8 @@ const LandingPage = () => {
           </div>
         </div>
       </footer>
-    </div>
+    </main>
+    </>
   );
 };
 
