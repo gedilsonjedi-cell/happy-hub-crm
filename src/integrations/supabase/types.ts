@@ -880,6 +880,60 @@ export type Database = {
           },
         ]
       }
+      conversation_memory: {
+        Row: {
+          channel_id: string | null
+          collected_info: Json | null
+          contact_phone: string
+          created_at: string
+          expires_at: string
+          id: string
+          last_interaction_at: string
+          memory_summary: string
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          collected_info?: Json | null
+          contact_phone: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_interaction_at?: string
+          memory_summary: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          collected_info?: Json | null
+          contact_phone?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_interaction_at?: string
+          memory_summary?: string
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_memory_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_memory_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_notes: {
         Row: {
           channel_id: string | null
