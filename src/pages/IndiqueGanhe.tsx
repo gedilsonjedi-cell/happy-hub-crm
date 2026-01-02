@@ -72,13 +72,20 @@ const IndiqueGanhe = () => {
   const fetchData = async () => {
     try {
       // Get organization ID
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id')
-        .eq('id', user?.id)
-        .single();
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        setLoading(false);
+        return;
+      }
 
       if (!profile?.organization_id) {
+        console.error('No organization found for user');
         setLoading(false);
         return;
       }
@@ -89,7 +96,12 @@ const IndiqueGanhe = () => {
       const { data: codeData, error: codeError } = await supabase
         .rpc('get_or_create_referral_code', { org_id: profile.organization_id });
 
-      if (codeError) throw codeError;
+      if (codeError) {
+        console.error('Error creating referral code:', codeError);
+        throw codeError;
+      }
+      
+      console.log('Referral code generated:', codeData);
       setReferralCode(codeData);
 
       // Fetch referrals
