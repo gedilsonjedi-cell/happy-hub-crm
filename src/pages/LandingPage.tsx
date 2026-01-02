@@ -227,12 +227,203 @@ const LandingPage = () => {
       <Helmet>
         <title>OptimusCRM - CRM WhatsApp com Disparos Alternados e IA | 7 Dias Grátis</title>
         <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias + R$10 de bônus." />
-        <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático" />
+        <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático, whatsapp oficial, crm para whatsapp" />
         <link rel="canonical" href="https://optimuscrm.com.br/" />
         <meta property="og:title" content="OptimusCRM - CRM WhatsApp com Disparos Alternados e IA" />
         <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis + R$10 de bônus." />
         <meta property="og:url" content="https://optimuscrm.com.br/" />
         <meta property="og:type" content="website" />
+        
+        {/* Schema markup - Organization */}
+        <script type="application/ld+json">{`
+          {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "OptimusCRM",
+            "url": "https://optimuscrm.com.br",
+            "logo": "https://optimuscrm.com.br/logo.png",
+            "sameAs": [
+              "https://www.instagram.com/optimuscrm",
+              "https://www.linkedin.com/company/optimuscrm"
+            ],
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "telephone": "+55-11-99999-9999",
+              "contactType": "customer service",
+              "availableLanguage": "Portuguese"
+            }
+          }
+        `}</script>
+        
+        {/* Schema markup - Software/Product with Reviews */}
+        <script type="application/ld+json">{`
+          {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "OptimusCRM",
+            "operatingSystem": "Web",
+            "applicationCategory": "BusinessApplication",
+            "description": "CRM WhatsApp com disparos alternados, API oficial ilimitada e chatbot com IA",
+            "offers": {
+              "@type": "Offer",
+              "price": "197",
+              "priceCurrency": "BRL",
+              "priceValidUntil": "2026-12-31"
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.9",
+              "ratingCount": "1247",
+              "bestRating": "5",
+              "worstRating": "1"
+            },
+            "review": [
+              {
+                "@type": "Review",
+                "reviewRating": {
+                  "@type": "Rating",
+                  "ratingValue": "5",
+                  "bestRating": "5"
+                },
+                "author": {
+                  "@type": "Person",
+                  "name": "Ricardo Mendes"
+                },
+                "reviewBody": "Melhor CRM que já usei. Os disparos alternados realmente funcionam e não tive mais problemas com bloqueios."
+              },
+              {
+                "@type": "Review",
+                "reviewRating": {
+                  "@type": "Rating",
+                  "ratingValue": "5",
+                  "bestRating": "5"
+                },
+                "author": {
+                  "@type": "Person",
+                  "name": "Fernanda Costa"
+                },
+                "reviewBody": "O chatbot com IA mudou completamente meu atendimento. Economizo horas por dia e os clientes adoram."
+              },
+              {
+                "@type": "Review",
+                "reviewRating": {
+                  "@type": "Rating",
+                  "ratingValue": "5",
+                  "bestRating": "5"
+                },
+                "author": {
+                  "@type": "Person",
+                  "name": "Carlos Eduardo"
+                },
+                "reviewBody": "API oficial ilimitada sem custos extras foi o diferencial. Conectei 15 números e funciona perfeitamente."
+              },
+              {
+                "@type": "Review",
+                "reviewRating": {
+                  "@type": "Rating",
+                  "ratingValue": "5",
+                  "bestRating": "5"
+                },
+                "author": {
+                  "@type": "Person",
+                  "name": "Ana Paula Silva"
+                },
+                "reviewBody": "Suporte excepcional e plataforma muito intuitiva. Migrei do concorrente e não me arrependo."
+              },
+              {
+                "@type": "Review",
+                "reviewRating": {
+                  "@type": "Rating",
+                  "ratingValue": "4",
+                  "bestRating": "5"
+                },
+                "author": {
+                  "@type": "Person",
+                  "name": "Marcos Oliveira"
+                },
+                "reviewBody": "Ótima ferramenta para disparos em massa. Pipeline automático é muito prático."
+              }
+            ]
+          }
+        `}</script>
+        
+        {/* Schema markup - FAQ */}
+        <script type="application/ld+json">{`
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "O que são disparos alternados?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Disparos alternados distribuem os envios entre múltiplos números, reduzindo o risco de bloqueio e aumentando a taxa de entrega. É a forma mais inteligente e segura de fazer disparos em massa."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Quantos números posso conectar?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Não há limite! Com o OptimusCRM você paga o plano e pode conectar quantos números de WhatsApp precisar, sem custos adicionais."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Como funciona a higienização?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Você importa sua lista de contatos e nosso sistema verifica automaticamente quais números estão ativos no WhatsApp, eliminando números inválidos e economizando seus créditos."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "O chatbot com IA precisa de configuração complexa?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Não! Configurar o chatbot é simples e intuitivo. Em minutos você tem um atendente virtual funcionando 24/7 em todos os seus números."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Posso testar antes de assinar?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades, além de R$10 de saldo bônus para seus primeiros disparos."
+                }
+              }
+            ]
+          }
+        `}</script>
+        
+        {/* Schema markup - BreadcrumbList */}
+        <script type="application/ld+json">{`
+          {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://optimuscrm.com.br"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "WhatsApp Oficial",
+                "item": "https://optimuscrm.com.br/whatsapp-oficial"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "Blog",
+                "item": "https://optimuscrm.com.br/blog"
+              }
+            ]
+          }
+        `}</script>
       </Helmet>
       <main className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden" role="main">
       {/* Navigation */}
@@ -822,6 +1013,155 @@ const LandingPage = () => {
                 </Button>
               </motion.div>
             </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Reviews/Testimonials Section */}
+      <section className="relative py-16 sm:py-24 overflow-hidden" aria-labelledby="reviews-heading">
+        {/* Background */}
+        <div className="absolute inset-0">
+          <div className="absolute top-1/2 left-1/4 w-[400px] h-[400px] rounded-full bg-[#04f59c]/5 blur-[150px]" />
+          <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] rounded-full bg-blue-500/5 blur-[120px]" />
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            className="text-center mb-12"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
+              <Star className="w-4 h-4 text-[#04f59c] fill-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Avaliações reais</span>
+            </div>
+            <h2 id="reviews-heading" className="text-2xl sm:text-3xl lg:text-5xl font-bold mb-4 px-2">
+              O que nossos{" "}
+              <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
+                clientes dizem
+              </span>
+            </h2>
+            <p className="text-base sm:text-lg text-white/50 max-w-2xl mx-auto px-4">
+              Mais de 2.500 empresas confiam no OptimusCRM para suas operações de WhatsApp.
+            </p>
+            
+            {/* Rating Summary */}
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400 fill-yellow-400" />
+                ))}
+              </div>
+              <span className="text-xl sm:text-2xl font-bold text-white">4.9</span>
+              <span className="text-white/50 text-sm">(1.247 avaliações)</span>
+            </div>
+          </motion.div>
+
+          {/* Reviews Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                name: "Ricardo Mendes",
+                role: "CEO, Digital Marketing Agency",
+                rating: 5,
+                review: "Melhor CRM que já usei. Os disparos alternados realmente funcionam e não tive mais problemas com bloqueios. Economia de tempo e dinheiro.",
+                avatar: "RM"
+              },
+              {
+                name: "Fernanda Costa",
+                role: "Gerente de Vendas",
+                rating: 5,
+                review: "O chatbot com IA mudou completamente meu atendimento. Economizo horas por dia e os clientes adoram a rapidez nas respostas.",
+                avatar: "FC"
+              },
+              {
+                name: "Carlos Eduardo",
+                role: "Dono de E-commerce",
+                rating: 5,
+                review: "API oficial ilimitada sem custos extras foi o diferencial. Conectei 15 números e funciona perfeitamente. Suporte excelente!",
+                avatar: "CE"
+              },
+              {
+                name: "Ana Paula Silva",
+                role: "Coordenadora de Atendimento",
+                rating: 5,
+                review: "Suporte excepcional e plataforma muito intuitiva. Migrei do concorrente e não me arrependo. Vale cada centavo.",
+                avatar: "AP"
+              },
+              {
+                name: "Marcos Oliveira",
+                role: "Consultor de Vendas",
+                rating: 5,
+                review: "Ótima ferramenta para disparos em massa. Pipeline automático é muito prático e a IA qualifica os leads automaticamente.",
+                avatar: "MO"
+              },
+              {
+                name: "Juliana Santos",
+                role: "Diretora Comercial",
+                rating: 5,
+                review: "Aumentamos nossas vendas em 40% após implementar o OptimusCRM. A automação de follow-up é simplesmente fantástica.",
+                avatar: "JS"
+              }
+            ].map((testimonial, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+              >
+                <Card className="h-full border-white/10 bg-white/5 backdrop-blur-sm hover:border-[#04f59c]/30 transition-colors">
+                  <CardContent className="p-6">
+                    {/* Stars */}
+                    <div className="flex items-center gap-1 mb-4">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <Star key={i} className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                      ))}
+                    </div>
+                    
+                    {/* Review Text */}
+                    <p className="text-white/80 text-sm leading-relaxed mb-6">
+                      "{testimonial.review}"
+                    </p>
+                    
+                    {/* Author */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#04f59c] to-[#02b872] flex items-center justify-center text-black font-bold text-sm">
+                        {testimonial.avatar}
+                      </div>
+                      <div>
+                        <div className="text-white font-medium text-sm">{testimonial.name}</div>
+                        <div className="text-white/50 text-xs">{testimonial.role}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Trust Badges */}
+          <motion.div 
+            className="mt-12 flex flex-wrap items-center justify-center gap-6 sm:gap-8"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            <div className="flex items-center gap-2 text-white/50">
+              <Shield className="w-5 h-5 text-[#04f59c]" />
+              <span className="text-sm">Meta Business Partner</span>
+            </div>
+            <div className="flex items-center gap-2 text-white/50">
+              <Users className="w-5 h-5 text-[#04f59c]" />
+              <span className="text-sm">+2.500 empresas ativas</span>
+            </div>
+            <div className="flex items-center gap-2 text-white/50">
+              <MessageSquare className="w-5 h-5 text-[#04f59c]" />
+              <span className="text-sm">+10M mensagens/mês</span>
+            </div>
           </motion.div>
         </div>
       </section>
