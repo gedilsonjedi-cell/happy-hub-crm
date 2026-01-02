@@ -562,9 +562,29 @@ Deno.serve(async (req) => {
           mediaType: effectiveMediaType,
           fileName,
           cost: pricePerMessage,
-          provider: 'meta'
+          provider: 'meta',
+          sent_by_human: userId !== 'service_role'
         }
       });
+    
+    // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
+    // This prevents the bot from responding while a human is handling the conversation
+    if (userId !== 'service_role') {
+      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      
+      await serviceRoleClient
+        .from('conversation_assignments')
+        .update({ 
+          bot_paused_until: botPausedUntil,
+          is_bot_handling: false,
+          assigned_to: userId,
+          assigned_at: new Date().toISOString()
+        })
+        .eq('channel_id', channelId)
+        .eq('conversation_phone', cleanDestination);
+      
+      console.log('Bot paused for 24 hours for conversation with:', cleanDestination);
+    }
 
     return new Response(
       JSON.stringify({ 
