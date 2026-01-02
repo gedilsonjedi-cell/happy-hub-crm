@@ -162,17 +162,32 @@ Deno.serve(async (req) => {
       const instanceId = body.instanceId;
       const messageId = body.messageId || body.id?.id || `zapi_${Date.now()}`;
       
-      // Check if it's an incoming message
-      const isMessage = body.isFromMe === false || body.fromMe === false;
-      const isStatusUpdate = body.status !== undefined || body.event === 'message-status-update';
-
-      if (isStatusUpdate) {
-        console.log('Status update received, skipping:', body.status);
+      // Check if this is a status update callback (MessageStatusCallback) vs a received message (ReceivedCallback)
+      const isStatusUpdateCallback = body.type === 'MessageStatusCallback';
+      const isReceivedCallback = body.type === 'ReceivedCallback';
+      
+      // Skip status updates (delivery receipts, read receipts, etc.)
+      if (isStatusUpdateCallback) {
+        console.log('Status update callback, skipping:', body.status);
         return new Response('OK', { status: 200, headers: corsHeaders });
       }
 
-      if (!isMessage) {
-        console.log('Not an incoming message, skipping');
+      // Skip if it's a message sent by us
+      const isFromMe = body.isFromMe === true || body.fromMe === true;
+      if (isFromMe) {
+        console.log('Message sent by us, skipping');
+        return new Response('OK', { status: 200, headers: corsHeaders });
+      }
+
+      // Skip group messages
+      if (body.isGroup === true) {
+        console.log('Group message, skipping');
+        return new Response('OK', { status: 200, headers: corsHeaders });
+      }
+
+      // Only process ReceivedCallback messages
+      if (!isReceivedCallback) {
+        console.log('Not a ReceivedCallback, skipping. Type:', body.type);
         return new Response('OK', { status: 200, headers: corsHeaders });
       }
 
