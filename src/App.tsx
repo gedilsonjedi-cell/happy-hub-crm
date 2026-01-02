@@ -41,6 +41,7 @@ import LandingPage from "./pages/LandingPage";
 import Cadastro from "./pages/Cadastro";
 import NotFound from "./pages/NotFound";
 import FollowUp from "./pages/FollowUp";
+import WhatsAppOficial from "./pages/WhatsAppOficial";
 
 const queryClient = new QueryClient();
 
@@ -138,6 +139,7 @@ const App = () => (
           <Route path="/cadastro" element={<Cadastro />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/landing" element={<LandingPage />} />
+          <Route path="/whatsapp-oficial" element={<WhatsAppOficial />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
