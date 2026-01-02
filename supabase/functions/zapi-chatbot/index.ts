@@ -389,6 +389,22 @@ Deno.serve(async (req) => {
           
           console.log('Conversation history found:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
 
+          // Fetch conversation memory (persisted context from previous sessions)
+          const { data: existingMemory } = await supabase
+            .from('conversation_memory')
+            .select('*')
+            .eq('channel_id', channelId)
+            .eq('contact_phone', customerPhoneClean)
+            .gt('expires_at', new Date().toISOString())
+            .single();
+          
+          const memorySummary = existingMemory?.memory_summary || '';
+          const collectedInfo = existingMemory?.collected_info || {};
+          
+          if (existingMemory) {
+            console.log('Found conversation memory:', memorySummary);
+          }
+
           // Determine if this is the first message (no previous bot messages)
           const hasPreviousBotMessages = conversationHistory.some(msg => msg.direction === 'outbound');
 
@@ -422,12 +438,19 @@ ${agentToUse.service_guide}
 - Adapte a linguagem ao seu estilo de comunicação, mas mantenha a estrutura do roteiro
 - Seu objetivo é completar todas as etapas do guia para um atendimento de qualidade
 ` : ''}
+${memorySummary ? `## MEMÓRIA DE CONVERSAS ANTERIORES
+O cliente já conversou com você anteriormente. Aqui está o resumo do que você sabe sobre ele:
+${memorySummary}
+
+Use essas informações para personalizar o atendimento. Faça referência ao que já foi conversado quando relevante.
+` : ''}
 ## IMPORTANTE - Regras de Saudação e Continuidade
-${hasPreviousBotMessages ? `- Esta conversa já está em andamento. NÃO se apresente novamente. 
+${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andamento ou o cliente já conversou antes. NÃO se apresente novamente. 
 - NÃO diga "olá", "oi", "bom dia", "boa tarde" ou qualquer saudação novamente.
 - NÃO repita seu nome ou quem você é.
 - Continue a conversa de forma natural, respondendo DIRETAMENTE à pergunta/mensagem do cliente.
-- Mantenha o contexto da conversa anterior.` : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente uma única vez.'}
+- Mantenha o contexto da conversa anterior.
+- Se o cliente está retornando depois de um tempo, faça referência ao que já foi conversado (ex: "Vi que você tem interesse em ganho de massa...").` : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente uma única vez.'}
 
 ## Diretrizes
 - Mantenha respostas curtas (máximo 2-3 frases) e objetivas
@@ -444,7 +467,7 @@ ${hasPreviousBotMessages ? `- Esta conversa já está em andamento. NÃO se apre
             { role: 'user', content: messageContent }
           ];
           
-          console.log('Sending', messages.length, 'messages to AI, hasPreviousBotMessages:', hasPreviousBotMessages);
+          console.log('Sending', messages.length, 'messages to AI, hasPreviousBotMessages:', hasPreviousBotMessages, 'hasMemory:', !!memorySummary);
           const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -462,6 +485,77 @@ ${hasPreviousBotMessages ? `- Esta conversa já está em andamento. NÃO se apre
             const aiData = await aiResponse.json();
             responseMessage = aiData.choices?.[0]?.message?.content || chatbotConfig.away_message || 'Desculpe, não consegui processar sua mensagem.';
             console.log('AI response generated:', responseMessage);
+            
+            // Update conversation memory after successful response
+            // Generate a summary of the conversation for future sessions
+            try {
+              const memoryMessages = [
+                { role: 'system', content: `Você é um assistente que extrai informações importantes de conversas para criar um resumo de memória.
+Analise a conversa e extraia:
+1. Objetivo/interesse do cliente (ex: emagrecimento, ganho de massa)
+2. Preferências declaradas (ex: online, presencial)
+3. Informações pessoais relevantes mencionadas
+4. Estágio atual do atendimento (ex: coletando informações, apresentando planos)
+5. Qualquer outra informação útil para continuar o atendimento no futuro
+
+Responda APENAS com um resumo conciso em formato de bullet points, máximo 5 itens.
+Se não houver informações relevantes novas, responda apenas: "Sem novas informações"` },
+                ...conversationHistory.slice(-10).map(msg => ({
+                  role: msg.direction === 'inbound' ? 'user' : 'assistant',
+                  content: msg.content || ''
+                })),
+                { role: 'user', content: messageContent },
+                { role: 'assistant', content: responseMessage }
+              ];
+              
+              const memoryResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash-lite',
+                  messages: memoryMessages,
+                  max_tokens: 150,
+                }),
+              });
+              
+              if (memoryResponse.ok) {
+                const memoryData = await memoryResponse.json();
+                const newMemorySummary = memoryData.choices?.[0]?.message?.content || '';
+                
+                if (newMemorySummary && !newMemorySummary.includes('Sem novas informações')) {
+                  // Combine with existing memory if present
+                  const combinedMemory = memorySummary 
+                    ? `${memorySummary}\n\n--- Atualização recente ---\n${newMemorySummary}`
+                    : newMemorySummary;
+                  
+                  // Upsert conversation memory
+                  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+                  
+                  await supabase
+                    .from('conversation_memory')
+                    .upsert({
+                      channel_id: channelId,
+                      contact_phone: customerPhoneClean,
+                      organization_id: organizationId,
+                      memory_summary: combinedMemory.slice(0, 2000), // Limit size
+                      collected_info: collectedInfo,
+                      last_interaction_at: new Date().toISOString(),
+                      expires_at: expiresAt,
+                      updated_at: new Date().toISOString()
+                    }, {
+                      onConflict: 'channel_id,contact_phone'
+                    });
+                  
+                  console.log('Conversation memory updated');
+                }
+              }
+            } catch (memoryError) {
+              console.error('Error updating memory:', memoryError);
+              // Don't fail the main response if memory update fails
+            }
           } else {
             const errorText = await aiResponse.text();
             console.error('AI API error:', aiResponse.status, errorText);
