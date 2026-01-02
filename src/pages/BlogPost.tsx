@@ -555,6 +555,27 @@ const BlogPost = () => {
         </header>
 
         <main>
+          {/* Breadcrumb Navigation */}
+          <nav className="container mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li>
+                <Link to="/" className="hover:text-foreground transition-colors">
+                  Início
+                </Link>
+              </li>
+              <li className="flex items-center gap-2">
+                <span>/</span>
+                <Link to="/blog" className="hover:text-foreground transition-colors">
+                  Blog
+                </Link>
+              </li>
+              <li className="flex items-center gap-2">
+                <span>/</span>
+                <span className="text-foreground font-medium line-clamp-1 max-w-[200px]">{post.title}</span>
+              </li>
+            </ol>
+          </nav>
+
           {/* Article Header */}
           <section className="py-12 sm:py-16 bg-gradient-to-b from-primary/5 to-background">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl">
