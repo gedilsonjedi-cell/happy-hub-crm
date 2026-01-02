@@ -60,12 +60,20 @@ interface Purchase {
   } | null;
 }
 
+interface ActiveAddon {
+  id: string;
+  product_id: string;
+  is_active: boolean;
+  quantity: number;
+}
+
 export default function Loja() {
   const { user } = useAuth();
   const { currentBalance, organizationId } = useOrganizationBalance();
   const { isActive, paidUntil, daysRemaining, needsPayment, organization } = useSubscription();
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [activeAddons, setActiveAddons] = useState<ActiveAddon[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
@@ -85,8 +93,26 @@ export default function Loja() {
     fetchSubscriptionPricing();
     if (organizationId) {
       fetchPurchases();
+      fetchActiveAddons();
     }
   }, [organizationId]);
+
+  const fetchActiveAddons = async () => {
+    if (!organizationId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("organization_addons")
+        .select("id, product_id, is_active, quantity")
+        .eq("organization_id", organizationId)
+        .eq("is_active", true);
+
+      if (error) throw error;
+      setActiveAddons(data || []);
+    } catch (error) {
+      console.error("Error fetching active addons:", error);
+    }
+  };
 
   const fetchSubscriptionPricing = async () => {
     try {
@@ -192,7 +218,17 @@ export default function Loja() {
       return;
     }
 
-    const quantity = product.product_type === "subscription" ? 1 : (quantities[product.id] || 1);
+    // Determine if this product allows quantity selection
+    const isSubscription = product.product_type === "subscription";
+    const isAddon = product.product_type === "addon";
+    const isHigienizacao = product.name.toLowerCase().includes("higieniza");
+    const isUsuariosAdicionais = product.name.toLowerCase().includes("usuário") || product.name.toLowerCase().includes("usuario");
+    const isStackableAddon = isAddon && isUsuariosAdicionais;
+    const isUniqueAddon = isAddon && isHigienizacao;
+    
+    // Unique addons and subscriptions always have quantity 1
+    // Stackable addons and one_time products use the selected quantity
+    const quantity = (isSubscription || isUniqueAddon) ? 1 : (quantities[product.id] || 1);
     const totalPrice = product.price * quantity;
 
     if (currentBalance < totalPrice) {
@@ -232,6 +268,7 @@ export default function Loja() {
             : `${product.name} foi adquirido com sucesso.`,
         });
         fetchPurchases();
+        fetchActiveAddons(); // Refresh addons to update UI
         // Reset quantity
         setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       } else {
@@ -390,7 +427,24 @@ export default function Loja() {
                 const isSubscription = product.product_type === "subscription";
                 const isAddon = product.product_type === "addon";
                 const isMonthly = isSubscription || isAddon;
-                const quantity = isMonthly ? 1 : (quantities[product.id] || 1);
+                
+                // Check if this is a unique addon that's already purchased
+                const isHigienizacao = product.name.toLowerCase().includes("higieniza");
+                const isUsuariosAdicionais = product.name.toLowerCase().includes("usuário") || product.name.toLowerCase().includes("usuario");
+                
+                // Unique addons: Higienização (can only buy once)
+                // Stackable addons: Usuários Adicionais (can buy multiple times with quantity)
+                const isUniqueAddon = isAddon && isHigienizacao;
+                const isStackableAddon = isAddon && isUsuariosAdicionais;
+                
+                // Check if already purchased
+                const hasActiveAddon = activeAddons.some(addon => addon.product_id === product.id);
+                const hasActiveSubscription = isSubscription && isActive;
+                const alreadyPurchased = (isUniqueAddon && hasActiveAddon) || (hasActiveSubscription && !needsPayment);
+                
+                // For stackable addons and one_time products, show quantity selector
+                const showQuantitySelector = isStackableAddon || product.product_type === "one_time";
+                const quantity = showQuantitySelector ? (quantities[product.id] || 1) : 1;
                 
                 // Use the real price from subscription_pricing for subscriptions
                 const displayPrice = isSubscription && subscriptionPricing
@@ -412,7 +466,9 @@ export default function Loja() {
                         )}
                       </div>
                       <CardTitle className="mt-2">{product.name}</CardTitle>
-                      <CardDescription>Acesso completo à plataforma por 30 dias.</CardDescription>
+                      <CardDescription>
+                        {product.description || "Acesso completo à plataforma por 30 dias."}
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -432,8 +488,8 @@ export default function Loja() {
                         )}
                       </div>
 
-                      {/* Quantity Selector - only for non-monthly products */}
-                      {!isMonthly && (
+                      {/* Quantity Selector - for stackable addons and one_time products */}
+                      {showQuantitySelector && !alreadyPurchased && (
                         <div className="space-y-2">
                           <Label className="text-sm text-muted-foreground">Quantidade</Label>
                           <div className="flex items-center gap-2">
@@ -469,28 +525,47 @@ export default function Loja() {
                           )}
                         </div>
                       )}
+
+                      {/* Already purchased indicator */}
+                      {alreadyPurchased && (
+                        <div className="flex items-center gap-2 text-primary bg-primary/10 rounded-lg p-3">
+                          <Check className="w-5 h-5" />
+                          <span className="text-sm font-medium">Produto já adquirido</span>
+                        </div>
+                      )}
                     </CardContent>
                     <CardFooter>
-                      <Button
-                        className="w-full gap-2"
-                        variant={isSubscription ? "default" : "outline"}
-                        disabled={purchasing === product.id}
-                        onClick={() => handlePurchase(product)}
-                      >
-                        {purchasing === product.id ? (
-                          "Processando..."
-                        ) : canAfford ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Comprar{quantity > 1 ? ` (${quantity}x)` : ""}
-                          </>
-                        ) : (
-                          <>
-                            <CreditCard className="w-4 h-4" />
-                            Adicionar Saldo
-                          </>
-                        )}
-                      </Button>
+                      {alreadyPurchased ? (
+                        <Button
+                          className="w-full gap-2"
+                          variant="secondary"
+                          disabled
+                        >
+                          <Check className="w-4 h-4" />
+                          Ativo
+                        </Button>
+                      ) : (
+                        <Button
+                          className="w-full gap-2"
+                          variant={isSubscription ? "default" : "outline"}
+                          disabled={purchasing === product.id}
+                          onClick={() => handlePurchase(product)}
+                        >
+                          {purchasing === product.id ? (
+                            "Processando..."
+                          ) : canAfford ? (
+                            <>
+                              <Check className="w-4 h-4" />
+                              Comprar{quantity > 1 ? ` (${quantity}x)` : ""}
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="w-4 h-4" />
+                              Adicionar Saldo
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </CardFooter>
                   </Card>
                 );
