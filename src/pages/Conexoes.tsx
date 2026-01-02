@@ -19,7 +19,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Pencil,
-  MessageSquare
+  MessageSquare,
+  Bot
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -65,6 +67,7 @@ interface Channel {
   waba_id: string | null;
   connected: boolean;
   created_at: string;
+  user_id: string;
   organization_id: string | null;
   organization?: {
     id: string;
@@ -105,6 +108,14 @@ const Conexoes = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
+  
+  // Chatbot linking state
+  const [showChatbotDialog, setShowChatbotDialog] = useState<Channel | null>(null);
+  const [chatbotAgents, setChatbotAgents] = useState<{ id: string; name: string; nickname: string | null }[]>([]);
+  const [selectedChatbotAgent, setSelectedChatbotAgent] = useState<string>("");
+  const [isChatbotEnabled, setIsChatbotEnabled] = useState(true);
+  const [isSavingChatbot, setIsSavingChatbot] = useState(false);
+  const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; is_enabled: boolean } | null>(null);
   
   // Connection type selection
   const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | null>(null);
@@ -204,6 +215,111 @@ const Conexoes = () => {
     setSelectedPhones([]);
     setSharedVerifyToken('');
     setSelectedOrgId("");
+  };
+
+  // Handle opening chatbot dialog for a channel
+  const handleOpenChatbotDialog = async (channel: Channel) => {
+    setShowChatbotDialog(channel);
+    setSelectedChatbotAgent("");
+    setIsChatbotEnabled(true);
+    setChannelChatbotConfig(null);
+    
+    try {
+      // Fetch active agents
+      const { data: agents, error: agentsError } = await supabase
+        .from("ai_agents")
+        .select("id, name, nickname")
+        .eq("is_active", true);
+      
+      if (agentsError) throw agentsError;
+      setChatbotAgents(agents || []);
+      
+      // Fetch existing config for this channel
+      const { data: config } = await supabase
+        .from("chatbot_config")
+        .select("agent_id, is_enabled")
+        .eq("channel_id", channel.id)
+        .maybeSingle();
+      
+      if (config) {
+        setChannelChatbotConfig(config);
+        setSelectedChatbotAgent(config.agent_id || "");
+        setIsChatbotEnabled(config.is_enabled ?? true);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados do chatbot:", error);
+      toast.error("Erro ao carregar dados do chatbot");
+    }
+  };
+
+  // Handle saving chatbot config for a channel
+  const handleSaveChatbotConfig = async () => {
+    if (!showChatbotDialog || !selectedChatbotAgent) {
+      toast.error("Selecione um chatbot");
+      return;
+    }
+
+    setIsSavingChatbot(true);
+    try {
+      const channel = showChatbotDialog;
+      
+      // Check if config exists
+      const { data: existing } = await supabase
+        .from("chatbot_config")
+        .select("id")
+        .eq("channel_id", channel.id)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing config
+        await supabase
+          .from("chatbot_config")
+          .update({
+            agent_id: selectedChatbotAgent,
+            is_enabled: isChatbotEnabled,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+      } else {
+        // Create new config
+        await supabase.from("chatbot_config").insert({
+          channel_id: channel.id,
+          agent_id: selectedChatbotAgent,
+          user_id: channel.user_id,
+          organization_id: channel.organization_id,
+          is_enabled: isChatbotEnabled,
+        });
+      }
+
+      toast.success("Chatbot vinculado com sucesso!");
+      setShowChatbotDialog(null);
+    } catch (error) {
+      console.error("Erro ao vincular chatbot:", error);
+      toast.error("Erro ao vincular chatbot");
+    } finally {
+      setIsSavingChatbot(false);
+    }
+  };
+
+  // Handle removing chatbot from channel
+  const handleRemoveChatbot = async () => {
+    if (!showChatbotDialog) return;
+
+    setIsSavingChatbot(true);
+    try {
+      await supabase
+        .from("chatbot_config")
+        .delete()
+        .eq("channel_id", showChatbotDialog.id);
+
+      toast.success("Chatbot desvinculado do canal");
+      setShowChatbotDialog(null);
+    } catch (error) {
+      console.error("Erro ao desvincular chatbot:", error);
+      toast.error("Erro ao desvincular chatbot");
+    } finally {
+      setIsSavingChatbot(false);
+    }
   };
 
   // Handle Z-API connection
@@ -938,6 +1054,13 @@ const Conexoes = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-card border-border z-50">
+                      <DropdownMenuItem 
+                        className="gap-2 cursor-pointer"
+                        onClick={() => handleOpenChatbotDialog(channel)}
+                      >
+                        <Bot className="w-4 h-4" />
+                        Vincular Chatbot
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="gap-2 cursor-pointer"
                         onClick={() => setShowChannelConfig(channel)}
@@ -1687,6 +1810,126 @@ const Conexoes = () => {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Chatbot Link Dialog */}
+      <Dialog open={!!showChatbotDialog} onOpenChange={(open) => !isSavingChatbot && !open && setShowChatbotDialog(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Bot className="w-5 h-5" />
+              Vincular Chatbot ao Canal
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Escolha qual chatbot será usado para atender as conversas deste canal.
+            </DialogDescription>
+          </DialogHeader>
+
+          {showChatbotDialog && (
+            <div className="space-y-4 py-2">
+              {/* Channel Info */}
+              <div className="p-3 bg-muted/20 rounded-lg border border-border flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                  <Smartphone className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{showChatbotDialog.name}</p>
+                  <p className="text-sm text-muted-foreground">{showChatbotDialog.phone}</p>
+                </div>
+              </div>
+
+              {/* Agent Selection */}
+              <div className="space-y-2">
+                <Label className="text-foreground">Chatbot</Label>
+                <Select value={selectedChatbotAgent} onValueChange={setSelectedChatbotAgent}>
+                  <SelectTrigger className="bg-muted/30 border-border">
+                    <SelectValue placeholder="Selecione um chatbot" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border z-[100]">
+                    {chatbotAgents.length === 0 ? (
+                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                        Nenhum chatbot ativo
+                      </div>
+                    ) : (
+                      chatbotAgents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          <div className="flex items-center gap-2">
+                            <Bot className="w-4 h-4" />
+                            <span>{agent.name}</span>
+                            {agent.nickname && (
+                              <span className="text-muted-foreground text-xs">
+                                @{agent.nickname}
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Enable Switch */}
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <Label className="text-sm font-medium text-foreground">Ativar chatbot</Label>
+                  <p className="text-xs text-muted-foreground">
+                    O chatbot responderá automaticamente neste canal
+                  </p>
+                </div>
+                <Switch checked={isChatbotEnabled} onCheckedChange={setIsChatbotEnabled} />
+              </div>
+
+              {/* Current Config Info */}
+              {channelChatbotConfig?.agent_id && (
+                <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                  <p className="text-sm text-emerald-400">
+                    Este canal já possui um chatbot vinculado. Você pode atualizar ou remover.
+                  </p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between gap-3 pt-2">
+                <div>
+                  {channelChatbotConfig?.agent_id && (
+                    <Button 
+                      variant="outline" 
+                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                      onClick={handleRemoveChatbot}
+                      disabled={isSavingChatbot}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Desvincular
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={() => setShowChatbotDialog(null)} disabled={isSavingChatbot}>
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={handleSaveChatbotConfig} 
+                    disabled={isSavingChatbot || !selectedChatbotAgent}
+                    className="gap-2"
+                  >
+                    {isSavingChatbot ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        Vincular
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </MainLayout>
