@@ -104,6 +104,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   past_due: { label: "Atrasada", className: "bg-warning/10 text-warning" },
   canceled: { label: "Cancelada", className: "bg-destructive/10 text-destructive" },
   partner: { label: "Parceiro", className: "bg-primary/10 text-primary" },
+  pending: { label: "Pendente", className: "bg-orange-500/10 text-orange-500" },
+  inactive: { label: "Inativa", className: "bg-muted text-muted-foreground" },
 };
 
 export default function SuperAdmin() {
@@ -775,7 +777,15 @@ export default function SuperAdmin() {
                   ) : (
                     filteredOrganizations.map((org) => {
                       const monthlyCost = org.is_partner ? 0 : calculateMonthlyCost(org.max_users, org.max_channels);
-                      const displayStatus = org.is_partner ? "partner" : org.subscription_status;
+                      // Determine display status based on conditions
+                      let displayStatus = org.subscription_status;
+                      if (!org.is_active) {
+                        displayStatus = "inactive";
+                      } else if (org.is_partner) {
+                        displayStatus = "partner";
+                      } else if (!org.max_users && !org.max_channels && !org.subscription_started_at) {
+                        displayStatus = "pending";
+                      }
                       return (
                         <TableRow key={org.id} className={!org.is_active ? "opacity-50" : ""}>
                           <TableCell>
