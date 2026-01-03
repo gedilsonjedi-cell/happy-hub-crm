@@ -81,6 +81,7 @@ interface DailyStats {
 const Index = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [stats, setStats] = useState({
     totalLeads: 0,
     newToday: 0,
@@ -100,11 +101,30 @@ const Index = () => {
     timestamp: string;
   }>>([]);
 
+  // Fetch user's organization
   useEffect(() => {
-    if (user) {
+    const fetchOrganization = async () => {
+      if (!user) return;
+      
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (profile?.organization_id) {
+        setOrganizationId(profile.organization_id);
+      }
+    };
+    
+    fetchOrganization();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && organizationId) {
       fetchDashboardData();
     }
-  }, [user]);
+  }, [user, organizationId]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -113,28 +133,42 @@ const Index = () => {
       const startOfToday = startOfDay(today).toISOString();
       const endOfToday = endOfDay(today).toISOString();
 
-      // Fetch leads count
+      // Fetch leads count - filtered by organization
       const { count: totalLeads } = await supabase
         .from("leads")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", organizationId);
 
-      // Fetch new leads today
+      // Fetch new leads today - filtered by organization
       const { count: newToday } = await supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
         .gte("created_at", startOfToday)
         .lte("created_at", endOfToday);
 
-      // Fetch campaigns sent
+      // Fetch campaigns sent - filtered by organization
       const { count: campaignsSent } = await supabase
         .from("campaigns")
         .select("*", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
         .eq("status", "completed");
 
-      // Fetch conversation assignments for metrics
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("*");
+      // Fetch channels for this organization to filter messages
+      const { data: orgChannels } = await supabase
+        .from("channels")
+        .select("id")
+        .eq("organization_id", organizationId);
+      
+      const channelIds = orgChannels?.map(c => c.id) || [];
+
+      // Fetch conversation assignments for metrics - filtered by organization's channels
+      const { data: assignments } = channelIds.length > 0 
+        ? await supabase
+            .from("conversation_assignments")
+            .select("*")
+            .in("channel_id", channelIds)
+        : { data: [] };
 
       const openConversations = assignments?.filter(a => a.status === "active" || a.status === "pending").length || 0;
       const pendingConversations = assignments?.filter(a => a.status === "pending").length || 0;
@@ -144,12 +178,15 @@ const Index = () => {
         a.updated_at >= startOfToday
       ).length || 0;
 
-      // Calculate average response time from messages
-      const { data: messages } = await supabase
-        .from("whatsapp_messages")
-        .select("direction, sender_phone, created_at")
-        .order("created_at", { ascending: true })
-        .limit(500);
+      // Calculate average response time from messages - filtered by organization's channels
+      const { data: messages } = channelIds.length > 0 
+        ? await supabase
+            .from("whatsapp_messages")
+            .select("direction, sender_phone, created_at, channel_id")
+            .in("channel_id", channelIds)
+            .order("created_at", { ascending: true })
+            .limit(500)
+        : { data: [] };
 
       let totalResponseTime = 0;
       let responseCount = 0;
@@ -191,14 +228,16 @@ const Index = () => {
         inProgressConversations
       });
 
-      // Fetch attendant availability and metrics
+      // Fetch attendant availability and metrics - filtered by organization
       const { data: availability } = await supabase
         .from("attendant_availability")
-        .select("*");
+        .select("*")
+        .eq("organization_id", organizationId);
 
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id, display_name, email");
+        .select("user_id, display_name, email")
+        .eq("organization_id", organizationId);
 
       if (availability && profiles) {
         const metricsMap: Record<string, AttendantMetrics> = {};
@@ -262,12 +301,15 @@ const Index = () => {
       }
       setDailyStats(last7Days);
 
-      // Fetch recent activity
-      const { data: recentMessages } = await supabase
-        .from("whatsapp_messages")
-        .select("id, sender_name, sender_phone, direction, created_at")
-        .order("created_at", { ascending: false })
-        .limit(10);
+      // Fetch recent activity - filtered by organization's channels
+      const { data: recentMessages } = channelIds.length > 0 
+        ? await supabase
+            .from("whatsapp_messages")
+            .select("id, sender_name, sender_phone, direction, created_at")
+            .in("channel_id", channelIds)
+            .order("created_at", { ascending: false })
+            .limit(10)
+        : { data: [] };
 
       if (recentMessages) {
         const activity = recentMessages.map(msg => ({
