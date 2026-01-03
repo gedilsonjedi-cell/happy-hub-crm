@@ -179,10 +179,60 @@ Deno.serve(async (req) => {
         return new Response('OK', { status: 200, headers: corsHeaders });
       }
 
-      // Skip if it's a message sent by us
+      // Check if it's a message sent by us (from the device/WhatsApp Business)
       const isFromMe = body.isFromMe === true || body.fromMe === true;
       if (isFromMe) {
-        console.log('Message sent by us, skipping');
+        console.log('Message sent by us (from device), pausing bot for 24 hours');
+        
+        // Find channel to pause the bot
+        let channelForPause = null;
+        if (instanceId) {
+          const { data } = await supabase
+            .from('channels')
+            .select('id, organization_id')
+            .eq('app_name', instanceId)
+            .eq('provider', 'zapi')
+            .single();
+          channelForPause = data;
+        }
+        
+        if (channelForPause && phone) {
+          const cleanPhone = phone.replace(/\D/g, '');
+          const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          
+          // Update or insert conversation assignment with bot paused
+          const { data: existingAssignment } = await supabase
+            .from('conversation_assignments')
+            .select('id')
+            .eq('channel_id', channelForPause.id)
+            .eq('conversation_phone', cleanPhone)
+            .single();
+          
+          if (existingAssignment) {
+            await supabase
+              .from('conversation_assignments')
+              .update({ 
+                bot_paused_until: botPausedUntil,
+                is_bot_handling: false,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingAssignment.id);
+            console.log('Bot paused for conversation:', cleanPhone);
+          } else {
+            // Create assignment with bot paused
+            await supabase
+              .from('conversation_assignments')
+              .insert({
+                conversation_phone: cleanPhone,
+                channel_id: channelForPause.id,
+                bot_paused_until: botPausedUntil,
+                is_bot_handling: false,
+                status: 'active'
+              });
+            console.log('Created assignment with bot paused for:', cleanPhone);
+          }
+        }
+        
         return new Response('OK', { status: 200, headers: corsHeaders });
       }
 
