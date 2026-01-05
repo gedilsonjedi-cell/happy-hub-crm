@@ -218,17 +218,26 @@ const Templates = () => {
 
     setChannels(channelsData || []);
 
-    const { data: ctData } = await supabase
-      .from("channel_templates")
-      .select("channel_id, template_id");
+    // Get channel IDs for this organization
+    const orgChannelIds = (channelsData || []).map(c => c.id);
 
-    if (ctData) {
-      const mapping: Record<string, string[]> = {};
-      ctData.forEach(ct => {
-        if (!mapping[ct.template_id]) mapping[ct.template_id] = [];
-        mapping[ct.template_id].push(ct.channel_id);
-      });
-      setChannelTemplates(mapping);
+    // Only fetch channel_templates for channels in this organization
+    if (orgChannelIds.length > 0) {
+      const { data: ctData } = await supabase
+        .from("channel_templates")
+        .select("channel_id, template_id")
+        .in("channel_id", orgChannelIds);
+
+      if (ctData) {
+        const mapping: Record<string, string[]> = {};
+        ctData.forEach(ct => {
+          if (!mapping[ct.template_id]) mapping[ct.template_id] = [];
+          mapping[ct.template_id].push(ct.channel_id);
+        });
+        setChannelTemplates(mapping);
+      }
+    } else {
+      setChannelTemplates({});
     }
   };
 
