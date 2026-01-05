@@ -1286,29 +1286,6 @@ export default function SuperAdmin() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>Data de Vencimento</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {editOrgExpiryDate ? format(editOrgExpiryDate, "dd/MM/yyyy") : "Sem vencimento definido"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={editOrgExpiryDate}
-                      onSelect={setEditOrgExpiryDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
               {editOrgPlan === "parceiro" ? (
                 <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                   <div className="flex items-center gap-2">
