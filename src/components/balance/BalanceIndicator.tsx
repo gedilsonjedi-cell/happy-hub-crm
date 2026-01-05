@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Wallet, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 
 interface BalanceIndicatorProps {
@@ -9,7 +10,8 @@ interface BalanceIndicatorProps {
 }
 
 export function BalanceIndicator({ showDetails = false }: BalanceIndicatorProps) {
-  const { balance, isLoading } = useOrganizationBalance();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { balance, isLoading } = useOrganizationBalance(effectiveOrganizationId);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
