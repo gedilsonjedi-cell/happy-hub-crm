@@ -139,6 +139,15 @@ const Conexoes = () => {
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
+  const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
+  const [metaPhoneStatuses, setMetaPhoneStatuses] = useState<Record<string, {
+    code: string;
+    isConnected: boolean;
+    message: string;
+    qualityRating?: string;
+    qualityInfo?: string;
+    error?: string;
+  }>>({});
   
   // Z-API form data
   const [zapiFormData, setZapiFormData] = useState({
@@ -159,8 +168,75 @@ const Conexoes = () => {
     }
   }, [user]);
 
+  // Check Meta phone status for all Meta channels when channels load
+  useEffect(() => {
+    if (channels.length > 0) {
+      checkAllMetaChannelStatuses();
+    }
+  }, [channels]);
+
+  const checkAllMetaChannelStatuses = async () => {
+    const metaChannels = channels.filter(ch => ch.provider === 'meta' && ch.app_name && ch.access_token);
+    
+    for (const channel of metaChannels) {
+      // Skip if already checking or recently checked
+      if (isCheckingStatus[channel.id] || metaPhoneStatuses[channel.id]) continue;
+      
+      checkMetaPhoneStatus(channel);
+    }
+  };
+
+  const checkMetaPhoneStatus = async (channel: Channel) => {
+    if (!channel.app_name || !channel.access_token) return;
+    
+    setIsCheckingStatus(prev => ({ ...prev, [channel.id]: true }));
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-check-phone-status', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+        },
+      });
+
+      if (error) {
+        console.error(`Error checking status for ${channel.id}:`, error);
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: {
+            code: 'ERROR',
+            isConnected: false,
+            message: 'Erro ao verificar',
+            error: error.message,
+          }
+        }));
+        return;
+      }
+
+      if (data?.status) {
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: data.status
+        }));
+        
+        // Update channel.connected in database if status differs
+        if (data.status.isConnected !== channel.connected) {
+          await supabase
+            .from("channels")
+            .update({ connected: data.status.isConnected })
+            .eq("id", channel.id);
+        }
+      }
+    } catch (err) {
+      console.error(`Exception checking status for ${channel.id}:`, err);
+    } finally {
+      setIsCheckingStatus(prev => ({ ...prev, [channel.id]: false }));
+    }
+  };
+
   const fetchChannels = async () => {
     setLoading(true);
+    setMetaPhoneStatuses({}); // Reset statuses to trigger fresh check
     
     // Super Admin sees all channels with organization info
     if (isSuperAdmin) {
@@ -1115,24 +1191,87 @@ const Conexoes = () => {
                   >
                     {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
                   </Badge>
-                  <Badge 
-                    variant="outline" 
-                    className={cn(
-                      "text-xs",
-                      channel.connected 
-                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
-                        : "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                    )}
-                  >
-                    {channel.connected ? "Ativo" : "Pendente"}
-                  </Badge>
+                  {/* Status badge with real Meta API status for meta channels */}
+                  {channel.provider === 'meta' ? (
+                    isCheckingStatus[channel.id] ? (
+                      <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground border-border gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Verificando
+                      </Badge>
+                    ) : metaPhoneStatuses[channel.id] ? (
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "text-xs",
+                          metaPhoneStatuses[channel.id].isConnected 
+                            ? metaPhoneStatuses[channel.id].qualityRating === 'RED'
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                              : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                            : metaPhoneStatuses[channel.id].code === 'RESTRICTED'
+                              ? "bg-red-500/10 text-red-500 border-red-500/30"
+                              : metaPhoneStatuses[channel.id].code === 'ERROR' || metaPhoneStatuses[channel.id].code === 'TOKEN_EXPIRED'
+                                ? "bg-red-500/10 text-red-500 border-red-500/30"
+                                : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                        )}
+                      >
+                        {metaPhoneStatuses[channel.id].message}
+                      </Badge>
+                    ) : (
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "text-xs",
+                          channel.connected 
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
+                            : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                        )}
+                      >
+                        {channel.connected ? "Ativo" : "Pendente"}
+                      </Badge>
+                    )
+                  ) : (
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "text-xs",
+                        channel.connected 
+                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
+                          : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                      )}
+                    >
+                      {channel.connected ? "Ativo" : "Pendente"}
+                    </Badge>
+                  )}
                 </div>
 
-                {channel.connected && (
+                {/* Quality rating indicator for Meta channels */}
+                {channel.provider === 'meta' && metaPhoneStatuses[channel.id]?.qualityInfo && (
+                  <div className="mt-2">
+                    <span className={cn(
+                      "text-xs",
+                      metaPhoneStatuses[channel.id].qualityRating === 'GREEN' ? "text-emerald-500" :
+                      metaPhoneStatuses[channel.id].qualityRating === 'YELLOW' ? "text-amber-500" :
+                      metaPhoneStatuses[channel.id].qualityRating === 'RED' ? "text-red-500" :
+                      "text-muted-foreground"
+                    )}>
+                      ● {metaPhoneStatuses[channel.id].qualityInfo}
+                    </span>
+                  </div>
+                )}
+
+                {/* Connected status indicator */}
+                {(channel.provider === 'zapi' ? channel.connected : (metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected)) && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs text-muted-foreground">Pronto para enviar e receber</span>
+                      <div className={cn(
+                        "w-2 h-2 rounded-full animate-pulse",
+                        metaPhoneStatuses[channel.id]?.qualityRating === 'RED' ? "bg-amber-500" : "bg-emerald-500"
+                      )} />
+                      <span className="text-xs text-muted-foreground">
+                        {metaPhoneStatuses[channel.id]?.qualityRating === 'RED' 
+                          ? "Ativo com qualidade baixa" 
+                          : "Pronto para enviar e receber"}
+                      </span>
                     </div>
                     <Button 
                       variant="outline" 
@@ -1156,8 +1295,24 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {!channel.connected && (
+                {/* Show registration button for disconnected Meta channels */}
+                {channel.provider === 'meta' && !(metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected) && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    {/* Show error message if there's an issue */}
+                    {metaPhoneStatuses[channel.id]?.code === 'TOKEN_EXPIRED' && (
+                      <div className="p-2 bg-red-500/10 rounded border border-red-500/20 mb-2">
+                        <p className="text-xs text-red-400">
+                          Token expirado. Atualize o Access Token nas configurações.
+                        </p>
+                      </div>
+                    )}
+                    {metaPhoneStatuses[channel.id]?.code === 'RESTRICTED' && (
+                      <div className="p-2 bg-red-500/10 rounded border border-red-500/20 mb-2">
+                        <p className="text-xs text-red-400">
+                          Este número está com restrições. Verifique no Meta Business Suite.
+                        </p>
+                      </div>
+                    )}
                     <Button 
                       variant="default" 
                       size="sm" 
@@ -1185,6 +1340,40 @@ const Conexoes = () => {
                     >
                       <Info className="w-3 h-3" />
                       Ver Configuração Webhook
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => checkMetaPhoneStatus(channel)}
+                      disabled={isCheckingStatus[channel.id]}
+                    >
+                      {isCheckingStatus[channel.id] ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Verificando...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3 h-3" />
+                          Verificar Status
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Z-API channels use the simple connected check */}
+                {channel.provider === 'zapi' && !channel.connected && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleToggleConnection(channel)}
+                    >
+                      <Power className="w-3 h-3" />
+                      Ativar Canal
                     </Button>
                   </div>
                 )}
