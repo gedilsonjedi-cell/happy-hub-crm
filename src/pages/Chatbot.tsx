@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { ChatbotEditorForm } from "@/components/chatbot/ChatbotEditorForm";
 import { ChatbotListItem } from "@/components/chatbot/ChatbotListItem";
@@ -31,6 +32,7 @@ interface ChatbotAgent {
 
 const Chatbot = () => {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [view, setView] = useState<"list" | "edit">("list");
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [agents, setAgents] = useState<ChatbotAgent[]>([]);
@@ -42,16 +44,18 @@ const Chatbot = () => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && effectiveOrganizationId) {
       loadAgents();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
   const loadAgents = async () => {
+    if (!effectiveOrganizationId) return;
     try {
       const { data, error } = await supabase
         .from("ai_agents")
         .select("id, name, nickname, agent_profile, is_active, created_at")
+        .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

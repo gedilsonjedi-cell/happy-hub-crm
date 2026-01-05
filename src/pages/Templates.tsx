@@ -53,6 +53,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 
 interface MessageTemplate {
@@ -115,6 +116,7 @@ const Templates = () => {
   const { user } = useAuth();
   const { isSuperAdmin } = useUserRole();
   const { selectedOrganization, isImpersonating } = useSuperAdmin();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
@@ -175,16 +177,19 @@ const Templates = () => {
   }, [formData.content, variableExamples]);
 
   useEffect(() => {
-    if (user) {
+    if (user && effectiveOrganizationId) {
       fetchTemplates();
       fetchChannels();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
   const fetchTemplates = async () => {
+    if (!effectiveOrganizationId) return;
+    
     const { data, error } = await supabase
       .from("message_templates")
       .select("*")
+      .eq("organization_id", effectiveOrganizationId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -202,9 +207,12 @@ const Templates = () => {
   };
 
   const fetchChannels = async () => {
+    if (!effectiveOrganizationId) return;
+    
     const { data: channelsData, error: channelsError } = await supabase
       .from("channels")
-      .select("id, name, phone");
+      .select("id, name, phone")
+      .eq("organization_id", effectiveOrganizationId);
 
     if (channelsError) return;
 

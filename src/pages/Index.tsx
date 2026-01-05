@@ -19,6 +19,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -80,8 +81,8 @@ interface DailyStats {
 
 const Index = () => {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(true);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [stats, setStats] = useState({
     totalLeads: 0,
     newToday: 0,
@@ -101,30 +102,11 @@ const Index = () => {
     timestamp: string;
   }>>([]);
 
-  // Fetch user's organization
   useEffect(() => {
-    const fetchOrganization = async () => {
-      if (!user) return;
-      
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .single();
-      
-      if (profile?.organization_id) {
-        setOrganizationId(profile.organization_id);
-      }
-    };
-    
-    fetchOrganization();
-  }, [user]);
-
-  useEffect(() => {
-    if (user && organizationId) {
+    if (user && effectiveOrganizationId) {
       fetchDashboardData();
     }
-  }, [user, organizationId]);
+  }, [user, effectiveOrganizationId]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -137,13 +119,13 @@ const Index = () => {
       const { count: totalLeads } = await supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
-        .eq("organization_id", organizationId);
+        .eq("organization_id", effectiveOrganizationId);
 
       // Fetch new leads today - filtered by organization
       const { count: newToday } = await supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .gte("created_at", startOfToday)
         .lte("created_at", endOfToday);
 
@@ -151,14 +133,14 @@ const Index = () => {
       const { count: campaignsSent } = await supabase
         .from("campaigns")
         .select("*", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .eq("status", "completed");
 
       // Fetch channels for this organization to filter messages
       const { data: orgChannels } = await supabase
         .from("channels")
         .select("id")
-        .eq("organization_id", organizationId);
+        .eq("organization_id", effectiveOrganizationId);
       
       const channelIds = orgChannels?.map(c => c.id) || [];
 
@@ -232,12 +214,12 @@ const Index = () => {
       const { data: availability } = await supabase
         .from("attendant_availability")
         .select("*")
-        .eq("organization_id", organizationId);
+        .eq("organization_id", effectiveOrganizationId);
 
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, display_name, email")
-        .eq("organization_id", organizationId);
+        .eq("organization_id", effectiveOrganizationId);
 
       if (availability && profiles) {
         const metricsMap: Record<string, AttendantMetrics> = {};

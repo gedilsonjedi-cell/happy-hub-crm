@@ -51,6 +51,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
@@ -109,6 +110,7 @@ const statusConfig = {
 
 const Disparos = () => {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -140,10 +142,10 @@ const Disparos = () => {
   });
 
   useEffect(() => {
-    if (user) {
+    if (user && effectiveOrganizationId) {
       fetchData();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
   // Demo data for presentation
   const demoChannel: Channel = {
@@ -179,12 +181,14 @@ const Disparos = () => {
   ];
 
   const fetchData = async () => {
+    if (!effectiveOrganizationId) return;
     setLoading(true);
 
     // Fetch channels - exclude Z-API channels (they can't be used for mass dispatches)
     const { data: channelsData } = await supabase
       .from("channels")
       .select("id, name, phone, provider, connected")
+      .eq("organization_id", effectiveOrganizationId)
       .eq("connected", true)
       .neq("provider", "zapi");
 
@@ -192,6 +196,7 @@ const Disparos = () => {
     const { data: templatesData } = await supabase
       .from("message_templates")
       .select("id, name, content")
+      .eq("organization_id", effectiveOrganizationId)
       .eq("status", "approved");
 
     // Fetch channel-template relations
@@ -203,12 +208,14 @@ const Disparos = () => {
     const { data: campaignsData } = await supabase
       .from("campaigns")
       .select("*")
+      .eq("organization_id", effectiveOrganizationId)
       .order("created_at", { ascending: false });
 
     // Fetch AI agents
     const { data: agentsData } = await supabase
       .from("ai_agents")
       .select("id, name, is_active")
+      .eq("organization_id", effectiveOrganizationId)
       .eq("is_active", true);
 
     // Combine real data with demo data

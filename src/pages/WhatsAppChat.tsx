@@ -54,6 +54,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -73,7 +75,6 @@ import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
 import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
-import { useUserRole } from "@/hooks/useUserRole";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -174,6 +175,7 @@ const useNotificationSound = () => {
 
 const WhatsAppChat = () => {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
@@ -299,12 +301,15 @@ const WhatsAppChat = () => {
     }
   }, [notificationsEnabled]);
 
-  // Fetch channels (Meta Cloud API and Z-API)
+  // Fetch channels (Meta Cloud API and Z-API) - filtered by effective organization
   useEffect(() => {
     const fetchChannels = async () => {
+      if (!effectiveOrganizationId) return;
+      
       const { data, error } = await supabase
         .from("channels")
         .select("id, name, phone, provider")
+        .eq("organization_id", effectiveOrganizationId)
         .in("provider", ["meta", "zapi"])
         .eq("connected", true);
 
@@ -316,17 +321,20 @@ const WhatsAppChat = () => {
       }
     };
 
-    if (user) {
+    if (user && effectiveOrganizationId) {
       fetchChannels();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
-  // Fetch all templates for displaying in chat
+  // Fetch all templates for displaying in chat - filtered by effective organization
   useEffect(() => {
     const fetchTemplates = async () => {
+      if (!effectiveOrganizationId) return;
+      
       const { data } = await supabase
         .from("message_templates")
-        .select("name, content, variables, components");
+        .select("name, content, variables, components")
+        .eq("organization_id", effectiveOrganizationId);
 
       if (data) {
         const templatesMap = new Map<string, { 
@@ -345,10 +353,10 @@ const WhatsAppChat = () => {
       }
     };
 
-    if (user) {
+    if (user && effectiveOrganizationId) {
       fetchTemplates();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
   // Fetch conversations from ALL channels
   useEffect(() => {

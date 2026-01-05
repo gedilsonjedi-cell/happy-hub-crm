@@ -47,6 +47,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -99,7 +100,8 @@ const generateVerifyToken = () => {
 const Conexoes = () => {
   const { user } = useAuth();
   const { isSuperAdmin } = useUserRole();
-  const { organizations } = useSuperAdmin();
+  const { organizations, isImpersonating } = useSuperAdmin();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [channels, setChannels] = useState<Channel[]>([]);
   
   // For Super Admin: select which organization to assign new channels
@@ -238,8 +240,26 @@ const Conexoes = () => {
     setLoading(true);
     setMetaPhoneStatuses({}); // Reset statuses to trigger fresh check
     
-    // Super Admin sees all channels with organization info
-    if (isSuperAdmin) {
+    // If impersonating, filter by the impersonated organization
+    if (isImpersonating && effectiveOrganizationId) {
+      const { data, error } = await supabase
+        .from("channels")
+        .select(`
+          *,
+          organization:organizations(id, name)
+        `)
+        .eq("organization_id", effectiveOrganizationId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        toast.error("Erro ao carregar canais");
+        setLoading(false);
+        return;
+      }
+
+      setChannels((data as Channel[]) || []);
+    } else if (isSuperAdmin) {
+      // Super Admin not impersonating sees all channels
       const { data, error } = await supabase
         .from("channels")
         .select(`
@@ -256,6 +276,7 @@ const Conexoes = () => {
 
       setChannels((data as Channel[]) || []);
     } else {
+      // Regular user sees only their organization's channels
       const { data, error } = await supabase
         .from("channels")
         .select("*")
