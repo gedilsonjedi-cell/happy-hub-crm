@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PixPaymentDialog } from "@/components/payment/PixPaymentDialog";
@@ -59,42 +60,29 @@ interface Transaction {
 
 export default function Saldo() {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const transactionsPerPage = 5;
 
   useEffect(() => {
-    if (user) {
-      fetchOrganizationAndBalance();
+    if (user && effectiveOrganizationId) {
+      fetchBalance();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
-  const fetchOrganizationAndBalance = async () => {
+  const fetchBalance = async () => {
+    if (!effectiveOrganizationId) return;
+    
     try {
-      // Get user's organization
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .single();
-
-      if (profileError || !profile?.organization_id) {
-        console.error("Error fetching profile:", profileError);
-        setLoading(false);
-        return;
-      }
-
-      setOrganizationId(profile.organization_id);
-
       // Fetch balance
       const { data: balanceData, error: balanceError } = await supabase
         .from("organization_balance")
         .select("balance, total_credits_added, total_spent")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrganizationId)
         .single();
 
       if (balanceError && balanceError.code !== "PGRST116") {
@@ -107,7 +95,7 @@ export default function Saldo() {
       const { data: transactionsData, error: transactionsError } = await supabase
         .from("balance_transactions")
         .select("*")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -128,7 +116,7 @@ export default function Saldo() {
   };
 
   const handlePaymentCreated = () => {
-    fetchOrganizationAndBalance();
+    fetchBalance();
   };
 
   const formatCurrency = (value: number, forceDecimals = false) => {
@@ -201,11 +189,11 @@ export default function Saldo() {
         </div>
 
         {/* PIX Payment Dialog */}
-        {organizationId && (
+        {effectiveOrganizationId && (
           <PixPaymentDialog
             open={pixDialogOpen}
             onOpenChange={setPixDialogOpen}
-            organizationId={organizationId}
+            organizationId={effectiveOrganizationId}
             onPaymentCreated={handlePaymentCreated}
           />
         )}
@@ -314,9 +302,9 @@ export default function Saldo() {
         )}
 
         {/* Auto Recharge Config - Above Transaction History */}
-        {organizationId && user?.email && (
+        {effectiveOrganizationId && user?.email && (
           <AutoRechargeConfig 
-            organizationId={organizationId} 
+            organizationId={effectiveOrganizationId} 
             userEmail={user.email} 
           />
         )}

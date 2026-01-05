@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 import { LeadCardMenu } from "@/components/pipeline/LeadCardMenu";
 import { LeadDetailsDialog } from "@/components/pipeline/LeadDetailsDialog";
@@ -83,6 +84,7 @@ const DEFAULT_PIPELINE_ID = "00000000-0000-0000-0000-000000000001";
 
 const Pipeline = () => {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>(DEFAULT_PIPELINE_ID);
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -113,10 +115,10 @@ const Pipeline = () => {
   const isDefaultPipeline = currentPipeline?.is_default ?? true;
 
   useEffect(() => {
-    if (user) {
+    if (user && effectiveOrganizationId) {
       fetchPipelines();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId]);
 
   useEffect(() => {
     if (selectedPipeline) {
@@ -125,9 +127,12 @@ const Pipeline = () => {
   }, [selectedPipeline]);
 
   const fetchPipelines = async () => {
+    if (!effectiveOrganizationId) return;
+    
     const { data, error } = await supabase
       .from("pipelines")
       .select("*")
+      .eq("organization_id", effectiveOrganizationId)
       .order("is_default", { ascending: false });
 
     if (error) {
@@ -164,9 +169,12 @@ const Pipeline = () => {
   };
 
   const fetchLeads = async () => {
+    if (!effectiveOrganizationId) return;
+    
     const { data: leadsData, error: leadsError } = await supabase
       .from("leads")
       .select("*")
+      .eq("organization_id", effectiveOrganizationId)
       .order("created_at", { ascending: false });
 
     if (leadsError) {

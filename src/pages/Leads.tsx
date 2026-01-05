@@ -22,7 +22,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -88,7 +88,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 const Leads = () => {
   const { user } = useAuth();
-  const { organizationId } = useUserRole();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
@@ -105,41 +105,41 @@ const Leads = () => {
 
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
-    queryKey: ["lead-tags", organizationId],
+    queryKey: ["lead-tags", effectiveOrganizationId],
     queryFn: async () => {
-      if (!organizationId) return [];
+      if (!effectiveOrganizationId) return [];
 
       const { data, error } = await supabase
         .from("lead_tags")
         .select("id, name, color")
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .order("name");
 
       if (error) throw error;
       return (data || []) as LeadTag[];
     },
-    enabled: !!organizationId,
+    enabled: !!effectiveOrganizationId,
   });
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["leads", organizationId],
+    queryKey: ["leads", effectiveOrganizationId],
     queryFn: async () => {
-      if (!organizationId) return [];
+      if (!effectiveOrganizationId) return [];
 
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
       return (data || []) as Lead[];
     },
-    enabled: !!organizationId,
+    enabled: !!effectiveOrganizationId,
   });
 
   const handleAddToBlacklist = async (lead: Lead) => {
-    if (!user || !organizationId) {
+    if (!user || !effectiveOrganizationId) {
       toast.error("Erro ao identificar organização");
       return;
     }
@@ -148,7 +148,7 @@ const Leads = () => {
       const { error } = await supabase
         .from("blacklist")
         .insert({
-          organization_id: organizationId,
+          organization_id: effectiveOrganizationId,
           phone: lead.phone.replace(/\D/g, ''),
           name: lead.name,
           reason: "Adicionado da página de Leads",
@@ -190,11 +190,11 @@ const Leads = () => {
   };
 
   const handleTagsUpdated = () => {
-    queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+    queryClient.invalidateQueries({ queryKey: ["leads", effectiveOrganizationId] });
   };
 
   const handleImportSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+    queryClient.invalidateQueries({ queryKey: ["leads", effectiveOrganizationId] });
   };
 
   const handleExportCSV = () => {
@@ -275,7 +275,7 @@ const Leads = () => {
 
       toast.success(`${selectedLeads.size} contato(s) excluído(s) com sucesso`);
       setSelectedLeads(new Set());
-      queryClient.invalidateQueries({ queryKey: ["leads", organizationId] });
+      queryClient.invalidateQueries({ queryKey: ["leads", effectiveOrganizationId] });
     } catch (error) {
       console.error("Erro ao excluir contatos:", error);
       toast.error("Erro ao excluir contatos");
@@ -693,7 +693,7 @@ const Leads = () => {
       <AddLeadDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["leads", organizationId] })}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["leads", effectiveOrganizationId] })}
       />
 
       <AssignTagsDialog
