@@ -16,8 +16,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -50,9 +50,57 @@ interface OrganizationAddon {
 
 export default function MinhaAssinatura() {
   const { user } = useAuth();
+  const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
-  const { paidUntil, daysRemaining, isActive, needsPayment, organization, isLoading: subscriptionLoading } = useSubscription();
   const [cancelAddonId, setCancelAddonId] = useState<string | null>(null);
+
+  // Get organization info directly using effective organization ID
+  const { data: organization, isLoading: organizationLoading } = useQuery({
+    queryKey: ["organization-details", effectiveOrganizationId],
+    queryFn: async () => {
+      if (!effectiveOrganizationId) return null;
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at, max_users, max_channels, has_paid_first_subscription")
+        .eq("id", effectiveOrganizationId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!effectiveOrganizationId,
+  });
+
+  // Calculate subscription status from organization data
+  const getSubscriptionStatus = () => {
+    if (!organization) {
+      return { isActive: true, paidUntil: null, daysRemaining: 0, needsPayment: false };
+    }
+    const paidUntil = organization.subscription_paid_until 
+      ? new Date(organization.subscription_paid_until) 
+      : null;
+    const now = new Date();
+    if (!paidUntil) {
+      const endsAt = organization.subscription_ends_at 
+        ? new Date(organization.subscription_ends_at) 
+        : null;
+      if (endsAt && endsAt < now) {
+        return { isActive: false, paidUntil: null, daysRemaining: 0, needsPayment: true };
+      }
+      return {
+        isActive: organization.subscription_status === 'active' || organization.subscription_status === 'trial',
+        paidUntil: null,
+        daysRemaining: endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) : 30,
+        needsPayment: false,
+      };
+    }
+    const daysRemaining = Math.ceil((paidUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const isActive = daysRemaining > 0;
+    const needsPayment = daysRemaining <= 0;
+    return { isActive, paidUntil, daysRemaining: Math.max(0, daysRemaining), needsPayment };
+  };
+
+  const { isActive, paidUntil, daysRemaining, needsPayment } = getSubscriptionStatus();
+  const subscriptionLoading = organizationLoading;
 
   // Get subscription pricing
   const { data: pricing } = useQuery({
@@ -71,9 +119,9 @@ export default function MinhaAssinatura() {
 
   // Get active add-ons
   const { data: addons, isLoading: addonsLoading } = useQuery({
-    queryKey: ["organization-addons", organization?.id],
+    queryKey: ["organization-addons", effectiveOrganizationId],
     queryFn: async () => {
-      if (!organization?.id) return [];
+      if (!effectiveOrganizationId) return [];
       
       const { data, error } = await supabase
         .from("organization_addons")
@@ -81,14 +129,14 @@ export default function MinhaAssinatura() {
           *,
           store_products (name, description)
         `)
-        .eq("organization_id", organization.id)
+        .eq("organization_id", effectiveOrganizationId)
         .eq("is_active", true)
         .order("created_at", { ascending: false });
       
       if (error) throw error;
       return data as OrganizationAddon[];
     },
-    enabled: !!organization?.id,
+    enabled: !!effectiveOrganizationId,
   });
 
   // Cancel add-on mutation
