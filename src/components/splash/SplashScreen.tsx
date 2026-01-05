@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import optimusLogo from "@/assets/optimus-logo.png";
 
@@ -9,8 +9,18 @@ interface SplashScreenProps {
 
 export const SplashScreen = ({ onComplete, duration = 3000 }: SplashScreenProps) => {
   const [isVisible, setIsVisible] = useState(true);
+  const hasCompleted = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+
+  // Keep ref updated
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
+    // Prevent running multiple times
+    if (hasCompleted.current) return;
+
     // Fade out before completing
     const fadeTimer = setTimeout(() => {
       setIsVisible(false);
@@ -18,14 +28,17 @@ export const SplashScreen = ({ onComplete, duration = 3000 }: SplashScreenProps)
 
     // Complete and redirect
     const completeTimer = setTimeout(() => {
-      onComplete();
+      if (!hasCompleted.current) {
+        hasCompleted.current = true;
+        onCompleteRef.current();
+      }
     }, duration);
 
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(completeTimer);
     };
-  }, [duration, onComplete]);
+  }, [duration]);
 
   return (
     <motion.div
