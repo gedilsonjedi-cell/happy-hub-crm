@@ -28,6 +28,8 @@ export const useSingleSession = (
   const isRegistering = useRef(false);
   const hasRegistered = useRef(false);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isLoggingOut = useRef(false);
+  const lastValidationTime = useRef<number>(0);
 
   // Register this session when user logs in
   const registerSession = useCallback(async () => {
@@ -42,14 +44,14 @@ export const useSingleSession = (
       const { error } = await supabase.rpc('register_user_session', {
         _session_token: sessionToken.current,
         _device_info: deviceInfo,
-        _ip_address: null // Could be fetched from an API if needed
+        _ip_address: null
       });
       
       if (error) {
         console.error('Error registering session:', error);
       } else {
         hasRegistered.current = true;
-        console.log('Session registered successfully');
+        console.log('Session registered successfully:', sessionToken.current);
       }
     } catch (err) {
       console.error('Error registering session:', err);
@@ -60,7 +62,15 @@ export const useSingleSession = (
 
   // Validate that current session is still active
   const validateSession = useCallback(async () => {
-    if (!userId || !hasRegistered.current) return true;
+    // Prevent validation if already logging out or not registered
+    if (!userId || !hasRegistered.current || isLoggingOut.current) return true;
+    
+    // Debounce: don't validate more than once per 10 seconds
+    const now = Date.now();
+    if (now - lastValidationTime.current < 10000) {
+      return true;
+    }
+    lastValidationTime.current = now;
     
     try {
       const { data, error } = await supabase.rpc('validate_user_session', {
@@ -72,12 +82,25 @@ export const useSingleSession = (
         return true; // Don't logout on error, just continue
       }
       
-      if (data === false) {
+      if (data === false && !isLoggingOut.current) {
         // Session is invalid - another device logged in
+        isLoggingOut.current = true;
+        
+        // Clear interval to prevent more validations
+        if (checkIntervalRef.current) {
+          clearInterval(checkIntervalRef.current);
+          checkIntervalRef.current = null;
+        }
+        
         toast.error("Sua sessão foi encerrada pois você acessou de outro dispositivo.", {
           duration: 5000
         });
-        onSessionInvalid();
+        
+        // Small delay to ensure toast is shown
+        setTimeout(() => {
+          onSessionInvalid();
+        }, 500);
+        
         return false;
       }
       
@@ -90,7 +113,7 @@ export const useSingleSession = (
 
   // Update last activity
   const updateActivity = useCallback(async () => {
-    if (!userId || !hasRegistered.current) return;
+    if (!userId || !hasRegistered.current || isLoggingOut.current) return;
     
     try {
       await supabase.rpc('update_session_activity');
@@ -102,13 +125,15 @@ export const useSingleSession = (
   // Register session when userId becomes available
   useEffect(() => {
     if (userId) {
+      // Reset logout flag when user logs in
+      isLoggingOut.current = false;
       registerSession();
     } else {
       hasRegistered.current = false;
     }
   }, [userId, registerSession]);
 
-  // Set up periodic session validation (every 30 seconds)
+  // Set up periodic session validation (every 60 seconds instead of 30)
   useEffect(() => {
     if (!userId) {
       if (checkIntervalRef.current) {
@@ -118,16 +143,20 @@ export const useSingleSession = (
       return;
     }
 
-    // Initial validation after a short delay
+    // Initial validation after a longer delay (10 seconds)
     const initialCheck = setTimeout(() => {
-      validateSession();
-    }, 5000);
+      if (!isLoggingOut.current) {
+        validateSession();
+      }
+    }, 10000);
 
-    // Periodic validation
+    // Periodic validation every 60 seconds (instead of 30)
     checkIntervalRef.current = setInterval(() => {
-      validateSession();
-      updateActivity();
-    }, 30000); // Check every 30 seconds
+      if (!isLoggingOut.current) {
+        validateSession();
+        updateActivity();
+      }
+    }, 60000);
 
     return () => {
       clearTimeout(initialCheck);
@@ -142,9 +171,14 @@ export const useSingleSession = (
     if (!userId) return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        validateSession();
-        updateActivity();
+      if (document.visibilityState === 'visible' && !isLoggingOut.current) {
+        // Longer delay when returning to tab to avoid race conditions
+        setTimeout(() => {
+          if (!isLoggingOut.current) {
+            validateSession();
+            updateActivity();
+          }
+        }, 2000);
       }
     };
 
