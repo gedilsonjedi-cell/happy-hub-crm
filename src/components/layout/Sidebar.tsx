@@ -103,12 +103,10 @@ export function Sidebar() {
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
 
-  // Close mobile menu on route change
+  // Close mobile menu on route change (always close to prevent stuck overlay)
   useEffect(() => {
-    if (isMobile) {
-      setMobileOpen(false);
-    }
-  }, [location.pathname, isMobile, setMobileOpen]);
+    setMobileOpen(false);
+  }, [location.pathname, setMobileOpen]);
 
   const handleNavClick = (e: React.MouseEvent, permission: string | null) => {
     if (permission === null || userRole.loading) {
@@ -246,11 +244,12 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile overlay - only rendered and visible on mobile when menu is open */}
       {isMobile && mobileOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden animate-fade-in"
+          className="fixed inset-0 bg-black/50 z-40 animate-fade-in"
           onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
         />
       )}
 
