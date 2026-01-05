@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
-import { useSubscription } from "@/hooks/useSubscription";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { PixPaymentDialog } from "@/components/payment/PixPaymentDialog";
 import { 
   ShoppingBag, 
@@ -69,8 +70,8 @@ interface ActiveAddon {
 
 export default function Loja() {
   const { user } = useAuth();
-  const { currentBalance, organizationId } = useOrganizationBalance();
-  const { isActive, paidUntil, daysRemaining, needsPayment, organization } = useSubscription();
+  const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
+  const { currentBalance } = useOrganizationBalance(effectiveOrganizationId);
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [activeAddons, setActiveAddons] = useState<ActiveAddon[]>([]);
@@ -85,26 +86,73 @@ export default function Loja() {
     quantity: 1,
   });
 
+  // Get organization info directly using effective organization ID
+  const { data: organization } = useQuery({
+    queryKey: ["organization-details", effectiveOrganizationId],
+    queryFn: async () => {
+      if (!effectiveOrganizationId) return null;
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at, max_users, max_channels, has_paid_first_subscription")
+        .eq("id", effectiveOrganizationId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!effectiveOrganizationId,
+  });
+
+  // Calculate subscription status from organization data
+  const getSubscriptionStatus = () => {
+    if (!organization) {
+      return { isActive: true, paidUntil: null, daysRemaining: 0, needsPayment: false };
+    }
+    const paidUntil = organization.subscription_paid_until 
+      ? new Date(organization.subscription_paid_until) 
+      : null;
+    const now = new Date();
+    if (!paidUntil) {
+      const endsAt = organization.subscription_ends_at 
+        ? new Date(organization.subscription_ends_at) 
+        : null;
+      if (endsAt && endsAt < now) {
+        return { isActive: false, paidUntil: null, daysRemaining: 0, needsPayment: true };
+      }
+      return {
+        isActive: organization.subscription_status === 'active' || organization.subscription_status === 'trial',
+        paidUntil: null,
+        daysRemaining: endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) : 30,
+        needsPayment: false,
+      };
+    }
+    const daysRemaining = Math.ceil((paidUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const isActiveStatus = daysRemaining > 0;
+    const needsPayment = daysRemaining <= 0;
+    return { isActive: isActiveStatus, paidUntil, daysRemaining: Math.max(0, daysRemaining), needsPayment };
+  };
+
+  const { isActive, paidUntil, daysRemaining, needsPayment } = getSubscriptionStatus();
+
   // Check if user is on first subscription
   const isFirstSubscription = !organization?.has_paid_first_subscription;
 
   useEffect(() => {
     fetchProducts();
     fetchSubscriptionPricing();
-    if (organizationId) {
+    if (effectiveOrganizationId) {
       fetchPurchases();
       fetchActiveAddons();
     }
-  }, [organizationId]);
+  }, [effectiveOrganizationId]);
 
   const fetchActiveAddons = async () => {
-    if (!organizationId) return;
+    if (!effectiveOrganizationId) return;
 
     try {
       const { data, error } = await supabase
         .from("organization_addons")
         .select("id, product_id, is_active, quantity")
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .eq("is_active", true);
 
       if (error) throw error;
@@ -174,7 +222,7 @@ export default function Loja() {
   };
 
   const fetchPurchases = async () => {
-    if (!organizationId) return;
+    if (!effectiveOrganizationId) return;
 
     try {
       const { data, error } = await supabase
@@ -183,7 +231,7 @@ export default function Loja() {
           *,
           store_products (name)
         `)
-        .eq("organization_id", organizationId)
+        .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false })
         .limit(10);
 
@@ -209,7 +257,7 @@ export default function Loja() {
   };
 
   const handlePurchase = async (product: Product) => {
-    if (!organizationId) {
+    if (!effectiveOrganizationId) {
       toast({
         title: "Erro",
         description: "Organização não encontrada.",
@@ -246,14 +294,14 @@ export default function Loja() {
   const confirmPurchase = async () => {
     const product = confirmDialog.product;
     const quantity = confirmDialog.quantity;
-    if (!product || !organizationId) return;
+    if (!product || !effectiveOrganizationId) return;
 
     setPurchasing(product.id);
     setConfirmDialog({ open: false, product: null, quantity: 1 });
 
     try {
       const { data, error } = await supabase.rpc("purchase_product", {
-        _organization_id: organizationId,
+        _organization_id: effectiveOrganizationId,
         _product_id: product.id,
         _quantity: quantity,
       });
@@ -616,7 +664,7 @@ export default function Loja() {
       <PixPaymentDialog
         open={pixDialogOpen}
         onOpenChange={setPixDialogOpen}
-        organizationId={organizationId || ""}
+        organizationId={effectiveOrganizationId || ""}
         onPaymentCreated={() => {
           fetchProducts();
           fetchPurchases();
