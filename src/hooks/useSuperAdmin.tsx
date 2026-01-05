@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -21,15 +21,54 @@ interface SuperAdminContextType {
 
 const SuperAdminContext = createContext<SuperAdminContextType | undefined>(undefined);
 
+const STORAGE_KEY = "super_admin_selected_org";
+
+// Helper to get cached organization from sessionStorage
+const getCachedOrganization = (): Organization | null => {
+  try {
+    const cached = sessionStorage.getItem(STORAGE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (err) {
+    console.error("Error reading cached organization:", err);
+  }
+  return null;
+};
+
+// Helper to save organization to sessionStorage
+const setCachedOrganization = (org: Organization | null) => {
+  try {
+    if (org) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(org));
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (err) {
+    console.error("Error caching organization:", err);
+  }
+};
+
 export function SuperAdminProvider({ children }: { children: ReactNode }) {
   const { isSuperAdmin } = useUserRole();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [selectedOrganization, setSelectedOrganizationState] = useState<Organization | null>(() => {
+    // Initialize from sessionStorage
+    return getCachedOrganization();
+  });
   const [loading, setLoading] = useState(true);
+
+  const setSelectedOrganization = useCallback((org: Organization | null) => {
+    setSelectedOrganizationState(org);
+    setCachedOrganization(org);
+  }, []);
 
   const fetchOrganizations = async () => {
     if (!isSuperAdmin) {
       setLoading(false);
+      // Clear cached org if not super admin
+      setCachedOrganization(null);
+      setSelectedOrganizationState(null);
       return;
     }
 
@@ -43,6 +82,19 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
         console.error("Error fetching organizations:", error);
       } else {
         setOrganizations(data || []);
+        
+        // Validate cached organization still exists
+        const cached = getCachedOrganization();
+        if (cached && data) {
+          const stillExists = data.find(org => org.id === cached.id);
+          if (!stillExists) {
+            setSelectedOrganization(null);
+          } else {
+            // Update cached data with fresh data
+            setSelectedOrganizationState(stillExists);
+            setCachedOrganization(stillExists);
+          }
+        }
       }
     } catch (err) {
       console.error("Error fetching organizations:", err);
@@ -54,6 +106,8 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isSuperAdmin) {
       fetchOrganizations();
+    } else {
+      setLoading(false);
     }
   }, [isSuperAdmin]);
 
