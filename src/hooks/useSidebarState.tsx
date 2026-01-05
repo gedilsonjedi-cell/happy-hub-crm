@@ -16,7 +16,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     return stored === "true";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    // Initialize with actual mobile state to prevent flash
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
 
   // Detect mobile breakpoint
   useEffect(() => {
@@ -29,11 +35,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Close mobile menu on navigation
+  // Always close mobile menu on initial mount and when isMobile changes
   useEffect(() => {
-    if (isMobile) {
-      setMobileOpen(false);
-    }
+    setMobileOpen(false);
   }, [isMobile]);
 
   // Persist collapsed state
