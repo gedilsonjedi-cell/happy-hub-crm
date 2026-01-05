@@ -5,11 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-);
-
 interface MetaTemplate {
   id: string;
   name: string;
@@ -34,19 +29,31 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get user from token
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
+    // Create supabase client with the user's auth header
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
     );
 
-    if (authError || !user) {
+    // Service role client for admin operations
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Validate token using getClaims
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
+
+    if (authError || !claimsData?.claims) {
       console.error('Auth error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -54,7 +61,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('User authenticated:', user.id, user.email);
+    const userId = claimsData.claims.sub as string;
+    const userEmail = claimsData.claims.email as string;
+    console.log('User authenticated:', userId, userEmail);
 
     // Check if organization_id was passed in the request body (for SuperAdmins impersonating)
     let organizationId: string | null = null;
@@ -75,7 +84,7 @@ Deno.serve(async (req) => {
       const { data: userRole } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
 
       const isSuperAdmin = userRole?.role === 'super_admin';
@@ -96,13 +105,13 @@ Deno.serve(async (req) => {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
 
       console.log('Profile lookup result:', { profile, profileError });
 
       if (profileError || !profile?.organization_id) {
-        console.error('Organization not found for user:', user.id);
+        console.error('Organization not found for user:', userId);
         return new Response(JSON.stringify({ 
           error: 'Organization not found',
           message: 'Usuário não está associado a uma organização'
@@ -272,7 +281,7 @@ Deno.serve(async (req) => {
             const { data: newTemplate, error: insertError } = await supabase
               .from('message_templates')
               .insert({
-                user_id: user.id,
+                user_id: userId,
                 organization_id: organizationId,
                 name: metaTemplate.name,
                 content,
