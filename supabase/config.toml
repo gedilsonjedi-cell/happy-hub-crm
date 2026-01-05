@@ -71,3 +71,6 @@ verify_jwt = true
 
 [functions.auto-recharge-check]
 verify_jwt = false
+
+[functions.meta-check-phone-status]
+verify_jwt = true
