@@ -28,12 +28,12 @@ const Auth = () => {
     password: "",
   });
 
-  // Redirect if already logged in
+  // Redirect if already logged in (but NOT if showing splash)
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !showSplash) {
       navigate("/dashboard", { replace: true });
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, showSplash]);
 
   // Show loading while checking auth
   if (authLoading) {
