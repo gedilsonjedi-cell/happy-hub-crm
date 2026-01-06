@@ -650,6 +650,15 @@ Deno.serve(async (req) => {
 
         console.log('Processing status update:', { messageId, status: statusValue });
 
+        // Get the message to check if it was part of a campaign
+        const { data: messageData } = await supabase
+          .from('whatsapp_messages')
+          .select('id, status, metadata')
+          .eq('message_id', messageId)
+          .single();
+
+        const previousStatus = messageData?.status;
+
         const { error: updateError } = await supabase
           .from('whatsapp_messages')
           .update({ 
@@ -662,6 +671,39 @@ Deno.serve(async (req) => {
           console.error('Error updating message status:', updateError);
         } else {
           console.log('Message status updated:', messageId, statusValue);
+
+          // If message failed and was previously sent/delivered, update campaign counters
+          if (statusValue === 'failed' && previousStatus !== 'failed' && messageData?.metadata) {
+            const metadata = messageData.metadata as Record<string, unknown>;
+            const campaignId = metadata?.campaignId as string | undefined;
+            
+            if (campaignId) {
+              console.log('Updating campaign counters for failed message, campaignId:', campaignId);
+              
+              // Get current campaign counts
+              const { data: campaign } = await supabase
+                .from('campaigns')
+                .select('delivered_count, failed_count')
+                .eq('id', campaignId)
+                .single();
+              
+              if (campaign) {
+                // Decrement delivered, increment failed
+                const newDeliveredCount = Math.max(0, (campaign.delivered_count || 0) - 1);
+                const newFailedCount = (campaign.failed_count || 0) + 1;
+                
+                await supabase
+                  .from('campaigns')
+                  .update({ 
+                    delivered_count: newDeliveredCount,
+                    failed_count: newFailedCount
+                  })
+                  .eq('id', campaignId);
+                
+                console.log('Campaign counters updated:', { delivered: newDeliveredCount, failed: newFailedCount });
+              }
+            }
+          }
         }
       }
 
