@@ -34,7 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface Campaign {
   id: string;
   name: string;
-  status: "draft" | "scheduled" | "running" | "completed" | "failed";
+  status: "draft" | "scheduled" | "running" | "paused" | "completed" | "failed";
   total_recipients: number;
   sent_count: number;
   delivered_count: number;
