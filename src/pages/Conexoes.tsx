@@ -576,6 +576,7 @@ const Conexoes = () => {
     setIsRegistering(channel.id);
 
     try {
+      console.log(`Registering phone ${channel.app_name}...`);
       const { data, error } = await supabase.functions.invoke('meta-register-phone', {
         body: {
           phoneNumberId: channel.app_name,
@@ -585,20 +586,36 @@ const Conexoes = () => {
 
       if (error) {
         console.error('Error registering phone:', error);
-        toast.error("Erro ao registrar número");
-        return;
-      }
-
-      if (data.error) {
-        toast.error(data.error);
+        toast.error("Erro ao registrar número: " + (error.message || "Erro desconhecido"));
         return;
       }
 
       console.log('Register response:', data);
-      setChannelStatuses(prev => ({ ...prev, [channel.id]: data.status }));
 
-      if (data.registered) {
-        toast.success("Número registrado com sucesso na Cloud API!");
+      if (data.error) {
+        toast.error(data.error);
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 8000 });
+        }
+        return;
+      }
+
+      // Update local status
+      if (data.status) {
+        setChannelStatuses(prev => ({ ...prev, [channel.id]: data.status }));
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: {
+            isConnected: data.status.status === 'CONNECTED',
+            code: data.status.status || 'UNKNOWN',
+            message: data.message || 'Status atualizado',
+            qualityRating: data.status.quality_rating,
+          }
+        }));
+      }
+
+      if (data.registered || data.success) {
+        toast.success(data.message || "Número registrado com sucesso na Cloud API!");
         
         // Auto-subscribe to webhook after registration
         try {
@@ -630,9 +647,14 @@ const Conexoes = () => {
           .update({ connected: true })
           .eq("id", channel.id);
         
+        // Update local state
+        setChannels(prev => 
+          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
+        );
+        
         await fetchChannels();
       } else {
-        toast.warning("Número pode precisar de verificação adicional no Meta");
+        toast.warning(data.message || "Número pode precisar de verificação adicional no Meta");
       }
     } catch (err) {
       console.error('Register error:', err);
