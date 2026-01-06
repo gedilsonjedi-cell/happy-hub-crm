@@ -115,7 +115,7 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 
 const Usuarios = () => {
   const { user } = useAuth();
-  const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { isAdmin, isSuperAdmin, loading: roleLoading, organizationId: currentUserOrgId } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -391,18 +391,28 @@ const Usuarios = () => {
         return;
       }
 
-      // Create profile for the new user
+      // Create profile for the new user with the same organization_id as the admin
       const { error: profileError } = await supabase
         .from("profiles")
         .insert({
           user_id: authData.user.id,
           email: newUserEmail.trim(),
           display_name: newUserName.trim(),
+          organization_id: currentUserOrgId,
         });
 
       if (profileError) {
         console.error("Error creating profile:", profileError);
-        // Continue anyway - profile might be created by trigger
+        // Try updating the profile if it already exists (created by trigger)
+        if (currentUserOrgId) {
+          await supabase
+            .from("profiles")
+            .update({
+              organization_id: currentUserOrgId,
+              display_name: newUserName.trim(),
+            })
+            .eq("user_id", authData.user.id);
+        }
       }
 
       // Assign role to the new user
