@@ -188,7 +188,7 @@ const Conexoes = () => {
     }
   };
 
-  const checkMetaPhoneStatus = async (channel: Channel) => {
+  const checkMetaPhoneStatus = async (channel: Channel, forceUpdateDb: boolean = false) => {
     if (!channel.app_name || !channel.access_token) return;
     
     setIsCheckingStatus(prev => ({ ...prev, [channel.id]: true }));
@@ -221,17 +221,23 @@ const Conexoes = () => {
           [channel.id]: data.status
         }));
         
-        // Update channel.connected in database if status differs
-        if (data.status.isConnected !== channel.connected) {
+        // Only auto-update database if:
+        // 1. Meta says it's connected AND local says disconnected (auto-fix)
+        // 2. OR forceUpdateDb is true (manual button click)
+        // This prevents overwriting manual disconnection
+        if (forceUpdateDb && data.status.isConnected !== channel.connected) {
           await supabase
             .from("channels")
             .update({ connected: data.status.isConnected })
             .eq("id", channel.id);
           
-          // Also update local state to reflect the change immediately
           setChannels(prev => prev.map(ch => 
             ch.id === channel.id ? { ...ch, connected: data.status.isConnected } : ch
           ));
+          
+          if (data.status.isConnected) {
+            toast.success("Status atualizado: Conectado");
+          }
         }
       }
     } catch (err) {
@@ -566,7 +572,7 @@ const Conexoes = () => {
     }
   };
 
-  // Register phone number with Meta Cloud API
+  // Register phone number with Meta Cloud API or just activate if already registered
   const handleRegisterPhone = async (channel: Channel) => {
     if (!channel.app_name || !channel.access_token) {
       toast.error("Canal não possui Phone Number ID ou Access Token");
@@ -576,6 +582,27 @@ const Conexoes = () => {
     setIsRegistering(channel.id);
 
     try {
+      // Check if Meta already says this number is connected - if so, just activate locally
+      const metaStatus = metaPhoneStatuses[channel.id];
+      if (metaStatus?.isConnected) {
+        console.log(`Phone ${channel.app_name} already registered in Meta, just activating locally...`);
+        
+        // Update channel as connected
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+        
+        // Update local state
+        setChannels(prev => 
+          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
+        );
+        
+        toast.success("Canal ativado com sucesso!");
+        setIsRegistering(null);
+        return;
+      }
+
       console.log(`Registering phone ${channel.app_name}...`);
       const { data, error } = await supabase.functions.invoke('meta-register-phone', {
         body: {
@@ -1307,8 +1334,8 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Connected status indicator */}
-                {(channel.provider === 'zapi' ? channel.connected : (metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected)) && (
+                {/* Connected status indicator - respect local channel.connected state */}
+                {channel.connected && (channel.provider === 'zapi' || (metaPhoneStatuses[channel.id]?.isConnected !== false)) && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <div className="flex items-center gap-2">
                       <div className={cn(
@@ -1345,7 +1372,7 @@ const Conexoes = () => {
                         variant="ghost" 
                         size="sm" 
                         className="w-full gap-2 text-xs"
-                        onClick={() => checkMetaPhoneStatus(channel)}
+                        onClick={() => checkMetaPhoneStatus(channel, true)}
                         disabled={isCheckingStatus[channel.id]}
                       >
                         {isCheckingStatus[channel.id] ? (
@@ -1364,9 +1391,17 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Show registration button for disconnected Meta channels */}
-                {channel.provider === 'meta' && !(metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected) && (
+                {/* Show registration button for disconnected Meta channels - respect local channel.connected state */}
+                {channel.provider === 'meta' && !channel.connected && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    {/* Show info when Meta says connected but locally disconnected */}
+                    {metaPhoneStatuses[channel.id]?.isConnected && (
+                      <div className="p-2 bg-blue-500/10 rounded border border-blue-500/20 mb-2">
+                        <p className="text-xs text-blue-400">
+                          Número registrado no Meta. Clique para ativar no sistema.
+                        </p>
+                      </div>
+                    )}
                     {/* Show error message if there's an issue */}
                     {metaPhoneStatuses[channel.id]?.code === 'TOKEN_EXPIRED' && (
                       <div className="p-2 bg-red-500/10 rounded border border-red-500/20 mb-2">
@@ -1394,6 +1429,11 @@ const Conexoes = () => {
                           <Loader2 className="w-3 h-3 animate-spin" />
                           Registrando...
                         </>
+                      ) : metaPhoneStatuses[channel.id]?.isConnected ? (
+                        <>
+                          <Power className="w-3 h-3" />
+                          Ativar no Sistema
+                        </>
                       ) : (
                         <>
                           <Power className="w-3 h-3" />
@@ -1414,7 +1454,7 @@ const Conexoes = () => {
                       variant="ghost" 
                       size="sm" 
                       className="w-full gap-2 text-xs"
-                      onClick={() => checkMetaPhoneStatus(channel)}
+                      onClick={() => checkMetaPhoneStatus(channel, true)}
                       disabled={isCheckingStatus[channel.id]}
                     >
                       {isCheckingStatus[channel.id] ? (
