@@ -463,7 +463,7 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { campaignId, action, recipients, manualVariables } = await req.json();
+    const { campaignId, action, recipients: providedRecipients, manualVariables } = await req.json();
 
     if (!campaignId) {
       return new Response(
@@ -472,11 +472,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if this is a resume action (no recipients provided)
+    let recipients = providedRecipients;
+    
     if (!recipients || recipients.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Recipients list is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // Try to get campaign data to resume
+      const { data: campaign, error: campaignError } = await supabase
+        .from('campaigns')
+        .select('*, campaign_channels(channel_id, template_id)')
+        .eq('id', campaignId)
+        .single();
+      
+      if (campaignError || !campaign) {
+        return new Response(
+          JSON.stringify({ error: 'Campaign not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Get the organization_id from campaign
+      const orgId = campaign.organization_id;
+      
+      // Fetch all leads for this organization to use as recipients
+      const { data: leads, error: leadsError } = await supabase
+        .from('leads')
+        .select('phone')
+        .eq('organization_id', orgId)
+        .limit(campaign.total_recipients);
+      
+      if (leadsError || !leads || leads.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'No recipients found for campaign resume' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      recipients = leads.map(l => l.phone);
+      console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from database`);
     }
 
     console.log(`Processing campaign ${campaignId} with action: ${action}`);
