@@ -1483,8 +1483,14 @@ const WhatsAppChat = () => {
 
     // Check if it's a template message
     if (message.message_type === "template" || message.content?.startsWith("Template:")) {
-      // Get template name from content or metadata
-      const metadata = message.metadata as { templateName?: string; templateParams?: string[] } | null;
+      // Get template data from metadata
+      const metadata = message.metadata as { 
+        templateName?: string; 
+        templateParams?: string[]; 
+        templateContent?: string;
+        templateButtons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>;
+      } | null;
+      
       let templateName = metadata?.templateName || "";
       const templateParams = metadata?.templateParams || [];
       
@@ -1496,9 +1502,12 @@ const WhatsAppChat = () => {
       // Get template content from our cached templates
       const templateData = templates.get(templateName);
       
-      if (templateData) {
+      // Use cached template or fallback to metadata content
+      let displayContent = templateData?.content || metadata?.templateContent || "";
+      const buttons = templateData?.components?.buttons || metadata?.templateButtons || [];
+      
+      if (displayContent) {
         // Replace {{1}}, {{2}}, etc. with actual params
-        let displayContent = templateData.content;
         templateParams.forEach((param, index) => {
           const placeholder = `{{${index + 1}}}`;
           displayContent = displayContent.replace(placeholder, param);
@@ -1506,12 +1515,8 @@ const WhatsAppChat = () => {
 
         // Also replace *[VARIABLE]* style placeholders if any remain
         displayContent = displayContent.replace(/\*?\[[A-Z_]+\]\*?/g, (match) => {
-          // Just show the placeholder as-is if not replaced
           return match;
         });
-
-        // Get buttons from components
-        const buttons = templateData.components?.buttons || [];
 
         return (
           <div className="space-y-2">
@@ -1555,14 +1560,14 @@ const WhatsAppChat = () => {
         );
       }
       
-      // Fallback: show original content if template not found
+      // Fallback: show template name only if no content found
       return (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
             <FileText className="w-3 h-3" />
-            <span>{templateName || "Template"}</span>
+            <span className="font-medium">{templateName || "Template"}</span>
           </div>
-          <p className="text-sm text-muted-foreground italic">Template não encontrado</p>
+          <p className="text-sm text-muted-foreground italic">Conteúdo do template indisponível</p>
         </div>
       );
     }
