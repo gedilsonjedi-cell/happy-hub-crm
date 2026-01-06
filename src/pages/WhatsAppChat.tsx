@@ -723,14 +723,14 @@ const WhatsAppChat = () => {
                   return prev; // No change needed
                 }
                 
-                // If archived and new inbound message comes, move to in_progress
+                // If archived and new inbound message comes, move to pending (Novos - aguardando atendimento)
                 let newStatus = existing.status;
                 if (existing.status === "archived") {
-                  newStatus = "in_progress";
+                  newStatus = "pending";
                   // Update status in localStorage
                   setConversationStatuses(prevStatuses => ({
                     ...prevStatuses,
-                    [`${existing.channelId}_${existing.phone.replace(/\D/g, '')}`]: "in_progress"
+                    [`${existing.channelId}_${existing.phone.replace(/\D/g, '')}`]: "pending"
                   }));
                 }
                 
