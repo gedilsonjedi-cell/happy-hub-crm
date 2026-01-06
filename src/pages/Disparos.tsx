@@ -506,8 +506,26 @@ const Disparos = () => {
     fetchData();
   };
 
-  const handleViewDetails = (campaignId: string) => {
-    const campaign = campaigns.find(c => c.id === campaignId);
+  const handleViewDetails = async (campaignId: string) => {
+    // Try to find in local state first
+    let campaign = campaigns.find(c => c.id === campaignId);
+    
+    // If not found (e.g., from progress bar), fetch from database
+    if (!campaign) {
+      const { data } = await supabase
+        .from("campaigns")
+        .select("*")
+        .eq("id", campaignId)
+        .single();
+      
+      if (data) {
+        campaign = {
+          ...data,
+          status: data.status as Campaign["status"]
+        };
+      }
+    }
+    
     if (campaign) {
       setSelectedCampaign(campaign);
       setShowDetailsDialog(true);
