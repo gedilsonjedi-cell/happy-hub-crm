@@ -26,20 +26,28 @@ serve(async (req) => {
     // Create client with service role for admin operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Verify the requesting user is a super admin using the token
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user: requestingUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    // Create a client with the user's token to verify authentication
+    const supabaseAnon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } }
+    });
     
-    if (authError || !requestingUser) {
+    // Verify the requesting user using getClaims
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error("Auth claims error:", claimsError);
       return new Response(JSON.stringify({ error: "Invalid authorization" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    
+    const requestingUserId = claimsData.claims.sub;
 
     // Check if requesting user is super admin
     const { data: isSuperAdmin } = await supabaseAdmin.rpc('is_super_admin', {
-      _user_id: requestingUser.id,
+      _user_id: requestingUserId,
     });
 
     if (!isSuperAdmin) {
