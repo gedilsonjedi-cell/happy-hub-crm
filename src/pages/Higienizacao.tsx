@@ -904,9 +904,11 @@ export default function Higienizacao() {
       custom_fields: e.customFields || {},
       user_id: user.id,
       organization_id: profile.organization_id,
-      status: "new",
+      status: "new" as const,
       tags: selectedTagsForSave.length > 0 ? selectedTagsForSave : null,
     }));
+    
+    console.log("Leads to insert:", JSON.stringify(leadsToInsert[0], null, 2));
     
     const { error } = await supabase.from("leads").insert(leadsToInsert);
     
