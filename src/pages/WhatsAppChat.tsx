@@ -1558,11 +1558,18 @@ const WhatsAppChat = () => {
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   };
 
-  // Active conversations (not archived)
-  const activeConversations = conversations.filter(conv => conv.status !== "archived");
+  // Check if conversation has received a response (has inbound message)
+  const hasClientResponse = (conv: Conversation) => conv.lastInboundTime !== null;
+
+  // Active conversations: those with client response and not archived
+  const activeConversations = conversations.filter(conv => 
+    conv.status !== "archived" && hasClientResponse(conv)
+  );
   
-  // Archived conversations
-  const archivedConversations = conversations.filter(conv => conv.status === "archived");
+  // Archived conversations: explicitly archived OR no client response yet (campaign dispatches)
+  const archivedConversations = conversations.filter(conv => 
+    conv.status === "archived" || !hasClientResponse(conv)
+  );
 
   // Get user role for permission checks
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
@@ -1576,7 +1583,7 @@ const WhatsAppChat = () => {
     // Filter by tab
     let matchesFilter = false;
     if (filterStatus === "new") {
-      // "Novos" - conversas SEM atendente atribuído
+      // "Novos" - conversas que o cliente RESPONDEU e SEM atendente atribuído
       matchesFilter = !conv.assignedTo;
     } else if (filterStatus === "mine") {
       // "Meus" - conversas atribuídas ao usuário logado
