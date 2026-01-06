@@ -1048,6 +1048,31 @@ const WhatsAppChat = () => {
             ? { ...m, message_id: data.messageId, status: "sent" }
             : m
         ));
+
+        // Auto-assign conversation to current user if not already assigned
+        if (!selectedConversation.assignedTo && user?.id) {
+          const { error: assignError } = await supabase
+            .from('conversation_assignments')
+            .upsert({
+              conversation_phone: selectedConversation.phone,
+              channel_id: conversationChannelId,
+              assigned_to: user.id,
+              assigned_at: new Date().toISOString(),
+              status: 'in_progress'
+            }, {
+              onConflict: 'conversation_phone,channel_id'
+            });
+
+          if (!assignError) {
+            // Update local state
+            setConversations(prev => prev.map(c => 
+              c.phone === selectedConversation.phone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' }
+                : c
+            ));
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+          }
+        }
       } else {
         toast.error(data.error || 'Erro ao enviar mensagem');
         // Remove optimistic message on error
@@ -1116,6 +1141,30 @@ const WhatsAppChat = () => {
         };
         setMessages(prev => [...prev, optimisticMessage]);
         toast.success(mediaData.mediaType === 'ptt' ? "Áudio enviado!" : "Mídia enviada!");
+
+        // Auto-assign conversation to current user if not already assigned
+        if (!selectedConversation.assignedTo && user?.id) {
+          const { error: assignError } = await supabase
+            .from('conversation_assignments')
+            .upsert({
+              conversation_phone: selectedConversation.phone,
+              channel_id: conversationChannelId,
+              assigned_to: user.id,
+              assigned_at: new Date().toISOString(),
+              status: 'in_progress'
+            }, {
+              onConflict: 'conversation_phone,channel_id'
+            });
+
+          if (!assignError) {
+            setConversations(prev => prev.map(c => 
+              c.phone === selectedConversation.phone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' }
+                : c
+            ));
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+          }
+        }
       } else {
         toast.error(data.error || 'Erro ao enviar mídia');
       }
