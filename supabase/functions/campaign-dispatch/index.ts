@@ -118,10 +118,11 @@ function replaceVariables(
   return result;
 }
 
-// Max messages per batch - edge functions can run longer with waitUntil
-// But we still need to re-invoke to prevent any timeout issues
-// Processing 25 messages per batch with ~60s intervals = ~25 min per batch
-const BATCH_SIZE = 25;
+// Max messages per batch - edge functions have a 400s wall time limit
+// With EdgeRuntime.waitUntil we can process much larger batches
+// Processing 100 messages per batch with ~30s avg intervals = ~50 min per batch
+// Edge function will handle the full batch without needing re-invocation in most cases
+const BATCH_SIZE = 100;
 
 // Background task to process campaign dispatch in batches
 async function processCampaignDispatch(
@@ -443,17 +444,20 @@ async function processCampaignDispatch(
     if (batchEnd < campaignRecipients.length) {
       console.log(`[Background] Batch complete. ${batchEnd}/${campaignRecipients.length} processed. Triggering next batch...`);
       
-      // Wait interval before starting next batch
-      const batchInterval = getRandomInterval(minInterval, maxInterval);
+      // Wait a short interval before starting next batch (3-10 seconds for quick continuation)
+      const batchInterval = getRandomInterval(3, 10);
       console.log(`[Background] ⏱ Waiting ${batchInterval} seconds before next batch...`);
       await sleep(batchInterval * 1000);
       
-      // Re-invoke the function to continue with next batch - with retry logic
+      // Re-invoke the function to continue with next batch - with robust retry logic
       let retryCount = 0;
-      const maxRetries = 3;
+      const maxRetries = 5;
+      let success = false;
       
-      while (retryCount < maxRetries) {
+      while (retryCount < maxRetries && !success) {
         try {
+          console.log(`[Background] Triggering next batch (attempt ${retryCount + 1}/${maxRetries})...`);
+          
           const continueResponse = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
             method: 'POST',
             headers: {
@@ -468,23 +472,35 @@ async function processCampaignDispatch(
             }),
           });
           
+          const responseText = await continueResponse.text();
+          console.log(`[Background] Next batch response: ${continueResponse.status} - ${responseText.substring(0, 200)}`);
+          
           if (continueResponse.ok) {
             console.log(`[Background] ✓ Next batch triggered successfully`);
-            break;
+            success = true;
           } else {
-            throw new Error(`HTTP ${continueResponse.status}`);
+            throw new Error(`HTTP ${continueResponse.status}: ${responseText}`);
           }
         } catch (continueError) {
           retryCount++;
           console.error(`[Background] Retry ${retryCount}/${maxRetries} - Failed to trigger next batch:`, continueError);
           
           if (retryCount < maxRetries) {
-            // Wait 5 seconds before retry
-            await sleep(5000);
-          } else {
-            console.error('[Background] All retries failed. Campaign will need manual resume.');
+            // Exponential backoff: 3s, 6s, 12s, 24s, 48s
+            const backoffTime = 3000 * Math.pow(2, retryCount - 1);
+            console.log(`[Background] Waiting ${backoffTime/1000}s before retry...`);
+            await sleep(backoffTime);
           }
         }
+      }
+      
+      if (!success) {
+        console.error('[Background] All retries failed. Marking campaign as paused for manual resume.');
+        // Mark as paused so user knows it needs attention - sent_count is already updated for resume
+        await supabase
+          .from('campaigns')
+          .update({ status: 'paused' })
+          .eq('id', campaignId);
       }
     } else {
       // All recipients processed - mark campaign as completed
