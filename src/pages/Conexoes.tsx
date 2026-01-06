@@ -227,6 +227,11 @@ const Conexoes = () => {
             .from("channels")
             .update({ connected: data.status.isConnected })
             .eq("id", channel.id);
+          
+          // Also update local state to reflect the change immediately
+          setChannels(prev => prev.map(ch => 
+            ch.id === channel.id ? { ...ch, connected: data.status.isConnected } : ch
+          ));
         }
       }
     } catch (err) {
@@ -1242,12 +1247,12 @@ const Conexoes = () => {
                         variant="outline" 
                         className={cn(
                           "text-xs",
-                          channel.connected 
+                          (metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected)
                             ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
                             : "bg-amber-500/10 text-amber-500 border-amber-500/30"
                         )}
                       >
-                        {channel.connected ? "Ativo" : "Pendente"}
+                        {(metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected) ? "Ativo" : "Pendente"}
                       </Badge>
                     )
                   ) : (
