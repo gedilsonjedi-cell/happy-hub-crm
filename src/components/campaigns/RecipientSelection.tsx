@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 type RecipientSourceType = "contacts" | "numbers" | null;
 type ContactFilterType = "tag" | "upload_date" | "all";
@@ -45,6 +46,7 @@ interface RecipientSelectionProps {
 
 export function RecipientSelection({ onSelectionChange }: RecipientSelectionProps) {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [sourceType, setSourceType] = useState<RecipientSourceType>(null);
   const [filterType, setFilterType] = useState<ContactFilterType>("all");
   
@@ -64,10 +66,10 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
 
   // Fetch leads when source type is contacts
   useEffect(() => {
-    if (sourceType === "contacts" && user) {
+    if (sourceType === "contacts" && user && effectiveOrganizationId) {
       fetchLeads();
     }
-  }, [sourceType, user]);
+  }, [sourceType, user, effectiveOrganizationId]);
 
   // Filter leads based on filter type
   useEffect(() => {
@@ -116,10 +118,13 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
   }, [sourceType, selectedLeadIds, parsedNumbers, leads]);
 
   const fetchLeads = async () => {
+    if (!effectiveOrganizationId) return;
+    
     setLoadingLeads(true);
     const { data, error } = await supabase
       .from("leads")
       .select("id, name, phone, tags, created_at")
+      .eq("organization_id", effectiveOrganizationId)
       .order("created_at", { ascending: false });
 
     if (!error && data) {
