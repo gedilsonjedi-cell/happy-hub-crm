@@ -60,20 +60,16 @@ serve(async (req) => {
       );
     }
 
-    // Check if phone has valid data indicating it's working
-    const hasValidData = initialStatus.id && (initialStatus.verified_name || initialStatus.display_phone_number);
-    const hasQualityRating = initialStatus.quality_rating && initialStatus.quality_rating !== '';
-    
-    // If already connected/registered with valid data, no need to register again
-    if (initialStatus.status === 'CONNECTED' || (hasValidData && hasQualityRating)) {
-      console.log(`[meta-register-phone] Phone already connected or has valid data!`);
+    // If status is CONNECTED, we're good
+    if (initialStatus.status === 'CONNECTED') {
+      console.log(`[meta-register-phone] Phone already CONNECTED!`);
       return new Response(
         JSON.stringify({ 
           success: true,
           registered: true,
           alreadyConnected: true,
-          status: { ...initialStatus, status: 'CONNECTED' },
-          message: 'Número já está registrado e conectado!'
+          status: initialStatus,
+          message: 'Número já está conectado!'
         }),
         { 
           status: 200, 
@@ -85,12 +81,13 @@ serve(async (req) => {
     // Step 2: Try to register the phone number
     const registerUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/register`;
     
+    // Use provided PIN or default
     const registerPayload = {
       messaging_product: 'whatsapp',
-      pin: pin || '123456' // Default PIN
+      pin: pin || '123456'
     };
 
-    console.log(`[meta-register-phone] Calling register API for ${phoneNumberId}`);
+    console.log(`[meta-register-phone] Calling register API for ${phoneNumberId} with PIN`);
     
     const registerResponse = await fetch(registerUrl, {
       method: 'POST',
@@ -110,19 +107,39 @@ serve(async (req) => {
     if (registerData.error) {
       const errorCode = registerData.error.code;
       const errorMessage = registerData.error.message || '';
+      const errorSubcode = registerData.error.error_subcode;
       
       // Check if it's "already registered" error - this is OK
       if (errorCode === 131031 || errorMessage.includes('already registered')) {
         console.log(`[meta-register-phone] Phone already registered (expected)`);
         registerSuccess = true;
       } 
-      // Error 131000 is a generic Meta error - could be temporary or config issue
-      else if (errorCode === 131000) {
-        console.log(`[meta-register-phone] Got error 131000 - checking if phone is actually registered...`);
+      // Error 136025 is invalid PIN
+      else if (errorCode === 136025 || errorSubcode === 136025) {
+        console.log(`[meta-register-phone] Invalid PIN error`);
         registerError = {
           code: errorCode,
-          message: 'Erro genérico do Meta. O número pode já estar registrado em outro app ou haver um problema temporário.',
-          suggestion: 'Verifique no Meta Business Suite se o número está ativo. Se persistir, pode ser necessário criar um novo app no Meta Developer Console.'
+          message: 'PIN de verificação inválido. Por favor, insira o PIN correto.',
+          requiresPin: true,
+          suggestion: 'Se você não definiu um PIN, tente 123456 ou acesse o Meta Business Suite para verificar.'
+        };
+      }
+      // Error 131000 is a generic Meta error
+      else if (errorCode === 131000) {
+        console.log(`[meta-register-phone] Got error 131000 - generic error`);
+        registerError = {
+          code: errorCode,
+          message: 'Erro genérico do Meta. Pode haver um problema temporário ou o número precisa de ação no Meta Business Suite.',
+          suggestion: 'Acesse o Meta Business Suite > WhatsApp Manager e verifique se há alguma pendência para este número.'
+        };
+      }
+      // Error 100 with subcode 33 - phone not in WABA
+      else if (errorCode === 100) {
+        console.log(`[meta-register-phone] Error 100 - possible WABA issue`);
+        registerError = {
+          code: errorCode,
+          message: 'Este número pode não estar associado ao WABA correto ou precisa ser adicionado primeiro.',
+          suggestion: 'Verifique no Meta Business Suite se o número está vinculado à conta WhatsApp Business correta.'
         };
       }
       else {
@@ -135,6 +152,7 @@ serve(async (req) => {
       }
     } else {
       registerSuccess = true;
+      console.log(`[meta-register-phone] Registration successful!`);
     }
 
     // Step 3: Subscribe phone number to webhook (IMPORTANT for receiving messages!)
@@ -157,6 +175,9 @@ serve(async (req) => {
     // Step 4: Always check final status
     console.log(`[meta-register-phone] Fetching final phone status...`);
     
+    // Wait a bit for Meta to process
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     const finalStatusResponse = await fetch(statusUrl, {
       method: 'GET',
       headers: {
@@ -171,20 +192,14 @@ serve(async (req) => {
     // Add subscription info to status
     finalStatus.webhookSubscribed = subscribeData.success === true;
     
-    // Check if phone has valid data indicating it's working
-    const finalHasValidData = finalStatus.id && (finalStatus.verified_name || finalStatus.display_phone_number);
-    const finalHasQualityRating = finalStatus.quality_rating && finalStatus.quality_rating !== '';
-    
-    // If status shows CONNECTED or has valid data, the phone is working
-    const isConnected = finalStatus.status === 'CONNECTED' || (finalHasValidData && finalHasQualityRating);
-    
-    if (isConnected) {
+    // If status shows CONNECTED, the phone is working
+    if (finalStatus.status === 'CONNECTED') {
       return new Response(
         JSON.stringify({ 
           success: true,
           registered: true,
-          status: { ...finalStatus, status: 'CONNECTED' },
-          message: 'Número está conectado e pronto para uso!'
+          status: finalStatus,
+          message: 'Número conectado com sucesso!'
         }),
         { 
           status: 200, 
@@ -193,13 +208,14 @@ serve(async (req) => {
       );
     }
 
-    // If we had a register error and status is not CONNECTED
+    // If we had a register error and status is still PENDING
     if (registerError) {
       return new Response(
         JSON.stringify({ 
           error: registerError.message,
           code: registerError.code,
           suggestion: registerError.suggestion,
+          requiresPin: registerError.requiresPin,
           status: finalStatus,
           details: registerError.details
         }),
@@ -210,15 +226,30 @@ serve(async (req) => {
       );
     }
 
-    // Register was successful but status not yet CONNECTED
+    // If still PENDING after registration attempt
+    if (finalStatus.status === 'PENDING') {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          pending: true,
+          status: finalStatus,
+          message: 'Número ainda está pendente. Pode ser necessário verificar no Meta Business Suite.',
+          suggestion: 'Acesse: Meta Business Suite > WhatsApp Manager > Configurações do telefone e complete qualquer verificação pendente.'
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Other success scenarios
     return new Response(
       JSON.stringify({ 
-        success: true,
+        success: registerSuccess,
         registered: registerSuccess,
         status: finalStatus,
-        message: finalStatus.status === 'PENDING' 
-          ? 'Registro enviado. Aguarde a verificação do Meta.'
-          : `Status atual: ${finalStatus.status || 'Desconhecido'}`
+        message: `Status atual: ${finalStatus.status || 'Desconhecido'}`
       }),
       { 
         status: 200, 

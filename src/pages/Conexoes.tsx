@@ -622,7 +622,7 @@ const Conexoes = () => {
       if (data.error) {
         toast.error(data.error);
         if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 8000 });
+          toast.info(data.suggestion, { duration: 10000 });
         }
         return;
       }
@@ -639,6 +639,15 @@ const Conexoes = () => {
             qualityRating: data.status.quality_rating,
           }
         }));
+      }
+
+      // Handle PENDING status specifically
+      if (data.pending) {
+        toast.warning("Número ainda está pendente de verificação", { duration: 5000 });
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 12000 });
+        }
+        return;
       }
 
       if (data.registered || data.success) {
@@ -682,6 +691,9 @@ const Conexoes = () => {
         await fetchChannels();
       } else {
         toast.warning(data.message || "Número pode precisar de verificação adicional no Meta");
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 10000 });
+        }
       }
     } catch (err) {
       console.error('Register error:', err);
@@ -1399,6 +1411,22 @@ const Conexoes = () => {
                       <div className="p-2 bg-blue-500/10 rounded border border-blue-500/20 mb-2">
                         <p className="text-xs text-blue-400">
                           Número registrado no Meta. Clique para ativar no sistema.
+                        </p>
+                      </div>
+                    )}
+                    {/* Show PENDING warning with instructions */}
+                    {metaPhoneStatuses[channel.id]?.code === 'PENDING' && !metaPhoneStatuses[channel.id]?.isConnected && (
+                      <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20 mb-2">
+                        <p className="text-xs text-amber-400 font-medium mb-1">
+                          ⚠️ Número pendente de verificação no Meta
+                        </p>
+                        <p className="text-xs text-amber-400/80">
+                          Acesse o <a 
+                            href="https://business.facebook.com/settings/whatsapp-business-accounts" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="underline hover:text-amber-300"
+                          >Meta Business Suite</a> → WhatsApp Manager → Configurações do telefone e complete qualquer verificação pendente.
                         </p>
                       </div>
                     )}
