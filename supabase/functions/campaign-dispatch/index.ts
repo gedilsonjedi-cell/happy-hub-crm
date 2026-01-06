@@ -118,10 +118,10 @@ function replaceVariables(
   return result;
 }
 
-// Max messages per batch to avoid timeout (edge function has ~60s limit)
-// With 45-75 second intervals, we can only do ~1 message per minute
-// So we process 10 messages per batch and then re-invoke
-const BATCH_SIZE = 10;
+// Max messages per batch - edge functions can run longer with waitUntil
+// But we still need to re-invoke to prevent any timeout issues
+// Processing 25 messages per batch with ~60s intervals = ~25 min per batch
+const BATCH_SIZE = 25;
 
 // Background task to process campaign dispatch in batches
 async function processCampaignDispatch(
@@ -441,33 +441,50 @@ async function processCampaignDispatch(
 
     // Check if there are more recipients to process
     if (batchEnd < campaignRecipients.length) {
-      console.log(`[Background] Batch complete. Triggering next batch starting at ${batchEnd}...`);
+      console.log(`[Background] Batch complete. ${batchEnd}/${campaignRecipients.length} processed. Triggering next batch...`);
       
-      // Wait a short interval before starting next batch
+      // Wait interval before starting next batch
       const batchInterval = getRandomInterval(minInterval, maxInterval);
       console.log(`[Background] ⏱ Waiting ${batchInterval} seconds before next batch...`);
       await sleep(batchInterval * 1000);
       
-      // Re-invoke the function to continue with next batch
-      try {
-        const continueResponse = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            campaignId: campaignId,
-            action: 'continue',
-            recipients: recipients, // Pass original recipients
-            manualVariables: manualVariables
-          }),
-        });
-        
-        console.log(`[Background] Next batch triggered, status: ${continueResponse.status}`);
-      } catch (continueError) {
-        console.error('[Background] Failed to trigger next batch:', continueError);
-        // Don't fail the campaign, let the user manually resume
+      // Re-invoke the function to continue with next batch - with retry logic
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          const continueResponse = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              campaignId: campaignId,
+              action: 'continue',
+              recipients: recipients,
+              manualVariables: manualVariables
+            }),
+          });
+          
+          if (continueResponse.ok) {
+            console.log(`[Background] ✓ Next batch triggered successfully`);
+            break;
+          } else {
+            throw new Error(`HTTP ${continueResponse.status}`);
+          }
+        } catch (continueError) {
+          retryCount++;
+          console.error(`[Background] Retry ${retryCount}/${maxRetries} - Failed to trigger next batch:`, continueError);
+          
+          if (retryCount < maxRetries) {
+            // Wait 5 seconds before retry
+            await sleep(5000);
+          } else {
+            console.error('[Background] All retries failed. Campaign will need manual resume.');
+          }
+        }
       }
     } else {
       // All recipients processed - mark campaign as completed
