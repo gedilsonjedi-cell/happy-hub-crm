@@ -538,7 +538,31 @@ const Usuarios = () => {
     }
   };
 
-  // Open user sector dialog
+  // Delete user completely (from auth.users)
+  const handleDeleteUser = async (userId: string, displayName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir permanentemente o usuário "${displayName}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke("create-user-role", {
+        body: {
+          action: "delete_user",
+          user_id: userId,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success("Usuário excluído permanentemente!");
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      toast.error(error.message || "Erro ao excluir usuário");
+    }
+  };
+
   const openUserSectorDialog = (userToEdit: UserWithRole) => {
     setEditingUser(userToEdit);
     // Get sector IDs for this user
@@ -876,6 +900,15 @@ const Usuarios = () => {
                                     </>
                                   )}
                                 </DropdownMenuItem>
+                                {isSuperAdmin && (
+                                  <DropdownMenuItem 
+                                    onClick={() => handleDeleteUser(u.id, u.display_name || u.email)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Excluir Permanentemente
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>

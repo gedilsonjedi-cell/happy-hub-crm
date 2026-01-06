@@ -157,6 +157,43 @@ export default function SuperAdmin() {
   
   // Subscription pricing
   const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing | null>(null);
+  
+  // Fix orphan user state
+  const [orphanUserId, setOrphanUserId] = useState("");
+  const [isDeletingOrphan, setIsDeletingOrphan] = useState(false);
+
+  // Delete orphan user (user in auth.users without profile)
+  const handleDeleteOrphanUser = async () => {
+    if (!orphanUserId.trim()) {
+      toast.error("Digite o ID do usuário");
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja excluir o usuário com ID "${orphanUserId}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setIsDeletingOrphan(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-user-role", {
+        body: {
+          action: "delete_user",
+          user_id: orphanUserId.trim(),
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success("Usuário órfão excluído com sucesso!");
+      setOrphanUserId("");
+    } catch (error: any) {
+      console.error("Error deleting orphan user:", error);
+      toast.error(error.message || "Erro ao excluir usuário órfão");
+    } finally {
+      setIsDeletingOrphan(false);
+    }
+  };
 
   useEffect(() => {
     // Only redirect after role has been fully loaded and confirmed not super_admin
@@ -1404,6 +1441,39 @@ export default function SuperAdmin() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Emergency Fix - Delete Orphan User */}
+        <Card className="mt-6 border-destructive/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Correção de Emergência
+            </CardTitle>
+            <CardDescription>
+              Deletar usuário órfão (existe em auth.users mas não tem profile)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                placeholder="ID do usuário (UUID)"
+                value={orphanUserId}
+                onChange={(e) => setOrphanUserId(e.target.value)}
+                className="max-w-md"
+              />
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteOrphanUser}
+                disabled={isDeletingOrphan || !orphanUserId.trim()}
+              >
+                {isDeletingOrphan ? "Excluindo..." : "Excluir Usuário"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Use para deletar: <code className="bg-muted px-1 rounded">55b7662e-6904-452f-9e3f-31e034633519</code> (supervisor órfão com email financeiro@lepfinanceira.com.br)
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
