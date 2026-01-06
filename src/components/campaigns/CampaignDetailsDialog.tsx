@@ -24,6 +24,7 @@ import {
   Calendar,
   Timer,
   Play,
+  Pause,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -60,10 +61,11 @@ interface CampaignDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
   draft: { label: "Rascunho", className: "bg-muted text-muted-foreground border-border", icon: MessageSquare },
   scheduled: { label: "Agendada", className: "bg-warning/10 text-warning border-warning/30", icon: Clock },
   running: { label: "Enviando", className: "bg-blue-500/10 text-blue-400 border-blue-400/30", icon: Play },
+  paused: { label: "Pausada", className: "bg-yellow-500/10 text-yellow-400 border-yellow-400/30", icon: Pause },
   completed: { label: "Concluída", className: "bg-primary/10 text-primary border-primary/30", icon: CheckCircle },
   failed: { label: "Falhou", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
 };
