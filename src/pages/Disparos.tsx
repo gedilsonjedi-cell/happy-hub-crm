@@ -69,6 +69,8 @@ interface MessageTemplate {
   id: string;
   name: string;
   content: string;
+  variables?: string[] | null;
+  variable_mappings?: Record<string, string> | null;
 }
 
 interface ChannelTemplate {
@@ -129,6 +131,7 @@ const Disparos = () => {
     phones: [],
     source: null
   });
+  const [manualVariables, setManualVariables] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     campaignName: "",
     team: "",
@@ -160,17 +163,23 @@ const Disparos = () => {
     {
       id: "demo-template-1",
       name: "Boas-vindas",
-      content: "Olá {{nome}}! 👋 Seja bem-vindo(a) à nossa empresa. Estamos felizes em tê-lo conosco!"
+      content: "Olá {{nome}}! 👋 Seja bem-vindo(a) à nossa empresa. Estamos felizes em tê-lo conosco!",
+      variables: null,
+      variable_mappings: null
     },
     {
       id: "demo-template-2", 
       name: "Promoção Especial",
-      content: "🎉 {{nome}}, temos uma oferta exclusiva para você! Aproveite 20% de desconto usando o cupom PROMO20."
+      content: "🎉 {{nome}}, temos uma oferta exclusiva para você! Aproveite 20% de desconto usando o cupom PROMO20.",
+      variables: null,
+      variable_mappings: null
     },
     {
       id: "demo-template-3",
       name: "Lembrete de Agendamento",
-      content: "📅 Olá {{nome}}, lembrando do seu agendamento amanhã às {{horario}}. Confirme sua presença!"
+      content: "📅 Olá {{nome}}, lembrando do seu agendamento amanhã às {{horario}}. Confirme sua presença!",
+      variables: null,
+      variable_mappings: null
     }
   ];
 
@@ -195,7 +204,7 @@ const Disparos = () => {
     // Fetch templates (only approved ones for dispatching)
     const { data: templatesData } = await supabase
       .from("message_templates")
-      .select("id, name, content")
+      .select("id, name, content, variables, variable_mappings")
       .eq("organization_id", effectiveOrganizationId)
       .eq("status", "approved");
 
@@ -224,7 +233,10 @@ const Disparos = () => {
     const realRelations = ctData || [];
 
     setChannels([demoChannel, ...realChannels]);
-    setTemplates([...demoTemplates, ...realTemplates]);
+    setTemplates([...demoTemplates, ...realTemplates.map(t => ({
+      ...t,
+      variable_mappings: t.variable_mappings as Record<string, string> | null
+    }))]);
     setChannelTemplateRelations([...demoChannelTemplateRelations, ...realRelations]);
     setCampaigns((campaignsData || []).map(c => ({
       ...c,
@@ -254,6 +266,35 @@ const Disparos = () => {
         );
       });
     });
+  };
+
+  // Get manual variables for the selected template (variables without auto-mapping)
+  const getManualVariablesForTemplate = (templateId: string): string[] => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template || !template.variables) return [];
+    
+    return template.variables.filter(varName => {
+      const mapping = template.variable_mappings?.[varName];
+      // Variable is manual if no mapping or mapping is empty/null/undefined
+      return !mapping || mapping === '' || mapping === 'manual';
+    });
+  };
+
+  // Get current selected template's manual variables
+  const currentManualVariables = formData.unifiedTemplate 
+    ? getManualVariablesForTemplate(formData.unifiedTemplate) 
+    : [];
+
+  // Handle template selection - reset manual variables when template changes
+  const handleTemplateChange = (templateId: string) => {
+    setFormData({ ...formData, unifiedTemplate: templateId });
+    // Reset manual variables for new template
+    const manualVars = getManualVariablesForTemplate(templateId);
+    const newManualValues: Record<string, string> = {};
+    manualVars.forEach(v => {
+      newManualValues[v] = '';
+    });
+    setManualVariables(newManualValues);
   };
 
   const toggleChannel = (channelId: string) => {
@@ -341,6 +382,15 @@ const Disparos = () => {
     if (useUnifiedTemplate && !formData.unifiedTemplate) {
       toast.error("Selecione um template");
       return;
+    }
+
+    // Check if all manual variables are filled
+    if (useUnifiedTemplate && currentManualVariables.length > 0) {
+      const emptyVars = currentManualVariables.filter(v => !manualVariables[v]?.trim());
+      if (emptyVars.length > 0) {
+        toast.error(`Preencha todas as variáveis: ${emptyVars.join(', ')}`);
+        return;
+      }
     }
 
     if (!useUnifiedTemplate) {
@@ -455,7 +505,8 @@ const Disparos = () => {
           body: { 
             campaignId: campaign.id, 
             action: 'start',
-            recipients: recipientData.phones
+            recipients: recipientData.phones,
+            manualVariables: Object.keys(manualVariables).length > 0 ? manualVariables : undefined
           }
         }).then(response => {
           if (response.error) {
@@ -483,6 +534,7 @@ const Disparos = () => {
     setChannelTemplates({});
     setUseUnifiedTemplate(true);
     setRecipientData({ phones: [], source: null });
+    setManualVariables({});
     setFormData({
       campaignName: "",
       team: "",
@@ -914,7 +966,7 @@ const Disparos = () => {
                 <div className="space-y-3">
                   <Select 
                     value={formData.unifiedTemplate} 
-                    onValueChange={(value) => setFormData({ ...formData, unifiedTemplate: value })}
+                    onValueChange={handleTemplateChange}
                   >
                     <SelectTrigger className="bg-card border-border">
                       <SelectValue placeholder="Selecione o template" />
@@ -930,6 +982,8 @@ const Disparos = () => {
                         unifiedTemplates.map(template => (
                           <SelectItem key={template.id} value={template.id}>
                             {template.name}
+                            {template.variables && template.variables.length > 0 && 
+                              ` (${template.variables.length} var.)`}
                           </SelectItem>
                         ))
                       )}
@@ -938,6 +992,36 @@ const Disparos = () => {
                   <p className="text-xs text-muted-foreground">
                     Apenas templates aprovados em todos os canais selecionados são exibidos.
                   </p>
+
+                  {/* Manual Variables Input */}
+                  {currentManualVariables.length > 0 && formData.unifiedTemplate && (
+                    <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg space-y-3">
+                      <div className="flex items-center gap-2 text-warning">
+                        <Settings2 className="w-4 h-4" />
+                        <span className="font-medium text-sm">Variáveis a informar</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Este template possui variáveis que precisam ser preenchidas manualmente. 
+                        O mesmo valor será usado para todos os destinatários.
+                      </p>
+                      <div className="space-y-2">
+                        {currentManualVariables.map((varName) => (
+                          <div key={varName}>
+                            <Label className="text-sm mb-1 block">{varName}</Label>
+                            <Input
+                              placeholder={`Valor para ${varName}`}
+                              value={manualVariables[varName] || ''}
+                              onChange={(e) => setManualVariables(prev => ({
+                                ...prev,
+                                [varName]: e.target.value
+                              }))}
+                              className="bg-card"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
