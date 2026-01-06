@@ -143,6 +143,12 @@ const Usuarios = () => {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  
+  // Edit email dialog states
+  const [isEditEmailDialogOpen, setIsEditEmailDialogOpen] = useState(false);
+  const [editingEmailUser, setEditingEmailUser] = useState<UserWithRole | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   // Fetch organizations for super admin filter
   const fetchOrganizations = async () => {
@@ -480,6 +486,58 @@ const Usuarios = () => {
     }
   };
 
+  // Open edit email dialog
+  const openEditEmailDialog = (userToEdit: UserWithRole) => {
+    setEditingEmailUser(userToEdit);
+    setNewEmail(userToEdit.email);
+    setIsEditEmailDialogOpen(true);
+  };
+
+  // Update user email via edge function
+  const handleUpdateEmail = async () => {
+    if (!editingEmailUser || !newEmail.trim()) return;
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail.trim())) {
+      toast.error("Email inválido");
+      return;
+    }
+
+    setIsUpdatingEmail(true);
+    
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      if (!sessionData.session) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("create-user-role", {
+        body: {
+          action: "update_user",
+          user_id: editingEmailUser.id,
+          email: newEmail.trim(),
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success("Email atualizado com sucesso!");
+      setIsEditEmailDialogOpen(false);
+      setEditingEmailUser(null);
+      setNewEmail("");
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error updating email:", error);
+      toast.error(error.message || "Erro ao atualizar email");
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
+
   // Open user sector dialog
   const openUserSectorDialog = (userToEdit: UserWithRole) => {
     setEditingUser(userToEdit);
@@ -787,6 +845,12 @@ const Usuarios = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {isSuperAdmin && (
+                                  <DropdownMenuItem onClick={() => openEditEmailDialog(u)}>
+                                    <Mail className="w-4 h-4 mr-2" />
+                                    Editar Email
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem onClick={() => openUserSectorDialog(u)}>
                                   <Building2 className="w-4 h-4 mr-2" />
                                   Gerenciar Departamentos
@@ -1082,6 +1146,65 @@ const Usuarios = () => {
               </Button>
               <Button onClick={handleSaveUserSectors} disabled={sectors.length === 0}>
                 Salvar ({selectedUserSectorIds.length} departamento{selectedUserSectorIds.length !== 1 ? "s" : ""})
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Email Dialog */}
+        <Dialog open={isEditEmailDialogOpen} onOpenChange={setIsEditEmailDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Email</DialogTitle>
+              <DialogDescription>
+                Altere o email de login para {editingEmailUser?.display_name || editingEmailUser?.email}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentEmail">Email Atual</Label>
+                <Input
+                  id="currentEmail"
+                  value={editingEmailUser?.email || ""}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newEmail">Novo Email</Label>
+                <Input
+                  id="newEmail"
+                  type="email"
+                  placeholder="Digite o novo email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditEmailDialogOpen(false);
+                  setEditingEmailUser(null);
+                  setNewEmail("");
+                }}
+                disabled={isUpdatingEmail}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleUpdateEmail} disabled={isUpdatingEmail || !newEmail.trim()}>
+                {isUpdatingEmail ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
+                    Atualizando...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4 mr-2" />
+                    Atualizar Email
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
