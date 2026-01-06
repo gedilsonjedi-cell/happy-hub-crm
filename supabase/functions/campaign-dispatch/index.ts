@@ -342,7 +342,8 @@ Deno.serve(async (req) => {
             destination: formattedPhone,
             templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
-            templateLanguage: 'pt_BR'
+            templateLanguage: 'pt_BR',
+            campaignId: campaignId
           }),
         });
 

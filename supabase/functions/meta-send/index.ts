@@ -210,7 +210,8 @@ Deno.serve(async (req) => {
       messageType,
       mediaUrl,
       mediaCaption,
-      fileName
+      fileName,
+      campaignId
     } = await req.json();
 
     // Support both mediaType and messageType parameters
@@ -563,7 +564,8 @@ Deno.serve(async (req) => {
           fileName,
           cost: pricePerMessage,
           provider: 'meta',
-          sent_by_human: userId !== 'service_role'
+          sent_by_human: userId !== 'service_role',
+          campaignId: campaignId || null
         }
       });
     
