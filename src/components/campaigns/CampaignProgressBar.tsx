@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Pause, Eye, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 interface RunningCampaign {
   id: string;
@@ -26,12 +27,16 @@ interface CampaignProgressBarProps {
 export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps) {
   const [runningCampaigns, setRunningCampaigns] = useState<RunningCampaign[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
 
   const fetchRunningCampaigns = async () => {
+    if (!effectiveOrganizationId) return;
+    
     const { data, error } = await supabase
       .from("campaigns")
       .select("*")
       .eq("status", "running")
+      .eq("organization_id", effectiveOrganizationId)
       .order("started_at", { ascending: false });
 
     if (!error && data) {
@@ -40,6 +45,8 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
   };
 
   useEffect(() => {
+    if (!effectiveOrganizationId) return;
+    
     fetchRunningCampaigns();
 
     // Set up realtime subscription
@@ -67,7 +74,7 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, []);
+  }, [effectiveOrganizationId]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
