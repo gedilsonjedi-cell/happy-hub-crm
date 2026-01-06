@@ -243,7 +243,9 @@ async function processCampaignDispatch(
     let sentCount = startIndex;
     let deliveredCount = campaign.delivered_count || 0;
     let failedCount = campaign.failed_count || 0;
-    let currentChannelIndex = startIndex;
+    
+    // Channel index should cycle through channels based on recipient index, not sent count
+    // This ensures all channels are used in rotation for each recipient
 
     // Process each recipient with random intervals
     for (let i = startIndex; i < campaignRecipients.length; i++) {
@@ -261,8 +263,8 @@ async function processCampaignDispatch(
 
       const recipient = campaignRecipients[i];
       
-      // Get current channel (alternate between channels)
-      const campaignChannel = campaignChannels[currentChannelIndex % campaignChannels.length];
+      // Get current channel - use recipient index to ensure round-robin across ALL channels
+      const campaignChannel = campaignChannels[i % campaignChannels.length];
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id);
 
@@ -418,8 +420,7 @@ async function processCampaignDispatch(
           .eq('id', campaignId);
       }
 
-      // Move to next channel for interleaved dispatch
-      currentChannelIndex++;
+      // Channel rotation is now handled by: campaignChannels[i % campaignChannels.length]
 
       // Wait random interval before next message (except for last one)
       if (i < campaignRecipients.length - 1) {
