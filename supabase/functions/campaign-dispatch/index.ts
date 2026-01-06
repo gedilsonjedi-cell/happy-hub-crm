@@ -32,7 +32,7 @@ interface TemplateData {
 
 // Variable mapping to contact field
 const variableFieldMap: Record<string, keyof CampaignRecipient> = {
-  'contact_name': 'name', // Legacy support
+  'contact_name': 'name',
   'contact_full_name': 'name',
   'contact_phone': 'phone',
   'contact_email': 'email',
@@ -42,41 +42,30 @@ const variableFieldMap: Record<string, keyof CampaignRecipient> = {
   'contact_notes': 'notes',
 };
 
-// Helper function to extract first name from full name
 function getFirstName(fullName: string | undefined): string {
   if (!fullName) return '';
   return fullName.split(' ')[0];
 }
 
-// Generate random interval between min and max (in seconds)
 function getRandomInterval(minSeconds: number, maxSeconds: number): number {
   return Math.floor(Math.random() * (maxSeconds - minSeconds + 1)) + minSeconds;
 }
 
-// Sleep for a given number of milliseconds
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Format phone number for WhatsApp API (remove non-digits, ensure country code)
 function formatPhoneNumber(phone: string): string {
-  // Remove all non-digit characters
   let cleaned = phone.replace(/\D/g, '');
-  
-  // If starts with 0, remove it
   if (cleaned.startsWith('0')) {
     cleaned = cleaned.substring(1);
   }
-  
-  // If doesn't start with country code (55 for Brazil), add it
   if (!cleaned.startsWith('55') && cleaned.length <= 11) {
     cleaned = '55' + cleaned;
   }
-  
   return cleaned;
 }
 
-// Replace template variables with actual values from contact
 function replaceVariables(
   content: string, 
   recipient: CampaignRecipient, 
@@ -84,32 +73,24 @@ function replaceVariables(
   manualValues?: Record<string, string>
 ): string {
   let result = content;
-  
-  // Find all variables in the format *[VARIABLE]* or [VARIABLE]
   const regex = /\*?\[([A-Z_]+)\]\*?/g;
   let match;
   
   while ((match = regex.exec(content)) !== null) {
     const fullMatch = match[0];
     const varName = match[1];
-    
-    // Determine the value based on mapping
     let value = '';
     const mapping = variableMappings?.[varName] || 'manual';
     
     if (mapping === 'manual') {
-      // Use manual value if provided
       value = manualValues?.[varName] || '';
     } else if (mapping === 'contact_first_name') {
-      // Special handling for first name - extract from full name
-      value = getFirstName(recipient.name);
+      value = getFirstName(recipient.name) || '';
     } else if (variableFieldMap[mapping]) {
-      // Get value from contact field
       const field = variableFieldMap[mapping];
       value = String(recipient[field] || '');
     }
     
-    // Replace the variable with the value
     if (value) {
       result = result.replace(fullMatch, value);
     }
@@ -117,252 +98,128 @@ function replaceVariables(
   
   return result;
 }
-// Max messages per batch - using smaller batches for reliability
-// Edge functions have unpredictable shutdown behavior, so we process small batches
-// and immediately trigger the next batch to ensure continuity
-// Processing 15 messages per batch ensures completion before any shutdown
-const BATCH_SIZE = 15;
 
-// Maximum time (in seconds) we allow for a single batch before triggering continuation
-// This ensures we always trigger the next batch before edge function shutdown
-const MAX_BATCH_TIME_SECONDS = 180; // 3 minutes max per batch
-
-// Background task to process campaign dispatch in batches
+// Process entire campaign - NO self-invocation, continuous loop
 async function processCampaignDispatch(
   supabaseUrl: string,
   supabaseServiceKey: string,
   campaignId: string,
-  recipients: Array<string | { phone: string }>,
+  recipients: string[],
   manualVariables?: Record<string, string>
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   
-  console.log(`[Background] Starting campaign dispatch for ${campaignId}`);
-  
+  console.log(`[Campaign] Starting campaign ${campaignId} with ${recipients.length} recipients`);
+
   try {
-    // Fetch campaign details
+    // Load campaign data
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
-      .select('*')
+      .select('*, campaign_channels(channel_id, template_id, order_index)')
       .eq('id', campaignId)
       .single();
 
     if (campaignError || !campaign) {
-      console.error('[Background] Campaign not found:', campaignError);
+      console.error('[Campaign] Failed to load campaign:', campaignError);
       return;
     }
 
-    // Check if campaign was paused or cancelled
-    if (campaign.status === 'paused' || campaign.status === 'cancelled') {
-      console.log(`[Background] Campaign ${campaignId} is ${campaign.status}, stopping`);
-      return;
-    }
+    // Get intervals
+    const minInterval = campaign.min_interval || campaign.dispatch_interval || 3;
+    const maxInterval = campaign.max_interval || (campaign.dispatch_interval ? campaign.dispatch_interval + 5 : 10);
 
-    // Get min and max intervals - cap at 30s max to prevent timeout issues
-    // With multiple channels rotating, shorter intervals are safe
-    const minInterval = Math.max(1, Math.min(campaign.min_interval || 2, 15));
-    const maxInterval = Math.max(minInterval, Math.min(campaign.max_interval || 10, 30));
-
-    console.log(`[Background] Campaign cadence: ${minInterval}s - ${maxInterval}s (capped for reliability)`);
-    console.log(`[Background] Original config: ${campaign.min_interval}s - ${campaign.max_interval}s`);
-
-    // Fetch campaign channels with templates
-    const { data: campaignChannels, error: channelsError } = await supabase
-      .from('campaign_channels')
-      .select('channel_id, template_id')
-      .eq('campaign_id', campaignId)
-      .order('order_index');
-
-    if (channelsError || !campaignChannels || campaignChannels.length === 0) {
-      console.error('[Background] No channels found for campaign:', channelsError);
+    // Load channels
+    const campaignChannels: CampaignChannel[] = campaign.campaign_channels || [];
+    if (campaignChannels.length === 0) {
+      console.error('[Campaign] No channels configured');
       await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
       return;
     }
 
-    // Get channel credentials
-    const channelIds = campaignChannels.map(cc => cc.channel_id);
-    const { data: channels, error: channelDetailsError } = await supabase
-      .from('channels')
-      .select('id, name, phone, access_token, organization_id')
-      .in('id', channelIds);
+    const channelIds = [...new Set(campaignChannels.map(cc => cc.channel_id))];
+    const templateIds = [...new Set(campaignChannels.map(cc => cc.template_id))];
 
-    if (channelDetailsError || !channels) {
-      console.error('[Background] Error fetching channel details:', channelDetailsError);
+    const { data: channels } = await supabase.from('channels').select('*').in('id', channelIds);
+    const { data: templates } = await supabase.from('message_templates').select('*').in('id', templateIds);
+
+    if (!channels || channels.length === 0 || !templates || templates.length === 0) {
+      console.error('[Campaign] Missing channels or templates');
       await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
       return;
     }
 
-    // Get templates content with variable mappings
-    const templateIds = [...new Set(campaignChannels.map(cc => cc.template_id).filter(Boolean))];
-    const { data: templates, error: templatesError } = await supabase
-      .from('message_templates')
-      .select('id, name, content, variables, variable_mappings')
-      .in('id', templateIds);
-
-    if (templatesError) {
-      console.error('[Background] Error fetching templates:', templatesError);
-    }
-
-    const templatesMap = new Map<string, TemplateData>(templates?.map(t => [t.id, t as TemplateData]) || []);
     const channelsMap = new Map(channels.map(c => [c.id, c]));
+    const templatesMap = new Map(templates.map(t => [t.id, t as TemplateData]));
 
-    // Get phone numbers from recipients
-    const phoneNumbers = recipients.map((r: string | { phone: string }) => 
-      typeof r === 'string' ? r : r.phone
-    );
-    const formattedPhones = phoneNumbers.map(formatPhoneNumber);
+    // Build recipients list
+    const campaignRecipients: CampaignRecipient[] = recipients.map((phone, idx) => ({
+      id: `recipient_${idx}`,
+      phone,
+      name: undefined,
+      status: 'pending'
+    }));
 
-    // Fetch lead data for these phone numbers to enrich with contact info
+    // Load lead data for variable replacement
+    const phones = recipients.map(p => formatPhoneNumber(p));
     const { data: leadsData } = await supabase
       .from('leads')
-      .select('id, phone, name, email, city, state, document, notes, status')
-      .or(formattedPhones.map(p => `phone.ilike.%${p.slice(-8)}`).join(','));
+      .select('phone, name, email, city, state, document, notes')
+      .in('phone', phones);
 
-    // Create a map of phone -> lead data
-    const leadsMap = new Map<string, CampaignRecipient>();
     if (leadsData) {
-      for (const lead of leadsData) {
-        const cleanPhone = formatPhoneNumber(lead.phone);
-        leadsMap.set(cleanPhone, lead as CampaignRecipient);
-      }
+      const leadsMap = new Map(leadsData.map(l => [formatPhoneNumber(l.phone), l]));
+      campaignRecipients.forEach(r => {
+        const lead = leadsMap.get(formatPhoneNumber(r.phone));
+        if (lead) {
+          r.name = lead.name;
+          r.email = lead.email;
+          r.city = lead.city;
+          r.state = lead.state;
+          r.document = lead.document;
+          r.notes = lead.notes;
+        }
+      });
     }
 
-    // Build recipients list with enriched data
-    const campaignRecipients: CampaignRecipient[] = formattedPhones.map((phone, index) => {
-      const leadData = leadsMap.get(phone);
-      const originalRecipient = recipients[index];
-      const recipientData = typeof originalRecipient === 'object' ? originalRecipient : {};
-      
-      return {
-        id: leadData?.id || `temp_${index}`,
-        phone,
-        name: leadData?.name || (recipientData as { name?: string }).name || '',
-        email: leadData?.email || '',
-        city: leadData?.city || '',
-        state: leadData?.state || '',
-        document: leadData?.document || '',
-        notes: leadData?.notes || '',
-        status: leadData?.status || 'active'
-      };
-    });
-
-    console.log(`[Background] Processing ${campaignRecipients.length} recipients`);
-    console.log(`[Background] Found ${leadsData?.length || 0} matching leads for contact data`);
-
-    // Get the starting point (in case of resume)
-    const startIndex = campaign.sent_count || 0;
-    let sentCount = startIndex;
+    // Get starting point (for resume)
+    let sentCount = campaign.sent_count || 0;
     let deliveredCount = campaign.delivered_count || 0;
     let failedCount = campaign.failed_count || 0;
-    
-    // Channel index should cycle through channels based on recipient index, not sent count
-    // This ensures all channels are used in rotation for each recipient
 
-    // Calculate end of this batch
-    const batchEnd = Math.min(startIndex + BATCH_SIZE, campaignRecipients.length);
-    console.log(`[Background] Processing batch: ${startIndex + 1} to ${batchEnd} of ${campaignRecipients.length}`);
+    console.log(`[Campaign] Starting from position ${sentCount}/${campaignRecipients.length}`);
 
-    // Track batch start time for safety timeout
-    const batchStartTime = Date.now();
-    
-    // Helper function to trigger next batch
-    // Uses both apikey and Authorization headers to ensure proper authentication
-    const triggerNextBatch = async () => {
-      console.log(`[Background] Triggering next batch continuation...`);
-      try {
-        const continueResponse = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseServiceKey,
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            campaignId: campaignId,
-            action: 'continue',
-            recipients: recipients,
-            manualVariables: manualVariables
-          }),
-        });
-        
-        if (continueResponse.ok) {
-          console.log(`[Background] ✓ Next batch triggered successfully`);
-          return true;
-        } else {
-          const responseText = await continueResponse.text();
-          console.error(`[Background] Failed to trigger next batch: HTTP ${continueResponse.status} - ${responseText.substring(0, 200)}`);
-          return false;
-        }
-      } catch (error) {
-        console.error(`[Background] Error triggering next batch:`, error);
-        return false;
-      }
-    };
-
-    // Process each recipient in this batch
-    let nextBatchTriggered = false;
-    
-    for (let i = startIndex; i < batchEnd; i++) {
-      // SAFETY: Check if we're approaching timeout and trigger next batch proactively
-      const elapsedSeconds = (Date.now() - batchStartTime) / 1000;
-      if (!nextBatchTriggered && elapsedSeconds > MAX_BATCH_TIME_SECONDS && i < batchEnd) {
-        console.log(`[Background] ⚠ Approaching timeout (${Math.round(elapsedSeconds)}s). Triggering next batch proactively at position ${sentCount}...`);
-        
-        // Update sent_count before triggering
-        await supabase
-          .from('campaigns')
-          .update({ 
-            sent_count: sentCount,
-            delivered_count: deliveredCount,
-            failed_count: failedCount
-          })
-          .eq('id', campaignId);
-        
-        await triggerNextBatch();
-        nextBatchTriggered = true;
-        // Continue processing current messages, next batch will pick up where we left off
-      }
-      
-      // Check if campaign was paused/cancelled before each message
+    // Process ALL recipients in a single continuous loop
+    for (let i = sentCount; i < campaignRecipients.length; i++) {
+      // Check if campaign was paused/cancelled
       const { data: currentCampaign } = await supabase
         .from('campaigns')
         .select('status')
         .eq('id', campaignId)
         .single();
-      
+
       if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'cancelled') {
-        console.log(`[Background] Campaign ${campaignId} is ${currentCampaign.status}, stopping at ${sentCount}/${campaignRecipients.length}`);
+        console.log(`[Campaign] ${campaignId} is ${currentCampaign.status}, stopping at ${sentCount}/${campaignRecipients.length}`);
         return;
       }
 
       const recipient = campaignRecipients[i];
-      
-      // Get current channel - use recipient index to ensure round-robin across ALL channels
       const campaignChannel = campaignChannels[i % campaignChannels.length];
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id);
 
       if (!channel || !template) {
-        console.error(`[Background] Missing channel or template for recipient ${recipient.phone}`);
+        console.error(`[Campaign] Missing channel/template for ${recipient.phone}`);
         failedCount++;
+        sentCount++;
+        await supabase.from('campaigns').update({ sent_count: sentCount, failed_count: failedCount }).eq('id', campaignId);
         continue;
       }
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
-      
-      // Replace variables in template content
-      const processedContent = replaceVariables(
-        template.content, 
-        recipient, 
-        template.variable_mappings,
-        manualVariables
-      );
-      
-      console.log(`[Background] [${i + 1}/${campaignRecipients.length}] Sending to ${formattedPhone} via channel ${channel.name}`);
-      console.log(`[Background] Template: ${template.name}`);
+      console.log(`[Campaign] [${i + 1}/${campaignRecipients.length}] Sending to ${formattedPhone}`);
 
       try {
-        // Build templateParams array from variables
+        // Build template params
         const templateParams: string[] = [];
         if (template.variables && template.variables.length > 0) {
           for (const varName of template.variables) {
@@ -372,7 +229,6 @@ async function processCampaignDispatch(
             if (mapping === 'manual') {
               value = manualVariables?.[varName] || varName;
             } else if (mapping === 'contact_first_name') {
-              // Special handling for first name - extract from full name
               value = getFirstName(recipient.name) || varName;
             } else if (variableFieldMap[mapping]) {
               const field = variableFieldMap[mapping];
@@ -380,14 +236,11 @@ async function processCampaignDispatch(
             } else {
               value = varName;
             }
-            
             templateParams.push(value);
           }
         }
 
-        console.log(`[Background] Template params for ${formattedPhone}:`, templateParams);
-
-        // Call meta-send edge function to actually send the message
+        // Send via meta-send
         const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
           method: 'POST',
           headers: {
@@ -405,15 +258,13 @@ async function processCampaignDispatch(
         });
 
         const metaSendResult = await metaSendResponse.json();
-        
-        console.log(`[Background] meta-send response status: ${metaSendResponse.status}`);
-        
+
         if (metaSendResult.success) {
           sentCount++;
           deliveredCount++;
-          console.log(`[Background] ✓ Message sent to ${formattedPhone} - Message ID: ${metaSendResult.messageId || 'N/A'}`);
+          console.log(`[Campaign] ✓ Sent to ${formattedPhone}`);
 
-          // If campaign has chatbot enabled and a custom chatbot, create/update conversation assignment
+          // Handle chatbot assignment if enabled
           if (campaign.chatbot_enabled && campaign.chatbot_id) {
             const { data: existingAssignment } = await supabase
               .from('conversation_assignments')
@@ -423,7 +274,6 @@ async function processCampaignDispatch(
               .single();
 
             if (existingAssignment) {
-              // Update existing assignment with campaign chatbot
               await supabase
                 .from('conversation_assignments')
                 .update({ 
@@ -433,7 +283,6 @@ async function processCampaignDispatch(
                 })
                 .eq('id', existingAssignment.id);
             } else {
-              // Create new assignment with campaign chatbot
               await supabase
                 .from('conversation_assignments')
                 .insert({
@@ -446,11 +295,10 @@ async function processCampaignDispatch(
             }
           }
         } else {
+          sentCount++;
           failedCount++;
-          const errorDetails = metaSendResult.details ? JSON.stringify(metaSendResult.details) : '';
-          console.error(`[Background] ✗ Failed to send to ${formattedPhone}: ${metaSendResult.error || 'Unknown error'} ${errorDetails}`);
-          
-          // Store failed message in whatsapp_messages for debugging
+          console.error(`[Campaign] ✗ Failed ${formattedPhone}: ${metaSendResult.error}`);
+
           await supabase.from('whatsapp_messages').insert({
             channel_id: channel.id,
             organization_id: channel.organization_id,
@@ -463,107 +311,55 @@ async function processCampaignDispatch(
             metadata: {
               destination: formattedPhone,
               error: metaSendResult.error,
-              errorDetails: metaSendResult.details,
               campaignId: campaignId
             }
           });
         }
 
-        // Update campaign progress
-        await supabase
-          .from('campaigns')
-          .update({ 
-            sent_count: sentCount,
-            delivered_count: deliveredCount,
-            failed_count: failedCount
-          })
-          .eq('id', campaignId);
+        // Update progress
+        await supabase.from('campaigns').update({ 
+          sent_count: sentCount,
+          delivered_count: deliveredCount,
+          failed_count: failedCount
+        }).eq('id', campaignId);
 
       } catch (error) {
-        console.error(`[Background] Error sending to ${formattedPhone}:`, error);
+        console.error(`[Campaign] Error sending to ${formattedPhone}:`, error);
+        sentCount++;
         failedCount++;
-        
-        // Update campaign progress even on error
-        await supabase
-          .from('campaigns')
-          .update({ 
-            sent_count: sentCount,
-            delivered_count: deliveredCount,
-            failed_count: failedCount
-          })
-          .eq('id', campaignId);
+        await supabase.from('campaigns').update({ 
+          sent_count: sentCount,
+          failed_count: failedCount
+        }).eq('id', campaignId);
       }
 
-      // Channel rotation is now handled by: campaignChannels[i % campaignChannels.length]
-
-      // Wait random interval before next message (except for last one in batch)
-      if (i < batchEnd - 1) {
+      // Wait random interval before next message
+      if (i < campaignRecipients.length - 1) {
         const randomInterval = getRandomInterval(minInterval, maxInterval);
-        console.log(`[Background] ⏱ Waiting ${randomInterval} seconds before next dispatch...`);
+        console.log(`[Campaign] ⏱ Waiting ${randomInterval}s...`);
         await sleep(randomInterval * 1000);
       }
     }
 
-    // Check if there are more recipients to process and next batch wasn't already triggered
-    if (batchEnd < campaignRecipients.length && !nextBatchTriggered) {
-      console.log(`[Background] Batch complete. ${batchEnd}/${campaignRecipients.length} processed. Triggering next batch...`);
-      
-      // Wait a very short interval before starting next batch (1-3 seconds)
-      const batchInterval = getRandomInterval(1, 3);
-      console.log(`[Background] ⏱ Waiting ${batchInterval} seconds before next batch...`);
-      await sleep(batchInterval * 1000);
-      
-      // Try to trigger next batch with retries - NEVER pause, always keep trying
-      let retryCount = 0;
-      const maxRetries = 10; // More retries before giving up on this attempt
-      let success = false;
-      
-      while (retryCount < maxRetries && !success) {
-        success = await triggerNextBatch();
-        if (!success) {
-          retryCount++;
-          if (retryCount < maxRetries) {
-            // Exponential backoff: 2s, 4s, 8s, 16s, 32s...
-            const backoffTime = Math.min(2000 * Math.pow(2, retryCount - 1), 30000);
-            console.log(`[Background] Retry ${retryCount}/${maxRetries} - Waiting ${backoffTime/1000}s...`);
-            await sleep(backoffTime);
-          }
-        }
-      }
-      
-      if (!success) {
-        // DON'T PAUSE - just log the error
-        // The campaign will continue when user clicks "Resume" or when the system recovers
-        console.error(`[Background] Failed to trigger next batch after ${maxRetries} retries. Campaign will continue from position ${sentCount} when resumed.`);
-        console.log(`[Background] Campaign ${campaignId} progress saved at ${sentCount}/${campaignRecipients.length}. Status remains 'running'.`);
-        // Keep status as 'running' so the campaign can be resumed or retried automatically
-      }
-    } else if (batchEnd >= campaignRecipients.length) {
-      // All recipients processed - mark campaign as completed
-      await supabase
-        .from('campaigns')
-        .update({ 
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          sent_count: sentCount,
-          delivered_count: deliveredCount,
-          failed_count: failedCount
-        })
-        .eq('id', campaignId);
+    // Campaign completed
+    await supabase.from('campaigns').update({ 
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      sent_count: sentCount,
+      delivered_count: deliveredCount,
+      failed_count: failedCount
+    }).eq('id', campaignId);
 
-      console.log(`[Background] Campaign ${campaignId} completed. Sent: ${sentCount}, Delivered: ${deliveredCount}, Failed: ${failedCount}`);
-    }
-    
+    console.log(`[Campaign] ${campaignId} COMPLETED. Sent: ${sentCount}, Delivered: ${deliveredCount}, Failed: ${failedCount}`);
+
   } catch (error) {
-    console.error('[Background] Error in campaign dispatch:', error);
-    
+    console.error('[Campaign] Fatal error:', error);
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
   }
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -571,7 +367,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { campaignId, action, recipients: providedRecipients, manualVariables } = await req.json();
@@ -583,80 +378,66 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if this is a resume action (no recipients provided)
     let recipients = providedRecipients;
-    
+
     if (!recipients || recipients.length === 0) {
-      // Try to get campaign data to resume
       const { data: campaign, error: campaignError } = await supabase
         .from('campaigns')
-        .select('*, campaign_channels(channel_id, template_id)')
+        .select('*')
         .eq('id', campaignId)
         .single();
-      
+
       if (campaignError || !campaign) {
         return new Response(
           JSON.stringify({ error: 'Campaign not found' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
-      // Get the organization_id from campaign
-      const orgId = campaign.organization_id;
-      
-      // Fetch all leads for this organization to use as recipients
-      const { data: leads, error: leadsError } = await supabase
+
+      const { data: leads } = await supabase
         .from('leads')
         .select('phone')
-        .eq('organization_id', orgId)
+        .eq('organization_id', campaign.organization_id)
         .limit(campaign.total_recipients);
-      
-      if (leadsError || !leads || leads.length === 0) {
+
+      if (!leads || leads.length === 0) {
         return new Response(
-          JSON.stringify({ error: 'No recipients found for campaign resume' }),
+          JSON.stringify({ error: 'No recipients found' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
+
       recipients = leads.map(l => l.phone);
-      console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from database`);
+      console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients`);
     }
 
-    console.log(`Processing campaign ${campaignId} with action: ${action}`);
-    console.log(`Total recipients: ${recipients.length}`);
+    console.log(`Starting campaign ${campaignId} - ${recipients.length} recipients`);
 
-    // Update campaign status to running immediately
-    await supabase
-      .from('campaigns')
-      .update({ 
-        status: 'running', 
-        started_at: new Date().toISOString(),
-        total_recipients: recipients.length 
-      })
-      .eq('id', campaignId);
+    // Update campaign status
+    await supabase.from('campaigns').update({ 
+      status: 'running', 
+      started_at: new Date().toISOString(),
+      total_recipients: recipients.length 
+    }).eq('id', campaignId);
 
-    // Use EdgeRuntime.waitUntil to run the dispatch in background
-    // This allows the function to return immediately while processing continues
-    // @ts-ignore - EdgeRuntime is available in Deno Deploy
+    // Run in background using EdgeRuntime.waitUntil
+    // @ts-ignore
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-      console.log('Using EdgeRuntime.waitUntil for background processing');
+      console.log('[Campaign] Using EdgeRuntime.waitUntil');
       // @ts-ignore
       EdgeRuntime.waitUntil(
         processCampaignDispatch(supabaseUrl, supabaseServiceKey, campaignId, recipients, manualVariables)
       );
     } else {
-      // Fallback: run in background without waitUntil (may timeout for large campaigns)
-      console.log('EdgeRuntime.waitUntil not available, running inline');
-      // Don't await - let it run in background
+      console.log('[Campaign] Running without waitUntil');
       processCampaignDispatch(supabaseUrl, supabaseServiceKey, campaignId, recipients, manualVariables)
-        .catch(err => console.error('Background dispatch error:', err));
+        .catch(err => console.error('Error:', err));
     }
 
-    // Return immediately with success
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Campaign dispatch started in background',
+        message: 'Campaign started',
         campaignId,
         totalRecipients: recipients.length
       }),
@@ -665,7 +446,7 @@ Deno.serve(async (req) => {
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    console.error('Error in campaign dispatch:', error);
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
