@@ -151,6 +151,31 @@ const Disparos = () => {
     }
   }, [user, effectiveOrganizationId]);
 
+  // Watchdog: verifica campanhas travadas a cada 60 segundos
+  useEffect(() => {
+    const hasRunningCampaigns = campaigns.some(c => c.status === "running");
+    
+    if (!hasRunningCampaigns) return;
+
+    const watchdogInterval = setInterval(async () => {
+      console.log("[Watchdog] Checking for stalled campaigns...");
+      try {
+        const { error } = await supabase.functions.invoke("campaign-watchdog", {
+          body: {}
+        });
+        if (error) {
+          console.error("[Watchdog] Error:", error);
+        }
+        // Refresh data after watchdog check
+        fetchData();
+      } catch (err) {
+        console.error("[Watchdog] Exception:", err);
+      }
+    }, 60000); // 60 segundos
+
+    return () => clearInterval(watchdogInterval);
+  }, [campaigns]);
+
   // Demo data for presentation
   const demoChannel: Channel = {
     id: "demo-channel-1",

@@ -30,6 +30,9 @@ verify_jwt = false
 [functions.campaign-dispatch]
 verify_jwt = true
 
+[functions.campaign-watchdog]
+verify_jwt = false
+
 [functions.zapi-validate-batch]
 verify_jwt = true
 
