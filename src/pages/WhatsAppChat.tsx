@@ -859,7 +859,19 @@ const WhatsAppChat = () => {
   };
 
   const handleRestore = (conversation: Conversation) => {
-    updateConversationStatus(getConversationKey(conversation), "in_progress");
+    const key = getConversationKey(conversation);
+    updateConversationStatus(key, "in_progress");
+    
+    // Force the conversation to appear in active list by setting a fake lastInboundTime
+    // This handles cases where conversation has no client response yet
+    setConversations(prev => prev.map(c => {
+      const convKey = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
+      if (convKey === key && !c.lastInboundTime) {
+        return { ...c, status: "in_progress", lastInboundTime: new Date().toISOString() };
+      }
+      return c;
+    }));
+    
     toast.success("Conversa restaurada");
   };
 
