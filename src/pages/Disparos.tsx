@@ -87,7 +87,7 @@ interface AIAgent {
 interface Campaign {
   id: string;
   name: string;
-  status: "draft" | "scheduled" | "running" | "completed" | "failed";
+  status: "draft" | "scheduled" | "running" | "paused" | "completed" | "failed";
   total_recipients: number;
   sent_count: number;
   delivered_count: number;
@@ -558,6 +558,58 @@ const Disparos = () => {
     }
     toast.success("Campanha excluída");
     fetchData();
+  };
+
+  const handleResumeCampaign = async (campaign: Campaign) => {
+    try {
+      // Update status to running
+      const { error: updateError } = await supabase
+        .from("campaigns")
+        .update({ status: "running" })
+        .eq("id", campaign.id);
+
+      if (updateError) {
+        toast.error("Erro ao retomar campanha");
+        return;
+      }
+
+      // Trigger the dispatch function
+      const { error: dispatchError } = await supabase.functions.invoke("campaign-dispatch", {
+        body: { campaignId: campaign.id }
+      });
+
+      if (dispatchError) {
+        console.error("Dispatch error:", dispatchError);
+        toast.error("Erro ao iniciar disparo");
+        return;
+      }
+
+      toast.success("Campanha retomada!");
+      fetchData();
+    } catch (error) {
+      console.error("Error resuming campaign:", error);
+      toast.error("Erro ao retomar campanha");
+    }
+  };
+
+  const handlePauseCampaign = async (campaignId: string) => {
+    try {
+      const { error } = await supabase
+        .from("campaigns")
+        .update({ status: "paused" })
+        .eq("id", campaignId);
+
+      if (error) {
+        toast.error("Erro ao pausar campanha");
+        return;
+      }
+
+      toast.success("Campanha pausada");
+      fetchData();
+    } catch (error) {
+      console.error("Error pausing campaign:", error);
+      toast.error("Erro ao pausar campanha");
+    }
   };
 
   const handleViewDetails = async (campaignId: string) => {
@@ -1305,7 +1357,16 @@ const Disparos = () => {
                           </DropdownMenuItem>
                           <DropdownMenuItem>Duplicar</DropdownMenuItem>
                           {campaign.status === "running" && (
-                            <DropdownMenuItem>Pausar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
+                              <Pause className="w-4 h-4 mr-2" />
+                              Pausar
+                            </DropdownMenuItem>
+                          )}
+                          {campaign.status === "paused" && (
+                            <DropdownMenuItem onClick={() => handleResumeCampaign(campaign)}>
+                              <Play className="w-4 h-4 mr-2" />
+                              Retomar
+                            </DropdownMenuItem>
                           )}
                           <DropdownMenuItem 
                             className="text-destructive"
