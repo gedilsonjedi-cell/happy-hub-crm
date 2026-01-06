@@ -355,7 +355,25 @@ Deno.serve(async (req) => {
       to: cleanDestination
     };
 
+    // Fetch template content and buttons for metadata storage
+    let templateContent: string | null = null;
+    let templateButtons: unknown[] | null = null;
+    
     if (templateName) {
+      // Fetch template from database to store content in metadata
+      const { data: templateData } = await serviceRoleClient
+        .from('message_templates')
+        .select('content, components')
+        .eq('name', templateName)
+        .eq('organization_id', channel.organization_id)
+        .single();
+      
+      if (templateData) {
+        templateContent = templateData.content;
+        const comps = templateData.components as { buttons?: unknown[] } | null;
+        templateButtons = comps?.buttons || null;
+      }
+      
       // Send template message
       const components: unknown[] = [];
       
@@ -560,6 +578,8 @@ Deno.serve(async (req) => {
           templateName, 
           templateParams,
           templateLanguage,
+          templateContent,
+          templateButtons,
           mediaType: effectiveMediaType,
           fileName,
           cost: pricePerMessage,
