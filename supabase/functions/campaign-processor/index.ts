@@ -70,25 +70,29 @@ Deno.serve(async (req) => {
       console.log(`[Processor] Processing ${campaign.name}...`)
 
       try {
-        // Call send-campaign-batch
-        const response = await fetch(`${supabaseUrl}/functions/v1/send-campaign-batch`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`
-          },
-          body: JSON.stringify({
+        // Use supabase.functions.invoke which handles auth properly
+        const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
+          body: {
             campaignId: campaign.id,
             batchSize: 1
-          })
+          }
         })
 
-        const result = await response.json()
+        if (invokeError) {
+          console.error(`[Processor] Error invoking for ${campaign.name}:`, invokeError)
+          results.push({
+            campaign: campaign.name,
+            status: 'error',
+            error: invokeError.message
+          })
+          continue
+        }
+
         console.log(`[Processor] ${campaign.name}: ${JSON.stringify(result)}`)
 
         results.push({
           campaign: campaign.name,
-          status: result.done ? 'completed' : 'sent',
+          status: result?.done ? 'completed' : 'sent',
           ...result
         })
       } catch (err) {
