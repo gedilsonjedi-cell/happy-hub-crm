@@ -158,11 +158,13 @@ async function processCampaignDispatch(
       return;
     }
 
-    // Get min and max intervals (default to 5-120 seconds if not set)
-    const minInterval = campaign.min_interval || 5;
-    const maxInterval = campaign.max_interval || 120;
+    // Get min and max intervals - cap at 30s max to prevent timeout issues
+    // With multiple channels rotating, shorter intervals are safe
+    const minInterval = Math.max(1, Math.min(campaign.min_interval || 2, 15));
+    const maxInterval = Math.max(minInterval, Math.min(campaign.max_interval || 10, 30));
 
-    console.log(`[Background] Campaign cadence: ${minInterval}s - ${maxInterval}s (random)`);
+    console.log(`[Background] Campaign cadence: ${minInterval}s - ${maxInterval}s (capped for reliability)`);
+    console.log(`[Background] Original config: ${campaign.min_interval}s - ${campaign.max_interval}s`);
 
     // Fetch campaign channels with templates
     const { data: campaignChannels, error: channelsError } = await supabase
