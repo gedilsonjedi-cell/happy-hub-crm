@@ -904,7 +904,7 @@ export default function Higienizacao() {
       custom_fields: e.customFields || {},
       user_id: user.id,
       organization_id: profile.organization_id,
-      status: "novo",
+      status: "new",
       tags: selectedTagsForSave.length > 0 ? selectedTagsForSave : null,
     }));
     
