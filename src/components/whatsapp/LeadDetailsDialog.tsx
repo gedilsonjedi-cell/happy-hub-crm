@@ -90,7 +90,7 @@ export function LeadDetailsDialog({
     document: "",
     city: "",
     state: "",
-    status: "novo",
+    status: "new",
     notes: "",
   });
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -175,7 +175,7 @@ export function LeadDetailsDialog({
         document: lead.document || "",
         city: lead.city || "",
         state: lead.state || "",
-        status: lead.status || "novo",
+        status: lead.status || "new",
         notes: lead.notes || "",
       });
       setCustomFieldValues((lead.custom_fields as Record<string, unknown>) || {});
@@ -189,7 +189,7 @@ export function LeadDetailsDialog({
         document: "",
         city: "",
         state: "",
-        status: "novo",
+        status: "new",
         notes: "",
       });
       setCustomFieldValues({});
@@ -462,11 +462,11 @@ export function LeadDetailsDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="novo">Novo</SelectItem>
-                    <SelectItem value="qualificado">Qualificado</SelectItem>
-                    <SelectItem value="negociando">Negociando</SelectItem>
-                    <SelectItem value="convertido">Convertido</SelectItem>
-                    <SelectItem value="perdido">Perdido</SelectItem>
+                    <SelectItem value="new">Novo</SelectItem>
+                    <SelectItem value="contacted">Contatado</SelectItem>
+                    <SelectItem value="qualified">Qualificado</SelectItem>
+                    <SelectItem value="converted">Convertido</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
