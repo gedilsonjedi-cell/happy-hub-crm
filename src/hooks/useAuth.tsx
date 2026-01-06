@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useSingleSession } from "./useSingleSession";
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -11,9 +10,6 @@ export const useAuth = () => {
 
   const signOut = useCallback(async () => {
     try {
-      // Clear session token from storage
-      sessionStorage.removeItem('optimus_session_token');
-      
       const { error } = await supabase.auth.signOut();
       
       if (error) {
@@ -29,16 +25,6 @@ export const useAuth = () => {
       window.location.href = "/auth";
     }
   }, []);
-
-  // Handle session invalidation from another device
-  const handleSessionInvalid = useCallback(async () => {
-    sessionStorage.removeItem('optimus_session_token');
-    await supabase.auth.signOut();
-    window.location.href = "/auth";
-  }, []);
-
-  // Use single session hook
-  useSingleSession(user?.id, handleSessionInvalid);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
