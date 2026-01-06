@@ -52,6 +52,34 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // Handle deleting user
+    if (action === "delete_user") {
+      const { user_id } = body;
+
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: "Missing user_id" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Delete from auth.users (this cascades to profiles and user_roles)
+      const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+      
+      if (deleteError) {
+        console.error("Error deleting user:", deleteError);
+        return new Response(JSON.stringify({ error: deleteError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Handle updating existing user
     if (action === "update_user") {
       const { user_id, display_name, email, password } = body;
