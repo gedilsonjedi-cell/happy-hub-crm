@@ -1318,6 +1318,27 @@ const Conexoes = () => {
                         </>
                       )}
                     </Button>
+                    {channel.provider === 'meta' && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full gap-2 text-xs"
+                        onClick={() => checkMetaPhoneStatus(channel)}
+                        disabled={isCheckingStatus[channel.id]}
+                      >
+                        {isCheckingStatus[channel.id] ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Verificando...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3 h-3" />
+                            Atualizar Status
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 )}
 
