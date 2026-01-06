@@ -703,6 +703,80 @@ const Conexoes = () => {
     }
   };
 
+  // Force re-register for stuck PENDING numbers
+  const handleForceReregister = async (channel: Channel) => {
+    if (!channel.app_name || !channel.access_token) {
+      toast.error("Canal não possui Phone Number ID ou Access Token");
+      return;
+    }
+
+    setIsRegistering(channel.id);
+
+    try {
+      toast.info("Forçando re-registro do número...", { duration: 3000 });
+      
+      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+          forceReregister: true,
+        },
+      });
+
+      if (error) {
+        toast.error("Erro ao re-registrar: " + (error.message || "Erro desconhecido"));
+        return;
+      }
+
+      console.log('Force re-register response:', data);
+
+      if (data.status?.status === 'CONNECTED' || data.success) {
+        toast.success("Número conectado com sucesso!");
+        
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+        
+        setChannels(prev => 
+          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
+        );
+        
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: {
+            isConnected: true,
+            code: 'CONNECTED',
+            message: 'Conectado',
+          }
+        }));
+        
+        await fetchChannels();
+      } else if (data.pending) {
+        toast.warning("Número ainda pendente após re-registro");
+        if (data.actions) {
+          data.actions.forEach((action: string) => toast.info(action, { duration: 8000 }));
+        }
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 10000 });
+        }
+      } else if (data.error) {
+        toast.error(data.error);
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 8000 });
+        }
+      }
+      
+      // Refresh status
+      await checkMetaPhoneStatus(channel, true);
+    } catch (err) {
+      console.error('Force re-register error:', err);
+      toast.error("Erro ao re-registrar número");
+    } finally {
+      setIsRegistering(null);
+    }
+  };
+
   const handleFetchPhones = async () => {
     if (!formData.wabaId.trim()) {
       toast.error("Preencha o WABA ID");
@@ -1418,15 +1492,18 @@ const Conexoes = () => {
                     {metaPhoneStatuses[channel.id]?.code === 'PENDING' && !metaPhoneStatuses[channel.id]?.isConnected && (
                       <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20 mb-2">
                         <p className="text-xs text-amber-400 font-medium mb-1">
-                          ⚠️ Número pendente de verificação no Meta
+                          ⚠️ Número pendente no Meta
                         </p>
-                        <p className="text-xs text-amber-400/80">
-                          Acesse o <a 
+                        <p className="text-xs text-amber-400/80 mb-2">
+                          Este número precisa ser re-registrado. Clique em "Forçar Re-registro" abaixo.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Se continuar pendente, acesse o <a 
                             href="https://business.facebook.com/settings/whatsapp-business-accounts" 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="underline hover:text-amber-300"
-                          >Meta Business Suite</a> → WhatsApp Manager → Configurações do telefone e complete qualquer verificação pendente.
+                          >Meta Business Suite</a> e complete a verificação.
                         </p>
                       </div>
                     )}
@@ -1445,30 +1522,55 @@ const Conexoes = () => {
                         </p>
                       </div>
                     )}
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      className="w-full gap-2 text-xs"
-                      onClick={() => handleRegisterPhone(channel)}
-                      disabled={isRegistering === channel.id}
-                    >
-                      {isRegistering === channel.id ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Registrando...
-                        </>
-                      ) : metaPhoneStatuses[channel.id]?.isConnected ? (
-                        <>
-                          <Power className="w-3 h-3" />
-                          Ativar no Sistema
-                        </>
-                      ) : (
-                        <>
-                          <Power className="w-3 h-3" />
-                          Registrar na Cloud API
-                        </>
-                      )}
-                    </Button>
+                    {/* Force re-register button for PENDING numbers */}
+                    {metaPhoneStatuses[channel.id]?.code === 'PENDING' && (
+                      <Button 
+                        variant="default" 
+                        size="sm" 
+                        className="w-full gap-2 text-xs bg-amber-600 hover:bg-amber-700"
+                        onClick={() => handleForceReregister(channel)}
+                        disabled={isRegistering === channel.id}
+                      >
+                        {isRegistering === channel.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Re-registrando...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3 h-3" />
+                            Forçar Re-registro
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {/* Regular register/activate button */}
+                    {metaPhoneStatuses[channel.id]?.code !== 'PENDING' && (
+                      <Button 
+                        variant="default" 
+                        size="sm" 
+                        className="w-full gap-2 text-xs"
+                        onClick={() => handleRegisterPhone(channel)}
+                        disabled={isRegistering === channel.id}
+                      >
+                        {isRegistering === channel.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Registrando...
+                          </>
+                        ) : metaPhoneStatuses[channel.id]?.isConnected ? (
+                          <>
+                            <Power className="w-3 h-3" />
+                            Ativar no Sistema
+                          </>
+                        ) : (
+                          <>
+                            <Power className="w-3 h-3" />
+                            Registrar na Cloud API
+                          </>
+                        )}
+                      </Button>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
