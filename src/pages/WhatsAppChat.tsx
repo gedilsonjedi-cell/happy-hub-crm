@@ -1779,20 +1779,20 @@ const WhatsAppChat = () => {
                   >
                     <button
                       onClick={() => setSelectedConversation(conversation)}
-                      className="w-full p-4 text-left transition-colors"
+                      className="w-full p-3 sm:p-4 text-left transition-colors overflow-hidden"
                     >
-                      <div className="flex items-start gap-3">
-                        <Avatar className="w-10 h-10">
-                          <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-sm font-semibold">
-                            {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("") : <User className="w-4 h-4" />}
+                      <div className="flex items-start gap-2 sm:gap-3 w-full overflow-hidden">
+                        <Avatar className="w-9 h-9 sm:w-10 sm:h-10 shrink-0">
+                          <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-xs sm:text-sm font-semibold">
+                            {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium text-foreground text-sm truncate">
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-foreground text-xs sm:text-sm truncate flex-1 min-w-0">
                               {conversation.name || conversation.phone}
                             </span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0 whitespace-nowrap">
                               {formatConversationDate(conversation.lastMessageTime)}
                             </span>
                           </div>
@@ -1801,23 +1801,21 @@ const WhatsAppChat = () => {
                               📱 {channelInfo.name}
                             </p>
                           )}
-                          <p className="text-xs text-muted-foreground truncate mb-2">
+                          <p className="text-xs text-muted-foreground truncate mb-2 max-w-full">
                             {conversation.lastMessage}
                           </p>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge variant="outline" className={cn("text-xs", statusConfig[conversation.status].className)}>
-                                {statusConfig[conversation.status].label}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className={cn("text-[10px] sm:text-xs shrink-0", statusConfig[conversation.status].className)}>
+                              {statusConfig[conversation.status].label}
+                            </Badge>
+                            {conversation.assignedToName && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-1 shrink-0">
+                                <User className="w-2.5 h-2.5" />
+                                {conversation.assignedToName.split(' ')[0]}
                               </Badge>
-                              {conversation.assignedToName && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-1">
-                                  <User className="w-2.5 h-2.5" />
-                                  {conversation.assignedToName.split(' ')[0]}
-                                </Badge>
-                              )}
-                            </div>
+                            )}
                             {conversation.unreadCount > 0 && (
-                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">
                                 {conversation.unreadCount}
                               </span>
                             )}
@@ -1830,12 +1828,12 @@ const WhatsAppChat = () => {
                       <Button
                         variant="default"
                         size="sm"
-                        className="absolute right-2 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity h-6 px-2 text-xs gap-1"
+                        className="absolute right-2 bottom-2 sm:bottom-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity h-7 sm:h-6 px-2 text-xs gap-1 z-10"
                         onClick={(e) => handleAcceptConversation(conversation, e)}
                         title="Aceitar atendimento"
                       >
                         <UserCheck className="w-3 h-3" />
-                        Aceitar
+                        <span className="hidden sm:inline">Aceitar</span>
                       </Button>
                     )}
                     {/* Archive button */}
