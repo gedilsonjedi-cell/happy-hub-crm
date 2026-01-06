@@ -1022,6 +1022,13 @@ const WhatsAppChat = () => {
       // Determine which function to use based on provider
       const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
       
+      console.log('[SendMessage] Sending via:', sendFunction, {
+        channelId: conversationChannelId,
+        destination: selectedConversation.phone,
+        provider: conversationChannel?.provider,
+        messageLength: messageToSend.length
+      });
+      
       const { data, error } = await supabase.functions.invoke(sendFunction, {
         body: {
           channelId: conversationChannelId,
@@ -1031,8 +1038,10 @@ const WhatsAppChat = () => {
         }
       });
 
+      console.log('[SendMessage] Response:', { data, error });
+
       if (error) {
-        console.error('Send error:', error);
+        console.error('[SendMessage] Function invoke error:', error);
         toast.error('Erro ao enviar mensagem');
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId));
