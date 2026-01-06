@@ -105,10 +105,15 @@ serve(async (req) => {
     let isConnected = false;
     let statusMessage = 'Status desconhecido';
     
+    // First, check if we have essential data that indicates the phone is working
+    const hasValidData = phoneStatus.id && (phoneStatus.verified_name || phoneStatus.display_phone_number);
+    const hasQualityRating = phoneStatus.quality_rating && phoneStatus.quality_rating !== '';
+    
     // Check code_verification_status first
     if (phoneStatus.code_verification_status === 'VERIFIED') {
       connectionStatus = 'VERIFIED';
       statusMessage = 'Verificado';
+      isConnected = true; // Verified means it's connected
     } else if (phoneStatus.code_verification_status === 'NOT_VERIFIED') {
       connectionStatus = 'NOT_VERIFIED';
       statusMessage = 'Não verificado';
@@ -145,17 +150,19 @@ serve(async (req) => {
       if (phoneStatus.account_mode === 'SANDBOX') {
         connectionStatus = 'SANDBOX';
         statusMessage = 'Modo Sandbox';
+        isConnected = true; // Sandbox still works for testing
       } else if (phoneStatus.account_mode === 'LIVE') {
         isConnected = true;
-        if (connectionStatus === 'VERIFIED' || connectionStatus === 'UNKNOWN') {
+        if (connectionStatus === 'VERIFIED' || connectionStatus === 'UNKNOWN' || connectionStatus === 'NOT_VERIFIED') {
           connectionStatus = 'CONNECTED';
           statusMessage = 'Ativo';
         }
       }
     }
     
-    // If we have quality_rating and verified_name, it's likely connected
-    if (phoneStatus.quality_rating && phoneStatus.verified_name && connectionStatus === 'UNKNOWN') {
+    // IMPORTANT: If we have valid data (quality_rating, verified_name), consider it connected
+    // This handles the case where Meta API returns data but no explicit status field
+    if ((hasQualityRating || hasValidData) && (connectionStatus === 'UNKNOWN' || connectionStatus === 'NOT_VERIFIED')) {
       connectionStatus = 'CONNECTED';
       isConnected = true;
       statusMessage = 'Ativo';
@@ -166,10 +173,15 @@ serve(async (req) => {
       if (phoneStatus.name_status === 'DECLINED') {
         connectionStatus = 'NAME_DECLINED';
         statusMessage = 'Nome recusado';
+        // Keep isConnected as is - name declined doesn't mean it can't send messages
       } else if (phoneStatus.name_status === 'PENDING') {
         if (connectionStatus === 'UNKNOWN') {
           connectionStatus = 'NAME_PENDING';
           statusMessage = 'Nome pendente';
+        }
+        // If we have valid data, it's still connected even with pending name
+        if (hasValidData || hasQualityRating) {
+          isConnected = true;
         }
       }
     }
