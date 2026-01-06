@@ -266,6 +266,7 @@ async function processCampaignDispatch(
     const batchStartTime = Date.now();
     
     // Helper function to trigger next batch
+    // Uses both apikey and Authorization headers to ensure proper authentication
     const triggerNextBatch = async () => {
       console.log(`[Background] Triggering next batch continuation...`);
       try {
@@ -273,6 +274,7 @@ async function processCampaignDispatch(
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'apikey': supabaseServiceKey,
             'Authorization': `Bearer ${supabaseServiceKey}`,
           },
           body: JSON.stringify({
