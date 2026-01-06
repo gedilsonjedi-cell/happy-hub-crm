@@ -118,7 +118,12 @@ function replaceVariables(
   return result;
 }
 
-// Background task to process campaign dispatch
+// Max messages per batch to avoid timeout (edge function has ~60s limit)
+// With 45-75 second intervals, we can only do ~1 message per minute
+// So we process 10 messages per batch and then re-invoke
+const BATCH_SIZE = 10;
+
+// Background task to process campaign dispatch in batches
 async function processCampaignDispatch(
   supabaseUrl: string,
   supabaseServiceKey: string,
@@ -247,8 +252,12 @@ async function processCampaignDispatch(
     // Channel index should cycle through channels based on recipient index, not sent count
     // This ensures all channels are used in rotation for each recipient
 
-    // Process each recipient with random intervals
-    for (let i = startIndex; i < campaignRecipients.length; i++) {
+    // Calculate end of this batch
+    const batchEnd = Math.min(startIndex + BATCH_SIZE, campaignRecipients.length);
+    console.log(`[Background] Processing batch: ${startIndex + 1} to ${batchEnd} of ${campaignRecipients.length}`);
+
+    // Process each recipient in this batch
+    for (let i = startIndex; i < batchEnd; i++) {
       // Check if campaign was paused/cancelled before each message
       const { data: currentCampaign } = await supabase
         .from('campaigns')
@@ -422,27 +431,59 @@ async function processCampaignDispatch(
 
       // Channel rotation is now handled by: campaignChannels[i % campaignChannels.length]
 
-      // Wait random interval before next message (except for last one)
-      if (i < campaignRecipients.length - 1) {
+      // Wait random interval before next message (except for last one in batch)
+      if (i < batchEnd - 1) {
         const randomInterval = getRandomInterval(minInterval, maxInterval);
         console.log(`[Background] ⏱ Waiting ${randomInterval} seconds before next dispatch...`);
         await sleep(randomInterval * 1000);
       }
     }
 
-    // Update campaign as completed
-    await supabase
-      .from('campaigns')
-      .update({ 
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        sent_count: sentCount,
-        delivered_count: deliveredCount,
-        failed_count: failedCount
-      })
-      .eq('id', campaignId);
+    // Check if there are more recipients to process
+    if (batchEnd < campaignRecipients.length) {
+      console.log(`[Background] Batch complete. Triggering next batch starting at ${batchEnd}...`);
+      
+      // Wait a short interval before starting next batch
+      const batchInterval = getRandomInterval(minInterval, maxInterval);
+      console.log(`[Background] ⏱ Waiting ${batchInterval} seconds before next batch...`);
+      await sleep(batchInterval * 1000);
+      
+      // Re-invoke the function to continue with next batch
+      try {
+        const continueResponse = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            campaignId: campaignId,
+            action: 'continue',
+            recipients: recipients, // Pass original recipients
+            manualVariables: manualVariables
+          }),
+        });
+        
+        console.log(`[Background] Next batch triggered, status: ${continueResponse.status}`);
+      } catch (continueError) {
+        console.error('[Background] Failed to trigger next batch:', continueError);
+        // Don't fail the campaign, let the user manually resume
+      }
+    } else {
+      // All recipients processed - mark campaign as completed
+      await supabase
+        .from('campaigns')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          sent_count: sentCount,
+          delivered_count: deliveredCount,
+          failed_count: failedCount
+        })
+        .eq('id', campaignId);
 
-    console.log(`[Background] Campaign ${campaignId} completed. Sent: ${sentCount}, Delivered: ${deliveredCount}, Failed: ${failedCount}`);
+      console.log(`[Background] Campaign ${campaignId} completed. Sent: ${sentCount}, Delivered: ${deliveredCount}, Failed: ${failedCount}`);
+    }
     
   } catch (error) {
     console.error('[Background] Error in campaign dispatch:', error);
