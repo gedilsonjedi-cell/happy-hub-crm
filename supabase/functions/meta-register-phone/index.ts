@@ -29,7 +29,7 @@ serve(async (req) => {
     }
 
     // Step 1: First check current status
-    const statusUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,status,name_status,account_mode`;
+    const statusUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,status,name_status,account_mode,is_official_business_account,messaging_limit_tier`;
     
     console.log(`[meta-register-phone] Checking phone status first...`);
     
@@ -44,15 +44,35 @@ serve(async (req) => {
     const initialStatus = await initialStatusResponse.json();
     console.log(`[meta-register-phone] Initial status:`, JSON.stringify(initialStatus));
 
-    // If already connected/registered, no need to register again
-    if (initialStatus.status === 'CONNECTED') {
-      console.log(`[meta-register-phone] Phone already connected!`);
+    // Check for token errors
+    if (initialStatus.error) {
+      console.error(`[meta-register-phone] Status check error:`, initialStatus.error);
+      return new Response(
+        JSON.stringify({ 
+          error: `Erro ao verificar status: ${initialStatus.error.message || 'Token inválido'}`,
+          code: initialStatus.error.code,
+          suggestion: 'Verifique se o Access Token está correto e não expirado.'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Check if phone has valid data indicating it's working
+    const hasValidData = initialStatus.id && (initialStatus.verified_name || initialStatus.display_phone_number);
+    const hasQualityRating = initialStatus.quality_rating && initialStatus.quality_rating !== '';
+    
+    // If already connected/registered with valid data, no need to register again
+    if (initialStatus.status === 'CONNECTED' || (hasValidData && hasQualityRating)) {
+      console.log(`[meta-register-phone] Phone already connected or has valid data!`);
       return new Response(
         JSON.stringify({ 
           success: true,
           registered: true,
           alreadyConnected: true,
-          status: initialStatus,
+          status: { ...initialStatus, status: 'CONNECTED' },
           message: 'Número já está registrado e conectado!'
         }),
         { 
@@ -150,15 +170,20 @@ serve(async (req) => {
     
     // Add subscription info to status
     finalStatus.webhookSubscribed = subscribeData.success === true;
-    // If status shows CONNECTED, the phone is working regardless of register errors
-    const isConnected = finalStatus.status === 'CONNECTED';
+    
+    // Check if phone has valid data indicating it's working
+    const finalHasValidData = finalStatus.id && (finalStatus.verified_name || finalStatus.display_phone_number);
+    const finalHasQualityRating = finalStatus.quality_rating && finalStatus.quality_rating !== '';
+    
+    // If status shows CONNECTED or has valid data, the phone is working
+    const isConnected = finalStatus.status === 'CONNECTED' || (finalHasValidData && finalHasQualityRating);
     
     if (isConnected) {
       return new Response(
         JSON.stringify({ 
           success: true,
           registered: true,
-          status: finalStatus,
+          status: { ...finalStatus, status: 'CONNECTED' },
           message: 'Número está conectado e pronto para uso!'
         }),
         { 
