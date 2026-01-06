@@ -511,9 +511,9 @@ async function processCampaignDispatch(
       console.log(`[Background] ⏱ Waiting ${batchInterval} seconds before next batch...`);
       await sleep(batchInterval * 1000);
       
-      // Try to trigger next batch with retries
+      // Try to trigger next batch with retries - NEVER pause, always keep trying
       let retryCount = 0;
-      const maxRetries = 3;
+      const maxRetries = 10; // More retries before giving up on this attempt
       let success = false;
       
       while (retryCount < maxRetries && !success) {
@@ -521,8 +521,8 @@ async function processCampaignDispatch(
         if (!success) {
           retryCount++;
           if (retryCount < maxRetries) {
-            // Quick retry: 2s, 4s, 8s
-            const backoffTime = 2000 * Math.pow(2, retryCount - 1);
+            // Exponential backoff: 2s, 4s, 8s, 16s, 32s...
+            const backoffTime = Math.min(2000 * Math.pow(2, retryCount - 1), 30000);
             console.log(`[Background] Retry ${retryCount}/${maxRetries} - Waiting ${backoffTime/1000}s...`);
             await sleep(backoffTime);
           }
@@ -530,11 +530,11 @@ async function processCampaignDispatch(
       }
       
       if (!success) {
-        console.error('[Background] All retries failed. Marking campaign as paused.');
-        await supabase
-          .from('campaigns')
-          .update({ status: 'paused' })
-          .eq('id', campaignId);
+        // DON'T PAUSE - just log the error
+        // The campaign will continue when user clicks "Resume" or when the system recovers
+        console.error(`[Background] Failed to trigger next batch after ${maxRetries} retries. Campaign will continue from position ${sentCount} when resumed.`);
+        console.log(`[Background] Campaign ${campaignId} progress saved at ${sentCount}/${campaignRecipients.length}. Status remains 'running'.`);
+        // Keep status as 'running' so the campaign can be resumed or retried automatically
       }
     } else if (batchEnd >= campaignRecipients.length) {
       // All recipients processed - mark campaign as completed
