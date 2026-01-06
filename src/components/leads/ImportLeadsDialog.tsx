@@ -273,7 +273,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     setImporting(true);
 
     try {
-      const leadsToInsert = parsedFileData.rows
+      // Parse all valid leads from file
+      const leadsFromFile = parsedFileData.rows
         .filter(row => {
           const phone = row[selectedPhoneColumn]?.replace(/\D/g, "");
           return phone && phone.length >= 10;
@@ -296,45 +297,120 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           });
 
           return {
-            organization_id: organizationId,
-            user_id: user.id,
-            name: name?.trim() || `Lead ${phone}`,
             phone,
+            name: name?.trim() || `Lead ${phone}`,
             email: email?.trim() || null,
             document: document?.trim() || null,
             city: city?.trim() || null,
             state: state?.trim() || null,
-            custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
-            tags: selectedTags.length > 0 ? selectedTags : null,
-            status: "new" as const,
+            customFields,
           };
         });
 
-      if (leadsToInsert.length === 0) {
+      if (leadsFromFile.length === 0) {
         toast.error("Nenhum lead válido para importar");
         setImporting(false);
         return;
       }
 
-      const { error } = await supabase
-        .from("leads")
-        .insert(leadsToInsert);
+      // Get all phones from the file
+      const phonesFromFile = leadsFromFile.map(l => l.phone);
 
-      if (error) throw error;
+      // Check which phones already exist in database
+      const { data: existingLeads } = await supabase
+        .from("leads")
+        .select("id, phone, custom_fields, tags")
+        .eq("organization_id", organizationId)
+        .in("phone", phonesFromFile);
+
+      const existingPhoneMap = new Map(
+        (existingLeads || []).map(l => [l.phone, l])
+      );
+
+      // Separate into updates and inserts
+      const leadsToInsert: any[] = [];
+      const leadsToUpdate: { id: string; data: any }[] = [];
+
+      for (const lead of leadsFromFile) {
+        const existing = existingPhoneMap.get(lead.phone);
+        
+        if (existing) {
+          // Merge custom fields and tags
+          const mergedCustomFields = {
+            ...(existing.custom_fields as Record<string, string> || {}),
+            ...lead.customFields,
+          };
+          
+          // Merge tags (existing + new selected)
+          const existingTags = (existing.tags as string[]) || [];
+          const mergedTags = [...new Set([...existingTags, ...selectedTags])];
+
+          leadsToUpdate.push({
+            id: existing.id,
+            data: {
+              name: lead.name,
+              email: lead.email,
+              document: lead.document,
+              city: lead.city,
+              state: lead.state,
+              custom_fields: Object.keys(mergedCustomFields).length > 0 ? mergedCustomFields : null,
+              tags: mergedTags.length > 0 ? mergedTags : null,
+              updated_at: new Date().toISOString(),
+            },
+          });
+        } else {
+          leadsToInsert.push({
+            organization_id: organizationId,
+            user_id: user.id,
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            document: lead.document,
+            city: lead.city,
+            state: lead.state,
+            custom_fields: Object.keys(lead.customFields).length > 0 ? lead.customFields : null,
+            tags: selectedTags.length > 0 ? selectedTags : null,
+            status: "new" as const,
+          });
+        }
+      }
+
+      // Execute inserts
+      if (leadsToInsert.length > 0) {
+        const { error } = await supabase
+          .from("leads")
+          .insert(leadsToInsert);
+
+        if (error) throw error;
+      }
+
+      // Execute updates in batches
+      if (leadsToUpdate.length > 0) {
+        for (const { id, data } of leadsToUpdate) {
+          const { error } = await supabase
+            .from("leads")
+            .update(data)
+            .eq("id", id);
+
+          if (error) {
+            console.error("Error updating lead:", id, error);
+          }
+        }
+      }
 
       const tagInfo = selectedTags.length > 0 ? ` com ${selectedTags.length} tag(s)` : "";
-      toast.success(`${leadsToInsert.length} leads importados${tagInfo}!`);
+      const insertedMsg = leadsToInsert.length > 0 ? `${leadsToInsert.length} novos` : "";
+      const updatedMsg = leadsToUpdate.length > 0 ? `${leadsToUpdate.length} atualizados` : "";
+      const resultParts = [insertedMsg, updatedMsg].filter(Boolean).join(", ");
+      
+      toast.success(`Leads importados${tagInfo}: ${resultParts}`);
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       onSuccess?.();
       handleReset();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Erro ao importar leads:", error);
-      if (error.code === "23505") {
-        toast.error("Alguns telefones já existem na base");
-      } else {
-        toast.error("Erro ao importar leads: " + error.message);
-      }
+      toast.error("Erro ao importar leads: " + error.message);
     } finally {
       setImporting(false);
     }

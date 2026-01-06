@@ -139,34 +139,63 @@ export function AddLeadDialog({ open, onOpenChange, onSuccess }: AddLeadDialogPr
     try {
       const cleanPhone = phone.replace(/\D/g, "");
 
-      const { error } = await supabase.from("leads").insert({
-        name: name.trim(),
-        phone: cleanPhone,
-        email: email.trim() || null,
-        document: document.trim() || null,
-        city: city.trim() || null,
-        state: state.trim() || null,
-        notes: notes.trim() || null,
-        custom_fields: Object.keys(customFieldValues).length > 0 ? customFieldValues : null,
-        user_id: user.id,
-        organization_id: organizationId,
-        status: "new",
-      });
+      // Check if lead already exists with this phone
+      const { data: existingLead } = await supabase
+        .from("leads")
+        .select("id, custom_fields, tags")
+        .eq("organization_id", organizationId)
+        .eq("phone", cleanPhone)
+        .maybeSingle();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Já existe um contato com este telefone");
-        } else {
-          throw error;
-        }
+      if (existingLead) {
+        // Merge custom fields - keep existing and add new
+        const mergedCustomFields = {
+          ...(existingLead.custom_fields as Record<string, string> || {}),
+          ...customFieldValues,
+        };
+
+        // Update existing lead
+        const { error } = await supabase
+          .from("leads")
+          .update({
+            name: name.trim(),
+            email: email.trim() || null,
+            document: document.trim() || null,
+            city: city.trim() || null,
+            state: state.trim() || null,
+            notes: notes.trim() || null,
+            custom_fields: Object.keys(mergedCustomFields).length > 0 ? mergedCustomFields : null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingLead.id);
+
+        if (error) throw error;
+        toast.success("Contato atualizado com sucesso");
       } else {
+        // Insert new lead
+        const { error } = await supabase.from("leads").insert({
+          name: name.trim(),
+          phone: cleanPhone,
+          email: email.trim() || null,
+          document: document.trim() || null,
+          city: city.trim() || null,
+          state: state.trim() || null,
+          notes: notes.trim() || null,
+          custom_fields: Object.keys(customFieldValues).length > 0 ? customFieldValues : null,
+          user_id: user.id,
+          organization_id: organizationId,
+          status: "new",
+        });
+
+        if (error) throw error;
         toast.success("Contato adicionado com sucesso");
-        onSuccess?.();
-        onOpenChange(false);
       }
+
+      onSuccess?.();
+      onOpenChange(false);
     } catch (error) {
-      console.error("Erro ao adicionar contato:", error);
-      toast.error("Erro ao adicionar contato");
+      console.error("Erro ao salvar contato:", error);
+      toast.error("Erro ao salvar contato");
     } finally {
       setIsSubmitting(false);
     }
