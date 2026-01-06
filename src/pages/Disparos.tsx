@@ -452,6 +452,7 @@ const Disparos = () => {
         .from("campaigns")
         .insert({
           user_id: user?.id,
+          organization_id: effectiveOrganizationId,
           name: formData.campaignName,
           team: formData.team || null,
           chatbot_enabled: formData.chatbot === "enabled",
