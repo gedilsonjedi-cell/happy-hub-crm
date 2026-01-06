@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   Send, 
   Plus, 
@@ -56,6 +56,7 @@ import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
 import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
+import { useCampaignProcessor } from "@/hooks/useCampaignProcessor";
 
 interface Channel {
   id: string;
@@ -145,77 +146,8 @@ const Disparos = () => {
     maxInterval: "120"
   });
 
-  useEffect(() => {
-    if (user && effectiveOrganizationId) {
-      fetchData();
-    }
-  }, [user, effectiveOrganizationId]);
-
-  // Watchdog: verifica campanhas travadas a cada 60 segundos
-  useEffect(() => {
-    const hasRunningCampaigns = campaigns.some(c => c.status === "running");
-    
-    if (!hasRunningCampaigns) return;
-
-    const watchdogInterval = setInterval(async () => {
-      console.log("[Watchdog] Checking for stalled campaigns...");
-      try {
-        const { error } = await supabase.functions.invoke("campaign-watchdog", {
-          body: {}
-        });
-        if (error) {
-          console.error("[Watchdog] Error:", error);
-        }
-        // Refresh data after watchdog check
-        fetchData();
-      } catch (err) {
-        console.error("[Watchdog] Exception:", err);
-      }
-    }, 60000); // 60 segundos
-
-    return () => clearInterval(watchdogInterval);
-  }, [campaigns]);
-
-  // Demo data for presentation
-  const demoChannel: Channel = {
-    id: "demo-channel-1",
-    name: "WhatsApp Vendas (Demo)",
-    phone: "+5511999999999",
-    provider: "meta",
-    connected: true
-  };
-
-  const demoTemplates: MessageTemplate[] = [
-    {
-      id: "demo-template-1",
-      name: "Boas-vindas",
-      content: "Olá {{nome}}! 👋 Seja bem-vindo(a) à nossa empresa. Estamos felizes em tê-lo conosco!",
-      variables: null,
-      variable_mappings: null
-    },
-    {
-      id: "demo-template-2", 
-      name: "Promoção Especial",
-      content: "🎉 {{nome}}, temos uma oferta exclusiva para você! Aproveite 20% de desconto usando o cupom PROMO20.",
-      variables: null,
-      variable_mappings: null
-    },
-    {
-      id: "demo-template-3",
-      name: "Lembrete de Agendamento",
-      content: "📅 Olá {{nome}}, lembrando do seu agendamento amanhã às {{horario}}. Confirme sua presença!",
-      variables: null,
-      variable_mappings: null
-    }
-  ];
-
-  const demoChannelTemplateRelations: ChannelTemplate[] = [
-    { channel_id: "demo-channel-1", template_id: "demo-template-1" },
-    { channel_id: "demo-channel-1", template_id: "demo-template-2" },
-    { channel_id: "demo-channel-1", template_id: "demo-template-3" }
-  ];
-
-  const fetchData = async () => {
+  // Memoized fetchData callback
+  const fetchData = useCallback(async () => {
     if (!effectiveOrganizationId) return;
     setLoading(true);
 
@@ -258,6 +190,44 @@ const Disparos = () => {
     const realTemplates = templatesData || [];
     const realRelations = ctData || [];
 
+    const demoChannel: Channel = {
+      id: "demo-channel-1",
+      name: "WhatsApp Vendas (Demo)",
+      phone: "+5511999999999",
+      provider: "meta",
+      connected: true
+    };
+
+    const demoTemplates: MessageTemplate[] = [
+      {
+        id: "demo-template-1",
+        name: "Boas-vindas",
+        content: "Olá {{nome}}! 👋 Seja bem-vindo(a) à nossa empresa. Estamos felizes em tê-lo conosco!",
+        variables: null,
+        variable_mappings: null
+      },
+      {
+        id: "demo-template-2", 
+        name: "Promoção Especial",
+        content: "🎉 {{nome}}, temos uma oferta exclusiva para você! Aproveite 20% de desconto usando o cupom PROMO20.",
+        variables: null,
+        variable_mappings: null
+      },
+      {
+        id: "demo-template-3",
+        name: "Lembrete de Agendamento",
+        content: "📅 Olá {{nome}}, lembrando do seu agendamento amanhã às {{horario}}. Confirme sua presença!",
+        variables: null,
+        variable_mappings: null
+      }
+    ];
+
+    const demoChannelTemplateRelations: ChannelTemplate[] = [
+      { channel_id: "demo-channel-1", template_id: "demo-template-1" },
+      { channel_id: "demo-channel-1", template_id: "demo-template-2" },
+      { channel_id: "demo-channel-1", template_id: "demo-template-3" }
+    ];
+
     setChannels([demoChannel, ...realChannels]);
     setTemplates([...demoTemplates, ...realTemplates.map(t => ({
       ...t,
@@ -270,7 +240,42 @@ const Disparos = () => {
     })));
     setAiAgents(agentsData || []);
     setLoading(false);
-  };
+  }, [effectiveOrganizationId]);
+
+  useEffect(() => {
+    if (user && effectiveOrganizationId) {
+      fetchData();
+    }
+  }, [user, effectiveOrganizationId, fetchData]);
+
+  // Hook que processa campanhas em loop contínuo no frontend
+  // Garante que campanhas NUNCA parem enquanto a página estiver aberta
+  const { startProcessing } = useCampaignProcessor({
+    campaigns: campaigns.map(c => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      sent_count: c.sent_count,
+      total_recipients: c.total_recipients,
+      min_interval: c.min_interval,
+      max_interval: c.max_interval
+    })),
+    onUpdate: fetchData,
+    enabled: true
+  });
+
+  // Polling para atualizar dados a cada 5 segundos quando há campanhas rodando
+  useEffect(() => {
+    const hasRunningCampaigns = campaigns.some(c => c.status === "running");
+    if (!hasRunningCampaigns) return;
+
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [campaigns, fetchData]);
+
 
   // Get templates available for a specific channel
   const getTemplatesForChannel = (channelId: string) => {
