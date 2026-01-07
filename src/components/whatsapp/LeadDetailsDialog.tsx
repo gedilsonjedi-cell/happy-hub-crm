@@ -96,25 +96,35 @@ export function LeadDetailsDialog({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Normalize phone for query
+  // Normalize phone for query - get last 8-11 digits for flexible matching
   const normalizedPhone = phone.replace(/\D/g, "");
+  const phoneEnd = normalizedPhone.slice(-11); // Get last 11 digits for matching
 
   // Fetch lead by phone
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
     queryKey: ["lead-by-phone", normalizedPhone],
     queryFn: async () => {
-      // Try to find lead matching this phone
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (!profile?.organization_id) return null;
+
+      // Try multiple phone formats to find the lead
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.ilike.%${normalizedPhone}`)
+        .eq("organization_id", profile.organization_id)
+        .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.ilike.%${phoneEnd}`)
         .limit(1)
         .maybeSingle();
 
       if (error) throw error;
       return data as Lead | null;
     },
-    enabled: open && !!normalizedPhone,
+    enabled: open && !!normalizedPhone && !!user,
   });
 
   // Fetch custom field definitions
