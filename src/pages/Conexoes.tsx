@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   Pencil,
   MessageSquare,
-  Bot
+  Bot,
+  Zap
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -1514,8 +1515,38 @@ const Conexoes = () => {
                   )}
                 </div>
 
-                {/* Button to connect if disconnected */}
-                {channel.provider === 'meta' && !metaPhoneStatuses[channel.id]?.isConnected && (
+                {/* Button for PENDING status - Force registration */}
+                {channel.provider === 'meta' && (metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING') && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                      <p className="text-xs text-amber-400">
+                        ⚠️ Número pendente no Meta. Clique para forçar a ativação.
+                      </p>
+                    </div>
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs bg-amber-600 hover:bg-amber-700"
+                      onClick={() => handleForceReregister(channel)}
+                      disabled={isRegistering === channel.id}
+                    >
+                      {isRegistering === channel.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Forçando Ativação...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3 h-3" />
+                          Forçar Ativação
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Button to connect if disconnected (not pending) */}
+                {channel.provider === 'meta' && !metaPhoneStatuses[channel.id]?.isConnected && !metaPhoneStatuses[channel.id]?.isPending && metaPhoneStatuses[channel.id]?.code !== 'PENDING' && (
                   <div className="mt-3 pt-3 border-t border-border">
                     <Button 
                       variant="default" 
