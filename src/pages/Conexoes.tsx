@@ -642,13 +642,13 @@ const Conexoes = () => {
         return;
       }
       
-      // If not connected, proceed with registration
-
-      console.log(`Registering phone ${channel.app_name}...`);
+      // If not connected, proceed with registration with force flag
+      console.log(`Registering phone ${channel.app_name} with forceReregister=true...`);
       const { data, error } = await supabase.functions.invoke('meta-register-phone', {
         body: {
           phoneNumberId: channel.app_name,
           accessToken: channel.access_token,
+          forceReregister: true, // Always force to ensure connection
         },
       });
 
@@ -1474,92 +1474,38 @@ const Conexoes = () => {
                   >
                     {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
                   </Badge>
-                  {/* Status badge with real Meta API status for meta channels */}
-                  {channel.provider === 'meta' ? (
-                    isCheckingStatus[channel.id] ? (
-                      <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground border-border gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Verificando
-                      </Badge>
-                    ) : metaPhoneStatuses[channel.id] ? (
-                      <Badge 
-                        variant="outline" 
-                        className={cn(
-                          "text-xs",
-                          metaPhoneStatuses[channel.id].isConnected 
-                            ? metaPhoneStatuses[channel.id].qualityRating === 'RED'
-                              ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                              : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                            : metaPhoneStatuses[channel.id].code === 'RESTRICTED'
-                              ? "bg-red-500/10 text-red-500 border-red-500/30"
-                              : metaPhoneStatuses[channel.id].code === 'ERROR' || metaPhoneStatuses[channel.id].code === 'TOKEN_EXPIRED'
-                                ? "bg-red-500/10 text-red-500 border-red-500/30"
-                                : "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                        )}
-                      >
-                        {metaPhoneStatuses[channel.id].message}
-                      </Badge>
-                    ) : (
-                      <Badge 
-                        variant="outline" 
-                        className={cn(
-                          "text-xs",
-                          (metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected)
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
-                            : "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                        )}
-                      >
-                        {(metaPhoneStatuses[channel.id]?.isConnected ?? channel.connected) ? "Ativo" : "Pendente"}
-                      </Badge>
-                    )
+                  {/* Status badge - ONLY shows Conectado or Desconectado */}
+                  {isCheckingStatus[channel.id] ? (
+                    <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground border-border gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Verificando
+                    </Badge>
                   ) : (
                     <Badge 
                       variant="outline" 
                       className={cn(
                         "text-xs",
-                        channel.connected 
+                        (channel.provider === 'meta' 
+                          ? metaPhoneStatuses[channel.id]?.isConnected 
+                          : channel.connected)
                           ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
-                          : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                          : "bg-red-500/10 text-red-500 border-red-500/30"
                       )}
                     >
-                      {channel.connected ? "Ativo" : "Pendente"}
+                      {(channel.provider === 'meta' 
+                        ? metaPhoneStatuses[channel.id]?.isConnected 
+                        : channel.connected) 
+                        ? "Conectado" 
+                        : "Desconectado"}
                     </Badge>
                   )}
                 </div>
 
-                {/* Quality rating indicator for Meta channels */}
-                {channel.provider === 'meta' && metaPhoneStatuses[channel.id]?.qualityInfo && (
-                  <div className="mt-2">
-                    <span className={cn(
-                      "text-xs",
-                      metaPhoneStatuses[channel.id].qualityRating === 'GREEN' ? "text-emerald-500" :
-                      metaPhoneStatuses[channel.id].qualityRating === 'YELLOW' ? "text-amber-500" :
-                      metaPhoneStatuses[channel.id].qualityRating === 'RED' ? "text-red-500" :
-                      "text-muted-foreground"
-                    )}>
-                      ● {metaPhoneStatuses[channel.id].qualityInfo}
-                    </span>
-                  </div>
-                )}
-
-                {/* WARNING: Local shows connected but Meta says NOT connected */}
-                {channel.connected && channel.provider === 'meta' && metaPhoneStatuses[channel.id] && !metaPhoneStatuses[channel.id].isConnected && (
-                  <div className="mt-3 pt-3 border-t border-border space-y-2">
-                    <div className="p-2 bg-red-500/10 rounded border border-red-500/20">
-                      <p className="text-xs text-red-400 font-medium mb-1">
-                        ⚠️ ATENÇÃO: Problema de Conexão
-                      </p>
-                      <p className="text-xs text-red-300">
-                        {metaPhoneStatuses[channel.id].code === 'TOKEN_EXPIRED' 
-                          ? "Access Token inválido ou expirado. Reconecte o número."
-                          : metaPhoneStatuses[channel.id].code === 'ERROR'
-                            ? "Erro ao verificar status. Verifique as credenciais."
-                            : `Status Meta: ${metaPhoneStatuses[channel.id].message}. O número precisa ser registrado.`
-                        }
-                      </p>
-                    </div>
+                {/* Button to connect if disconnected */}
+                {channel.provider === 'meta' && !metaPhoneStatuses[channel.id]?.isConnected && (
+                  <div className="mt-3 pt-3 border-t border-border">
                     <Button 
-                      variant="destructive" 
+                      variant="default" 
                       size="sm" 
                       className="w-full gap-2 text-xs"
                       onClick={() => handleRegisterPhone(channel)}
@@ -1568,12 +1514,12 @@ const Conexoes = () => {
                       {isRegistering === channel.id ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Reconectando...
+                          Conectando...
                         </>
                       ) : (
                         <>
                           <Power className="w-3 h-3" />
-                          Reconectar Número
+                          Conectar Número
                         </>
                       )}
                     </Button>
