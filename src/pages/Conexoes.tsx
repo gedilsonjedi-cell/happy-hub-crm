@@ -221,23 +221,41 @@ const Conexoes = () => {
           [channel.id]: data.status
         }));
         
-        // Only auto-update database if:
-        // 1. Meta says it's connected AND local says disconnected (auto-fix)
-        // 2. OR forceUpdateDb is true (manual button click)
-        // This prevents overwriting manual disconnection
-        if (forceUpdateDb && data.status.isConnected !== channel.connected) {
+        // Auto-sync database with Meta status when:
+        // 1. forceUpdateDb is true (manual button click) - sync in either direction
+        // 2. OR local says connected but Meta says NOT connected - auto-disconnect to prevent failed campaigns
+        const metaSaysConnected = data.status.isConnected;
+        const localSaysConnected = channel.connected;
+        
+        if (forceUpdateDb && metaSaysConnected !== localSaysConnected) {
           await supabase
             .from("channels")
-            .update({ connected: data.status.isConnected })
+            .update({ connected: metaSaysConnected })
             .eq("id", channel.id);
           
           setChannels(prev => prev.map(ch => 
-            ch.id === channel.id ? { ...ch, connected: data.status.isConnected } : ch
+            ch.id === channel.id ? { ...ch, connected: metaSaysConnected } : ch
           ));
           
-          if (data.status.isConnected) {
+          if (metaSaysConnected) {
             toast.success("Status atualizado: Conectado");
+          } else {
+            toast.warning("Status atualizado: Desconectado (Meta não confirma conexão)");
           }
+        }
+        // Auto-disconnect if local shows connected but Meta doesn't (prevent failed campaigns)
+        else if (localSaysConnected && !metaSaysConnected && !forceUpdateDb) {
+          console.warn(`Channel ${channel.id} shows connected locally but Meta says ${data.status.code}. Auto-updating...`);
+          await supabase
+            .from("channels")
+            .update({ connected: false })
+            .eq("id", channel.id);
+          
+          setChannels(prev => prev.map(ch => 
+            ch.id === channel.id ? { ...ch, connected: false } : ch
+          ));
+          
+          toast.warning(`Canal ${channel.name} desconectado: ${data.status.message}`);
         }
       }
     } catch (err) {
@@ -582,26 +600,49 @@ const Conexoes = () => {
     setIsRegistering(channel.id);
 
     try {
-      // Check if Meta already says this number is connected - if so, just activate locally
-      const metaStatus = metaPhoneStatuses[channel.id];
-      if (metaStatus?.isConnected) {
-        console.log(`Phone ${channel.app_name} already registered in Meta, just activating locally...`);
+      // FIRST: Always check real Meta status before anything
+      toast.info("Verificando status do número no Meta...", { duration: 2000 });
+      
+      const { data: statusData, error: statusError } = await supabase.functions.invoke('meta-check-phone-status', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+        },
+      });
+      
+      if (statusError) {
+        toast.error("Erro ao verificar status: " + statusError.message);
+        setIsRegistering(null);
+        return;
+      }
+      
+      // Update local status immediately
+      if (statusData?.status) {
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: statusData.status
+        }));
+      }
+      
+      // If Meta confirms connected, just activate locally
+      if (statusData?.status?.isConnected) {
+        console.log(`Phone ${channel.app_name} confirmed CONNECTED by Meta, activating locally...`);
         
-        // Update channel as connected
         await supabase
           .from("channels")
           .update({ connected: true })
           .eq("id", channel.id);
         
-        // Update local state
         setChannels(prev => 
           prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
         );
         
-        toast.success("Canal ativado com sucesso!");
+        toast.success("Número verificado e ativado com sucesso!");
         setIsRegistering(null);
         return;
       }
+      
+      // If not connected, proceed with registration
 
       console.log(`Registering phone ${channel.app_name}...`);
       const { data, error } = await supabase.functions.invoke('meta-register-phone', {
@@ -981,6 +1022,36 @@ const Conexoes = () => {
   const handleToggleConnection = async (channel: Channel) => {
     const newConnectedState = !channel.connected;
     
+    // If trying to activate a Meta channel, verify real status first
+    if (newConnectedState && channel.provider === 'meta' && channel.app_name && channel.access_token) {
+      toast.info("Verificando status real do número...", { duration: 2000 });
+      
+      const { data: statusData, error: statusError } = await supabase.functions.invoke('meta-check-phone-status', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+        },
+      });
+      
+      if (statusError) {
+        toast.error("Erro ao verificar status: " + statusError.message);
+        return;
+      }
+      
+      // Update local status
+      if (statusData?.status) {
+        setMetaPhoneStatuses(prev => ({
+          ...prev,
+          [channel.id]: statusData.status
+        }));
+      }
+      
+      if (!statusData?.status?.isConnected) {
+        toast.error("Este número NÃO está conectado no Meta. Use 'Ativar' para registrar primeiro.");
+        return;
+      }
+    }
+    
     // Optimistic update
     setChannels(prev => prev.map(c => 
       c.id === channel.id ? { ...c, connected: newConnectedState } : c
@@ -1055,13 +1126,64 @@ const Conexoes = () => {
       }
 
       if (data?.success) {
-        toast.success("Webhook inscrito com sucesso! Agora as mensagens devem chegar.");
+        toast.success("Webhook inscrito! Verificando status do número...");
         
-        // Mark channel as connected
-        await supabase
-          .from("channels")
-          .update({ connected: true })
-          .eq("id", channel.id);
+        // ALWAYS verify real Meta status before marking as connected
+        const { data: statusData, error: statusError } = await supabase.functions.invoke('meta-check-phone-status', {
+          body: {
+            phoneNumberId: channel.app_name,
+            accessToken: channel.access_token,
+          },
+        });
+        
+        if (statusError) {
+          console.error('Error checking phone status:', statusError);
+          toast.warning("Webhook inscrito, mas não foi possível verificar o status do número");
+        } else if (statusData?.status?.isConnected) {
+          // Only mark as connected if Meta confirms
+          await supabase
+            .from("channels")
+            .update({ connected: true })
+            .eq("id", channel.id);
+          
+          toast.success("Número verificado e conectado!");
+          
+          setMetaPhoneStatuses(prev => ({
+            ...prev,
+            [channel.id]: statusData.status
+          }));
+        } else {
+          // Not connected according to Meta - try to register
+          toast.warning("Número não está registrado na Meta. Tentando registrar...");
+          
+          const { data: regData, error: regError } = await supabase.functions.invoke('meta-register-phone', {
+            body: {
+              phoneNumberId: channel.app_name,
+              accessToken: channel.access_token,
+            },
+          });
+          
+          if (regError) {
+            toast.error("Falha ao registrar número: " + regError.message);
+          } else if (regData?.success || regData?.status?.status === 'CONNECTED') {
+            await supabase
+              .from("channels")
+              .update({ connected: true })
+              .eq("id", channel.id);
+            
+            toast.success("Número registrado e conectado com sucesso!");
+          } else if (regData?.pending) {
+            toast.warning("Número pendente de verificação no Meta");
+            if (regData.suggestion) {
+              toast.info(regData.suggestion, { duration: 10000 });
+            }
+          } else {
+            toast.error(regData?.error || "Número não pôde ser conectado");
+            if (regData?.suggestion) {
+              toast.info(regData.suggestion, { duration: 10000 });
+            }
+          }
+        }
         
         await fetchChannels();
       } else {
@@ -1420,8 +1542,46 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Connected status indicator - respect local channel.connected state */}
-                {channel.connected && (channel.provider === 'zapi' || (metaPhoneStatuses[channel.id]?.isConnected !== false)) && (
+                {/* WARNING: Local shows connected but Meta says NOT connected */}
+                {channel.connected && channel.provider === 'meta' && metaPhoneStatuses[channel.id] && !metaPhoneStatuses[channel.id].isConnected && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <div className="p-2 bg-red-500/10 rounded border border-red-500/20">
+                      <p className="text-xs text-red-400 font-medium mb-1">
+                        ⚠️ ATENÇÃO: Problema de Conexão
+                      </p>
+                      <p className="text-xs text-red-300">
+                        {metaPhoneStatuses[channel.id].code === 'TOKEN_EXPIRED' 
+                          ? "Access Token inválido ou expirado. Reconecte o número."
+                          : metaPhoneStatuses[channel.id].code === 'ERROR'
+                            ? "Erro ao verificar status. Verifique as credenciais."
+                            : `Status Meta: ${metaPhoneStatuses[channel.id].message}. O número precisa ser registrado.`
+                        }
+                      </p>
+                    </div>
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleRegisterPhone(channel)}
+                      disabled={isRegistering === channel.id}
+                    >
+                      {isRegistering === channel.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Reconectando...
+                        </>
+                      ) : (
+                        <>
+                          <Power className="w-3 h-3" />
+                          Reconectar Número
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Connected status indicator - respect local channel.connected state AND Meta status */}
+                {channel.connected && (channel.provider === 'zapi' || metaPhoneStatuses[channel.id]?.isConnected === true) && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <div className="flex items-center gap-2">
                       <div className={cn(
@@ -1474,6 +1634,21 @@ const Conexoes = () => {
                         )}
                       </Button>
                     )}
+                  </div>
+                )}
+                
+                {/* Channel shows connected but meta status not checked yet */}
+                {channel.connected && channel.provider === 'meta' && !metaPhoneStatuses[channel.id] && !isCheckingStatus[channel.id] && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => checkMetaPhoneStatus(channel, true)}
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Verificar Status Real
+                    </Button>
                   </div>
                 )}
 
