@@ -106,6 +106,7 @@ const Conexoes = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
   
   // For Super Admin: select which organization to assign new channels
+  // Initialize with effective org ID when impersonating
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -166,11 +167,21 @@ const Conexoes = () => {
     accessToken: "",
   });
 
+  // Auto-set selectedOrgId when Super Admin is impersonating
+  useEffect(() => {
+    if (isSuperAdmin && isImpersonating && effectiveOrganizationId) {
+      setSelectedOrgId(effectiveOrganizationId);
+    } else if (isSuperAdmin && !isImpersonating) {
+      // Reset to empty when not impersonating, they must select manually
+      setSelectedOrgId("");
+    }
+  }, [isSuperAdmin, isImpersonating, effectiveOrganizationId]);
+
   useEffect(() => {
     if (user) {
       fetchChannels();
     }
-  }, [user]);
+  }, [user, effectiveOrganizationId, isImpersonating]);
 
   // Check Meta phone status for all Meta channels when channels load
   useEffect(() => {
@@ -271,8 +282,11 @@ const Conexoes = () => {
     setLoading(true);
     setMetaPhoneStatuses({}); // Reset statuses to trigger fresh check
     
-    // If impersonating, filter by the impersonated organization
-    if (isImpersonating && effectiveOrganizationId) {
+    // Always filter by effective organization ID (works for both super admin and regular users)
+    // When super admin is impersonating: effectiveOrganizationId = impersonated org
+    // When super admin is NOT impersonating: effectiveOrganizationId = their own org
+    // For regular users: effectiveOrganizationId = their own org
+    if (effectiveOrganizationId) {
       const { data, error } = await supabase
         .from("channels")
         .select(`
@@ -289,37 +303,9 @@ const Conexoes = () => {
       }
 
       setChannels((data as Channel[]) || []);
-    } else if (isSuperAdmin) {
-      // Super Admin not impersonating sees all channels
-      const { data, error } = await supabase
-        .from("channels")
-        .select(`
-          *,
-          organization:organizations(id, name)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        toast.error("Erro ao carregar canais");
-        setLoading(false);
-        return;
-      }
-
-      setChannels((data as Channel[]) || []);
     } else {
-      // Regular user sees only their organization's channels
-      const { data, error } = await supabase
-        .from("channels")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        toast.error("Erro ao carregar canais");
-        setLoading(false);
-        return;
-      }
-
-      setChannels((data as Channel[]) || []);
+      // Fallback: no organization ID available
+      setChannels([]);
     }
     
     setLoading(false);
