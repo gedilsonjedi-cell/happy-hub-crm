@@ -103,6 +103,7 @@ serve(async (req) => {
     // Determine connection status based on various factors
     let connectionStatus = 'UNKNOWN';
     let isConnected = false;
+    let isPending = false;
     let statusMessage = 'Status desconhecido';
     
     // First, check if we have essential data that indicates the phone is working
@@ -136,7 +137,7 @@ serve(async (req) => {
         statusMessage = 'Restrito';
       } else if (status === 'PENDING') {
         connectionStatus = 'PENDING';
-        isConnected = false;
+        isPending = true;
         statusMessage = 'Pendente';
       } else if (status === 'RATE_LIMITED') {
         connectionStatus = 'RATE_LIMITED';
@@ -202,7 +203,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[meta-check-phone-status] Phone ${phoneNumberId} status: ${connectionStatus}, connected: ${isConnected}`);
+    console.log(`[meta-check-phone-status] Phone ${phoneNumberId} status: ${connectionStatus}, connected: ${isConnected}, pending: ${isPending}`);
 
     return new Response(
       JSON.stringify({ 
@@ -210,6 +211,7 @@ serve(async (req) => {
         status: {
           code: connectionStatus,
           isConnected,
+          isPending,
           message: statusMessage,
           qualityRating: phoneStatus.quality_rating || null,
           qualityInfo,
@@ -220,6 +222,7 @@ serve(async (req) => {
           nameStatus: phoneStatus.name_status || null,
           isOfficialBusiness: phoneStatus.is_official_business_account || false,
           codeVerificationStatus: phoneStatus.code_verification_status || null,
+          rawStatus: phoneStatus.status || null,
         },
         rawData: phoneStatus
       }),
