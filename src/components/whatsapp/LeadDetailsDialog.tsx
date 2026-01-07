@@ -96,9 +96,16 @@ export function LeadDetailsDialog({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Normalize phone for query - get last 8-11 digits for flexible matching
+  // Normalize phone for query - handle 8th/9th digit variations
   const normalizedPhone = phone.replace(/\D/g, "");
-  const phoneEnd = normalizedPhone.slice(-11); // Get last 11 digits for matching
+  // Remove country code (55) if present to get local number
+  const localNumber = normalizedPhone.startsWith("55") 
+    ? normalizedPhone.slice(2) 
+    : normalizedPhone;
+  // Get last 8 digits (most stable part of the number)
+  const phoneEnd8 = localNumber.slice(-8);
+  // Create variation with 9 (for mobile) and without
+  const ddd = localNumber.length >= 10 ? localNumber.slice(0, 2) : "";
 
   // Fetch lead by phone
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
@@ -112,12 +119,21 @@ export function LeadDetailsDialog({
 
       if (!profile?.organization_id) return null;
 
-      // Try multiple phone formats to find the lead
+      // Build search patterns for different phone formats
+      // Pattern matches: exact, with +, ending with last 8 digits (most reliable)
+      const searchPatterns = [
+        `phone.eq.${normalizedPhone}`,
+        `phone.eq.+${normalizedPhone}`,
+        `phone.eq.55${localNumber}`,
+        `phone.eq.+55${localNumber}`,
+        `phone.ilike.%${phoneEnd8}`, // Last 8 digits are most stable
+      ].join(",");
+
       const { data, error } = await supabase
         .from("leads")
         .select("*")
         .eq("organization_id", profile.organization_id)
-        .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.ilike.%${phoneEnd}`)
+        .or(searchPatterns)
         .limit(1)
         .maybeSingle();
 

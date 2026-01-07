@@ -396,13 +396,27 @@ Deno.serve(async (req) => {
       // Check if sender is a lead, if not create one
       // Normalize phone for search - remove all non-digits
       const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
+      // Remove country code to get local number
+      const localNumber = normalizedSenderPhone.startsWith('55') 
+        ? normalizedSenderPhone.slice(2) 
+        : normalizedSenderPhone;
+      // Get last 8 digits (most stable - doesn't change with 9th digit)
+      const phoneEnd8 = localNumber.slice(-8);
       
-      // Search for lead using multiple phone format patterns
+      // Search for lead using multiple phone format patterns including 8-digit suffix
+      const searchPatterns = [
+        `phone.eq.${normalizedSenderPhone}`,
+        `phone.eq.+${normalizedSenderPhone}`,
+        `phone.eq.55${localNumber}`,
+        `phone.eq.+55${localNumber}`,
+        `phone.ilike.%${phoneEnd8}`, // Match last 8 digits
+      ].join(',');
+      
       const { data: existingLead } = await supabase
         .from('leads')
         .select('id, name, custom_fields, document')
         .eq('organization_id', channel.organization_id)
-        .or(`phone.eq.${normalizedSenderPhone},phone.eq.+${normalizedSenderPhone},phone.ilike.%${normalizedSenderPhone}`)
+        .or(searchPatterns)
         .limit(1)
         .maybeSingle();
 
