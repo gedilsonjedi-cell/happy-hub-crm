@@ -553,6 +553,13 @@ const WhatsAppChat = () => {
           .from("whatsapp_messages")
           .update({ is_read: true })
           .in("id", unreadMessageIds);
+        
+        // Update unreadCount to 0 for this conversation
+        const conversationKey = `${selectedConversation.channelId || 'unknown'}_${normalizedPhone}`;
+        setConversations(prev => prev.map(c => {
+          const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
+          return key === conversationKey ? { ...c, unreadCount: 0 } : c;
+        }));
       }
     }
 
