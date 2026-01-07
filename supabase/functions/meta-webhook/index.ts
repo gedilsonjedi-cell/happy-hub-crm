@@ -514,12 +514,17 @@ Deno.serve(async (req) => {
 
         // Check if sender is a lead, if not create one
         // Also update lead name if it was auto-generated and we now have the real WhatsApp name
+        // Normalize phone for search - remove all non-digits
+        const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
+        
+        // Search for lead using multiple phone format patterns
         const { data: existingLead } = await supabase
           .from('leads')
-          .select('id, name')
-          .eq('phone', senderPhone)
+          .select('id, name, custom_fields, document')
           .eq('organization_id', channel.organization_id)
-          .single();
+          .or(`phone.eq.${normalizedSenderPhone},phone.eq.+${normalizedSenderPhone},phone.ilike.%${normalizedSenderPhone}`)
+          .limit(1)
+          .maybeSingle();
 
         let leadId = existingLead?.id;
 
