@@ -207,11 +207,16 @@ Deno.serve(async (req) => {
       // Normalize phone for search - remove all non-digits
       const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
       
-      // Search for lead using multiple phone format patterns
+      // Search for lead using parameterized query (safer than string interpolation)
+      const phoneSearchPatterns = [
+        normalizedSenderPhone,
+        `+${normalizedSenderPhone}`,
+      ];
+      
       const { data: existingLead } = await supabase
         .from('leads')
         .select('id')
-        .or(`phone.eq.${normalizedSenderPhone},phone.eq.+${normalizedSenderPhone},phone.ilike.%${normalizedSenderPhone}`)
+        .in('phone', phoneSearchPatterns)
         .limit(1)
         .maybeSingle();
 

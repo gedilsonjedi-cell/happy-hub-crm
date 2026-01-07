@@ -403,20 +403,19 @@ Deno.serve(async (req) => {
       // Get last 8 digits (most stable - doesn't change with 9th digit)
       const phoneEnd8 = localNumber.slice(-8);
       
-      // Search for lead using multiple phone format patterns including 8-digit suffix
-      const searchPatterns = [
-        `phone.eq.${normalizedSenderPhone}`,
-        `phone.eq.+${normalizedSenderPhone}`,
-        `phone.eq.55${localNumber}`,
-        `phone.eq.+55${localNumber}`,
-        `phone.ilike.%${phoneEnd8}`, // Match last 8 digits
-      ].join(',');
+      // Search for lead using parameterized query (safer than string interpolation)
+      const phoneSearchPatterns = [
+        normalizedSenderPhone,
+        `+${normalizedSenderPhone}`,
+        `55${localNumber}`,
+        `+55${localNumber}`,
+      ];
       
       const { data: existingLead } = await supabase
         .from('leads')
         .select('id, name, custom_fields, document')
         .eq('organization_id', channel.organization_id)
-        .or(searchPatterns)
+        .in('phone', phoneSearchPatterns)
         .limit(1)
         .maybeSingle();
 
