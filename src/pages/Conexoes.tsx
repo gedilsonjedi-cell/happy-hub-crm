@@ -145,6 +145,7 @@ const Conexoes = () => {
   const [metaPhoneStatuses, setMetaPhoneStatuses] = useState<Record<string, {
     code: string;
     isConnected: boolean;
+    isPending?: boolean;
     message: string;
     qualityRating?: string;
     qualityInfo?: string;
@@ -1474,29 +1475,41 @@ const Conexoes = () => {
                   >
                     {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
                   </Badge>
-                  {/* Status badge - ONLY shows Conectado or Desconectado */}
+                  {/* Status badge - Shows Conectado, Pendente, or Desconectado */}
                   {isCheckingStatus[channel.id] ? (
                     <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground border-border gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       Verificando
+                    </Badge>
+                  ) : channel.provider === 'meta' && metaPhoneStatuses[channel.id] ? (
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "text-xs",
+                        metaPhoneStatuses[channel.id].isConnected 
+                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                          : metaPhoneStatuses[channel.id].isPending || metaPhoneStatuses[channel.id].code === 'PENDING'
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                            : "bg-red-500/10 text-red-500 border-red-500/30"
+                      )}
+                    >
+                      {metaPhoneStatuses[channel.id].isConnected 
+                        ? "Conectado"
+                        : metaPhoneStatuses[channel.id].isPending || metaPhoneStatuses[channel.id].code === 'PENDING'
+                          ? "Pendente"
+                          : "Desconectado"}
                     </Badge>
                   ) : (
                     <Badge 
                       variant="outline" 
                       className={cn(
                         "text-xs",
-                        (channel.provider === 'meta' 
-                          ? metaPhoneStatuses[channel.id]?.isConnected 
-                          : channel.connected)
+                        channel.connected 
                           ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" 
                           : "bg-red-500/10 text-red-500 border-red-500/30"
                       )}
                     >
-                      {(channel.provider === 'meta' 
-                        ? metaPhoneStatuses[channel.id]?.isConnected 
-                        : channel.connected) 
-                        ? "Conectado" 
-                        : "Desconectado"}
+                      {channel.connected ? "Conectado" : "Desconectado"}
                     </Badge>
                   )}
                 </div>
