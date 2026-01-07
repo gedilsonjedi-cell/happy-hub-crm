@@ -1844,7 +1844,7 @@ const WhatsAppChat = () => {
                   >
                     <button
                       onClick={() => setSelectedConversation(conversation)}
-                      className="w-full p-3 sm:p-4 text-left transition-colors overflow-hidden"
+                      className="w-full p-3 sm:p-4 pr-16 sm:pr-20 text-left transition-colors overflow-hidden"
                     >
                       <div className="flex items-start gap-2 sm:gap-3 w-full overflow-hidden">
                         <Avatar className="w-9 h-9 sm:w-10 sm:h-10 shrink-0">
@@ -1854,7 +1854,7 @@ const WhatsAppChat = () => {
                         </Avatar>
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-foreground text-xs sm:text-sm truncate flex-1 min-w-0">
+                            <span className="font-medium text-foreground text-xs sm:text-sm truncate block max-w-[calc(100%-60px)]">
                               {conversation.name || conversation.phone}
                             </span>
                             <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0 whitespace-nowrap">
@@ -1866,7 +1866,7 @@ const WhatsAppChat = () => {
                               📱 {channelInfo.name}
                             </p>
                           )}
-                          <p className="text-xs text-muted-foreground truncate mb-2 max-w-full">
+                          <p className="text-xs text-muted-foreground truncate mb-2 block w-full">
                             {conversation.lastMessage}
                           </p>
                           <div className="flex items-center gap-1.5 flex-wrap">
