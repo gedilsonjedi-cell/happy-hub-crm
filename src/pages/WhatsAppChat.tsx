@@ -1589,7 +1589,7 @@ const WhatsAppChat = () => {
 
     // Check if it's a template message
     if (message.message_type === "template" || message.content?.startsWith("Template:")) {
-      // Get template data from metadata
+      // Get template data from metadata (PRIMARY source - saved at send time)
       const metadata = message.metadata as { 
         templateName?: string; 
         templateParams?: string[]; 
@@ -1605,12 +1605,13 @@ const WhatsAppChat = () => {
         templateName = message.content.replace("Template:", "").trim();
       }
 
-      // Get template content from our cached templates
+      // PRIORITY: Use metadata content first (saved at send time), then cached templates as fallback
+      // This ensures templates always display correctly regardless of organization
       const templateData = templates.get(templateName);
       
-      // Use cached template or fallback to metadata content
-      let displayContent = templateData?.content || metadata?.templateContent || "";
-      const buttons = templateData?.components?.buttons || metadata?.templateButtons || [];
+      // Prioritize metadata content (saved when message was sent) over cached templates
+      let displayContent = metadata?.templateContent || templateData?.content || "";
+      const buttons = metadata?.templateButtons || templateData?.components?.buttons || [];
       
       if (displayContent) {
         // Replace {{1}}, {{2}}, etc. with actual params
