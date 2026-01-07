@@ -1515,12 +1515,24 @@ const Conexoes = () => {
                   )}
                 </div>
 
-                {/* Button for PENDING status - Force registration */}
-                {channel.provider === 'meta' && (metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING') && (
+                {/* Button to force activation - shows for PENDING or DISCONNECTED */}
+                {channel.provider === 'meta' && !metaPhoneStatuses[channel.id]?.isConnected && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
-                    <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                      <p className="text-xs text-amber-400">
-                        ⚠️ Número pendente no Meta. Clique para forçar a ativação.
+                    <div className={cn(
+                      "p-2 rounded border",
+                      metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
+                        ? "bg-amber-500/10 border-amber-500/20"
+                        : "bg-red-500/10 border-red-500/20"
+                    )}>
+                      <p className={cn(
+                        "text-xs",
+                        metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
+                          ? "text-amber-400"
+                          : "text-red-400"
+                      )}>
+                        {metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
+                          ? "⚠️ Número pendente no Meta. Clique para forçar a ativação."
+                          : "⚠️ Número desconectado. Clique para forçar a ativação."}
                       </p>
                     </div>
                     <Button 
@@ -1539,31 +1551,6 @@ const Conexoes = () => {
                         <>
                           <Zap className="w-3 h-3" />
                           Forçar Ativação
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-
-                {/* Button to connect if disconnected (not pending) */}
-                {channel.provider === 'meta' && !metaPhoneStatuses[channel.id]?.isConnected && !metaPhoneStatuses[channel.id]?.isPending && metaPhoneStatuses[channel.id]?.code !== 'PENDING' && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      className="w-full gap-2 text-xs"
-                      onClick={() => handleRegisterPhone(channel)}
-                      disabled={isRegistering === channel.id}
-                    >
-                      {isRegistering === channel.id ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Conectando...
-                        </>
-                      ) : (
-                        <>
-                          <Power className="w-3 h-3" />
-                          Conectar Número
                         </>
                       )}
                     </Button>
