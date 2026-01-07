@@ -1067,25 +1067,28 @@ const WhatsAppChat = () => {
 
         // Auto-assign conversation to current user if not already assigned
         if (!selectedConversation.assignedTo && user?.id) {
+          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
           const { error: assignError } = await supabase
             .from('conversation_assignments')
             .upsert({
-              conversation_phone: selectedConversation.phone,
+              conversation_phone: normalizedPhone,
               channel_id: conversationChannelId,
               assigned_to: user.id,
               assigned_at: new Date().toISOString(),
-              status: 'in_progress'
+              status: 'active'
             }, {
               onConflict: 'conversation_phone,channel_id'
             });
 
           if (!assignError) {
             // Update local state
-            setConversations(prev => prev.map(c => 
-              c.phone === selectedConversation.phone && c.channelId === conversationChannelId
-                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' }
-                : c
-            ));
+            const normalizedSelectedPhone = selectedConversation.phone.replace(/\D/g, '');
+            setConversations(prev => prev.map(c => {
+              const normalizedCPhone = c.phone.replace(/\D/g, '');
+              return normalizedCPhone === normalizedSelectedPhone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                : c;
+            }));
             setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
           }
         }
@@ -1160,24 +1163,27 @@ const WhatsAppChat = () => {
 
         // Auto-assign conversation to current user if not already assigned
         if (!selectedConversation.assignedTo && user?.id) {
+          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
           const { error: assignError } = await supabase
             .from('conversation_assignments')
             .upsert({
-              conversation_phone: selectedConversation.phone,
+              conversation_phone: normalizedPhone,
               channel_id: conversationChannelId,
               assigned_to: user.id,
               assigned_at: new Date().toISOString(),
-              status: 'in_progress'
+              status: 'active'
             }, {
               onConflict: 'conversation_phone,channel_id'
             });
 
           if (!assignError) {
-            setConversations(prev => prev.map(c => 
-              c.phone === selectedConversation.phone && c.channelId === conversationChannelId
-                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' }
-                : c
-            ));
+            const normalizedSelectedPhone = selectedConversation.phone.replace(/\D/g, '');
+            setConversations(prev => prev.map(c => {
+              const normalizedCPhone = c.phone.replace(/\D/g, '');
+              return normalizedCPhone === normalizedSelectedPhone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                : c;
+            }));
             setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
           }
         }
