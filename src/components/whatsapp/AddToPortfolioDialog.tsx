@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -31,7 +32,8 @@ export function AddToPortfolioDialog({
   contactName 
 }: AddToPortfolioDialogProps) {
   const { user } = useAuth();
-  const { organizationId, isAdmin, isSuperAdmin } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const { isAdmin, isSuperAdmin } = useUserRole();
   const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   

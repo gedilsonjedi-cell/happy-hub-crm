@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -67,7 +67,7 @@ const estados = [
 ];
 
 export function EditLeadDialog({ open, onOpenChange, lead, onSuccess }: EditLeadDialogProps) {
-  const { organizationId } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [name, setName] = useState("");
