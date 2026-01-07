@@ -260,12 +260,17 @@ Deno.serve(async (req) => {
     // Find or create lead
     let leadId = assignment?.lead_id;
     if (!leadId) {
+      // Normalize phone for search - remove all non-digits
+      const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
+      
+      // Search for lead using multiple phone format patterns
       const { data: existingLead } = await supabase
         .from('leads')
         .select('id')
-        .eq('phone', senderPhone)
         .eq('organization_id', organizationId)
-        .single();
+        .or(`phone.eq.${normalizedSenderPhone},phone.eq.+${normalizedSenderPhone},phone.ilike.%${normalizedSenderPhone}`)
+        .limit(1)
+        .maybeSingle();
 
       leadId = existingLead?.id;
 
