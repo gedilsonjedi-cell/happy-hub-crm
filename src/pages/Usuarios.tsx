@@ -60,6 +60,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Navigate } from "react-router-dom";
@@ -115,7 +116,8 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 
 const Usuarios = () => {
   const { user } = useAuth();
-  const { isAdmin, isSuperAdmin, loading: roleLoading, organizationId: currentUserOrgId } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -404,17 +406,17 @@ const Usuarios = () => {
           user_id: authData.user.id,
           email: newUserEmail.trim(),
           display_name: newUserName.trim(),
-          organization_id: currentUserOrgId,
+          organization_id: organizationId,
         });
 
       if (profileError) {
         console.error("Error creating profile:", profileError);
         // Try updating the profile if it already exists (created by trigger)
-        if (currentUserOrgId) {
+        if (organizationId) {
           await supabase
             .from("profiles")
             .update({
-              organization_id: currentUserOrgId,
+              organization_id: organizationId,
               display_name: newUserName.trim(),
             })
             .eq("user_id", authData.user.id);

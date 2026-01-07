@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, UserPlus, Trash2, Users, ArrowRightLeft, BarChart3, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -50,7 +51,8 @@ interface AttendantStats {
 
 export default function CarteiraClientes() {
   const { user } = useAuth();
-  const { organizationId, isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string>("all");

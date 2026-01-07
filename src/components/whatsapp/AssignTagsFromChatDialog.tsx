@@ -3,7 +3,7 @@ import { Tag } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +31,7 @@ export function AssignTagsFromChatDialog({
   onSuccess,
 }: AssignTagsFromChatDialogProps) {
   const { user } = useAuth();
-  const { organizationId } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);

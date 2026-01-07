@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +80,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 const ContatoDetalhes = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { organizationId } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   
   const [showEditDialog, setShowEditDialog] = useState(false);

@@ -3,7 +3,7 @@ import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag } from "lucid
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -62,7 +62,7 @@ const PRESET_COLORS = [
 
 export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeadsDialogProps) {
   const { user } = useAuth();
-  const { organizationId } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
