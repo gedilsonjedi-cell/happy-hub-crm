@@ -132,6 +132,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify that at least one channel is connected AND has valid credentials
+    const connectedChannels = channels.filter(c => c.connected && c.access_token);
+    if (connectedChannels.length === 0) {
+      console.error('[Batch] No connected channels with valid credentials found');
+      await supabase.from('campaigns').update({ 
+        status: 'paused',
+        updated_at: new Date().toISOString()
+      }).eq('id', campaignId);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Nenhum canal conectado com credenciais válidas. Verifique suas conexões.', 
+          done: true,
+          needsReconnection: true
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
