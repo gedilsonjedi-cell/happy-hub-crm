@@ -154,15 +154,16 @@ const Templates = () => {
     value: "",
   });
 
-  // Detect variables from content
+  // Detect variables from content - simplified format [p1], [p2], etc.
   const detectedVariables = useMemo(() => {
-    const regex = /\*?\[([A-Z_]+)\]\*?/g;
+    const regex = /\[p(\d+)\]/gi;
     const matches = formData.content.matchAll(regex);
     const vars: DetectedVariable[] = [];
     const seen = new Set<string>();
     
     for (const match of matches) {
-      const name = match[1];
+      const num = match[1];
+      const name = `p${num}`;
       if (!seen.has(name)) {
         seen.add(name);
         vars.push({
@@ -173,7 +174,8 @@ const Templates = () => {
         });
       }
     }
-    return vars;
+    // Sort by number
+    return vars.sort((a, b) => parseInt(a.name.slice(1)) - parseInt(b.name.slice(1)));
   }, [formData.content, variableExamples]);
 
   useEffect(() => {
@@ -761,7 +763,7 @@ const Templates = () => {
                 {/* Message Text Area */}
                 <div className="relative">
                   <Textarea
-                    placeholder={"Digite sua mensagem aqui...\nUse *[VARIAVEL]* para adicionar parâmetros dinâmicos"}
+                    placeholder={"Digite sua mensagem aqui...\nUse [p1], [p2], [p3]... para adicionar parâmetros dinâmicos"}
                     className="bg-background border-border min-h-[180px] resize-none pr-10 text-sm"
                     value={formData.content}
                     onChange={(e) => {
@@ -922,108 +924,57 @@ const Templates = () => {
                 </div>
               </div>
 
-              {/* Parameters Section */}
-              <div className="border-t border-border pt-5">
-                <div className="mb-4">
-                  <h3 className="font-medium text-foreground">Parâmetros</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Defina abaixo como os parâmetros serão tratados
+              {/* Parameters Section - Simplified */}
+              {detectedVariables.length > 0 && (
+                <div className="border-t border-border pt-5">
+                  <div className="mb-4">
+                    <h3 className="font-medium text-foreground">Parâmetros detectados</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Preencha o valor de exemplo para cada parâmetro
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {detectedVariables.map((variable) => (
+                      <div key={variable.name} className="flex items-center gap-3 bg-muted/20 rounded-lg p-3 border border-border">
+                        <div className="w-12 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <span className="text-sm font-bold text-primary">[{variable.name}]</span>
+                        </div>
+                        <div className="flex-1">
+                          <Input
+                            placeholder={`Digite o exemplo para [${variable.name}]...`}
+                            className="bg-background border-border"
+                            value={variableExamples[variable.name] || ""}
+                            onChange={(e) => {
+                              if (e.target.value.length <= 100) {
+                                setVariableExamples(prev => ({
+                                  ...prev,
+                                  [variable.name]: e.target.value
+                                }));
+                              }
+                            }}
+                            maxLength={100}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground mt-3">
+                    <strong>Dica:</strong> Use [p1], [p2], [p3]... no texto da mensagem para adicionar parâmetros dinâmicos.
                   </p>
                 </div>
-
-                {detectedVariables.length === 0 ? (
-                  <div className="text-center py-6 text-muted-foreground text-sm bg-muted/20 rounded-lg border border-border">
-                    Use *[VARIAVEL]* no conteúdo para adicionar parâmetros
+              )}
+              
+              {/* Empty state for parameters */}
+              {detectedVariables.length === 0 && (
+                <div className="border-t border-border pt-5">
+                  <div className="text-center py-6 text-muted-foreground text-sm bg-muted/20 rounded-lg border border-dashed border-border">
+                    <Type className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>Use <code className="bg-muted px-1.5 py-0.5 rounded text-primary">[p1]</code> <code className="bg-muted px-1.5 py-0.5 rounded text-primary">[p2]</code> no conteúdo para adicionar parâmetros</p>
                   </div>
-                ) : (
-                  <div className="border border-border rounded-lg overflow-hidden">
-                    <div className="grid grid-cols-[100px_80px_1fr_1fr] gap-3 px-4 py-2 bg-muted/30 border-b border-border">
-                      <span className="text-xs font-medium text-muted-foreground">Nome</span>
-                      <span className="text-xs font-medium text-muted-foreground">Tipo</span>
-                      <span className="text-xs font-medium text-muted-foreground">Origem do valor</span>
-                      <span className="text-xs font-medium text-muted-foreground">Exemplo de uso</span>
-                    </div>
-                    
-                    <div className="divide-y divide-border">
-                      {detectedVariables.map((variable) => {
-                        const currentMapping = variableMappings[variable.name] || "manual";
-                        const isManual = currentMapping === "manual";
-                        
-                        return (
-                          <div key={variable.name} className="grid grid-cols-[100px_80px_1fr_1fr] gap-3 px-4 py-3 items-center">
-                            <span className="text-sm font-medium text-foreground truncate" title={variable.name}>
-                              {variable.name}
-                            </span>
-                            <div>
-                              <Select defaultValue="text">
-                                <SelectTrigger className="h-8 bg-background border-border text-xs">
-                                  <div className="flex items-center gap-1">
-                                    <Type className="w-3 h-3" />
-                                  </div>
-                                </SelectTrigger>
-                                <SelectContent className="bg-card border-border z-50">
-                                  <SelectItem value="text">Texto</SelectItem>
-                                  <SelectItem value="number">Número</SelectItem>
-                                  <SelectItem value="date">Data</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Select 
-                              value={currentMapping}
-                              onValueChange={(value) => {
-                                setVariableMappings(prev => ({
-                                  ...prev,
-                                  [variable.name]: value
-                                }));
-                              }}
-                            >
-                              <SelectTrigger className="h-8 bg-background border-border text-xs">
-                                <SelectValue placeholder="Selecione a origem" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-card border-border z-50">
-                                {contactFieldOptions.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    <span className={option.value === "manual" ? "text-primary" : ""}>
-                                      {option.label}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <div className="relative">
-                              <Input
-                                placeholder={isManual ? "Valor a ser informado" : "Exemplo de uso"}
-                                className="h-8 bg-background border-border text-xs pr-12"
-                                value={variableExamples[variable.name] || ""}
-                                onChange={(e) => {
-                                  if (e.target.value.length <= 100) {
-                                    setVariableExamples(prev => ({
-                                      ...prev,
-                                      [variable.name]: e.target.value
-                                    }));
-                                  }
-                                }}
-                                maxLength={100}
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                                {(variableExamples[variable.name] || "").length}/100
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    
-                    {/* Helper text */}
-                    <div className="px-4 py-3 bg-muted/10 border-t border-border">
-                      <p className="text-xs text-muted-foreground">
-                        <strong>Dica:</strong> Selecione um campo do contato para preencher automaticamente, 
-                        ou escolha "Informar no momento do envio" para digitar o valor manualmente durante a campanha.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
