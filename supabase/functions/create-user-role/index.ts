@@ -92,6 +92,8 @@ serve(async (req) => {
     if (action === "update_user") {
       const { user_id, display_name, email, password } = body;
 
+      console.log("Update user request:", { user_id, display_name, email, hasPassword: !!password });
+
       if (!user_id) {
         return new Response(JSON.stringify({ error: "Missing user_id" }), {
           status: 400,
@@ -111,21 +113,27 @@ serve(async (req) => {
       }
 
       const currentEmail = currentUserData?.user?.email;
+      console.log("Current email:", currentEmail, "New email:", email, "Are equal:", email === currentEmail);
 
-      // Update user auth data - only include email if it actually changed
+      // Update user auth data - only include password (never update email to same value)
       const updateData: { email?: string; password?: string } = {};
       
-      // Only update email if it's different from current
-      if (email && email !== currentEmail) {
-        updateData.email = email;
+      // Only update email if it's provided, different from current, and not empty
+      if (email && email.trim() && email.toLowerCase().trim() !== currentEmail?.toLowerCase().trim()) {
+        updateData.email = email.trim();
+        console.log("Email will be updated to:", updateData.email);
       }
       
       // Update password if provided and meets minimum length
-      if (password && password.length >= 6) {
-        updateData.password = password;
+      if (password && password.trim() && password.trim().length >= 6) {
+        updateData.password = password.trim();
+        console.log("Password will be updated");
       }
 
+      console.log("Update data keys:", Object.keys(updateData));
+
       if (Object.keys(updateData).length > 0) {
+        console.log("Calling updateUserById with:", { user_id, updateKeys: Object.keys(updateData) });
         const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(user_id, updateData);
         
         if (authUpdateError) {
@@ -135,6 +143,9 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        console.log("Auth update successful");
+      } else {
+        console.log("No auth updates needed");
       }
 
       // Update profile
@@ -154,6 +165,7 @@ serve(async (req) => {
         });
       }
 
+      console.log("Profile update successful");
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
