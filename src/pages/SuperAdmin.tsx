@@ -147,7 +147,9 @@ export default function SuperAdmin() {
   // Edit admin fields
   const [editAdminUserId, setEditAdminUserId] = useState<string | null>(null);
   const [editAdminName, setEditAdminName] = useState("");
+  const [editAdminOriginalName, setEditAdminOriginalName] = useState("");
   const [editAdminEmail, setEditAdminEmail] = useState("");
+  const [editAdminOriginalEmail, setEditAdminOriginalEmail] = useState("");
   const [editAdminPassword, setEditAdminPassword] = useState("");
   const [loadingAdminData, setLoadingAdminData] = useState(false);
   
@@ -427,7 +429,9 @@ export default function SuperAdmin() {
       if (!error && adminProfile) {
         setEditAdminUserId(adminProfile.user_id);
         setEditAdminName(adminProfile.display_name || "");
+        setEditAdminOriginalName(adminProfile.display_name || "");
         setEditAdminEmail(adminProfile.email || "");
+        setEditAdminOriginalEmail(adminProfile.email || "");
       }
     } catch (err) {
       console.error("Error fetching admin data:", err);
@@ -446,7 +450,9 @@ export default function SuperAdmin() {
     setEditOrgExpiryDate(undefined);
     setEditAdminUserId(null);
     setEditAdminName("");
+    setEditAdminOriginalName("");
     setEditAdminEmail("");
+    setEditAdminOriginalEmail("");
     setEditAdminPassword("");
   };
 
@@ -493,8 +499,8 @@ export default function SuperAdmin() {
               body: JSON.stringify({
                 action: "update_user",
                 user_id: editAdminUserId,
-                display_name: editAdminName.trim(),
-                email: editAdminEmail.trim(),
+                display_name: editAdminName.trim() !== editAdminOriginalName ? editAdminName.trim() : undefined,
+                email: editAdminEmail.trim() !== editAdminOriginalEmail ? editAdminEmail.trim() : undefined,
                 password: editAdminPassword.trim() || undefined,
               }),
             }

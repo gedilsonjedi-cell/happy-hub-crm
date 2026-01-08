@@ -101,25 +101,11 @@ serve(async (req) => {
         });
       }
 
-      // First, get current user to check if email actually changed
-      const { data: currentUserData, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(user_id);
-      
-      if (getUserError) {
-        console.error("Error getting user:", getUserError);
-        return new Response(JSON.stringify({ error: getUserError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const currentEmail = currentUserData?.user?.email;
-      console.log("Current email:", currentEmail, "New email:", email, "Are equal:", email === currentEmail);
-
-      // Update user auth data - only include password (never update email to same value)
+      // Build auth update data - only include fields that are explicitly provided
       const updateData: { email?: string; password?: string } = {};
       
-      // Only update email if it's provided, different from current, and not empty
-      if (email && email.trim() && email.toLowerCase().trim() !== currentEmail?.toLowerCase().trim()) {
+      // Only update email if explicitly provided (not undefined)
+      if (email !== undefined && email !== null && email.trim()) {
         updateData.email = email.trim();
         console.log("Email will be updated to:", updateData.email);
       }
@@ -148,24 +134,31 @@ serve(async (req) => {
         console.log("No auth updates needed");
       }
 
-      // Update profile
-      const { error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .update({
-          display_name: display_name || null,
-          email: email || null,
-        })
-        .eq("user_id", user_id);
-
-      if (profileError) {
-        console.error("Error updating profile:", profileError);
-        return new Response(JSON.stringify({ error: profileError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      // Update profile only if display_name or email was provided
+      const profileUpdate: { display_name?: string | null; email?: string | null } = {};
+      if (display_name !== undefined) {
+        profileUpdate.display_name = display_name || null;
+      }
+      if (email !== undefined) {
+        profileUpdate.email = email || null;
       }
 
-      console.log("Profile update successful");
+      if (Object.keys(profileUpdate).length > 0) {
+        const { error: profileError } = await supabaseAdmin
+          .from("profiles")
+          .update(profileUpdate)
+          .eq("user_id", user_id);
+
+        if (profileError) {
+          console.error("Error updating profile:", profileError);
+          return new Response(JSON.stringify({ error: profileError.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        console.log("Profile update successful");
+      }
+
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
