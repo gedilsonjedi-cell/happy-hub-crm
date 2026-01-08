@@ -99,10 +99,31 @@ serve(async (req) => {
         });
       }
 
-      // Update user auth data (email and/or password)
+      // First, get current user to check if email actually changed
+      const { data: currentUserData, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(user_id);
+      
+      if (getUserError) {
+        console.error("Error getting user:", getUserError);
+        return new Response(JSON.stringify({ error: getUserError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const currentEmail = currentUserData?.user?.email;
+
+      // Update user auth data - only include email if it actually changed
       const updateData: { email?: string; password?: string } = {};
-      if (email) updateData.email = email;
-      if (password && password.length >= 6) updateData.password = password;
+      
+      // Only update email if it's different from current
+      if (email && email !== currentEmail) {
+        updateData.email = email;
+      }
+      
+      // Update password if provided and meets minimum length
+      if (password && password.length >= 6) {
+        updateData.password = password;
+      }
 
       if (Object.keys(updateData).length > 0) {
         const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(user_id, updateData);
