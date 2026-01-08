@@ -82,15 +82,16 @@ interface DetectedVariable {
 
 // Available contact fields for variable mapping
 const contactFieldOptions = [
-  { value: "manual", label: "Informar no momento do envio", icon: "edit" },
-  { value: "contact_first_name", label: "Primeiro nome do contato", field: "first_name" },
-  { value: "contact_full_name", label: "Nome completo do contato", field: "name" },
-  { value: "contact_phone", label: "Telefone do contato", field: "phone" },
-  { value: "contact_email", label: "E-mail do contato", field: "email" },
-  { value: "contact_city", label: "Cidade do contato", field: "city" },
-  { value: "contact_state", label: "Estado do contato", field: "state" },
-  { value: "contact_document", label: "CPF/CNPJ do contato", field: "document" },
-  { value: "contact_notes", label: "Observações do contato", field: "notes" },
+  { value: "manual", label: "Informar no momento do envio", icon: "edit", description: "Digitar o valor ao enviar" },
+  { value: "contact_first_name", label: "Primeiro nome do contato", field: "first_name", description: "Automático do CRM" },
+  { value: "contact_full_name", label: "Nome completo do contato", field: "name", description: "Automático do CRM" },
+  { value: "contact_phone", label: "Telefone do contato", field: "phone", description: "Automático do CRM" },
+  { value: "contact_email", label: "E-mail do contato", field: "email", description: "Automático do CRM" },
+  { value: "contact_city", label: "Cidade do contato", field: "city", description: "Automático do CRM" },
+  { value: "contact_state", label: "Estado do contato", field: "state", description: "Automático do CRM" },
+  { value: "contact_document", label: "CPF/CNPJ do contato", field: "document", description: "Automático do CRM" },
+  { value: "contact_notes", label: "Observações do contato", field: "notes", description: "Automático do CRM" },
+  { value: "custom_field", label: "Campo personalizado", field: "custom", description: "Selecionar campo" },
 ];
 
 interface TemplateButton {
@@ -294,6 +295,8 @@ const Templates = () => {
     setTemplateButtons(prev => prev.filter(b => b.id !== id));
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleCreateTemplate = async () => {
     if (!formData.name.trim()) {
       toast.error("Preencha o nome do template");
@@ -301,6 +304,10 @@ const Templates = () => {
     }
     if (!formData.content.trim()) {
       toast.error("Preencha o conteúdo da mensagem");
+      return;
+    }
+    if (!formData.channel) {
+      toast.error("Selecione um canal");
       return;
     }
     if (formData.name.length > 100) {
@@ -312,6 +319,13 @@ const Templates = () => {
       return;
     }
 
+    // Validate variable examples are filled
+    const missingExamples = detectedVariables.filter(v => !variableExamples[v.name]?.trim());
+    if (missingExamples.length > 0) {
+      toast.error(`Preencha o exemplo para: ${missingExamples.map(v => `[${v.name}]`).join(', ')}`);
+      return;
+    }
+
     const variables = detectedVariables.map(v => v.name);
 
     // Build variable mappings object
@@ -320,39 +334,70 @@ const Templates = () => {
       mappingsToSave[v.name] = variableMappings[v.name] || "manual";
     });
 
-    const { data: template, error } = await supabase
-      .from("message_templates")
-      .insert({
-        user_id: user?.id,
-        organization_id: effectiveOrganizationId,
-        name: formData.name.trim(),
-        content: formData.content.trim(),
-        variables,
-        variable_mappings: mappingsToSave,
-        dispatch_type: formData.category as "marketing" | "utility" | "service",
-        status: "pending",
-      })
-      .select()
-      .single();
+    setIsSubmitting(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        setIsSubmitting(false);
+        return;
+      }
 
-    if (error) {
-      toast.error("Erro ao criar template");
-      return;
-    }
+      // Map category to Meta format
+      const categoryMap: Record<string, string> = {
+        utility: 'UTILITY',
+        marketing: 'MARKETING',
+        authentication: 'AUTHENTICATION',
+      };
 
-    // If channel selected, create channel_template relation
-    if (formData.channel && template) {
-      await supabase.from("channel_templates").insert({
-        channel_id: formData.channel,
-        template_id: template.id,
+      // Call edge function to create template on Meta
+      const response = await supabase.functions.invoke('meta-create-template', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: {
+          name: formData.name.trim(),
+          content: formData.content.trim(),
+          category: categoryMap[formData.category] || 'UTILITY',
+          channel_id: formData.channel,
+          footer: formData.footerMessage,
+          variables,
+          variable_examples: variableExamples,
+          variable_mappings: mappingsToSave,
+          buttons: templateButtons.map(btn => ({
+            type: btn.type,
+            label: btn.label,
+            value: btn.value,
+          })),
+        },
       });
-    }
 
-    toast.success("Template criado com sucesso!");
-    setDialogOpen(false);
-    resetForm();
-    fetchTemplates();
-    fetchChannels();
+      if (response.error) {
+        console.error('Create template error:', response.error);
+        toast.error(response.error.message || "Erro ao criar template");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const result = response.data;
+      
+      if (result.error) {
+        toast.error(result.message || result.error);
+      } else {
+        toast.success(result.message || "Template enviado para análise!");
+        setDialogOpen(false);
+        resetForm();
+        await fetchTemplates();
+        await fetchChannels();
+      }
+    } catch (error) {
+      console.error('Create template error:', error);
+      toast.error("Erro ao criar template");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteTemplate = async (id: string) => {
@@ -465,8 +510,10 @@ const Templates = () => {
 
   const getTemplateType = (templateId: string) => {
     const approvedChannels = channelTemplates[templateId] || [];
-    if (approvedChannels.length === 0) return "Resposta rápida";
-    if (approvedChannels.length === 1) return "Atendimento";
+    // Always show universal type as per requirement
+    if (approvedChannels.length > 0) {
+      return "Atendimento\nCampanha\nSequência";
+    }
     return "Atendimento\nCampanha\nSequência";
   };
 
@@ -924,38 +971,83 @@ const Templates = () => {
                 </div>
               </div>
 
-              {/* Parameters Section - Simplified */}
+              {/* Parameters Section - With Variable Mapping */}
               {detectedVariables.length > 0 && (
                 <div className="border-t border-border pt-5">
                   <div className="mb-4">
                     <h3 className="font-medium text-foreground">Parâmetros detectados</h3>
                     <p className="text-sm text-muted-foreground">
-                      Preencha o valor de exemplo para cada parâmetro
+                      Preencha o exemplo e configure a origem de cada parâmetro
                     </p>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {detectedVariables.map((variable) => (
-                      <div key={variable.name} className="flex items-center gap-3 bg-muted/20 rounded-lg p-3 border border-border">
-                        <div className="w-12 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
-                          <span className="text-sm font-bold text-primary">[{variable.name}]</span>
+                      <div key={variable.name} className="bg-muted/20 rounded-lg p-4 border border-border space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-12 h-8 rounded bg-primary/10 flex items-center justify-center border border-primary/20">
+                            <span className="text-sm font-bold text-primary">[{variable.name}]</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground">Parâmetro {variable.name}</span>
                         </div>
-                        <div className="flex-1">
-                          <Input
-                            placeholder={`Digite o exemplo para [${variable.name}]...`}
-                            className="bg-background border-border"
-                            value={variableExamples[variable.name] || ""}
-                            onChange={(e) => {
-                              if (e.target.value.length <= 100) {
-                                setVariableExamples(prev => ({
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* Example value */}
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Exemplo (obrigatório)</Label>
+                            <Input
+                              placeholder={`Ex: João`}
+                              className="bg-background border-border"
+                              value={variableExamples[variable.name] || ""}
+                              onChange={(e) => {
+                                if (e.target.value.length <= 100) {
+                                  setVariableExamples(prev => ({
+                                    ...prev,
+                                    [variable.name]: e.target.value
+                                  }));
+                                }
+                              }}
+                              maxLength={100}
+                            />
+                          </div>
+                          
+                          {/* Variable mapping source */}
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Origem do valor no disparo</Label>
+                            <Select 
+                              value={variableMappings[variable.name] || "manual"}
+                              onValueChange={(value) => {
+                                setVariableMappings(prev => ({
                                   ...prev,
-                                  [variable.name]: e.target.value
+                                  [variable.name]: value
                                 }));
-                              }
-                            }}
-                            maxLength={100}
-                          />
+                              }}
+                            >
+                              <SelectTrigger className="bg-background border-border">
+                                <SelectValue placeholder="Selecione a origem" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-card border-border z-50">
+                                {contactFieldOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <div className="flex flex-col">
+                                      <span className={option.value === "manual" ? "text-warning font-medium" : ""}>
+                                        {option.label}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
+                        
+                        {/* Show selected mapping description */}
+                        <p className="text-xs text-muted-foreground">
+                          {variableMappings[variable.name] === "manual" || !variableMappings[variable.name]
+                            ? "⚠️ Será solicitado informar o valor ao disparar mensagem"
+                            : "✓ Será preenchido automaticamente com dados do lead no CRM"
+                          }
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -999,11 +1091,11 @@ const Templates = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>
                 Voltar
               </Button>
-              <Button onClick={handleCreateTemplate}>
-                Salvar
+              <Button onClick={handleCreateTemplate} disabled={isSubmitting}>
+                {isSubmitting ? "Enviando para Meta..." : "Enviar para Análise"}
               </Button>
             </div>
           </div>
