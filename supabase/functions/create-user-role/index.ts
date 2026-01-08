@@ -16,45 +16,50 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authHeader = req.headers.get("Authorization");
 
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // Create client with service role for admin operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Create a client with the user's token to verify authentication
-    const supabaseAnon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } }
-    });
-    
-    // Verify the requesting user using getClaims
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
-    
-    if (claimsError || !claimsData?.claims?.sub) {
-      console.error("Auth claims error:", claimsError);
-      return new Response(JSON.stringify({ error: "Invalid authorization" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    
-    const requestingUserId = claimsData.claims.sub;
 
-    // Check if requesting user is super admin
-    const { data: isSuperAdmin } = await supabaseAdmin.rpc('is_super_admin', {
-      _user_id: requestingUserId,
-    });
+    // Check if this is a service-role call (internal)
+    const isServiceRoleCall = authHeader === `Bearer ${supabaseServiceKey}`;
 
-    if (!isSuperAdmin) {
-      return new Response(JSON.stringify({ error: "Only super admins can perform this action" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (!isServiceRoleCall) {
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Missing authorization" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Create a client with the user's token to verify authentication
+      const supabaseAnon = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } }
       });
+      
+      // Verify the requesting user using getClaims
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
+      
+      if (claimsError || !claimsData?.claims?.sub) {
+        console.error("Auth claims error:", claimsError);
+        return new Response(JSON.stringify({ error: "Invalid authorization" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
+      const requestingUserId = claimsData.claims.sub;
+
+      // Check if requesting user is super admin
+      const { data: isSuperAdmin } = await supabaseAdmin.rpc('is_super_admin', {
+        _user_id: requestingUserId,
+      });
+
+      if (!isSuperAdmin) {
+        return new Response(JSON.stringify({ error: "Only super admins can perform this action" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const body = await req.json();
