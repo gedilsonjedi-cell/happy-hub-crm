@@ -322,12 +322,13 @@ const Templates = () => {
       .from("message_templates")
       .insert({
         user_id: user?.id,
+        organization_id: effectiveOrganizationId,
         name: formData.name.trim(),
         content: formData.content.trim(),
         variables,
         variable_mappings: mappingsToSave,
         dispatch_type: formData.category as "marketing" | "utility" | "service",
-        status: formData.isDraft ? "pending" : "pending",
+        status: "pending",
       })
       .select()
       .single();
