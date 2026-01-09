@@ -8,6 +8,9 @@ import {
   Download,
   Loader2,
   Users,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +40,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -58,16 +63,6 @@ interface BatchUserImportProps {
   onImportComplete: () => void;
 }
 
-const generateSecurePassword = (): string => {
-  const array = new Uint8Array(16);
-  crypto.getRandomValues(array);
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  let password = '';
-  for (let i = 0; i < 16; i++) {
-    password += chars[array[i] % chars.length];
-  }
-  return password;
-};
 
 const parseCSV = (text: string): string[][] => {
   const lines = text.split(/\r?\n/).filter(line => line.trim());
@@ -101,6 +96,8 @@ export function BatchUserImport({
   const [step, setStep] = useState<"upload" | "preview" | "importing" | "complete">("upload");
   const [users, setUsers] = useState<BatchUser[]>([]);
   const [defaultRole, setDefaultRole] = useState<AppRole>("atendente");
+  const [universalPassword, setUniversalPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
 
@@ -108,6 +105,8 @@ export function BatchUserImport({
     setStep("upload");
     setUsers([]);
     setDefaultRole("atendente");
+    setUniversalPassword("");
+    setShowPassword(false);
     setImportProgress(0);
   };
 
@@ -237,6 +236,16 @@ export function BatchUserImport({
       return;
     }
 
+    if (!universalPassword.trim()) {
+      toast.error("Defina uma senha para os usuários");
+      return;
+    }
+
+    if (universalPassword.trim().length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres");
+      return;
+    }
+
     const pendingUsers = users.filter(u => u.status === "pending");
     if (pendingUsers.length === 0) {
       toast.error("Nenhum usuário válido para importar");
@@ -251,14 +260,14 @@ export function BatchUserImport({
       if (user.status !== "pending") continue;
 
       try {
-        const tempPassword = generateSecurePassword();
+        // Use the universal password defined by admin
+        const password = universalPassword.trim();
 
         // Create user via Supabase Auth
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: user.email,
-          password: tempPassword,
+          password: password,
           options: {
-            emailRedirectTo: `${window.location.origin}/`,
             data: {
               display_name: user.name,
             }
@@ -300,7 +309,7 @@ export function BatchUserImport({
         }
 
         setUsers(prev => prev.map((u, idx) => 
-          idx === i ? { ...u, status: "success", tempPassword } : u
+          idx === i ? { ...u, status: "success", tempPassword: password } : u
         ));
       } catch (error: any) {
         const errorMessage = error.message?.includes("already registered") 
@@ -437,6 +446,35 @@ export function BatchUserImport({
 
           {step === "preview" && (
             <div className="space-y-4">
+              {/* Password configuration */}
+              <div className="p-4 bg-muted/30 rounded-lg border border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-primary" />
+                  <Label className="font-medium">Senha para todos os usuários</Label>
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Digite a senha universal (mínimo 6 caracteres)"
+                    value={universalPassword}
+                    onChange={(e) => setUniversalPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Esta senha será usada para todos os usuários importados. Eles poderão alterá-la depois.
+                </p>
+              </div>
+
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-muted-foreground">
                   Total: <strong>{users.length}</strong>
@@ -453,7 +491,7 @@ export function BatchUserImport({
                 )}
               </div>
 
-              <ScrollArea className="h-[350px] border rounded-lg">
+              <ScrollArea className="h-[280px] border rounded-lg">
                 <Table>
                   <TableHeader>
                     <TableRow>
