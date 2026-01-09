@@ -2605,6 +2605,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      archive_conversation: {
+        Args: { p_channel_id: string; p_conversation_phone: string }
+        Returns: undefined
+      }
       calculate_subscription_total: {
         Args: { _organization_id: string }
         Returns: number
@@ -2686,6 +2690,10 @@ export type Database = {
           _session_token: string
         }
         Returns: boolean
+      }
+      restore_conversation: {
+        Args: { p_channel_id: string; p_conversation_phone: string }
+        Returns: undefined
       }
       update_session_activity: { Args: never; Returns: boolean }
       validate_user_session: {
