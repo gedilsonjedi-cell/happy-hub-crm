@@ -187,13 +187,15 @@ serve(async (req) => {
 
       // Create user using admin API (doesn't change session)
       // Include organization_id in metadata to prevent auto-organization creation trigger
+      console.log("Creating user with organization_id in metadata:", organization_id);
       const { data: authData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: {
-          display_name,
-          organization_id, // This prevents the onboarding trigger from creating a new org
+          display_name: display_name || email.split('@')[0],
+          organization_id: organization_id, // This prevents the onboarding trigger from creating a new org
+          created_by_admin: true,
         },
       });
 
