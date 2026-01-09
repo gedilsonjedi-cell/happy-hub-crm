@@ -59,28 +59,28 @@ const menuItems = [
 ];
 
 const crmSubmenu = [
-  { icon: Users, label: "Contatos", path: "/leads", permission: "canAccessLeads" },
-  { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: "canAccessLeads" },
-  { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: "canAccessPipeline" },
-  { icon: RotateCcw, label: "Follow-up", path: "/follow-up", permission: "canAccessLeads" },
-  { icon: Sparkles, label: "Higienização", path: "/higienizacao", permission: "canAccessLeads" },
-  { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: "canAccessLeads" },
+  { icon: Users, label: "Contatos", path: "/leads", permission: null },
+  { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: null },
+  { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: null },
+  { icon: RotateCcw, label: "Follow-up", path: "/follow-up", permission: null },
+  { icon: Sparkles, label: "Higienização", path: "/higienizacao", permission: null },
+  { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: null },
 ];
 
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
-  { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessTemplates" },
-  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: null },
+  { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
+  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos" },
 ];
 
 const personalizacaoSubmenu = [
   { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
-  { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: "canAccessSetores" },
-  { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessSetores" },
-  { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessSetores" },
-  { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessSetores" },
-  { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: "canAccessSetores" },
-  { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: "canAccessSetores" },
+  { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: null },
+  { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: null },
+  { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: null },
+  { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: null },
+  { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: null },
+  { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: null },
 ];
 
 const bottomMenuItems = [
