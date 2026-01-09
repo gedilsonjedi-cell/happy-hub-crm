@@ -52,10 +52,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
-  { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: "canAccessConexoes" },
+  { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: null },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
-  { icon: Zap, label: "Integrações", path: "/integracoes", permission: "canAccessConexoes" },
+  { icon: Zap, label: "Integrações", path: "/integracoes", permission: "canAccessIntegracoes" },
 ];
 
 const crmSubmenu = [
@@ -75,12 +75,12 @@ const disparosSubmenu = [
 
 const personalizacaoSubmenu = [
   { icon: UserCog, label: "Usuários", path: "/usuarios", permission: "canAccessUsuarios" },
-  { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: "canAccessUsuarios" },
-  { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessUsuarios" },
-  { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessUsuarios" },
-  { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessUsuarios" },
-  { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: "canAccessUsuarios" },
-  { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: "canAccessUsuarios" },
+  { icon: Clock, label: "Horários", path: "/personalizacao/horarios", permission: "canAccessSetores" },
+  { icon: Calendar, label: "Feriados", path: "/personalizacao/feriados", permission: "canAccessSetores" },
+  { icon: Building2, label: "Departamentos", path: "/personalizacao/departamentos", permission: "canAccessSetores" },
+  { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: "canAccessSetores" },
+  { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: "canAccessSetores" },
+  { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: "canAccessSetores" },
 ];
 
 const bottomMenuItems = [
