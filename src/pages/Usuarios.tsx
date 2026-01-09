@@ -400,57 +400,31 @@ const Usuarios = () => {
       setCreateProgress({ current: i + 1, total: newUserEmails.length });
 
       try {
-        // Create user via Supabase Auth with the provided password
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email,
-          password: newUserPassword.trim(),
-          options: {
-            data: {
-              display_name: email.split("@")[0],
-            }
-          }
-        });
-
-        if (authError) {
-          if (authError.message.includes("already registered")) {
-            toast.error(`${email}: já cadastrado`);
-          } else {
-            toast.error(`${email}: ${authError.message}`);
-          }
-          errorCount++;
-          continue;
-        }
-
-        if (!authData.user) {
-          toast.error(`${email}: erro ao criar`);
-          errorCount++;
-          continue;
-        }
-
-        // Create profile for the new user
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .upsert({
-            user_id: authData.user.id,
+        // Create user via edge function (uses admin API, doesn't change current session)
+        const { data, error } = await supabase.functions.invoke("create-user-role", {
+          body: {
+            action: "create_user_with_role",
             email: email,
+            password: newUserPassword.trim(),
             display_name: email.split("@")[0],
             organization_id: organizationId,
-          }, { onConflict: "user_id" });
+            role: newUserRole,
+          },
+        });
 
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
+        if (error) {
+          toast.error(`${email}: ${error.message}`);
+          errorCount++;
+          continue;
         }
 
-        // Assign role to the new user
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .insert({
-            user_id: authData.user.id,
-            role: newUserRole,
-          });
-
-        if (roleError) {
-          console.error("Error assigning role:", roleError);
+        if (data?.error) {
+          const errorMsg = data.error.includes("already been registered") 
+            ? "já cadastrado" 
+            : data.error;
+          toast.error(`${email}: ${errorMsg}`);
+          errorCount++;
+          continue;
         }
 
         successCount++;

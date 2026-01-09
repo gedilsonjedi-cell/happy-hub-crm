@@ -49,13 +49,17 @@ serve(async (req) => {
       
       const requestingUserId = claimsData.claims.sub;
 
-      // Check if requesting user is super admin
+      // Check if requesting user is super admin or admin
       const { data: isSuperAdmin } = await supabaseAdmin.rpc('is_super_admin', {
         _user_id: requestingUserId,
       });
 
-      if (!isSuperAdmin) {
-        return new Response(JSON.stringify({ error: "Only super admins can perform this action" }), {
+      const { data: isAdmin } = await supabaseAdmin.rpc('is_admin', {
+        _user_id: requestingUserId,
+      });
+
+      if (!isSuperAdmin && !isAdmin) {
+        return new Response(JSON.stringify({ error: "Only admins can perform this action" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
