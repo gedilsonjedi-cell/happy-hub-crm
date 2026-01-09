@@ -131,11 +131,17 @@ interface QuickResponse {
   content: string;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
   pending: { label: "Pendente", className: "bg-warning/10 text-warning border-warning/30" },
   in_progress: { label: "Em atendimento", className: "bg-primary/10 text-primary border-primary/30" },
   resolved: { label: "Resolvido", className: "bg-muted text-muted-foreground border-border" },
-  archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" }
+  archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" },
+  active: { label: "Ativo", className: "bg-primary/10 text-primary border-primary/30" }
+};
+
+// Default status config for unknown statuses
+const getStatusConfig = (status: string) => {
+  return statusConfig[status] || { label: status || "Pendente", className: "bg-muted text-muted-foreground border-border" };
 };
 
 type FilterStatus = "new" | "mine" | "others";
@@ -1976,8 +1982,8 @@ const WhatsAppChat = () => {
                             {conversation.lastMessage}
                           </p>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <Badge variant="outline" className={cn("text-[10px] sm:text-xs shrink-0", statusConfig[conversation.status].className)}>
-                              {statusConfig[conversation.status].label}
+                            <Badge variant="outline" className={cn("text-[10px] sm:text-xs shrink-0", getStatusConfig(conversation.status).className)}>
+                              {getStatusConfig(conversation.status).label}
                             </Badge>
                             {conversation.unreadCount > 0 && (
                               <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">
@@ -2196,8 +2202,8 @@ const WhatsAppChat = () => {
                     <Sparkles className="w-4 h-4" />
                     <span className="hidden sm:inline">IA</span>
                   </Button>
-                  <Badge variant="outline" className={cn(statusConfig[selectedConversation.status].className, "text-xs hidden sm:inline-flex")}>
-                    {statusConfig[selectedConversation.status].label}
+                  <Badge variant="outline" className={cn(getStatusConfig(selectedConversation.status).className, "text-xs hidden sm:inline-flex")}>
+                    {getStatusConfig(selectedConversation.status).label}
                   </Badge>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
