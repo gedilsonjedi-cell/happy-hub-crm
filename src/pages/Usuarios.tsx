@@ -145,6 +145,7 @@ const Usuarios = () => {
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   
@@ -354,6 +355,14 @@ const Usuarios = () => {
       toast.error("Email é obrigatório");
       return;
     }
+    if (!newUserPassword.trim()) {
+      toast.error("Senha é obrigatória");
+      return;
+    }
+    if (newUserPassword.trim().length < 6) {
+      toast.error("Senha deve ter pelo menos 6 caracteres");
+      return;
+    }
     
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -365,25 +374,11 @@ const Usuarios = () => {
     setIsCreatingUser(true);
     
     try {
-      // Generate a cryptographically secure temporary password
-      const generateSecurePassword = (): string => {
-        const array = new Uint8Array(16);
-        crypto.getRandomValues(array);
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-        let password = '';
-        for (let i = 0; i < 16; i++) {
-          password += chars[array[i] % chars.length];
-        }
-        return password;
-      };
-      const tempPassword = generateSecurePassword();
-      
-      // Create user via Supabase Auth
+      // Create user via Supabase Auth with the provided password
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUserEmail.trim(),
-        password: tempPassword,
+        password: newUserPassword.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
           data: {
             display_name: newUserName.trim(),
           }
@@ -441,11 +436,12 @@ const Usuarios = () => {
         toast.error("Usuário criado, mas erro ao atribuir função");
       }
 
-      toast.success(`Usuário ${newUserName} criado com sucesso! Um email de confirmação foi enviado.`);
+      toast.success(`Usuário ${newUserName} criado com sucesso!`);
       
       // Reset form
       setNewUserName("");
       setNewUserEmail("");
+      setNewUserPassword("");
       setNewUserRole("atendente");
       setIsNewUserDialogOpen(false);
       
@@ -1071,6 +1067,17 @@ const Usuarios = () => {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="new-user-password">Senha</Label>
+                <Input
+                  id="new-user-password"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  className="bg-muted/30 border-border"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="new-user-role">Tipo de Usuário</Label>
                 <Select value={newUserRole} onValueChange={(value: AppRole) => setNewUserRole(value)}>
                   <SelectTrigger className="bg-muted/30 border-border">
@@ -1106,6 +1113,7 @@ const Usuarios = () => {
                   setIsNewUserDialogOpen(false);
                   setNewUserName("");
                   setNewUserEmail("");
+                  setNewUserPassword("");
                   setNewUserRole("atendente");
                 }}
                 disabled={isCreatingUser}
