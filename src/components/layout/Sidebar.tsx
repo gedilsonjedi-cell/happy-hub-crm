@@ -55,6 +55,7 @@ const menuItems = [
   { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: "canAccessConexoes" },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
+  { icon: Zap, label: "Integrações", path: "/integracoes", permission: "canAccessConexoes" },
 ];
 
 const crmSubmenu = [
