@@ -533,16 +533,21 @@ const WhatsAppChat = () => {
     // Fetch messages for this specific conversation
     // Inbound: sender_phone matches | Outbound: we fetch all and filter by metadata->destination
     // We fetch with a reasonable limit to avoid performance issues
+    console.log("[WhatsAppChat] Fetching messages for phone:", normalizedPhone, "channel:", conversationChannelId);
+    
+    // Build phone variants for matching (with and without +)
+    const phoneWithPlus = `+${normalizedPhone}`;
+    
     const [inboundResult, outboundResult, notesResult] = await Promise.all([
-      // Fetch inbound messages (sender_phone matches the conversation phone)
+      // Fetch inbound messages (sender_phone matches the conversation phone - try multiple formats)
       supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", conversationChannelId)
         .eq("direction", "inbound")
-        .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.+${normalizedPhone}`)
+        .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
         .order("created_at", { ascending: true })
-        .limit(500),
+        .limit(1000),
       // Fetch outbound messages - we'll filter by destination in JS since JSONB filter syntax can be tricky
       supabase
         .from("whatsapp_messages")
@@ -550,7 +555,7 @@ const WhatsAppChat = () => {
         .eq("channel_id", conversationChannelId)
         .eq("direction", "outbound")
         .order("created_at", { ascending: true })
-        .limit(2000),
+        .limit(5000),
       supabase
         .from("conversation_notes")
         .select("id, content, created_at, created_by")
@@ -558,14 +563,21 @@ const WhatsAppChat = () => {
         .eq("contact_phone", normalizedPhone)
         .order("created_at", { ascending: true })
     ]);
+    
+    console.log("[WhatsAppChat] Inbound messages:", inboundResult.data?.length, "error:", inboundResult.error);
+    console.log("[WhatsAppChat] Outbound messages (before filter):", outboundResult.data?.length, "error:", outboundResult.error);
 
     if (!inboundResult.error && !outboundResult.error) {
       // Filter outbound messages by destination in metadata
+      // Match both with and without + prefix, and handle various phone formats
       const filteredOutbound = (outboundResult.data || []).filter((msg) => {
         const metadata = msg.metadata as { destination?: string } | null;
         const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
-        return destPhone === normalizedPhone;
+        // Match if the destination ends with the same digits (handles country code variations)
+        return destPhone === normalizedPhone || destPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(destPhone);
       });
+      
+      console.log("[WhatsAppChat] Outbound messages (after filter):", filteredOutbound.length);
       
       // Combine and sort messages by created_at
       const allMessages = [
@@ -573,6 +585,7 @@ const WhatsAppChat = () => {
         ...filteredOutbound
       ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
+      console.log("[WhatsAppChat] Total messages for conversation:", allMessages.length);
       setMessages(allMessages as Message[]);
       
       // Mark inbound messages as read
