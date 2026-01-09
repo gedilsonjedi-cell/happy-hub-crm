@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, KeyboardEvent } from "react";
 import { 
   Users, 
   Plus, 
@@ -15,9 +15,9 @@ import {
   UserX,
   UserCheck,
   Mail,
-  Upload
+  X,
+  Loader2
 } from "lucide-react";
-import { BatchUserImport } from "@/components/users/BatchUserImport";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,20 +143,18 @@ const Usuarios = () => {
   
   // New user form states
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserEmails, setNewUserEmails] = useState<string[]>([]);
+  const [newUserEmailInput, setNewUserEmailInput] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [createProgress, setCreateProgress] = useState({ current: 0, total: 0 });
   
   // Edit email dialog states
   const [isEditEmailDialogOpen, setIsEditEmailDialogOpen] = useState(false);
   const [editingEmailUser, setEditingEmailUser] = useState<UserWithRole | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
-  
-  // Batch import dialog state
-  const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
 
   // Fetch organizations for super admin filter
   const fetchOrganizations = async () => {
@@ -345,14 +343,41 @@ const Usuarios = () => {
     }
   };
 
-  // Handle create new user
-  const handleCreateUser = async () => {
-    if (!newUserName.trim()) {
-      toast.error("Nome é obrigatório");
+  // Handle email input keydown for chip system
+  const handleEmailKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addEmail();
+    }
+  };
+
+  const addEmail = () => {
+    const email = newUserEmailInput.trim().toLowerCase();
+    if (!email) return;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Email inválido");
       return;
     }
-    if (!newUserEmail.trim()) {
-      toast.error("Email é obrigatório");
+
+    if (newUserEmails.includes(email)) {
+      toast.error("Email já adicionado");
+      return;
+    }
+
+    setNewUserEmails(prev => [...prev, email]);
+    setNewUserEmailInput("");
+  };
+
+  const removeEmail = (emailToRemove: string) => {
+    setNewUserEmails(prev => prev.filter(email => email !== emailToRemove));
+  };
+
+  // Handle create new user(s)
+  const handleCreateUser = async () => {
+    if (newUserEmails.length === 0) {
+      toast.error("Adicione pelo menos um email");
       return;
     }
     if (!newUserPassword.trim()) {
@@ -363,96 +388,102 @@ const Usuarios = () => {
       toast.error("Senha deve ter pelo menos 6 caracteres");
       return;
     }
-    
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newUserEmail.trim())) {
-      toast.error("Email inválido");
-      return;
-    }
 
     setIsCreatingUser(true);
+    setCreateProgress({ current: 0, total: newUserEmails.length });
     
-    try {
-      // Create user via Supabase Auth with the provided password
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newUserEmail.trim(),
-        password: newUserPassword.trim(),
-        options: {
-          data: {
-            display_name: newUserName.trim(),
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < newUserEmails.length; i++) {
+      const email = newUserEmails[i];
+      setCreateProgress({ current: i + 1, total: newUserEmails.length });
+
+      try {
+        // Create user via Supabase Auth with the provided password
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: email,
+          password: newUserPassword.trim(),
+          options: {
+            data: {
+              display_name: email.split("@")[0],
+            }
           }
-        }
-      });
-
-      if (authError) {
-        if (authError.message.includes("already registered")) {
-          toast.error("Este email já está cadastrado");
-        } else {
-          throw authError;
-        }
-        return;
-      }
-
-      if (!authData.user) {
-        toast.error("Erro ao criar usuário");
-        return;
-      }
-
-      // Create profile for the new user with the same organization_id as the admin
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          user_id: authData.user.id,
-          email: newUserEmail.trim(),
-          display_name: newUserName.trim(),
-          organization_id: organizationId,
         });
 
-      if (profileError) {
-        console.error("Error creating profile:", profileError);
-        // Try updating the profile if it already exists (created by trigger)
-        if (organizationId) {
-          await supabase
-            .from("profiles")
-            .update({
-              organization_id: organizationId,
-              display_name: newUserName.trim(),
-            })
-            .eq("user_id", authData.user.id);
+        if (authError) {
+          if (authError.message.includes("already registered")) {
+            toast.error(`${email}: já cadastrado`);
+          } else {
+            toast.error(`${email}: ${authError.message}`);
+          }
+          errorCount++;
+          continue;
         }
+
+        if (!authData.user) {
+          toast.error(`${email}: erro ao criar`);
+          errorCount++;
+          continue;
+        }
+
+        // Create profile for the new user
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({
+            user_id: authData.user.id,
+            email: email,
+            display_name: email.split("@")[0],
+            organization_id: organizationId,
+          }, { onConflict: "user_id" });
+
+        if (profileError) {
+          console.error("Error creating profile:", profileError);
+        }
+
+        // Assign role to the new user
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .insert({
+            user_id: authData.user.id,
+            role: newUserRole,
+          });
+
+        if (roleError) {
+          console.error("Error assigning role:", roleError);
+        }
+
+        successCount++;
+      } catch (error: any) {
+        console.error(`Error creating user ${email}:`, error);
+        toast.error(`${email}: ${error.message || "erro desconhecido"}`);
+        errorCount++;
       }
 
-      // Assign role to the new user
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: authData.user.id,
-          role: newUserRole,
-        });
-
-      if (roleError) {
-        console.error("Error assigning role:", roleError);
-        toast.error("Usuário criado, mas erro ao atribuir função");
+      // Small delay to avoid rate limiting
+      if (i < newUserEmails.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
-
-      toast.success(`Usuário ${newUserName} criado com sucesso!`);
-      
-      // Reset form
-      setNewUserName("");
-      setNewUserEmail("");
-      setNewUserPassword("");
-      setNewUserRole("atendente");
-      setIsNewUserDialogOpen(false);
-      
-      // Refresh user list
-      fetchUsers();
-    } catch (error: any) {
-      console.error("Error creating user:", error);
-      toast.error(error.message || "Erro ao criar usuário");
-    } finally {
-      setIsCreatingUser(false);
     }
+
+    if (successCount > 0) {
+      toast.success(`${successCount} usuário(s) criado(s) com sucesso!`);
+    }
+    if (errorCount > 0) {
+      toast.error(`${errorCount} usuário(s) com erro`);
+    }
+    
+    // Reset form
+    setNewUserEmails([]);
+    setNewUserEmailInput("");
+    setNewUserPassword("");
+    setNewUserRole("atendente");
+    setIsNewUserDialogOpen(false);
+    setCreateProgress({ current: 0, total: 0 });
+    
+    // Refresh user list
+    fetchUsers();
+    setIsCreatingUser(false);
   };
 
   // Toggle user active status
@@ -770,16 +801,10 @@ const Usuarios = () => {
                   </Select>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => setIsBatchImportOpen(true)} className="gap-2">
-                  <Upload className="w-4 h-4" />
-                  Importar em Lote
-                </Button>
-                <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Novo Usuário
-                </Button>
-              </div>
+              <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Novo Usuário
+              </Button>
             </div>
 
             <Card className="bg-card border-border">
@@ -1046,28 +1071,41 @@ const Usuarios = () => {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="new-user-name">Nome</Label>
-                <Input
-                  id="new-user-name"
-                  placeholder="Nome do usuário"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  className="bg-muted/30 border-border"
-                />
+                <Label>Emails dos usuários</Label>
+                <div className="flex flex-wrap gap-2 p-2 min-h-[42px] bg-muted/30 border border-border rounded-md">
+                  {newUserEmails.map((email) => (
+                    <Badge
+                      key={email}
+                      variant="secondary"
+                      className="flex items-center gap-1 px-2 py-1"
+                    >
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => removeEmail(email)}
+                        className="ml-1 hover:text-destructive"
+                        disabled={isCreatingUser}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <Input
+                    placeholder="Digite o email e pressione Enter"
+                    value={newUserEmailInput}
+                    onChange={(e) => setNewUserEmailInput(e.target.value)}
+                    onKeyDown={handleEmailKeyDown}
+                    onBlur={addEmail}
+                    className="flex-1 min-w-[200px] border-0 bg-transparent p-0 h-7 focus-visible:ring-0"
+                    disabled={isCreatingUser}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Digite o email e pressione Enter para adicionar. Você pode adicionar vários.
+                </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-user-email">Email</Label>
-                <Input
-                  id="new-user-email"
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  className="bg-muted/30 border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-user-password">Senha</Label>
+                <Label htmlFor="new-user-password">Senha {newUserEmails.length > 1 && "(para todos)"}</Label>
                 <Input
                   id="new-user-password"
                   type="password"
@@ -1075,11 +1113,12 @@ const Usuarios = () => {
                   value={newUserPassword}
                   onChange={(e) => setNewUserPassword(e.target.value)}
                   className="bg-muted/30 border-border"
+                  disabled={isCreatingUser}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-user-role">Tipo de Usuário</Label>
-                <Select value={newUserRole} onValueChange={(value: AppRole) => setNewUserRole(value)}>
+                <Label htmlFor="new-user-role">Tipo de Usuário {newUserEmails.length > 1 && "(para todos)"}</Label>
+                <Select value={newUserRole} onValueChange={(value: AppRole) => setNewUserRole(value)} disabled={isCreatingUser}>
                   <SelectTrigger className="bg-muted/30 border-border">
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
@@ -1111,8 +1150,8 @@ const Usuarios = () => {
                 variant="outline"
                 onClick={() => {
                   setIsNewUserDialogOpen(false);
-                  setNewUserName("");
-                  setNewUserEmail("");
+                  setNewUserEmails([]);
+                  setNewUserEmailInput("");
                   setNewUserPassword("");
                   setNewUserRole("atendente");
                 }}
@@ -1120,16 +1159,22 @@ const Usuarios = () => {
               >
                 Cancelar
               </Button>
-              <Button onClick={handleCreateUser} disabled={isCreatingUser}>
+              <Button onClick={handleCreateUser} disabled={isCreatingUser || newUserEmails.length === 0}>
                 {isCreatingUser ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
-                    Criando...
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {createProgress.total > 1 
+                      ? `Criando ${createProgress.current}/${createProgress.total}...`
+                      : "Criando..."
+                    }
                   </>
                 ) : (
                   <>
                     <Plus className="w-4 h-4 mr-2" />
-                    Criar Usuário
+                    {newUserEmails.length > 1 
+                      ? `Criar ${newUserEmails.length} Usuários`
+                      : "Criar Usuário"
+                    }
                   </>
                 )}
               </Button>
@@ -1263,14 +1308,6 @@ const Usuarios = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        {/* Batch Import Dialog */}
-        <BatchUserImport
-          open={isBatchImportOpen}
-          onOpenChange={setIsBatchImportOpen}
-          organizationId={organizationId}
-          onImportComplete={fetchUsers}
-        />
       </div>
     </MainLayout>
   );
