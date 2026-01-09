@@ -62,10 +62,9 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
 
-    if (authError || !claimsData?.claims) {
+    if (authError || !user) {
       console.error('Auth error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -73,7 +72,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
     console.log('User authenticated:', userId);
 
     const body: CreateTemplateRequest = await req.json();
