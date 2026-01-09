@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
+import { OnlineStatusToggle } from "@/components/header/OnlineStatusToggle";
 import {
   Tooltip,
   TooltipContent,
@@ -91,6 +92,9 @@ export function Header() {
 
         {/* Client Switcher (Super Admin only) */}
         <ClientSwitcher />
+
+        {/* Online/Offline Status Toggle */}
+        <OnlineStatusToggle />
 
         {/* Balance Indicator - Real-time */}
         <BalanceIndicator />

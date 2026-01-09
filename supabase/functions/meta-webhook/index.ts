@@ -122,6 +122,111 @@ async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; 
   return { isHoliday: false, awayMessage: null };
 }
 
+// Helper function to get next available attendant for a department (round-robin)
+async function getNextAvailableAttendant(
+  organizationId: string, 
+  sectorId: string | null
+): Promise<{ userId: string; userName: string } | null> {
+  // If no sector specified, return null (goes to "Novos")
+  if (!sectorId) {
+    console.log('No sector specified, conversation goes to Novos');
+    return null;
+  }
+
+  // Get all users in this sector who are online
+  const { data: sectorUsers } = await supabase
+    .from('user_sectors')
+    .select('user_id')
+    .eq('sector_id', sectorId);
+
+  if (!sectorUsers || sectorUsers.length === 0) {
+    console.log('No users in sector:', sectorId);
+    return null;
+  }
+
+  const userIds = sectorUsers.map(u => u.user_id);
+
+  // Get availability for these users, ordered by last_assignment_at (oldest first = round-robin)
+  const { data: availableAttendants } = await supabase
+    .from('attendant_availability')
+    .select('user_id, last_assignment_at')
+    .eq('organization_id', organizationId)
+    .eq('is_available', true)
+    .in('user_id', userIds)
+    .order('last_assignment_at', { ascending: true, nullsFirst: true });
+
+  if (!availableAttendants || availableAttendants.length === 0) {
+    console.log('No online attendants in sector:', sectorId);
+    return null;
+  }
+
+  // Get the first one (oldest assignment = next in line)
+  const nextAttendant = availableAttendants[0];
+
+  // Get user name from profiles
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name, email')
+    .eq('user_id', nextAttendant.user_id)
+    .single();
+
+  const userName = profile?.display_name || profile?.email || 'Atendente';
+
+  console.log('Selected attendant:', nextAttendant.user_id, userName);
+
+  // Update last_assignment_at for round-robin
+  await supabase
+    .from('attendant_availability')
+    .update({ last_assignment_at: new Date().toISOString() })
+    .eq('user_id', nextAttendant.user_id)
+    .eq('organization_id', organizationId);
+
+  return { userId: nextAttendant.user_id, userName };
+}
+
+// Helper function to get sector from campaign if conversation came from a campaign
+async function getSectorFromCampaign(
+  organizationId: string,
+  senderPhone: string
+): Promise<string | null> {
+  // Check if this phone was a recipient of a recent campaign with a team/sector
+  const { data: recipient } = await supabase
+    .from('campaign_recipients')
+    .select('campaign_id')
+    .eq('phone', senderPhone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!recipient?.campaign_id) {
+    return null;
+  }
+
+  // Get campaign team
+  const { data: campaign } = await supabase
+    .from('campaigns')
+    .select('team')
+    .eq('id', recipient.campaign_id)
+    .single();
+
+  if (campaign?.team) {
+    // Find sector by name
+    const { data: sector } = await supabase
+      .from('sectors')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('name', campaign.team)
+      .single();
+
+    if (sector) {
+      console.log('Found sector from campaign:', sector.id);
+      return sector.id;
+    }
+  }
+
+  return null;
+}
+
 // Helper function to send WhatsApp message via Meta API
 async function sendWhatsAppMessage(phoneNumberId: string, accessToken: string, recipientPhone: string, message: string): Promise<boolean> {
   try {
@@ -585,63 +690,96 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Check if lead is in someone's portfolio (Carteira de Clientes)
+        // Handle conversation assignment
         if (leadId && channel.organization_id) {
-          const { data: portfolioEntry } = await supabase
-            .from('client_portfolios')
-            .select('user_id')
-            .eq('lead_id', leadId)
-            .eq('organization_id', channel.organization_id)
+          // Check if assignment already exists
+          const { data: existingAssignment } = await supabase
+            .from('conversation_assignments')
+            .select('id, assigned_to, status')
+            .eq('conversation_phone', senderPhone)
+            .eq('channel_id', channel.id)
             .single();
 
-          if (portfolioEntry) {
-            console.log('Lead is in portfolio of user:', portfolioEntry.user_id);
-
-            // Check if portfolio owner is available
-            const { data: ownerAvailability } = await supabase
-              .from('attendant_availability')
-              .select('is_available')
-              .eq('user_id', portfolioEntry.user_id)
+          if (!existingAssignment) {
+            // Check if lead is in someone's portfolio first
+            const { data: portfolioEntry } = await supabase
+              .from('client_portfolios')
+              .select('user_id')
+              .eq('lead_id', leadId)
               .eq('organization_id', channel.organization_id)
               .single();
 
-            // Check or create conversation assignment
-            const { data: existingAssignment } = await supabase
-              .from('conversation_assignments')
-              .select('id, assigned_to, status')
-              .eq('conversation_phone', senderPhone)
-              .eq('channel_id', channel.id)
-              .single();
+            let assignedTo: string | null = null;
+            let status = 'pending';
 
-            if (!existingAssignment) {
-              // Create new assignment
-              const isOwnerAvailable = ownerAvailability?.is_available === true;
+            if (portfolioEntry) {
+              // Lead is in portfolio - check if owner is available
+              console.log('Lead is in portfolio of user:', portfolioEntry.user_id);
               
-              const { error: assignError } = await supabase
-                .from('conversation_assignments')
-                .insert({
-                  conversation_phone: senderPhone,
-                  channel_id: channel.id,
-                  lead_id: leadId,
-                  assigned_to: isOwnerAvailable ? portfolioEntry.user_id : null,
-                  status: isOwnerAvailable ? 'active' : 'pending',
-                  is_bot_handling: !isOwnerAvailable,
-                });
+              const { data: ownerAvailability } = await supabase
+                .from('attendant_availability')
+                .select('is_available')
+                .eq('user_id', portfolioEntry.user_id)
+                .eq('organization_id', channel.organization_id)
+                .single();
 
-              if (assignError) {
-                console.error('Error creating assignment:', assignError);
-              } else {
-                console.log('Assignment created:', isOwnerAvailable ? 'to owner' : 'pending');
+              if (ownerAvailability?.is_available === true) {
+                assignedTo = portfolioEntry.user_id;
+                status = 'active';
               }
-            } else if (existingAssignment.status === 'pending' || !existingAssignment.assigned_to) {
-              // If previously pending, check if owner is now available
-              const isOwnerAvailable = ownerAvailability?.is_available === true;
+            } else {
+              // Not in portfolio - try auto-distribution by department
+              console.log('Lead not in portfolio, checking for auto-distribution...');
               
-              if (isOwnerAvailable) {
-                const { error: updateAssignError } = await supabase
+              // Get sector from campaign (if this message is response to a campaign)
+              const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
+              
+              if (sectorId) {
+                // Try to find available attendant in this sector (round-robin)
+                const nextAttendant = await getNextAvailableAttendant(channel.organization_id, sectorId);
+                
+                if (nextAttendant) {
+                  assignedTo = nextAttendant.userId;
+                  status = 'active';
+                  console.log('Auto-assigned to:', nextAttendant.userName);
+                } else {
+                  console.log('No online attendants in sector, conversation goes to Novos');
+                }
+              } else {
+                console.log('No sector found for this conversation, goes to Novos');
+              }
+            }
+
+            // Create assignment
+            const { error: assignError } = await supabase
+              .from('conversation_assignments')
+              .insert({
+                conversation_phone: senderPhone,
+                channel_id: channel.id,
+                lead_id: leadId,
+                assigned_to: assignedTo,
+                assigned_at: assignedTo ? new Date().toISOString() : null,
+                status: status,
+                is_bot_handling: !assignedTo,
+              });
+
+            if (assignError) {
+              console.error('Error creating assignment:', assignError);
+            } else {
+              console.log('Assignment created:', assignedTo ? `to ${assignedTo}` : 'pending (Novos)');
+            }
+          } else if (existingAssignment.status === 'pending' || !existingAssignment.assigned_to) {
+            // Existing pending assignment - try auto-distribution again
+            const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
+            
+            if (sectorId) {
+              const nextAttendant = await getNextAvailableAttendant(channel.organization_id, sectorId);
+              
+              if (nextAttendant) {
+                await supabase
                   .from('conversation_assignments')
                   .update({
-                    assigned_to: portfolioEntry.user_id,
+                    assigned_to: nextAttendant.userId,
                     status: 'active',
                     is_bot_handling: false,
                     assigned_at: new Date().toISOString(),
@@ -649,11 +787,7 @@ Deno.serve(async (req) => {
                   })
                   .eq('id', existingAssignment.id);
 
-                if (updateAssignError) {
-                  console.error('Error updating assignment:', updateAssignError);
-                } else {
-                  console.log('Assignment updated to owner');
-                }
+                console.log('Assignment updated - auto-assigned to:', nextAttendant.userName);
               }
             }
           }
