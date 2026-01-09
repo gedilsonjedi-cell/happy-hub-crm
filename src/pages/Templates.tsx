@@ -91,14 +91,22 @@ const contactFieldOptions = [
   { value: "contact_state", label: "Estado do contato", field: "state", description: "Automático do CRM" },
   { value: "contact_document", label: "CPF/CNPJ do contato", field: "document", description: "Automático do CRM" },
   { value: "contact_notes", label: "Observações do contato", field: "notes", description: "Automático do CRM" },
-  { value: "custom_field", label: "Campo personalizado", field: "custom", description: "Selecionar campo" },
 ];
+
+interface CustomFieldDef {
+  id: string;
+  field_name: string;
+  field_label: string;
+  field_type: string;
+}
 
 interface TemplateButton {
   id: string;
   type: "quick_reply" | "url" | "phone";
   label: string;
   value: string;
+  isDynamic?: boolean; // For dynamic URL buttons
+  dynamicVariable?: string; // Variable name for dynamic URL
 }
 
 const statusConfig = {
@@ -121,6 +129,7 @@ const Templates = () => {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
+  const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -148,11 +157,14 @@ const Templates = () => {
   });
   const [variableExamples, setVariableExamples] = useState<Record<string, string>>({});
   const [variableMappings, setVariableMappings] = useState<Record<string, string>>({});
+  const [selectedCustomField, setSelectedCustomField] = useState<Record<string, string>>({});
   const [templateButtons, setTemplateButtons] = useState<TemplateButton[]>([]);
   const [newButton, setNewButton] = useState<Omit<TemplateButton, "id">>({
     type: "quick_reply",
     label: "",
     value: "",
+    isDynamic: false,
+    dynamicVariable: "",
   });
 
   // Detect variables from content - simplified format [p1], [p2], etc.
@@ -183,8 +195,23 @@ const Templates = () => {
     if (user && effectiveOrganizationId) {
       fetchTemplates();
       fetchChannels();
+      fetchCustomFields();
     }
   }, [user, effectiveOrganizationId]);
+
+  const fetchCustomFields = async () => {
+    if (!effectiveOrganizationId) return;
+    
+    const { data, error } = await supabase
+      .from("lead_custom_field_definitions")
+      .select("id, field_name, field_label, field_type")
+      .eq("organization_id", effectiveOrganizationId)
+      .order("display_order");
+
+    if (!error && data) {
+      setCustomFields(data);
+    }
+  };
 
   const fetchTemplates = async () => {
     if (!effectiveOrganizationId) return;
@@ -257,6 +284,7 @@ const Templates = () => {
     });
     setVariableExamples({});
     setVariableMappings({});
+    setSelectedCustomField({});
     setTemplateButtons([]);
   };
 
@@ -265,8 +293,21 @@ const Templates = () => {
       toast.error("Preencha o texto do botão");
       return;
     }
-    if (newButton.type !== "quick_reply" && !newButton.value.trim()) {
-      toast.error("Preencha o valor do botão");
+    // For URL buttons: validate either static URL or dynamic field is selected
+    if (newButton.type === "url") {
+      if (newButton.isDynamic) {
+        if (!newButton.dynamicVariable) {
+          toast.error("Selecione o campo personalizado para o link dinâmico");
+          return;
+        }
+      } else {
+        if (!newButton.value.trim()) {
+          toast.error("Preencha a URL do botão");
+          return;
+        }
+      }
+    } else if (newButton.type === "phone" && !newButton.value.trim()) {
+      toast.error("Preencha o número de telefone");
       return;
     }
     if (newButton.label.length > 25) {
@@ -283,10 +324,10 @@ const Templates = () => {
       {
         ...newButton,
         id: crypto.randomUUID(),
-        value: newButton.type === "quick_reply" ? newButton.label : newButton.value,
+        value: newButton.type === "quick_reply" ? newButton.label : (newButton.isDynamic ? `{{${newButton.dynamicVariable}}}` : newButton.value),
       }
     ]);
-    setNewButton({ type: "quick_reply", label: "", value: "" });
+    setNewButton({ type: "quick_reply", label: "", value: "", isDynamic: false, dynamicVariable: "" });
     setShowButtonDialog(false);
     toast.success("Botão adicionado");
   };
@@ -328,10 +369,15 @@ const Templates = () => {
 
     const variables = detectedVariables.map(v => v.name);
 
-    // Build variable mappings object
+    // Build variable mappings object with custom field info
     const mappingsToSave: Record<string, string> = {};
     detectedVariables.forEach(v => {
-      mappingsToSave[v.name] = variableMappings[v.name] || "manual";
+      const mapping = variableMappings[v.name] || "manual";
+      if (mapping === "custom_field" && selectedCustomField[v.name]) {
+        mappingsToSave[v.name] = `custom_field:${selectedCustomField[v.name]}`;
+      } else {
+        mappingsToSave[v.name] = mapping;
+      }
     });
 
     setIsSubmitting(true);
@@ -370,6 +416,8 @@ const Templates = () => {
             type: btn.type,
             label: btn.label,
             value: btn.value,
+            isDynamic: btn.isDynamic || false,
+            dynamicVariable: btn.dynamicVariable || "",
           })),
         },
       });
@@ -1021,6 +1069,14 @@ const Templates = () => {
                                   ...prev,
                                   [variable.name]: value
                                 }));
+                                // Clear custom field selection if not custom_field
+                                if (value !== "custom_field") {
+                                  setSelectedCustomField(prev => {
+                                    const newState = { ...prev };
+                                    delete newState[variable.name];
+                                    return newState;
+                                  });
+                                }
                               }}
                             >
                               <SelectTrigger className="bg-background border-border">
@@ -1036,15 +1092,58 @@ const Templates = () => {
                                     </div>
                                   </SelectItem>
                                 ))}
+                                {/* Custom field option */}
+                                <SelectItem value="custom_field">
+                                  <span className="text-primary font-medium">Campo personalizado</span>
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
+
+                          {/* Custom field selector */}
+                          {variableMappings[variable.name] === "custom_field" && (
+                            <div className="space-y-1 col-span-2">
+                              <Label className="text-xs text-muted-foreground">Selecione o campo personalizado</Label>
+                              <Select
+                                value={selectedCustomField[variable.name] || ""}
+                                onValueChange={(value) => {
+                                  setSelectedCustomField(prev => ({
+                                    ...prev,
+                                    [variable.name]: value
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger className="bg-background border-border">
+                                  <SelectValue placeholder="Selecione o campo" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-card border-border z-50">
+                                  {customFields.length === 0 ? (
+                                    <div className="p-3 text-center text-muted-foreground text-sm">
+                                      Nenhum campo personalizado.
+                                      <br />
+                                      <span className="text-xs">Crie em Personalização → Campos</span>
+                                    </div>
+                                  ) : (
+                                    customFields.map(field => (
+                                      <SelectItem key={field.id} value={field.field_name}>
+                                        {field.field_label}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Show selected mapping description */}
                         <p className="text-xs text-muted-foreground">
                           {variableMappings[variable.name] === "manual" || !variableMappings[variable.name]
                             ? "⚠️ Será solicitado informar o valor ao disparar mensagem"
+                            : variableMappings[variable.name] === "custom_field"
+                            ? selectedCustomField[variable.name] 
+                              ? `✓ Será preenchido com o campo "${customFields.find(f => f.field_name === selectedCustomField[variable.name])?.field_label}"`
+                              : "⚠️ Selecione o campo personalizado"
                             : "✓ Será preenchido automaticamente com dados do lead no CRM"
                           }
                         </p>
@@ -1155,13 +1254,76 @@ const Templates = () => {
               </div>
             </div>
 
-            {newButton.type !== "quick_reply" && (
+            {newButton.type === "url" && (
+              <div className="space-y-4">
+                {/* Dynamic URL Toggle */}
+                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
+                  <Switch
+                    checked={newButton.isDynamic || false}
+                    onCheckedChange={(checked) => setNewButton({ 
+                      ...newButton, 
+                      isDynamic: checked,
+                      value: checked ? "" : newButton.value,
+                      dynamicVariable: checked ? newButton.dynamicVariable : ""
+                    })}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-foreground">Link Dinâmico</p>
+                    <p className="text-xs text-muted-foreground">
+                      O link será personalizado para cada contato
+                    </p>
+                  </div>
+                </div>
+
+                {newButton.isDynamic ? (
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Campo personalizado</Label>
+                    <Select
+                      value={newButton.dynamicVariable || ""}
+                      onValueChange={(v) => setNewButton({ ...newButton, dynamicVariable: v })}
+                    >
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue placeholder="Selecione o campo com o link" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border z-50">
+                        {customFields.length === 0 ? (
+                          <div className="p-3 text-center text-muted-foreground text-sm">
+                            Nenhum campo personalizado cadastrado.
+                            <br />
+                            <span className="text-xs">Vá em Personalização → Campos Personalizados</span>
+                          </div>
+                        ) : (
+                          customFields.map(field => (
+                            <SelectItem key={field.id} value={field.field_name}>
+                              {field.field_label}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      💡 Ao disparar, o sistema buscará o link no campo personalizado de cada contato
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label className="text-foreground">URL estática</Label>
+                    <Input
+                      placeholder={buttonTypeConfig.url.placeholder}
+                      className="bg-background border-border"
+                      value={newButton.value}
+                      onChange={(e) => setNewButton({ ...newButton, value: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {newButton.type === "phone" && (
               <div className="space-y-2">
-                <Label className="text-foreground">
-                  {newButton.type === "url" ? "URL" : "Número de telefone"}
-                </Label>
+                <Label className="text-foreground">Número de telefone</Label>
                 <Input
-                  placeholder={buttonTypeConfig[newButton.type].placeholder}
+                  placeholder={buttonTypeConfig.phone.placeholder}
                   className="bg-background border-border"
                   value={newButton.value}
                   onChange={(e) => setNewButton({ ...newButton, value: e.target.value })}

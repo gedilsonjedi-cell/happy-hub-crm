@@ -168,6 +168,18 @@ Deno.serve(async (req) => {
             text: btn.label,
           };
         } else if (btn.type === 'url') {
+          // Check if it's a dynamic URL (contains {{variable}})
+          const isDynamic = btn.value.startsWith('{{') && btn.value.endsWith('}}');
+          if (isDynamic) {
+            // For dynamic URLs, we use a placeholder URL that the Meta API accepts
+            // The actual URL will be provided at send time via template components
+            return {
+              type: 'URL' as const,
+              text: btn.label,
+              url: 'https://example.com/{{1}}', // Meta requires a valid URL pattern with variable
+              example: ['https://example.com/sample-link'], // Example for Meta validation
+            };
+          }
           return {
             type: 'URL' as const,
             text: btn.label,

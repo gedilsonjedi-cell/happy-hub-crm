@@ -77,6 +77,11 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const [selectedCityColumn, setSelectedCityColumn] = useState<number | null>(null);
   const [selectedStateColumn, setSelectedStateColumn] = useState<number | null>(null);
   const [selectedCustomFieldColumns, setSelectedCustomFieldColumns] = useState<Record<string, number>>({});
+  const [newFieldsToCreate, setNewFieldsToCreate] = useState<Record<number, string>>({});
+  const [showCreateFieldDialog, setShowCreateFieldDialog] = useState(false);
+  const [newFieldColumnIndex, setNewFieldColumnIndex] = useState<number | null>(null);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [isCreatingField, setIsCreatingField] = useState(false);
   
   // Tags states
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -88,7 +93,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const [importing, setImporting] = useState(false);
 
   // Fetch custom field definitions
-  const { data: customFieldDefinitions = [] } = useQuery({
+  const { data: customFieldDefinitions = [], refetch: refetchCustomFields } = useQuery({
     queryKey: ["custom-field-definitions", organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
@@ -257,6 +262,49 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     setNewTagColor("#3b82f6");
     setIsCreatingTag(false);
     toast.success(`Tag "${data.name}" criada!`);
+  };
+
+  const createNewCustomField = async (columnIndex: number, label: string) => {
+    if (!organizationId || !label.trim()) return;
+    
+    setIsCreatingField(true);
+    
+    const fieldName = label
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+    
+    const { data, error } = await supabase
+      .from("lead_custom_field_definitions")
+      .insert({
+        field_name: fieldName,
+        field_label: label.trim(),
+        field_type: "text",
+        organization_id: organizationId,
+        display_order: customFieldDefinitions.length + 1,
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      toast.error("Erro ao criar campo: " + error.message);
+      setIsCreatingField(false);
+      return;
+    }
+    
+    await refetchCustomFields();
+    setSelectedCustomFieldColumns({
+      ...selectedCustomFieldColumns,
+      [fieldName]: columnIndex,
+    });
+    setShowCreateFieldDialog(false);
+    setNewFieldLabel("");
+    setNewFieldColumnIndex(null);
+    setIsCreatingField(false);
+    toast.success(`Campo "${label}" criado!`);
   };
 
   const toggleTag = (tagName: string) => {
@@ -668,6 +716,54 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
                       </div>
                     </>
                   )}
+
+                  {/* Create new custom field from unmapped columns */}
+                  <div className="mt-4 p-4 border border-dashed border-primary/30 rounded-lg bg-primary/5">
+                    <h4 className="font-medium text-sm flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Criar campo personalizado
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 mb-3">
+                      Selecione uma coluna da planilha para criar um novo campo (ex: link dinâmico)
+                    </p>
+                    <div className="flex gap-2">
+                      <Select
+                        value={newFieldColumnIndex?.toString() ?? ""}
+                        onValueChange={(v) => {
+                          setNewFieldColumnIndex(parseInt(v));
+                          setNewFieldLabel(parsedFileData.headers[parseInt(v)] || "");
+                        }}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Selecione coluna..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {parsedFileData.headers.map((header, idx) => (
+                            <SelectItem key={idx} value={idx.toString()}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {newFieldColumnIndex !== null && (
+                        <>
+                          <Input
+                            placeholder="Nome do campo"
+                            value={newFieldLabel}
+                            onChange={(e) => setNewFieldLabel(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => createNewCustomField(newFieldColumnIndex, newFieldLabel)}
+                            disabled={isCreatingField || !newFieldLabel.trim()}
+                          >
+                            {isCreatingField ? "..." : "Criar"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
 
                   {previewData.length > 0 && (
                     <>
