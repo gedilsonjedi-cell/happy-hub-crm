@@ -14,8 +14,10 @@ import {
   KeyRound,
   UserX,
   UserCheck,
-  Mail
+  Mail,
+  Upload
 } from "lucide-react";
+import { BatchUserImport } from "@/components/users/BatchUserImport";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,6 +153,9 @@ const Usuarios = () => {
   const [editingEmailUser, setEditingEmailUser] = useState<UserWithRole | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  
+  // Batch import dialog state
+  const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
 
   // Fetch organizations for super admin filter
   const fetchOrganizations = async () => {
@@ -769,10 +774,16 @@ const Usuarios = () => {
                   </Select>
                 )}
               </div>
-              <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Novo Usuário
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setIsBatchImportOpen(true)} className="gap-2">
+                  <Upload className="w-4 h-4" />
+                  Importar em Lote
+                </Button>
+                <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Novo Usuário
+                </Button>
+              </div>
             </div>
 
             <Card className="bg-card border-border">
@@ -1244,6 +1255,14 @@ const Usuarios = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Batch Import Dialog */}
+        <BatchUserImport
+          open={isBatchImportOpen}
+          onOpenChange={setIsBatchImportOpen}
+          organizationId={organizationId}
+          onImportComplete={fetchUsers}
+        />
       </div>
     </MainLayout>
   );
