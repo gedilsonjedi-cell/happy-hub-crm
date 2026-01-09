@@ -372,13 +372,15 @@ const WhatsAppChat = () => {
       // Get all channel IDs
       const channelIds = channels.map(c => c.id);
 
-      // Fetch all messages, assignments, profiles, and leads in parallel
+      // Fetch recent messages (with higher limit to build conversations), assignments, profiles, and leads in parallel
+      // We use a higher limit since we need to build the conversation list from messages
       const [messagesResult, assignmentsResult, profilesResult, leadsResult] = await Promise.all([
         supabase
           .from("whatsapp_messages")
           .select("*")
           .in("channel_id", channelIds)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .limit(5000), // Higher limit to capture more conversations
         supabase
           .from("conversation_assignments")
           .select("conversation_phone, channel_id, assigned_to, status")
@@ -538,13 +540,27 @@ const WhatsAppChat = () => {
     const conversationChannelId = selectedConversation.channelId;
     if (!conversationChannelId) return;
 
-    // Fetch messages and notes in parallel
-    const [messagesResult, notesResult] = await Promise.all([
+    // Fetch messages for this specific conversation
+    // Inbound: sender_phone matches | Outbound: we fetch all and filter by metadata->destination
+    // We fetch with a reasonable limit to avoid performance issues
+    const [inboundResult, outboundResult, notesResult] = await Promise.all([
+      // Fetch inbound messages (sender_phone matches the conversation phone)
       supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", conversationChannelId)
-        .order("created_at", { ascending: true }),
+        .eq("direction", "inbound")
+        .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.+${normalizedPhone}`)
+        .order("created_at", { ascending: true })
+        .limit(500),
+      // Fetch outbound messages - we'll filter by destination in JS since JSONB filter syntax can be tricky
+      supabase
+        .from("whatsapp_messages")
+        .select("*")
+        .eq("channel_id", conversationChannelId)
+        .eq("direction", "outbound")
+        .order("created_at", { ascending: true })
+        .limit(2000),
       supabase
         .from("conversation_notes")
         .select("id, content, created_at, created_by")
@@ -553,27 +569,26 @@ const WhatsAppChat = () => {
         .order("created_at", { ascending: true })
     ]);
 
-    if (!messagesResult.error && messagesResult.data) {
-      // Filter messages that belong to this conversation
-      const conversationMessages = messagesResult.data.filter((msg) => {
-        if (msg.direction === "inbound") {
-          // For inbound, match sender_phone (normalized)
-          const msgPhone = msg.sender_phone.replace(/\D/g, '');
-          return msgPhone === normalizedPhone;
-        } else {
-          // For outbound, match metadata.destination (normalized)
-          const metadata = msg.metadata as { destination?: string } | null;
-          const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
-          return destPhone === normalizedPhone;
-        }
+    if (!inboundResult.error && !outboundResult.error) {
+      // Filter outbound messages by destination in metadata
+      const filteredOutbound = (outboundResult.data || []).filter((msg) => {
+        const metadata = msg.metadata as { destination?: string } | null;
+        const destPhone = metadata?.destination?.replace(/\D/g, '') || '';
+        return destPhone === normalizedPhone;
       });
+      
+      // Combine and sort messages by created_at
+      const allMessages = [
+        ...(inboundResult.data || []),
+        ...filteredOutbound
+      ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      setMessages(conversationMessages as Message[]);
+      setMessages(allMessages as Message[]);
       
       // Mark inbound messages as read
-      const unreadMessageIds = conversationMessages
-        .filter((msg) => msg.direction === "inbound" && msg.is_read === false)
-        .map((msg) => msg.id);
+      const unreadMessageIds = allMessages
+        .filter((msg: { direction: string; is_read?: boolean; id: string }) => msg.direction === "inbound" && msg.is_read === false)
+        .map((msg: { id: string }) => msg.id);
       
       if (unreadMessageIds.length > 0) {
         await supabase
