@@ -258,6 +258,84 @@ async function sendWhatsAppMessage(phoneNumberId: string, accessToken: string, r
   }
 }
 
+// Helper function to dispatch webhook events to configured webhooks
+async function dispatchWebhookEvent(
+  organizationId: string, 
+  event: string, 
+  data: Record<string, unknown>
+): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    
+    // Fetch active webhooks for this organization that listen to this event
+    const { data: webhooks, error: fetchError } = await supabase
+      .from("webhooks")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true);
+
+    if (fetchError) {
+      console.error("Error fetching webhooks:", fetchError);
+      return;
+    }
+
+    // Filter webhooks that listen to this specific event
+    const matchingWebhooks = (webhooks || []).filter(
+      (webhook: { events: string[] }) => webhook.events.includes(event)
+    );
+
+    if (matchingWebhooks.length === 0) {
+      console.log(`No webhooks configured for event: ${event}`);
+      return;
+    }
+
+    console.log(`Dispatching ${event} to ${matchingWebhooks.length} webhook(s)`);
+
+    // Dispatch to each matching webhook
+    for (const webhook of matchingWebhooks) {
+      try {
+        const webhookPayload = {
+          event,
+          timestamp: new Date().toISOString(),
+          organization_id: organizationId,
+          data,
+        };
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "Optimus-CRM-Webhook/1.0",
+          "X-Webhook-Event": event,
+          "X-Webhook-ID": webhook.id,
+        };
+
+        // Add custom headers if configured
+        if (webhook.headers && typeof webhook.headers === "object") {
+          Object.assign(headers, webhook.headers as Record<string, string>);
+        }
+
+        console.log(`Dispatching to webhook: ${webhook.name} (${webhook.url})`);
+
+        const response = await fetch(webhook.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(webhookPayload),
+        });
+
+        if (!response.ok) {
+          console.error(`Webhook ${webhook.name} failed with status: ${response.status}`);
+        } else {
+          console.log(`Webhook ${webhook.name} dispatched successfully`);
+        }
+      } catch (error) {
+        console.error(`Error dispatching to webhook ${webhook.name}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error("Error in dispatchWebhookEvent:", error);
+  }
+}
+
 // Helper function to download media from Meta and upload to Supabase Storage
 async function downloadAndStoreMedia(
   mediaId: string, 
@@ -587,6 +665,22 @@ Deno.serve(async (req) => {
         } else {
           console.log('Message stored successfully:', messageId);
 
+          // Dispatch webhook event for message_created
+          if (channel.organization_id) {
+            await dispatchWebhookEvent(channel.organization_id, 'message_created', {
+              message_id: messageId,
+              channel_id: channel.id,
+              channel_name: channel.name,
+              sender_phone: senderPhone,
+              sender_name: senderName,
+              message_type: messageType,
+              content: content,
+              media_url: mediaUrl || null,
+              direction: 'inbound',
+              timestamp: new Date().toISOString(),
+            });
+          }
+
           // Check business hours and holidays for away message (only if organization configured)
           if (channel.organization_id && channel.access_token && channel.app_name) {
             // First check if it's a holiday
@@ -666,6 +760,17 @@ Deno.serve(async (req) => {
           } else {
             console.log('Lead created for:', senderPhone);
             leadId = newLead?.id;
+            
+            // Dispatch webhook event for contact_created
+            await dispatchWebhookEvent(channel.organization_id!, 'contact_created', {
+              lead_id: newLead?.id,
+              phone: senderPhone,
+              name: senderName || `WhatsApp ${senderPhone}`,
+              channel_id: channel.id,
+              channel_name: channel.name,
+              source: 'whatsapp_meta',
+              timestamp: new Date().toISOString(),
+            });
           }
         } else if (existingLead && senderName && channel.organization_id) {
           // Check if lead has auto-generated name (LeadWhats- pattern or WhatsApp pattern)
@@ -767,6 +872,17 @@ Deno.serve(async (req) => {
               console.error('Error creating assignment:', assignError);
             } else {
               console.log('Assignment created:', assignedTo ? `to ${assignedTo}` : 'pending (Novos)');
+              
+              // Dispatch webhook event for conversation_created
+              await dispatchWebhookEvent(channel.organization_id!, 'conversation_created', {
+                conversation_phone: senderPhone,
+                channel_id: channel.id,
+                channel_name: channel.name,
+                lead_id: leadId,
+                assigned_to: assignedTo,
+                status: status,
+                timestamp: new Date().toISOString(),
+              });
             }
           } else if (existingAssignment.status === 'pending' || !existingAssignment.assigned_to) {
             // Existing pending assignment - try auto-distribution again
@@ -823,6 +939,18 @@ Deno.serve(async (req) => {
           console.error('Error updating message status:', updateError);
         } else {
           console.log('Message status updated:', messageId, statusValue);
+
+          // Dispatch webhook event for message_updated
+          if (channel.organization_id) {
+            await dispatchWebhookEvent(channel.organization_id, 'message_updated', {
+              message_id: messageId,
+              channel_id: channel.id,
+              channel_name: channel.name,
+              previous_status: previousStatus,
+              new_status: statusValue,
+              timestamp: new Date().toISOString(),
+            });
+          }
 
           // If message failed and was previously sent/delivered, update campaign counters
           if (statusValue === 'failed' && previousStatus !== 'failed' && messageData?.metadata) {
