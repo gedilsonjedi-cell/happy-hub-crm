@@ -1930,12 +1930,12 @@ const WhatsAppChat = () => {
                         </div>
                       </div>
                     </button>
-                    {/* Accept button - only for new conversations without assignee */}
+                    {/* Accept button - fixed at top right, always visible for unassigned conversations */}
                     {!conversation.assignedTo && (
                       <Button
                         variant="default"
                         size="sm"
-                        className="absolute right-2 bottom-2 sm:bottom-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity h-7 sm:h-6 px-2 text-xs gap-1 z-10"
+                        className="absolute right-2 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-20"
                         onClick={(e) => handleAcceptConversation(conversation, e)}
                         title="Aceitar atendimento"
                       >
@@ -1943,11 +1943,14 @@ const WhatsAppChat = () => {
                         <span className="hidden sm:inline">Aceitar</span>
                       </Button>
                     )}
-                    {/* Archive button */}
+                    {/* Archive button - position depends on whether accept button is showing */}
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                      className={cn(
+                        "absolute opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6",
+                        !conversation.assignedTo ? "right-24 sm:right-20 top-2" : "right-2 top-2"
+                      )}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleArchive(conversation);
