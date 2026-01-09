@@ -6,8 +6,10 @@ import {
   Settings, 
   LogOut,
   Eye,
-  X
+  X,
+  Search
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,6 +33,12 @@ export function ClientSwitcher() {
     isImpersonating 
   } = useSuperAdmin();
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredOrganizations = organizations.filter(org => 
+    org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    org.slug.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (!isSuperAdmin) return null;
 
@@ -77,15 +85,30 @@ export function ClientSwitcher() {
               {organizations.length}
             </Badge>
           </DropdownMenuLabel>
+          
+          <div className="px-2 py-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Pesquisar cliente..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 pl-8 text-sm"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+          
           <DropdownMenuSeparator />
           
-          {organizations.length === 0 ? (
+          {filteredOrganizations.length === 0 ? (
             <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-              Nenhum cliente cadastrado
+              {searchQuery ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
             </div>
           ) : (
             <>
-              {organizations.slice(0, 10).map((org) => (
+              {filteredOrganizations.slice(0, 10).map((org) => (
                 <DropdownMenuItem
                   key={org.id}
                   className={cn(
@@ -112,12 +135,12 @@ export function ClientSwitcher() {
                 </DropdownMenuItem>
               ))}
               
-              {organizations.length > 10 && (
+              {filteredOrganizations.length > 10 && (
                 <DropdownMenuItem 
                   className="text-center text-muted-foreground"
                   onClick={() => navigate("/super-admin")}
                 >
-                  Ver todos ({organizations.length})
+                  Ver todos ({filteredOrganizations.length})
                 </DropdownMenuItem>
               )}
             </>
