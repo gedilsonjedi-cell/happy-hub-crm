@@ -62,14 +62,16 @@ const Integracoes = () => {
     events: [] as string[],
   });
 
+  const orgId = effectiveOrganizationId?.effectiveOrganizationId;
+
   const fetchWebhooks = async () => {
-    if (!effectiveOrganizationId?.effectiveOrganizationId) return;
+    if (!orgId) return;
     
     setIsLoading(true);
     const { data, error } = await supabase
       .from("webhooks")
       .select("*")
-      .eq("organization_id", effectiveOrganizationId.effectiveOrganizationId)
+      .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -86,7 +88,7 @@ const Integracoes = () => {
 
   useEffect(() => {
     fetchWebhooks();
-  }, [effectiveOrganizationId]);
+  }, [orgId]);
 
   const handleEventToggle = (eventId: string) => {
     setFormData(prev => ({
@@ -145,7 +147,7 @@ const Integracoes = () => {
           name: formData.name.trim(),
           url: formData.url.trim(),
           events: formData.events,
-          organization_id: effectiveOrganizationId?.effectiveOrganizationId,
+          organization_id: orgId,
           created_by: user?.id || '',
         }]);
 
