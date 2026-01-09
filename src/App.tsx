@@ -45,6 +45,7 @@ import NotFound from "./pages/NotFound";
 import FollowUp from "./pages/FollowUp";
 import WhatsAppOficial from "./pages/WhatsAppOficial";
 import Blog from "./pages/Blog";
+import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 
 const queryClient = new QueryClient();
@@ -174,6 +175,7 @@ const App = () => (
           <Route path="/personalizacao/tags" element={<ProtectedRoute><Tags /></ProtectedRoute>} />
           <Route path="/personalizacao/campos" element={<ProtectedRoute><CamposPersonalizados /></ProtectedRoute>} />
           <Route path="/personalizacao/respostas-rapidas" element={<ProtectedRoute><RespostasRapidas /></ProtectedRoute>} />
+          <Route path="/integracoes" element={<ProtectedRoute><Integracoes /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />

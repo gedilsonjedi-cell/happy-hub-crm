@@ -2468,6 +2468,53 @@ export type Database = {
         }
         Relationships: []
       }
+      webhooks: {
+        Row: {
+          created_at: string
+          created_by: string
+          events: string[]
+          headers: Json | null
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          events?: string[]
+          headers?: Json | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          organization_id?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          events?: string[]
+          headers?: Json | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          organization_id?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           channel_id: string | null
