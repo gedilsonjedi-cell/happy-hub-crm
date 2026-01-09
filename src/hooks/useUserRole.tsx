@@ -26,6 +26,7 @@ interface UserRoleState {
   canAccessChatbot: boolean;
   canAccessTemplates: boolean;
   canAccessConexoes: boolean;
+  canAccessIntegracoes: boolean;
   canAccessLeads: boolean;
   canAccessPipeline: boolean;
   canAccessUsuarios: boolean;
@@ -209,17 +210,18 @@ export function useUserRole(): UserRoleState {
     isSupervisor,
     isAtendente,
     // Super admin has access to everything including super admin panel
-    // Admin has access to most things except user management and super admin
+    // Admin has access to most things except super admin
     // Supervisor has access to most things except user management
-    // Atendente only has access to Atendimento
+    // Atendente has access to most things except Chatbot IA, Conexões, Integrações, Disparos
     canAccessDisparos: isSuperAdmin || isAdmin || isSupervisor,
     canAccessChatbot: isSuperAdmin || isAdmin || isSupervisor,
     canAccessTemplates: isSuperAdmin || isAdmin || isSupervisor,
     canAccessConexoes: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessLeads: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessPipeline: isSuperAdmin || isAdmin || isSupervisor,
+    canAccessIntegracoes: isSuperAdmin || isAdmin || isSupervisor,
+    canAccessLeads: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
+    canAccessPipeline: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
     canAccessUsuarios: isSuperAdmin || isAdmin,
-    canAccessSetores: isSuperAdmin || isAdmin,
+    canAccessSetores: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
     canAccessSuperAdmin: isSuperAdmin,
   };
 }
