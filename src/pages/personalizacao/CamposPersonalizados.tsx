@@ -96,7 +96,7 @@ const normalizeFieldName = (name: string): string => {
 export default function CamposPersonalizados() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   
   const [showDialog, setShowDialog] = useState(false);
   const [editingField, setEditingField] = useState<CustomFieldDefinition | null>(null);
@@ -270,7 +270,7 @@ export default function CamposPersonalizados() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !isSuperAdmin) {
     return (
       <MainLayout>
         <div className="flex flex-col items-center justify-center h-64 gap-4">
