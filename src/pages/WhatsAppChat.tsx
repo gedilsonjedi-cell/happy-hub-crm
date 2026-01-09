@@ -1903,11 +1903,17 @@ const WhatsAppChat = () => {
                               {formatConversationDate(conversation.lastMessageTime)}
                             </span>
                           </div>
-                          {channelInfo && channels.length > 1 && (
+                          {/* Show attendant name if assigned, otherwise show channel name */}
+                          {conversation.assignedToName ? (
+                            <p className="text-[10px] text-emerald-500/80 truncate mb-0.5 flex items-center gap-1">
+                              <User className="w-2.5 h-2.5" />
+                              {conversation.assignedToName}
+                            </p>
+                          ) : channelInfo && channels.length > 1 ? (
                             <p className="text-[10px] text-primary/70 truncate mb-0.5">
                               📱 {channelInfo.name}
                             </p>
-                          )}
+                          ) : null}
                           <p className="text-xs text-muted-foreground truncate mb-2 block w-full">
                             {conversation.lastMessage}
                           </p>
@@ -1915,12 +1921,6 @@ const WhatsAppChat = () => {
                             <Badge variant="outline" className={cn("text-[10px] sm:text-xs shrink-0", statusConfig[conversation.status].className)}>
                               {statusConfig[conversation.status].label}
                             </Badge>
-                            {conversation.assignedToName && (
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-1 shrink-0">
-                                <User className="w-2.5 h-2.5" />
-                                {conversation.assignedToName.split(' ')[0]}
-                              </Badge>
-                            )}
                             {conversation.unreadCount > 0 && (
                               <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">
                                 {conversation.unreadCount}
