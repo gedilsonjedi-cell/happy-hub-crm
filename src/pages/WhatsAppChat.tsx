@@ -230,31 +230,9 @@ const WhatsAppChat = () => {
     cancelRecording
   } = useAudioRecording();
 
-  // Stored conversation statuses (in localStorage to persist across sessions)
-  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>(() => {
-    const stored = localStorage.getItem("whatsapp-conversation-statuses");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Record<string, string>;
-        // Filter out old-format keys (that don't contain underscore with channelId)
-        const validKeys = Object.entries(parsed).filter(([key, value]) => {
-          // Valid keys should have format: channelId_phone (UUID_digits)
-          const hasValidFormat = key.includes('_') && key.split('_')[0].length > 10;
-          const hasValidValue = ['pending', 'in_progress', 'resolved', 'archived'].includes(value);
-          return hasValidFormat && hasValidValue;
-        });
-        return Object.fromEntries(validKeys) as Record<string, Conversation["status"]>;
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  });
-
-  // Save statuses to localStorage
-  useEffect(() => {
-    localStorage.setItem("whatsapp-conversation-statuses", JSON.stringify(conversationStatuses));
-  }, [conversationStatuses]);
+  // Conversation statuses are now stored in the database (conversation_assignments.status)
+  // This local state is just for UI reactivity, synced from DB
+  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
 
   // Fetch quick responses for shortcut detection
   useEffect(() => {
@@ -419,12 +397,15 @@ const WhatsAppChat = () => {
       // Store in ref for realtime updates to access
       leadsMapRef.current = leadsMap;
 
-      // Build a map of assignments by channel_phone key
-      const assignmentsMap = new Map<string, { assignedTo: string | null }>();
+      // Build a map of assignments by channel_phone key (including status from DB)
+      const assignmentsMap = new Map<string, { assignedTo: string | null; status: string | null }>();
       assignmentsResult.data?.forEach((assignment) => {
         const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
         const key = `${assignment.channel_id}_${normalizedPhone}`;
-        assignmentsMap.set(key, { assignedTo: assignment.assigned_to });
+        assignmentsMap.set(key, { 
+          assignedTo: assignment.assigned_to,
+          status: assignment.status // Status from database
+        });
       });
 
       // Build a map of profiles by user_id
@@ -446,8 +427,17 @@ const WhatsAppChat = () => {
         return `${channelId || 'unknown'}_${normalizePhoneForKey(phone)}`;
       };
       
-      // Get current statuses from localStorage to avoid dependency on state
-      const storedStatuses = JSON.parse(localStorage.getItem("whatsapp-conversation-statuses") || "{}");
+      // Build statuses map from database assignments
+      const dbStatuses: Record<string, string> = {};
+      assignmentsResult.data?.forEach((assignment) => {
+        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+        const key = `${assignment.channel_id}_${normalizedPhone}`;
+        if (assignment.status) {
+          dbStatuses[key] = assignment.status;
+        }
+      });
+      // Update local state with DB statuses
+      setConversationStatuses(dbStatuses as Record<string, Conversation["status"]>);
       
       data?.forEach((msg) => {
         // Determine the contact phone - for inbound it's sender_phone, for outbound it's in metadata.destination
@@ -485,8 +475,8 @@ const WhatsAppChat = () => {
         const displayName = leadName || contactName;
 
         if (!conversationsMap.has(conversationKey)) {
-          // Check stored status by conversation key only (old format keys are filtered out)
-          const storedStatus = storedStatuses[conversationKey];
+          // Get status from database (via assignment) - defaults to "pending" if not set
+          const dbStatus = assignment?.status as Conversation["status"] | null;
           conversationsMap.set(conversationKey, {
             phone: displayPhone,
             name: displayName,
@@ -495,7 +485,7 @@ const WhatsAppChat = () => {
             lastInboundTime: msg.direction === "inbound" ? msg.created_at : null,
             unreadCount: msg.direction === "inbound" && msg.is_read === false ? 1 : 0,
             channelId: msg.channel_id,
-            status: storedStatus || "pending",
+            status: dbStatus || "pending",
             assignedTo,
             assignedToName
           });
@@ -779,11 +769,23 @@ const WhatsAppChat = () => {
                 let newStatus = existing.status;
                 if (existing.status === "archived") {
                   newStatus = "pending";
-                  // Update status in localStorage
+                  // Update status in database
+                  const convKey = `${existing.channelId}_${existing.phone.replace(/\D/g, '')}`;
                   setConversationStatuses(prevStatuses => ({
                     ...prevStatuses,
-                    [`${existing.channelId}_${existing.phone.replace(/\D/g, '')}`]: "pending"
+                    [convKey]: "pending"
                   }));
+                  // Persist to database
+                  if (existing.channelId) {
+                    supabase
+                      .from("conversation_assignments")
+                      .update({ status: "pending", updated_at: new Date().toISOString() })
+                      .eq("channel_id", existing.channelId)
+                      .or(`conversation_phone.eq.${existing.phone.replace(/\D/g, '')},conversation_phone.eq.+${existing.phone.replace(/\D/g, '')}`)
+                      .then(({ error }) => {
+                        if (error) console.error("Error reactivating archived conversation:", error);
+                      });
+                  }
                 }
                 
                 const isCurrentConversation = selectedConversationKey === msgConversationKey;
@@ -888,12 +890,40 @@ const WhatsAppChat = () => {
     return `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
   }, []);
 
-  const updateConversationStatus = useCallback((conversationKey: string, status: Conversation["status"]) => {
+  const updateConversationStatus = useCallback(async (conversationKey: string, status: Conversation["status"]) => {
+    // Update local state immediately for UI responsiveness
     setConversationStatuses(prev => ({ ...prev, [conversationKey]: status }));
     setConversations(prev => prev.map(c => {
       const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
       return key === conversationKey ? { ...c, status } : c;
     }));
+
+    // Persist to database
+    const [channelId, phone] = conversationKey.split('_');
+    if (channelId && channelId !== 'unknown' && phone) {
+      try {
+        const { error } = await supabase
+          .from("conversation_assignments")
+          .update({ status, updated_at: new Date().toISOString() })
+          .eq("channel_id", channelId)
+          .eq("conversation_phone", phone);
+        
+        if (error) {
+          // Try with + prefix if original fails
+          const { error: error2 } = await supabase
+            .from("conversation_assignments")
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq("channel_id", channelId)
+            .eq("conversation_phone", `+${phone}`);
+          
+          if (error2) {
+            console.error("Error updating conversation status:", error2);
+          }
+        }
+      } catch (err) {
+        console.error("Error updating conversation status:", err);
+      }
+    }
   }, []);
 
   const handleArchive = (conversation: Conversation) => {
@@ -902,11 +932,11 @@ const WhatsAppChat = () => {
     setShowSaleConfirmationDialog(true);
   };
 
-  const handleConfirmArchive = (saleCompleted: boolean) => {
+  const handleConfirmArchive = async (saleCompleted: boolean) => {
     if (!conversationToArchive) return;
     
     const key = getConversationKey(conversationToArchive);
-    updateConversationStatus(key, "archived");
+    await updateConversationStatus(key, "archived");
     if (selectedConversation && getConversationKey(selectedConversation) === key) {
       const nextConv = activeConversations.find(c => getConversationKey(c) !== key);
       setSelectedConversation(nextConv || null);
@@ -915,9 +945,9 @@ const WhatsAppChat = () => {
     setConversationToArchive(null);
   };
 
-  const handleRestore = (conversation: Conversation) => {
+  const handleRestore = async (conversation: Conversation) => {
     const key = getConversationKey(conversation);
-    updateConversationStatus(key, "in_progress");
+    await updateConversationStatus(key, "in_progress");
     
     // Force the conversation to appear in active list by setting a fake lastInboundTime
     // This handles cases where conversation has no client response yet
@@ -932,8 +962,8 @@ const WhatsAppChat = () => {
     toast.success("Conversa restaurada");
   };
 
-  const handleResolve = (conversation: Conversation) => {
-    updateConversationStatus(getConversationKey(conversation), "resolved");
+  const handleResolve = async (conversation: Conversation) => {
+    await updateConversationStatus(getConversationKey(conversation), "resolved");
     toast.success("Conversa marcada como resolvida");
   };
 
