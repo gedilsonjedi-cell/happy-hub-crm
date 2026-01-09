@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,7 +27,15 @@ import {
   Globe,
   CheckCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  BookOpen,
+  Code,
+  FileJson,
+  Terminal,
+  ArrowRight,
+  CheckCheck,
+  AlertCircle,
+  Info
 } from "lucide-react";
 
 interface WebhookData {
@@ -248,7 +258,7 @@ const Integracoes = () => {
         </div>
 
         <Tabs defaultValue="webhooks" className="space-y-4">
-          <TabsList>
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
             <TabsTrigger value="webhooks" className="gap-2">
               <Webhook className="h-4 w-4" />
               Webhooks
@@ -256,6 +266,10 @@ const Integracoes = () => {
             <TabsTrigger value="automations" className="gap-2">
               <Zap className="h-4 w-4" />
               Automações
+            </TabsTrigger>
+            <TabsTrigger value="docs" className="gap-2">
+              <BookOpen className="h-4 w-4" />
+              Documentação
             </TabsTrigger>
           </TabsList>
 
@@ -540,6 +554,657 @@ const Integracoes = () => {
                     <li>Use o botão "Testar" para verificar a conexão</li>
                   </ol>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="docs" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Documentação da API de Webhooks
+                </CardTitle>
+                <CardDescription>
+                  Guia completo para integração com o Optimus CRM via webhooks
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Accordion type="single" collapsible className="w-full">
+                  {/* Introdução */}
+                  <AccordionItem value="intro">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Info className="h-4 w-4 text-primary" />
+                        Introdução
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        Os webhooks permitem que sua aplicação receba notificações em tempo real 
+                        quando eventos ocorrem no Optimus CRM. Em vez de fazer polling contínuo 
+                        para verificar mudanças, você recebe os dados automaticamente assim que 
+                        o evento acontece.
+                      </p>
+                      <div className="bg-muted p-4 rounded-lg">
+                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                          <CheckCheck className="h-4 w-4 text-green-500" />
+                          Benefícios dos Webhooks
+                        </h4>
+                        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                          <li>Notificações em tempo real</li>
+                          <li>Menor consumo de recursos (sem polling)</li>
+                          <li>Integração simples com qualquer plataforma</li>
+                          <li>Suporte a múltiplos eventos simultâneos</li>
+                        </ul>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Estrutura do Payload */}
+                  <AccordionItem value="payload">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <FileJson className="h-4 w-4 text-primary" />
+                        Estrutura do Payload
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        Todas as requisições de webhook são enviadas como POST com Content-Type: application/json.
+                      </p>
+                      <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                        <pre className="text-sm font-mono">{`{
+  "event": "contact_created",
+  "timestamp": "2024-01-15T14:30:00.000Z",
+  "organization_id": "uuid-da-organizacao",
+  "data": {
+    // Dados específicos do evento
+  }
+}`}</pre>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Campos do Payload:</h4>
+                        <div className="grid gap-2">
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded">event</code>
+                            <span className="text-muted-foreground">Tipo do evento disparado</span>
+                          </div>
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded">timestamp</code>
+                            <span className="text-muted-foreground">Data/hora do evento (ISO 8601)</span>
+                          </div>
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded">organization_id</code>
+                            <span className="text-muted-foreground">ID da organização</span>
+                          </div>
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded">data</code>
+                            <span className="text-muted-foreground">Objeto com dados específicos do evento</span>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Eventos Disponíveis */}
+                  <AccordionItem value="events">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-primary" />
+                        Eventos Disponíveis
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-4">
+                        {/* message_created */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">message_created</Badge>
+                            <span className="text-sm font-medium">Mensagem Criada</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Disparado quando uma nova mensagem é recebida no WhatsApp.
+                          </p>
+                          <div className="bg-zinc-900 text-zinc-100 p-3 rounded-lg text-xs overflow-x-auto">
+                            <pre className="font-mono">{`{
+  "event": "message_created",
+  "data": {
+    "message_id": "abc123",
+    "phone": "5511999999999",
+    "content": "Olá, gostaria de saber mais...",
+    "direction": "incoming",
+    "channel_id": "channel-uuid"
+  }
+}`}</pre>
+                          </div>
+                        </div>
+
+                        {/* contact_created */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">contact_created</Badge>
+                            <span className="text-sm font-medium">Contato/Lead Criado</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Disparado quando um novo lead é cadastrado no CRM.
+                          </p>
+                          <div className="bg-zinc-900 text-zinc-100 p-3 rounded-lg text-xs overflow-x-auto">
+                            <pre className="font-mono">{`{
+  "event": "contact_created",
+  "data": {
+    "lead_id": "lead-uuid",
+    "name": "João Silva",
+    "phone": "5511999999999",
+    "email": "joao@email.com",
+    "tags": ["interessado", "whatsapp"]
+  }
+}`}</pre>
+                          </div>
+                        </div>
+
+                        {/* contact_updated */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">contact_updated</Badge>
+                            <span className="text-sm font-medium">Contato Atualizado</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Disparado quando informações de um lead são modificadas.
+                          </p>
+                          <div className="bg-zinc-900 text-zinc-100 p-3 rounded-lg text-xs overflow-x-auto">
+                            <pre className="font-mono">{`{
+  "event": "contact_updated",
+  "data": {
+    "lead_id": "lead-uuid",
+    "changes": {
+      "name": { "old": "João", "new": "João Silva" },
+      "email": { "old": null, "new": "joao@email.com" }
+    }
+  }
+}`}</pre>
+                          </div>
+                        </div>
+
+                        {/* pipeline_stage_changed */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">pipeline_stage_changed</Badge>
+                            <span className="text-sm font-medium">Etapa do Pipeline Alterada</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Disparado quando um lead muda de etapa no funil de vendas.
+                          </p>
+                          <div className="bg-zinc-900 text-zinc-100 p-3 rounded-lg text-xs overflow-x-auto">
+                            <pre className="font-mono">{`{
+  "event": "pipeline_stage_changed",
+  "data": {
+    "lead_id": "lead-uuid",
+    "lead_name": "João Silva",
+    "previous_stage": {
+      "id": "stage-1",
+      "name": "Novo Lead"
+    },
+    "new_stage": {
+      "id": "stage-2",
+      "name": "Em Negociação"
+    }
+  }
+}`}</pre>
+                          </div>
+                        </div>
+
+                        {/* campaign_completed */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">campaign_completed</Badge>
+                            <span className="text-sm font-medium">Campanha Concluída</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Disparado quando uma campanha de disparos é finalizada.
+                          </p>
+                          <div className="bg-zinc-900 text-zinc-100 p-3 rounded-lg text-xs overflow-x-auto">
+                            <pre className="font-mono">{`{
+  "event": "campaign_completed",
+  "data": {
+    "campaign_id": "campaign-uuid",
+    "name": "Black Friday 2024",
+    "total_recipients": 1500,
+    "sent_count": 1485,
+    "delivered_count": 1420,
+    "failed_count": 15
+  }
+}`}</pre>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Guia N8N */}
+                  <AccordionItem value="n8n">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 rounded bg-orange-500 flex items-center justify-center">
+                          <span className="text-[8px] font-bold text-white">n8n</span>
+                        </div>
+                        Integração com N8N
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        O N8N é uma plataforma de automação poderosa e open-source. 
+                        Siga os passos abaixo para configurar a integração:
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                          <div>
+                            <h4 className="font-medium">Crie um novo Workflow</h4>
+                            <p className="text-sm text-muted-foreground">No N8N, clique em "Create new workflow"</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</div>
+                          <div>
+                            <h4 className="font-medium">Adicione o nó Webhook</h4>
+                            <p className="text-sm text-muted-foreground">Busque por "Webhook" e arraste para o canvas</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</div>
+                          <div>
+                            <h4 className="font-medium">Configure o Webhook</h4>
+                            <p className="text-sm text-muted-foreground">Selecione HTTP Method: POST</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
+                          <div>
+                            <h4 className="font-medium">Copie a URL do Webhook</h4>
+                            <p className="text-sm text-muted-foreground">Clique em "Production URL" e copie o link</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">5</div>
+                          <div>
+                            <h4 className="font-medium">Configure no Optimus CRM</h4>
+                            <p className="text-sm text-muted-foreground">Cole a URL na aba Webhooks e selecione os eventos</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-muted p-4 rounded-lg mt-4">
+                        <h4 className="font-medium mb-2">Exemplo de fluxo N8N:</h4>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Badge variant="secondary">Webhook</Badge>
+                          <ArrowRight className="h-4 w-4" />
+                          <Badge variant="secondary">IF (evento)</Badge>
+                          <ArrowRight className="h-4 w-4" />
+                          <Badge variant="secondary">GPT/Claude</Badge>
+                          <ArrowRight className="h-4 w-4" />
+                          <Badge variant="secondary">Resposta</Badge>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Guia Make */}
+                  <AccordionItem value="make">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 rounded bg-purple-500 flex items-center justify-center">
+                          <span className="text-[10px] font-bold text-white">M</span>
+                        </div>
+                        Integração com Make (Integromat)
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        O Make oferece uma interface visual intuitiva para criar automações.
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                          <div>
+                            <h4 className="font-medium">Crie um novo Scenario</h4>
+                            <p className="text-sm text-muted-foreground">No Make, clique em "Create a new scenario"</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</div>
+                          <div>
+                            <h4 className="font-medium">Adicione o módulo Webhooks</h4>
+                            <p className="text-sm text-muted-foreground">Busque "Webhooks" e selecione "Custom webhook"</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</div>
+                          <div>
+                            <h4 className="font-medium">Crie o Webhook</h4>
+                            <p className="text-sm text-muted-foreground">Clique em "Add" para criar um novo webhook</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
+                          <div>
+                            <h4 className="font-medium">Copie a URL</h4>
+                            <p className="text-sm text-muted-foreground">Copie o endereço gerado pelo Make</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">5</div>
+                          <div>
+                            <h4 className="font-medium">Configure e Teste</h4>
+                            <p className="text-sm text-muted-foreground">Cole a URL no Optimus e use "Testar" para validar</p>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Guia Zapier */}
+                  <AccordionItem value="zapier">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-amber-500" />
+                        Integração com Zapier
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        O Zapier conecta mais de 5.000 aplicativos de forma simples.
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                          <div>
+                            <h4 className="font-medium">Crie um novo Zap</h4>
+                            <p className="text-sm text-muted-foreground">Clique em "Create Zap" no Zapier</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</div>
+                          <div>
+                            <h4 className="font-medium">Escolha o Trigger</h4>
+                            <p className="text-sm text-muted-foreground">Busque "Webhooks by Zapier" → "Catch Hook"</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</div>
+                          <div>
+                            <h4 className="font-medium">Copie a URL do Hook</h4>
+                            <p className="text-sm text-muted-foreground">O Zapier irá gerar uma URL única para você</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
+                          <div>
+                            <h4 className="font-medium">Configure no Optimus</h4>
+                            <p className="text-sm text-muted-foreground">Cole a URL e selecione os eventos desejados</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">5</div>
+                          <div>
+                            <h4 className="font-medium">Teste e publique</h4>
+                            <p className="text-sm text-muted-foreground">Use "Testar" no Optimus e depois "Publish" no Zapier</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium text-amber-700 dark:text-amber-400">Importante</h4>
+                            <p className="text-sm text-muted-foreground">
+                              O Zapier utiliza CORS restrito. Use o modo "no-cors" em integrações 
+                              personalizadas ou confie no histórico do Zap para confirmar o recebimento.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Exemplos de Código */}
+                  <AccordionItem value="code">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Code className="h-4 w-4 text-primary" />
+                        Exemplos de Código
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <p className="text-muted-foreground">
+                        Exemplos de como receber e processar webhooks em diferentes linguagens:
+                      </p>
+
+                      {/* Node.js */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Terminal className="h-4 w-4" />
+                          <span className="font-medium">Node.js (Express)</span>
+                        </div>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`const express = require('express');
+const app = express();
+
+app.use(express.json());
+
+app.post('/webhook/optimus', (req, res) => {
+  const { event, timestamp, data } = req.body;
+  
+  console.log('Evento recebido:', event);
+  console.log('Dados:', data);
+  
+  // Processar o evento
+  switch (event) {
+    case 'contact_created':
+      // Novo lead criado
+      handleNewContact(data);
+      break;
+    case 'pipeline_stage_changed':
+      // Lead mudou de etapa
+      handleStageChange(data);
+      break;
+    // ... outros eventos
+  }
+  
+  res.status(200).json({ received: true });
+});
+
+app.listen(3000);`}</pre>
+                        </div>
+                      </div>
+
+                      {/* Python */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Terminal className="h-4 w-4" />
+                          <span className="font-medium">Python (Flask)</span>
+                        </div>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/webhook/optimus', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    
+    event = data.get('event')
+    payload = data.get('data')
+    
+    print(f"Evento: {event}")
+    print(f"Dados: {payload}")
+    
+    if event == 'contact_created':
+        handle_new_contact(payload)
+    elif event == 'message_created':
+        handle_new_message(payload)
+    
+    return jsonify({'received': True}), 200
+
+if __name__ == '__main__':
+    app.run(port=5000)`}</pre>
+                        </div>
+                      </div>
+
+                      {/* PHP */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Terminal className="h-4 w-4" />
+                          <span className="font-medium">PHP</span>
+                        </div>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`<?php
+$payload = file_get_contents('php://input');
+$data = json_decode($payload, true);
+
+$event = $data['event'] ?? '';
+$eventData = $data['data'] ?? [];
+
+error_log("Evento recebido: " . $event);
+
+switch ($event) {
+    case 'contact_created':
+        handleNewContact($eventData);
+        break;
+    case 'campaign_completed':
+        handleCampaignComplete($eventData);
+        break;
+}
+
+http_response_code(200);
+echo json_encode(['received' => true]);
+?>`}</pre>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Boas Práticas */}
+                  <AccordionItem value="best-practices">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-primary" />
+                        Boas Práticas
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <div className="grid gap-4">
+                        <div className="flex items-start gap-3">
+                          <CheckCheck className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium">Responda rapidamente (200 OK)</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Retorne status 200 imediatamente e processe os dados em background. 
+                              Timeouts podem causar tentativas duplicadas.
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-start gap-3">
+                          <CheckCheck className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium">Implemente idempotência</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Use o timestamp e IDs para evitar processar o mesmo evento duas vezes.
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-start gap-3">
+                          <CheckCheck className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium">Valide a origem</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Verifique os headers X-Webhook-ID e User-Agent para garantir autenticidade.
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-start gap-3">
+                          <CheckCheck className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium">Use HTTPS</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Sempre utilize endpoints HTTPS para garantir segurança na transmissão.
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-start gap-3">
+                          <CheckCheck className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium">Registre logs detalhados</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Mantenha logs de todos os webhooks recebidos para debugging.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Solução de Problemas */}
+                  <AccordionItem value="troubleshooting">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-primary" />
+                        Solução de Problemas
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4">
+                      <div className="space-y-4">
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium text-destructive">Webhook não está sendo recebido</h4>
+                          <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                            <li>Verifique se a URL está correta e acessível publicamente</li>
+                            <li>Confirme se o webhook está ativo (switch ligado)</li>
+                            <li>Verifique se os eventos corretos estão selecionados</li>
+                            <li>Use o botão "Testar" para validar a conexão</li>
+                          </ul>
+                        </div>
+                        
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium text-destructive">Erro de CORS</h4>
+                          <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                            <li>CORS é uma restrição do navegador, não afeta webhooks server-to-server</li>
+                            <li>Se usando Zapier, o histórico do Zap mostra os dados recebidos</li>
+                            <li>Configure headers CORS no seu servidor se necessário</li>
+                          </ul>
+                        </div>
+                        
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium text-destructive">Dados incompletos</h4>
+                          <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                            <li>Verifique se o Content-Type está como application/json</li>
+                            <li>Confirme o parser JSON no seu servidor</li>
+                            <li>Cheque os logs para ver o payload completo</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </CardContent>
             </Card>
           </TabsContent>
