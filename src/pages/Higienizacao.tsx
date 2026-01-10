@@ -63,6 +63,9 @@ import {
   Plus,
   MapPin,
   FileText,
+  ArrowLeft,
+  Database,
+  UserSearch,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
@@ -134,6 +137,9 @@ export default function Higienizacao() {
       setShowPaywall(true);
     }
   }, [isLoadingAddon, hasAddon]);
+
+  // Module selection state - null means show selection screen
+  const [selectedModule, setSelectedModule] = useState<"nova-vida" | "whatsapp" | null>(null);
 
   const [activeTab, setActiveTab] = useState<"upload" | "leads" | "history">("upload");
   const [phoneEntries, setPhoneEntries] = useState<PhoneEntry[]>([]);
@@ -1080,13 +1086,109 @@ export default function Higienizacao() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Higienização</h1>
-            <p className="text-muted-foreground">
-              Valide e limpe sua base de contatos para melhor entregabilidade
-            </p>
+          <div className="flex items-center gap-4">
+            {selectedModule && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedModule(null)}
+                className="shrink-0"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {selectedModule === null && "Higienização & Consultas"}
+                {selectedModule === "nova-vida" && "Nova Vida TI - Consulta de Dados"}
+                {selectedModule === "whatsapp" && "Validar WhatsApp"}
+              </h1>
+              <p className="text-muted-foreground">
+                {selectedModule === null && "Escolha o tipo de serviço que deseja utilizar"}
+                {selectedModule === "nova-vida" && "Consulte dados atualizados de CPF, CNPJ e muito mais"}
+                {selectedModule === "whatsapp" && "Valide e limpe sua base de contatos para melhor entregabilidade"}
+              </p>
+            </div>
           </div>
         </div>
+
+        {/* Module Selection Screen */}
+        {selectedModule === null && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto py-8">
+            {/* Nova Vida TI Option */}
+            <Card 
+              className="cursor-pointer hover:border-primary hover:shadow-lg transition-all group relative overflow-hidden"
+              onClick={() => setSelectedModule("nova-vida")}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CardHeader className="text-center pb-2">
+                <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg group-hover:scale-105 transition-transform">
+                  <Database className="w-10 h-10 text-white" />
+                </div>
+                <CardTitle className="text-xl">Nova Vida TI</CardTitle>
+                <CardDescription className="text-sm">
+                  Consulta de Dados KYC
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-center space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Consulte dados atualizados de pessoas e empresas. Exporte em planilhas para análise.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <Badge variant="secondary" className="text-xs">CPF</Badge>
+                  <Badge variant="secondary" className="text-xs">CNPJ</Badge>
+                  <Badge variant="secondary" className="text-xs">Receita Federal</Badge>
+                  <Badge variant="secondary" className="text-xs">SEFAZ</Badge>
+                </div>
+                <Button className="w-full gap-2 mt-4">
+                  <UserSearch className="w-4 h-4" />
+                  Acessar Consultas
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Validar WhatsApp Option */}
+            <Card 
+              className="cursor-pointer hover:border-primary hover:shadow-lg transition-all group relative overflow-hidden"
+              onClick={() => setSelectedModule("whatsapp")}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CardHeader className="text-center pb-2">
+                <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mb-4 shadow-lg group-hover:scale-105 transition-transform">
+                  <MessageCircle className="w-10 h-10 text-white" />
+                </div>
+                <CardTitle className="text-xl">Validar WhatsApp</CardTitle>
+                <CardDescription className="text-sm">
+                  Higienização de Contatos
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-center space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Verifique se números têm WhatsApp ativo. Limpe sua base de contatos para campanhas.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <Badge variant="secondary" className="text-xs">Validação</Badge>
+                  <Badge variant="secondary" className="text-xs">WhatsApp</Badge>
+                  <Badge variant="secondary" className="text-xs">Higienização</Badge>
+                  <Badge variant="secondary" className="text-xs">Z-API</Badge>
+                </div>
+                <Button className="w-full gap-2 mt-4 bg-green-600 hover:bg-green-700">
+                  <Zap className="w-4 h-4" />
+                  Validar Números
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Nova Vida TI Module Content */}
+        {selectedModule === "nova-vida" && (
+          <NovaVidaTIModule organizationId={profile?.organization_id} />
+        )}
+
+        {/* WhatsApp Validation Module Content (existing functionality) */}
+        {selectedModule === "whatsapp" && (
+          <>
 
         {/* Statistics */}
         {phoneEntries.length > 0 && (
@@ -2447,7 +2549,286 @@ export default function Higienizacao() {
             queryClient.invalidateQueries({ queryKey: ["organization-addon"] });
           }}
         />
+        </>
+        )}
       </div>
     </MainLayout>
+  );
+}
+
+// Nova Vida TI Module Component
+function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
+  const [searchType, setSearchType] = useState<"cpf" | "cnpj" | "batch">("cpf");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      toast.error("Digite um valor para pesquisar");
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+
+    try {
+      // For now, show a message that integration is pending
+      toast.info("Integração com Nova Vida TI em desenvolvimento. Entre em contato para configurar.");
+      
+      // TODO: Implement actual API call when credentials are available
+      // const { data, error } = await supabase.functions.invoke('nova-vida-search', {
+      //   body: { type: searchType, query: searchQuery }
+      // });
+      
+    } catch (err) {
+      console.error("Search error:", err);
+      setError("Erro ao realizar consulta. Tente novamente.");
+      toast.error("Erro ao realizar consulta");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [batchData, setBatchData] = useState<string[]>([]);
+
+  const handleBatchFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const lines = content.split(/\r?\n/).filter((line) => line.trim());
+      const documents = lines.map((line) => line.replace(/\D/g, "")).filter((doc) => doc.length >= 11);
+      setBatchData(documents);
+      toast.success(`${documents.length} documentos carregados para consulta em lote`);
+    };
+    reader.readAsText(file);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Search Type Selection */}
+      <Tabs value={searchType} onValueChange={(v) => setSearchType(v as "cpf" | "cnpj" | "batch")}>
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+          <TabsTrigger value="cpf" className="gap-2">
+            <Users className="w-4 h-4" />
+            CPF
+          </TabsTrigger>
+          <TabsTrigger value="cnpj" className="gap-2">
+            <Database className="w-4 h-4" />
+            CNPJ
+          </TabsTrigger>
+          <TabsTrigger value="batch" className="gap-2">
+            <Upload className="w-4 h-4" />
+            Lote
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cpf" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserSearch className="w-5 h-5" />
+                Consulta de CPF
+              </CardTitle>
+              <CardDescription>
+                Digite o CPF para consultar dados cadastrais, situação na Receita Federal e mais.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="000.000.000-00"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"))}
+                  maxLength={14}
+                  className="max-w-xs"
+                />
+                <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  Consultar
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Dados Cadastrais
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Situação RF
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Telefones
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Endereço
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cnpj" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Consulta de CNPJ
+              </CardTitle>
+              <CardDescription>
+                Digite o CNPJ para consultar dados da empresa, situação cadastral, sócios e mais.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="00.000.000/0000-00"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value.replace(/\D/g, "").replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5"))}
+                  maxLength={18}
+                  className="max-w-xs"
+                />
+                <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  Consultar
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Dados Cadastrais
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Quadro Societário
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  SEFAZ
+                </Badge>
+                <Badge variant="outline" className="justify-center py-2">
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+                  Simples Nacional
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="batch" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Consulta em Lote
+              </CardTitle>
+              <CardDescription>
+                Importe uma planilha com CPFs ou CNPJs para consulta em massa. Exporte os resultados em CSV.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleBatchFileUpload}
+                accept=".csv,.txt"
+                className="hidden"
+              />
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Carregar Arquivo (CSV/TXT)
+                </Button>
+
+                {batchData.length > 0 && (
+                  <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
+                    {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    Consultar {batchData.length} Documentos
+                  </Button>
+                )}
+              </div>
+
+              {batchData.length > 0 && (
+                <div className="p-4 rounded-lg bg-muted">
+                  <p className="text-sm font-medium">
+                    {batchData.length} documentos prontos para consulta
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Prévia: {batchData.slice(0, 5).join(", ")}{batchData.length > 5 ? "..." : ""}
+                  </p>
+                </div>
+              )}
+
+              <div className="p-4 rounded-lg border border-dashed space-y-2">
+                <p className="text-sm font-medium">Formatos Aceitos</p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>• Arquivo CSV ou TXT com um documento por linha</li>
+                  <li>• CPF (11 dígitos) ou CNPJ (14 dígitos)</li>
+                  <li>• Apenas números ou formatado</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* API Status Info */}
+      <Card className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Configuração de API Necessária
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                Para utilizar as consultas da Nova Vida TI, é necessário configurar as credenciais de API.
+                Entre em contato com o suporte para ativar esta funcionalidade.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Results would be displayed here */}
+      {searchResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resultados da Consulta</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto">
+              {JSON.stringify(searchResults, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="py-4">
+            <p className="text-sm text-destructive">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
