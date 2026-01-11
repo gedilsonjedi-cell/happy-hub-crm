@@ -2560,6 +2560,7 @@ export default function Higienizacao() {
 // Nova Vida TI Module Component
 function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchType, setSearchType] = useState<"cpf" | "cnpj" | "batch">("cpf");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -2570,6 +2571,11 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
   const { currentBalance, checkBalance } = useOrganizationBalance(organizationId);
 
   const PRICE_PER_QUERY = 0.04;
+  
+  // Invalidate balance cache to refresh
+  const refreshBalance = () => {
+    queryClient.invalidateQueries({ queryKey: ["organization-balance"] });
+  };
 
   // Function to save contact to CRM
   const handleSaveContact = async (data: any) => {
@@ -2729,7 +2735,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
       if (fnError) throw fnError;
       
       if (data.error) {
-        if (data.error === 'Saldo insuficiente') {
+        if (data.error === 'Saldo insuficiente' || data.error.includes('Saldo insuficiente')) {
           toast.error(`Saldo insuficiente. Necessário: R$ ${data.required?.toFixed(2) || PRICE_PER_QUERY.toFixed(2)}`);
         } else {
           throw new Error(data.error);
@@ -2737,7 +2743,15 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
         return;
       }
 
+      // Validate that we have actual data
+      const consulta = data.data?.d?.CONSULTA;
+      if (!consulta) {
+        console.error("Invalid API response:", data.data);
+        throw new Error("Resposta inválida da API. Tente novamente.");
+      }
+
       setSearchResult(data.data);
+      refreshBalance(); // Refresh balance display
       toast.success(`Consulta realizada! Custo: R$ ${data.cost?.toFixed(2) || PRICE_PER_QUERY.toFixed(2)}`);
       
     } catch (err: unknown) {
@@ -2804,6 +2818,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
       }
 
       setBatchResults(data.results || []);
+      refreshBalance(); // Refresh balance display
       toast.success(`Consulta em lote concluída! ${data.successCount} sucessos, ${data.failedCount} falhas. Custo total: R$ ${data.totalCost?.toFixed(2)}`);
       
     } catch (err: unknown) {

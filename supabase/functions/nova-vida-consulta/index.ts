@@ -13,14 +13,17 @@ const PRICE_PER_QUERY = 0.04;
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 
-async function getToken(): Promise<string> {
+async function getToken(forceRefresh = false): Promise<string> {
   const now = Date.now();
   
-  // Return cached token if still valid (with 1 hour buffer)
-  if (cachedToken && tokenExpiry > now + 3600000) {
+  // Return cached token if still valid (with 1 hour buffer) and not forcing refresh
+  if (!forceRefresh && cachedToken && tokenExpiry > now + 3600000) {
+    console.log('Using cached token');
     return cachedToken;
   }
 
+  console.log('Generating new token...');
+  
   const usuario = Deno.env.get('NOVA_VIDA_USUARIO');
   const senha = Deno.env.get('NOVA_VIDA_SENHA');
   const cliente = Deno.env.get('NOVA_VIDA_CLIENTE');
@@ -51,6 +54,7 @@ async function getToken(): Promise<string> {
   cachedToken = tokenData.replace(/"/g, '').trim();
   tokenExpiry = now + 24 * 60 * 60 * 1000; // 24 hours
   
+  console.log('New token generated successfully');
   return cachedToken;
 }
 
@@ -72,7 +76,48 @@ async function queryNVCHECK(documento: string, token: string): Promise<any> {
     throw new Error(`Erro na consulta: ${response.status}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  
+  // Check if token expired in the response
+  if (result?.d === "TOKEN EXPIRADO." || result?.d?.includes?.("TOKEN EXPIRADO")) {
+    throw new Error('TOKEN_EXPIRED');
+  }
+  
+  // Check if result is valid (has CONSULTA data)
+  if (typeof result?.d === 'string' && !result?.d?.CONSULTA) {
+    throw new Error(`Resposta inválida da API: ${result.d}`);
+  }
+
+  return result;
+}
+
+async function queryWithRetry(documento: string, maxRetries = 2): Promise<any> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Force refresh token on retry
+      const token = await getToken(attempt > 0);
+      const result = await queryNVCHECK(documento, token);
+      return result;
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error('Erro desconhecido');
+      lastError = error;
+      
+      // If token expired, force refresh and retry
+      if (error.message === 'TOKEN_EXPIRED') {
+        console.log(`Token expired, retrying (attempt ${attempt + 1})...`);
+        cachedToken = null; // Clear cached token
+        tokenExpiry = 0;
+        continue;
+      }
+      
+      // For other errors, don't retry
+      throw error;
+    }
+  }
+  
+  throw lastError || new Error('Falha após múltiplas tentativas');
 }
 
 serve(async (req) => {
@@ -126,7 +171,7 @@ serve(async (req) => {
 
     // Handle single query
     if (documento) {
-      // Check balance
+      // Check balance first
       const { data: balanceData } = await supabase
         .from('organization_balance')
         .select('balance')
@@ -142,37 +187,43 @@ serve(async (req) => {
         );
       }
 
-      // Get token and query
-      const token = await getToken();
-      const result = await queryNVCHECK(documento, token);
+      // Query with retry logic (handles token expiration)
+      let result;
+      try {
+        result = await queryWithRetry(documento);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        console.error('Query error:', errorMessage);
+        return new Response(
+          JSON.stringify({ error: `Erro na consulta: ${errorMessage}` }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-      // Debit balance
+      // Only debit AFTER successful query
       const newBalance = currentBalance - PRICE_PER_QUERY;
-      await supabase
-        .from('organization_balance')
-        .update({ 
-          balance: newBalance,
-          total_spent: supabase.rpc('increment', { x: PRICE_PER_QUERY }),
-          updated_at: new Date().toISOString()
-        })
-        .eq('organization_id', organizationId);
+      
+      // Use debit function for atomic operation
+      const { error: debitError } = await supabase.rpc('debit_organization_balance', {
+        _organization_id: organizationId,
+        _amount: PRICE_PER_QUERY,
+        _description: `Consulta Nova Vida TI - ${documento}`,
+        _reference_type: 'nova_vida_consulta',
+        _reference_id: documento
+      });
 
-      // Record transaction
-      await supabase
-        .from('balance_transactions')
-        .insert({
-          organization_id: organizationId,
-          type: 'debit',
-          amount: PRICE_PER_QUERY,
-          balance_before: currentBalance,
-          balance_after: newBalance,
-          description: `Consulta Nova Vida TI - ${documento}`,
-          reference_type: 'nova_vida_consulta',
-          created_by: user.id,
-        });
+      if (debitError) {
+        console.error('Debit error:', debitError);
+        // Still return the result since the query was successful
+      }
 
       return new Response(
-        JSON.stringify({ success: true, data: result, cost: PRICE_PER_QUERY }),
+        JSON.stringify({ 
+          success: true, 
+          data: result, 
+          cost: PRICE_PER_QUERY,
+          newBalance: newBalance 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -202,16 +253,13 @@ serve(async (req) => {
         );
       }
 
-      // Get token
-      const token = await getToken();
-      
-      // Process all queries
+      // Process all queries with retry logic
       const results = [];
       let successCount = 0;
       
       for (const doc of documentos) {
         try {
-          const result = await queryNVCHECK(doc, token);
+          const result = await queryWithRetry(doc);
           results.push({ documento: doc, success: true, data: result });
           successCount++;
         } catch (err: unknown) {
@@ -220,32 +268,19 @@ serve(async (req) => {
         }
       }
 
-      // Calculate actual cost (only successful queries)
+      // Only charge for successful queries
       const actualCost = successCount * PRICE_PER_QUERY;
-      const newBalance = currentBalance - actualCost;
-
-      // Debit balance
-      await supabase
-        .from('organization_balance')
-        .update({ 
-          balance: newBalance,
-          updated_at: new Date().toISOString()
-        })
-        .eq('organization_id', organizationId);
-
-      // Record transaction
-      await supabase
-        .from('balance_transactions')
-        .insert({
-          organization_id: organizationId,
-          type: 'debit',
-          amount: actualCost,
-          balance_before: currentBalance,
-          balance_after: newBalance,
-          description: `Consulta em lote Nova Vida TI - ${successCount} documentos`,
-          reference_type: 'nova_vida_consulta_lote',
-          created_by: user.id,
+      
+      if (successCount > 0) {
+        // Use debit function for atomic operation
+        await supabase.rpc('debit_organization_balance', {
+          _organization_id: organizationId,
+          _amount: actualCost,
+          _description: `Consulta em lote Nova Vida TI - ${successCount} documentos`,
+          _reference_type: 'nova_vida_consulta_lote',
+          _reference_id: null
         });
+      }
 
       return new Response(
         JSON.stringify({ 
@@ -253,7 +288,8 @@ serve(async (req) => {
           results, 
           totalCost: actualCost,
           successCount,
-          failedCount: documentos.length - successCount
+          failedCount: documentos.length - successCount,
+          newBalance: currentBalance - actualCost
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
