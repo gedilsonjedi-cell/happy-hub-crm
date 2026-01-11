@@ -2559,15 +2559,139 @@ export default function Higienizacao() {
 
 // Nova Vida TI Module Component
 function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
+  const { user } = useAuth();
   const [searchType, setSearchType] = useState<"cpf" | "cnpj" | "batch">("cpf");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<any | null>(null);
   const [batchResults, setBatchResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingLead, setIsSavingLead] = useState(false);
   const { currentBalance, checkBalance } = useOrganizationBalance(organizationId);
 
   const PRICE_PER_QUERY = 0.04;
+
+  // Function to save contact to CRM
+  const handleSaveContact = async (data: any) => {
+    if (!organizationId || !user?.id) {
+      toast.error("Organização não encontrada");
+      return;
+    }
+
+    const consulta = data?.d?.CONSULTA;
+    if (!consulta) return;
+
+    const cadastrais = consulta.CADASTRAIS || {};
+    const isCPF = !!cadastrais.CPF;
+    
+    // Get first phone number
+    const firstPhone = consulta.TELEFONES?.[0];
+    const phone = firstPhone ? `${firstPhone.DDD}${firstPhone.TELEFONE}`.replace(/\D/g, "") : "";
+    
+    if (!phone) {
+      toast.error("Nenhum telefone encontrado para salvar");
+      return;
+    }
+
+    // Get first email
+    const email = consulta.EMAILS?.[0]?.EMAIL || "";
+    
+    // Get first address
+    const address = consulta.ENDERECOS?.[0];
+    
+    setIsSavingLead(true);
+    
+    try {
+      const { error: insertError } = await supabase.from("leads").insert({
+        organization_id: organizationId,
+        user_id: user.id,
+        name: isCPF ? cadastrais.NOME : (cadastrais.RAZAO || cadastrais.NOME_FANTASIA),
+        phone: phone,
+        email: email || null,
+        document: isCPF ? cadastrais.CPF : cadastrais.CNPJ,
+        city: address?.CIDADE || null,
+        state: address?.UF || null,
+        status: "active"
+      });
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          toast.error("Este contato já existe no CRM");
+        } else {
+          throw insertError;
+        }
+        return;
+      }
+
+      toast.success("Contato salvo no CRM com sucesso!");
+    } catch (err) {
+      console.error("Error saving lead:", err);
+      toast.error("Erro ao salvar contato");
+    } finally {
+      setIsSavingLead(false);
+    }
+  };
+
+  // Function to export single result to Excel/CSV
+  const exportSingleResult = (data: any) => {
+    const consulta = data?.d?.CONSULTA;
+    if (!consulta) return;
+
+    const cadastrais = consulta.CADASTRAIS || {};
+    const isCPF = !!cadastrais.CPF;
+    const telefones = consulta.TELEFONES?.map((t: any) => `(${t.DDD})${t.TELEFONE}`).join("; ") || "";
+    const emails = consulta.EMAILS?.map((e: any) => e.EMAIL).join("; ") || "";
+    const endereco = consulta.ENDERECOS?.[0];
+    const enderecoStr = endereco ? `${endereco.LOGRADOURO}, ${endereco.NUMERO} - ${endereco.BAIRRO}, ${endereco.CIDADE}/${endereco.UF} - CEP: ${endereco.CEP}` : "";
+
+    const headers = isCPF 
+      ? ["Nome", "CPF", "RG", "Nascimento", "Idade", "Nome da Mãe", "Estado Civil", "Renda", "Score", "Telefones", "Emails", "Endereço"]
+      : ["Razão Social", "CNPJ", "Nome Fantasia", "Data Abertura", "CNAE", "Porte", "Capital Social", "Funcionários", "Score", "Telefones", "Emails", "Endereço"];
+
+    const row = isCPF
+      ? [
+          cadastrais.NOME || "",
+          cadastrais.CPF || "",
+          cadastrais.RG || "",
+          cadastrais.NASC || "",
+          cadastrais.IDADE || "",
+          cadastrais.NOME_MAE || "",
+          cadastrais.ESTADOCIVIL || "",
+          cadastrais.RENDA || "",
+          cadastrais.SCORE || "",
+          telefones,
+          emails,
+          enderecoStr
+        ]
+      : [
+          cadastrais.RAZAO || "",
+          cadastrais.CNPJ || "",
+          cadastrais.NOME_FANTASIA || "",
+          cadastrais.DATA_ABERTURA || "",
+          cadastrais.CNAE || "",
+          cadastrais.PORTE || "",
+          cadastrais.CAPITALSOCIAL || "",
+          cadastrais.QTDEFUNCIONARIOS || "",
+          cadastrais.SCORE || "",
+          telefones,
+          emails,
+          enderecoStr
+        ];
+
+    const csvContent = [
+      headers.join(","),
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+    ].join("\n");
+
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `consulta-${isCPF ? cadastrais.CPF : cadastrais.CNPJ}-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Arquivo exportado com sucesso!");
+  };
 
   const handleSearch = async () => {
     const documento = searchQuery.replace(/\D/g, "");
@@ -2735,19 +2859,53 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
 
     const cadastrais = consulta.CADASTRAIS || {};
     const isCPF = !!cadastrais.CPF;
+    const hasPhone = consulta.TELEFONES && consulta.TELEFONES.length > 0;
 
     return (
-      <div className="space-y-4">
-        {/* Dados Cadastrais */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Users className="w-5 h-5" />
+      <Card className="border-primary/50 bg-gradient-to-br from-card to-primary/5">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <CheckCircle2 className="w-6 h-6 text-green-500" />
+                Resultado da Consulta
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {isCPF ? "Pessoa Física" : "Pessoa Jurídica"} - {isCPF ? cadastrais.CPF : cadastrais.CNPJ}
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportSingleResult(data)}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Exportar Excel
+              </Button>
+              {hasPhone && (
+                <Button
+                  size="sm"
+                  onClick={() => handleSaveContact(data)}
+                  disabled={isSavingLead}
+                  className="gap-2"
+                >
+                  {isSavingLead ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  Salvar Contato
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Dados Cadastrais */}
+          <div className="p-4 rounded-lg bg-muted/50">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4" />
               Dados Cadastrais
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               {isCPF ? (
                 <>
                   <div><span className="text-muted-foreground">Nome:</span> <strong>{cadastrais.NOME}</strong></div>
@@ -2774,105 +2932,87 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                 </>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Telefones */}
-        {consulta.TELEFONES && consulta.TELEFONES.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Phone className="w-5 h-5" />
+          {/* Situação Cadastral */}
+          {consulta.SITUACAOCADASTRAL && (
+            <div className="p-4 rounded-lg bg-muted/50">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Situação Cadastral
+              </h4>
+              <Badge variant={consulta.SITUACAOCADASTRAL.DESCRICAO?.includes("REGULAR") ? "default" : "destructive"} className="text-sm px-3 py-1">
+                {consulta.SITUACAOCADASTRAL.DESCRICAO}
+              </Badge>
+            </div>
+          )}
+
+          {/* Telefones */}
+          {consulta.TELEFONES && consulta.TELEFONES.length > 0 && (
+            <div className="p-4 rounded-lg bg-muted/50">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <Phone className="w-4 h-4" />
                 Telefones ({consulta.TELEFONES.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {consulta.TELEFONES.map((tel: any, idx: number) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 rounded bg-muted">
-                    {tel.TIPO_TELEFONE === "CELULAR" ? <Smartphone className="w-4 h-4" /> : <PhoneCall className="w-4 h-4" />}
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded bg-background border">
+                    {tel.TIPO_TELEFONE === "CELULAR" ? <Smartphone className="w-4 h-4 text-green-500" /> : <PhoneCall className="w-4 h-4 text-blue-500" />}
                     <span className="font-mono text-sm">({tel.DDD}) {tel.TELEFONE}</span>
                     {tel.OPERADORA && <Badge variant="outline" className="text-xs">{tel.OPERADORA}</Badge>}
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
 
-        {/* Endereços */}
-        {consulta.ENDERECOS && consulta.ENDERECOS.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
+          {/* Endereços */}
+          {consulta.ENDERECOS && consulta.ENDERECOS.length > 0 && (
+            <div className="p-4 rounded-lg bg-muted/50">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
                 Endereços ({consulta.ENDERECOS.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+              </h4>
               <div className="space-y-2">
                 {consulta.ENDERECOS.map((end: any, idx: number) => (
-                  <div key={idx} className="p-3 rounded bg-muted text-sm">
+                  <div key={idx} className="p-3 rounded bg-background border text-sm">
                     <p><strong>{end.LOGRADOURO}, {end.NUMERO}</strong> {end.COMPLEMENTO}</p>
-                    <p>{end.BAIRRO} - {end.CIDADE}/{end.UF} - CEP: {end.CEP}</p>
+                    <p className="text-muted-foreground">{end.BAIRRO} - {end.CIDADE}/{end.UF} - CEP: {end.CEP}</p>
                     {end.AREARISCO && <Badge variant="destructive" className="mt-1">Área de Risco</Badge>}
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
 
-        {/* Emails */}
-        {consulta.EMAILS && consulta.EMAILS.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageCircle className="w-5 h-5" />
+          {/* Emails */}
+          {consulta.EMAILS && consulta.EMAILS.length > 0 && (
+            <div className="p-4 rounded-lg bg-muted/50">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <MessageCircle className="w-4 h-4" />
                 E-mails ({consulta.EMAILS.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+              </h4>
               <div className="flex flex-wrap gap-2">
                 {consulta.EMAILS.map((email: any, idx: number) => (
-                  <Badge key={idx} variant="secondary" className="font-mono text-sm">
+                  <Badge key={idx} variant="secondary" className="font-mono text-sm px-3 py-1">
                     {email.EMAIL}
                   </Badge>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )}
 
-        {/* Situação Cadastral */}
-        {consulta.SITUACAOCADASTRAL && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Situação Cadastral
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Badge variant={consulta.SITUACAOCADASTRAL.DESCRICAO?.includes("REGULAR") ? "default" : "destructive"}>
-                {consulta.SITUACAOCADASTRAL.DESCRICAO}
-              </Badge>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Óbito (se aplicável) */}
-        {consulta.OBITO?.FLOBITO === "S" && (
-          <Card className="border-destructive">
-            <CardContent className="py-4">
+          {/* Óbito (se aplicável) */}
+          {consulta.OBITO?.FLOBITO === "S" && (
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="w-5 h-5" />
                 <span className="font-medium">Registro de Óbito Encontrado</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -3107,12 +3247,14 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                       <TableHead>Status</TableHead>
                       <TableHead>Nome/Razão Social</TableHead>
                       <TableHead>Telefones</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {batchResults.map((result, idx) => {
                       const consulta = result.data?.d?.CONSULTA;
                       const cadastrais = consulta?.CADASTRAIS || {};
+                      const hasPhone = consulta?.TELEFONES && consulta.TELEFONES.length > 0;
                       return (
                         <TableRow key={idx}>
                           <TableCell className="font-mono">{result.documento}</TableCell>
@@ -3126,6 +3268,19 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                           <TableCell>{cadastrais.NOME || cadastrais.RAZAO || result.error || "-"}</TableCell>
                           <TableCell>
                             {consulta?.TELEFONES?.slice(0, 2).map((t: any) => `(${t.DDD})${t.TELEFONE}`).join(", ") || "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {result.success && hasPhone && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleSaveContact(result.data)}
+                                className="gap-1 h-8"
+                              >
+                                <UserPlus className="w-4 h-4" />
+                                Salvar
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
