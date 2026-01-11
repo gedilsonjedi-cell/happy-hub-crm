@@ -59,6 +59,8 @@ async function getToken(forceRefresh = false): Promise<string> {
 }
 
 async function queryNVCHECK(documento: string, token: string): Promise<any> {
+  console.log(`Querying document: ${documento.substring(0, 5)}***, token length: ${token.length}`);
+  
   const response = await fetch('https://wsnv.novavidati.com.br/wslocalizador.asmx/NVCHECKJson', {
     method: 'POST',
     headers: {
@@ -78,42 +80,58 @@ async function queryNVCHECK(documento: string, token: string): Promise<any> {
 
   const result = await response.json();
   
-  // Check if token expired in the response
-  if (result?.d === "TOKEN EXPIRADO." || result?.d?.includes?.("TOKEN EXPIRADO")) {
+  console.log('API response type:', typeof result?.d);
+  
+  // Check if token expired in the response - handle various formats
+  const responseStr = typeof result?.d === 'string' ? result.d : JSON.stringify(result?.d);
+  if (responseStr.includes('TOKEN EXPIRADO') || responseStr.includes('TOKEN_EXPIRED')) {
     throw new Error('TOKEN_EXPIRED');
   }
   
-  // Check if result is valid (has CONSULTA data)
-  if (typeof result?.d === 'string' && !result?.d?.CONSULTA) {
-    throw new Error(`Resposta inválida da API: ${result.d}`);
+  // Check if result is valid
+  if (typeof result?.d === 'string' && !result.d.includes('CONSULTA')) {
+    console.error('Invalid API response:', result.d.substring(0, 100));
+    throw new Error(`Resposta inválida da API: ${result.d.substring(0, 100)}`);
   }
 
   return result;
 }
 
-async function queryWithRetry(documento: string, maxRetries = 2): Promise<any> {
+async function queryWithRetry(documento: string, maxRetries = 3): Promise<any> {
   let lastError: Error | null = null;
   
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  // Always clear cached token on first call to ensure fresh token
+  cachedToken = null;
+  tokenExpiry = 0;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Force refresh token on retry
-      const token = await getToken(attempt > 0);
+      console.log(`Query attempt ${attempt}/${maxRetries}`);
+      const token = await getToken(true); // Always force refresh
       const result = await queryNVCHECK(documento, token);
       return result;
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error('Erro desconhecido');
       lastError = error;
+      console.error(`Attempt ${attempt} failed:`, error.message);
       
-      // If token expired, force refresh and retry
+      // If token expired, clear cache and retry
       if (error.message === 'TOKEN_EXPIRED') {
-        console.log(`Token expired, retrying (attempt ${attempt + 1})...`);
-        cachedToken = null; // Clear cached token
+        console.log(`Clearing token cache, will retry...`);
+        cachedToken = null;
         tokenExpiry = 0;
-        continue;
+        
+        if (attempt < maxRetries) {
+          // Add a small delay before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
       }
       
-      // For other errors, don't retry
-      throw error;
+      // For other errors or last attempt, throw
+      if (attempt >= maxRetries || error.message !== 'TOKEN_EXPIRED') {
+        throw error;
+      }
     }
   }
   
