@@ -77,6 +77,7 @@ import { ptBR } from "date-fns/locale";
 import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
 import { useHasAddon } from "@/hooks/useHasAddon";
 import { PremiumFeaturePaywall } from "@/components/paywall/PremiumFeaturePaywall";
+import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
 
 interface PhoneEntry {
   id: string;
@@ -2561,31 +2562,65 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
   const [searchType, setSearchType] = useState<"cpf" | "cnpj" | "batch">("cpf");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResult, setSearchResult] = useState<any | null>(null);
+  const [batchResults, setBatchResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { currentBalance, checkBalance } = useOrganizationBalance(organizationId);
+
+  const PRICE_PER_QUERY = 0.04;
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      toast.error("Digite um valor para pesquisar");
+    const documento = searchQuery.replace(/\D/g, "");
+    
+    if (!documento) {
+      toast.error("Digite um documento válido para pesquisar");
+      return;
+    }
+
+    if (searchType === "cpf" && documento.length !== 11) {
+      toast.error("CPF deve ter 11 dígitos");
+      return;
+    }
+
+    if (searchType === "cnpj" && documento.length !== 14) {
+      toast.error("CNPJ deve ter 14 dígitos");
+      return;
+    }
+
+    // Check balance first
+    if (currentBalance < PRICE_PER_QUERY) {
+      toast.error(`Saldo insuficiente. Necessário: R$ ${PRICE_PER_QUERY.toFixed(2)}, Disponível: R$ ${currentBalance.toFixed(2)}`);
       return;
     }
 
     setIsSearching(true);
     setError(null);
+    setSearchResult(null);
 
     try {
-      // For now, show a message that integration is pending
-      toast.info("Integração com Nova Vida TI em desenvolvimento. Entre em contato para configurar.");
+      const { data, error: fnError } = await supabase.functions.invoke('nova-vida-consulta', {
+        body: { documento }
+      });
       
-      // TODO: Implement actual API call when credentials are available
-      // const { data, error } = await supabase.functions.invoke('nova-vida-search', {
-      //   body: { type: searchType, query: searchQuery }
-      // });
+      if (fnError) throw fnError;
       
-    } catch (err) {
+      if (data.error) {
+        if (data.error === 'Saldo insuficiente') {
+          toast.error(`Saldo insuficiente. Necessário: R$ ${data.required?.toFixed(2) || PRICE_PER_QUERY.toFixed(2)}`);
+        } else {
+          throw new Error(data.error);
+        }
+        return;
+      }
+
+      setSearchResult(data.data);
+      toast.success(`Consulta realizada! Custo: R$ ${data.cost?.toFixed(2) || PRICE_PER_QUERY.toFixed(2)}`);
+      
+    } catch (err: unknown) {
       console.error("Search error:", err);
-      setError("Erro ao realizar consulta. Tente novamente.");
-      toast.error("Erro ao realizar consulta");
+      const errorMessage = err instanceof Error ? err.message : "Erro ao realizar consulta";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsSearching(false);
     }
@@ -2593,6 +2628,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [batchData, setBatchData] = useState<string[]>([]);
+  const [batchProgress, setBatchProgress] = useState(0);
 
   const handleBatchFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2602,7 +2638,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
     reader.onload = (event) => {
       const content = event.target?.result as string;
       const lines = content.split(/\r?\n/).filter((line) => line.trim());
-      const documents = lines.map((line) => line.replace(/\D/g, "")).filter((doc) => doc.length >= 11);
+      const documents = lines.map((line) => line.replace(/\D/g, "")).filter((doc) => doc.length >= 11 && doc.length <= 14);
       setBatchData(documents);
       toast.success(`${documents.length} documentos carregados para consulta em lote`);
     };
@@ -2613,8 +2649,251 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
     }
   };
 
+  const handleBatchSearch = async () => {
+    if (batchData.length === 0) {
+      toast.error("Nenhum documento carregado");
+      return;
+    }
+
+    const totalCost = batchData.length * PRICE_PER_QUERY;
+    
+    if (currentBalance < totalCost) {
+      const maxQueries = Math.floor(currentBalance / PRICE_PER_QUERY);
+      toast.error(`Saldo insuficiente. Necessário: R$ ${totalCost.toFixed(2)}, Disponível: R$ ${currentBalance.toFixed(2)}. Máximo de consultas: ${maxQueries}`);
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+    setBatchResults([]);
+    setBatchProgress(0);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('nova-vida-consulta', {
+        body: { documentos: batchData }
+      });
+      
+      if (fnError) throw fnError;
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setBatchResults(data.results || []);
+      toast.success(`Consulta em lote concluída! ${data.successCount} sucessos, ${data.failedCount} falhas. Custo total: R$ ${data.totalCost?.toFixed(2)}`);
+      
+    } catch (err: unknown) {
+      console.error("Batch search error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Erro ao realizar consulta em lote";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsSearching(false);
+      setBatchProgress(100);
+    }
+  };
+
+  const exportBatchResults = () => {
+    if (batchResults.length === 0) return;
+
+    const headers = ["Documento", "Status", "Nome", "CPF/CNPJ", "Telefones", "Emails", "Endereço"];
+    const rows = batchResults.map(result => {
+      if (!result.success) {
+        return [result.documento, "Erro", result.error, "", "", "", ""];
+      }
+      const consulta = result.data?.d?.CONSULTA;
+      const cadastrais = consulta?.CADASTRAIS || {};
+      const telefones = consulta?.TELEFONES?.map((t: any) => `(${t.DDD})${t.TELEFONE}`).join("; ") || "";
+      const emails = consulta?.EMAILS?.map((e: any) => e.EMAIL).join("; ") || "";
+      const endereco = consulta?.ENDERECOS?.[0];
+      const enderecoStr = endereco ? `${endereco.LOGRADOURO}, ${endereco.NUMERO} - ${endereco.BAIRRO}, ${endereco.CIDADE}/${endereco.UF}` : "";
+      
+      return [
+        result.documento,
+        "Sucesso",
+        cadastrais.NOME || cadastrais.RAZAO || "",
+        cadastrais.CPF || cadastrais.CNPJ || "",
+        telefones,
+        emails,
+        enderecoStr
+      ];
+    });
+
+    const csvContent = [headers.join(","), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nova-vida-consulta-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderResultCard = (data: any) => {
+    const consulta = data?.d?.CONSULTA;
+    if (!consulta) return null;
+
+    const cadastrais = consulta.CADASTRAIS || {};
+    const isCPF = !!cadastrais.CPF;
+
+    return (
+      <div className="space-y-4">
+        {/* Dados Cadastrais */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Dados Cadastrais
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              {isCPF ? (
+                <>
+                  <div><span className="text-muted-foreground">Nome:</span> <strong>{cadastrais.NOME}</strong></div>
+                  <div><span className="text-muted-foreground">CPF:</span> <strong>{cadastrais.CPF}</strong></div>
+                  <div><span className="text-muted-foreground">RG:</span> {cadastrais.RG || "-"}</div>
+                  <div><span className="text-muted-foreground">Nascimento:</span> {cadastrais.NASC || "-"}</div>
+                  <div><span className="text-muted-foreground">Idade:</span> {cadastrais.IDADE || "-"}</div>
+                  <div><span className="text-muted-foreground">Mãe:</span> {cadastrais.NOME_MAE || "-"}</div>
+                  <div><span className="text-muted-foreground">Estado Civil:</span> {cadastrais.ESTADOCIVIL || "-"}</div>
+                  <div><span className="text-muted-foreground">Renda:</span> {cadastrais.RENDA || "-"}</div>
+                  <div><span className="text-muted-foreground">Score:</span> {cadastrais.SCORE || "-"} - {cadastrais.MENSAGEMSCORE || ""}</div>
+                </>
+              ) : (
+                <>
+                  <div><span className="text-muted-foreground">Razão Social:</span> <strong>{cadastrais.RAZAO}</strong></div>
+                  <div><span className="text-muted-foreground">CNPJ:</span> <strong>{cadastrais.CNPJ}</strong></div>
+                  <div><span className="text-muted-foreground">Nome Fantasia:</span> {cadastrais.NOME_FANTASIA || "-"}</div>
+                  <div><span className="text-muted-foreground">Data Abertura:</span> {cadastrais.DATA_ABERTURA || "-"}</div>
+                  <div><span className="text-muted-foreground">CNAE:</span> {cadastrais.CNAE || "-"}</div>
+                  <div><span className="text-muted-foreground">Porte:</span> {cadastrais.PORTE || "-"}</div>
+                  <div><span className="text-muted-foreground">Capital Social:</span> {cadastrais.CAPITALSOCIAL || "-"}</div>
+                  <div><span className="text-muted-foreground">Funcionários:</span> {cadastrais.QTDEFUNCIONARIOS || "-"}</div>
+                  <div><span className="text-muted-foreground">Score:</span> {cadastrais.SCORE || "-"}</div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Telefones */}
+        {consulta.TELEFONES && consulta.TELEFONES.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Phone className="w-5 h-5" />
+                Telefones ({consulta.TELEFONES.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {consulta.TELEFONES.map((tel: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded bg-muted">
+                    {tel.TIPO_TELEFONE === "CELULAR" ? <Smartphone className="w-4 h-4" /> : <PhoneCall className="w-4 h-4" />}
+                    <span className="font-mono text-sm">({tel.DDD}) {tel.TELEFONE}</span>
+                    {tel.OPERADORA && <Badge variant="outline" className="text-xs">{tel.OPERADORA}</Badge>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Endereços */}
+        {consulta.ENDERECOS && consulta.ENDERECOS.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MapPin className="w-5 h-5" />
+                Endereços ({consulta.ENDERECOS.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {consulta.ENDERECOS.map((end: any, idx: number) => (
+                  <div key={idx} className="p-3 rounded bg-muted text-sm">
+                    <p><strong>{end.LOGRADOURO}, {end.NUMERO}</strong> {end.COMPLEMENTO}</p>
+                    <p>{end.BAIRRO} - {end.CIDADE}/{end.UF} - CEP: {end.CEP}</p>
+                    {end.AREARISCO && <Badge variant="destructive" className="mt-1">Área de Risco</Badge>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Emails */}
+        {consulta.EMAILS && consulta.EMAILS.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MessageCircle className="w-5 h-5" />
+                E-mails ({consulta.EMAILS.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {consulta.EMAILS.map((email: any, idx: number) => (
+                  <Badge key={idx} variant="secondary" className="font-mono text-sm">
+                    {email.EMAIL}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Situação Cadastral */}
+        {consulta.SITUACAOCADASTRAL && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Situação Cadastral
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Badge variant={consulta.SITUACAOCADASTRAL.DESCRICAO?.includes("REGULAR") ? "default" : "destructive"}>
+                {consulta.SITUACAOCADASTRAL.DESCRICAO}
+              </Badge>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Óbito (se aplicável) */}
+        {consulta.OBITO?.FLOBITO === "S" && (
+          <Card className="border-destructive">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-medium">Registro de Óbito Encontrado</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* Balance Info */}
+      <Card className="bg-gradient-to-r from-primary/10 to-primary/5">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Saldo Disponível</p>
+              <p className="text-2xl font-bold">R$ {currentBalance.toFixed(2)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Custo por Consulta</p>
+              <p className="text-lg font-semibold text-primary">R$ {PRICE_PER_QUERY.toFixed(2)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Search Type Selection */}
       <Tabs value={searchType} onValueChange={(v) => setSearchType(v as "cpf" | "cnpj" | "batch")}>
         <TabsList className="grid w-full grid-cols-3 max-w-lg">
@@ -2651,6 +2930,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                   onChange={(e) => setSearchQuery(e.target.value.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"))}
                   maxLength={14}
                   className="max-w-xs"
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 />
                 <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
                   {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
@@ -2699,6 +2979,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                   onChange={(e) => setSearchQuery(e.target.value.replace(/\D/g, "").replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5"))}
                   maxLength={18}
                   className="max-w-xs"
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 />
                 <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
                   {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
@@ -2759,19 +3040,34 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
                 </Button>
 
                 {batchData.length > 0 && (
-                  <Button onClick={handleSearch} disabled={isSearching} className="gap-2">
-                    {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                    Consultar {batchData.length} Documentos
-                  </Button>
+                  <>
+                    <Button onClick={handleBatchSearch} disabled={isSearching} className="gap-2">
+                      {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      Consultar {batchData.length} Documentos
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => setBatchData([])}
+                      className="gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      Limpar
+                    </Button>
+                  </>
                 )}
               </div>
 
               {batchData.length > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
-                  <p className="text-sm font-medium">
-                    {batchData.length} documentos prontos para consulta
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-sm font-medium">
+                      {batchData.length} documentos prontos para consulta
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Custo estimado: <strong>R$ {(batchData.length * PRICE_PER_QUERY).toFixed(2)}</strong>
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
                     Prévia: {batchData.slice(0, 5).join(", ")}{batchData.length > 5 ? "..." : ""}
                   </p>
                 </div>
@@ -2787,45 +3083,71 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
               </div>
             </CardContent>
           </Card>
+
+          {/* Batch Results */}
+          {batchResults.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Resultados do Lote ({batchResults.length})
+                  </CardTitle>
+                  <Button onClick={exportBatchResults} variant="outline" className="gap-2">
+                    <Download className="w-4 h-4" />
+                    Exportar CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Documento</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Nome/Razão Social</TableHead>
+                      <TableHead>Telefones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {batchResults.map((result, idx) => {
+                      const consulta = result.data?.d?.CONSULTA;
+                      const cadastrais = consulta?.CADASTRAIS || {};
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell className="font-mono">{result.documento}</TableCell>
+                          <TableCell>
+                            {result.success ? (
+                              <Badge className="bg-green-500">Sucesso</Badge>
+                            ) : (
+                              <Badge variant="destructive">Erro</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{cadastrais.NOME || cadastrais.RAZAO || result.error || "-"}</TableCell>
+                          <TableCell>
+                            {consulta?.TELEFONES?.slice(0, 2).map((t: any) => `(${t.DDD})${t.TELEFONE}`).join(", ") || "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
-      {/* API Status Info */}
-      <Card className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-        <CardContent className="py-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Configuração de API Necessária
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                Para utilizar as consultas da Nova Vida TI, é necessário configurar as credenciais de API.
-                Entre em contato com o suporte para ativar esta funcionalidade.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Results would be displayed here */}
-      {searchResults.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resultados da Consulta</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto">
-              {JSON.stringify(searchResults, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
+      {/* Single Query Results */}
+      {searchResult && renderResultCard(searchResult)}
 
       {error && (
         <Card className="border-destructive">
           <CardContent className="py-4">
-            <p className="text-sm text-destructive">{error}</p>
+            <div className="flex items-center gap-2 text-destructive">
+              <XCircle className="w-5 h-5" />
+              <p className="text-sm">{error}</p>
+            </div>
           </CardContent>
         </Card>
       )}
