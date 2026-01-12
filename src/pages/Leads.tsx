@@ -126,14 +126,46 @@ const Leads = () => {
     queryFn: async () => {
       if (!effectiveOrganizationId) return [];
 
-      const { data, error } = await supabase
+      // First get the count to know how many leads exist
+      const { count, error: countError } = await supabase
         .from("leads")
-        .select("*")
-        .eq("organization_id", effectiveOrganizationId)
-        .order("created_at", { ascending: false });
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", effectiveOrganizationId);
 
-      if (error) throw error;
-      return (data || []) as Lead[];
+      if (countError) throw countError;
+
+      // If more than 1000 leads, fetch in batches
+      const totalLeads = count || 0;
+      let allLeads: Lead[] = [];
+
+      if (totalLeads <= 1000) {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("organization_id", effectiveOrganizationId)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        allLeads = (data || []) as Lead[];
+      } else {
+        // Fetch in batches of 1000
+        const batchSize = 1000;
+        const batches = Math.ceil(totalLeads / batchSize);
+        
+        for (let i = 0; i < batches; i++) {
+          const { data, error } = await supabase
+            .from("leads")
+            .select("*")
+            .eq("organization_id", effectiveOrganizationId)
+            .order("created_at", { ascending: false })
+            .range(i * batchSize, (i + 1) * batchSize - 1);
+
+          if (error) throw error;
+          allLeads = [...allLeads, ...(data || []) as Lead[]];
+        }
+      }
+
+      return allLeads;
     },
     enabled: !!effectiveOrganizationId,
   });
