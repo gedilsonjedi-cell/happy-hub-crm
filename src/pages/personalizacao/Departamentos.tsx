@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { Building2, Plus, Trash2, Edit2, Save, X } from "lucide-react";
 import {
@@ -28,6 +29,7 @@ import {
 
 export default function Departamentos() {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,36 +42,23 @@ export default function Departamentos() {
     description: "",
   });
 
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .single();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
-
   const { data: departments, isLoading } = useQuery({
-    queryKey: ["sectors", profile?.organization_id],
+    queryKey: ["sectors", effectiveOrganizationId],
     queryFn: async () => {
       const { data } = await supabase
         .from("sectors")
         .select("*")
-        .eq("organization_id", profile!.organization_id)
+        .eq("organization_id", effectiveOrganizationId!)
         .order("name");
       return data || [];
     },
-    enabled: !!profile?.organization_id,
+    enabled: !!effectiveOrganizationId,
   });
 
   const addMutation = useMutation({
     mutationFn: async (dept: typeof newDepartment) => {
       const { error } = await supabase.from("sectors").insert({
-        organization_id: profile!.organization_id,
+        organization_id: effectiveOrganizationId!,
         created_by: user!.id,
         name: dept.name,
         description: dept.description || null,
