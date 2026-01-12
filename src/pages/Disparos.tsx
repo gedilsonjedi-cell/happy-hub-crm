@@ -112,6 +112,12 @@ const statusConfig: Record<string, { label: string; className: string; icon: typ
   failed: { label: "Falhou", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
 };
 
+interface Sector {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
 const Disparos = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
@@ -121,6 +127,7 @@ const Disparos = () => {
   const [channelTemplateRelations, setChannelTemplateRelations] = useState<ChannelTemplate[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -136,7 +143,7 @@ const Disparos = () => {
   const [manualVariables, setManualVariables] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     campaignName: "",
-    team: "",
+    department: "",
     chatbot: "disabled",
     chatbotSource: "channel" as "channel" | "custom",
     selectedChatbotId: "",
@@ -184,6 +191,13 @@ const Disparos = () => {
       .select("id, name, is_active")
       .eq("organization_id", effectiveOrganizationId)
       .eq("is_active", true);
+
+    // Fetch sectors/departments
+    const { data: sectorsData } = await supabase
+      .from("sectors")
+      .select("id, name, description")
+      .eq("organization_id", effectiveOrganizationId)
+      .order("name");
 
     // Combine real data with demo data
     const realChannels = channelsData || [];
@@ -239,6 +253,7 @@ const Disparos = () => {
       status: c.status as Campaign["status"]
     })));
     setAiAgents(agentsData || []);
+    setSectors(sectorsData || []);
     setLoading(false);
   }, [effectiveOrganizationId]);
 
@@ -485,7 +500,7 @@ const Disparos = () => {
           user_id: user?.id,
           organization_id: effectiveOrganizationId,
           name: formData.campaignName,
-          team: formData.team || null,
+          team: formData.department || null,
           chatbot_enabled: formData.chatbot === "enabled",
           chatbot_id: chatbotId,
           dispatch_interval: parseInt(formData.minInterval),
@@ -569,7 +584,7 @@ const Disparos = () => {
     setManualVariables({});
     setFormData({
       campaignName: "",
-      team: "",
+      department: "",
       chatbot: "disabled",
       chatbotSource: "channel",
       selectedChatbotId: "",
@@ -727,19 +742,24 @@ const Disparos = () => {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-foreground">Equipe</Label>
+                <Label className="text-foreground">Departamento</Label>
                 <Select 
-                  value={formData.team} 
-                  onValueChange={(value) => setFormData({ ...formData, team: value })}
+                  value={formData.department} 
+                  onValueChange={(value) => setFormData({ ...formData, department: value })}
                 >
                   <SelectTrigger className="bg-card border-border">
-                    <SelectValue placeholder="Selecione a equipe" />
+                    <SelectValue placeholder="Selecione o departamento" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    <SelectItem value="geral">Geral</SelectItem>
-                    <SelectItem value="vendas">Vendas</SelectItem>
-                    <SelectItem value="suporte">Suporte</SelectItem>
-                    <SelectItem value="marketing">Marketing</SelectItem>
+                    {sectors.length === 0 ? (
+                      <SelectItem value="" disabled>Nenhum departamento cadastrado</SelectItem>
+                    ) : (
+                      sectors.map((sector) => (
+                        <SelectItem key={sector.id} value={sector.id}>
+                          {sector.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
