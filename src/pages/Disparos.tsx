@@ -752,13 +752,16 @@ const Disparos = () => {
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {sectors.length === 0 ? (
-                      <SelectItem value="" disabled>Nenhum departamento cadastrado</SelectItem>
+                      <SelectItem value="none" disabled>Nenhum departamento cadastrado</SelectItem>
                     ) : (
-                      sectors.map((sector) => (
-                        <SelectItem key={sector.id} value={sector.id}>
-                          {sector.name}
-                        </SelectItem>
-                      ))
+                      <>
+                        <SelectItem value="none">Nenhum (opcional)</SelectItem>
+                        {sectors.map((sector) => (
+                          <SelectItem key={sector.id} value={sector.id}>
+                            {sector.name}
+                          </SelectItem>
+                        ))}
+                      </>
                     )}
                   </SelectContent>
                 </Select>
