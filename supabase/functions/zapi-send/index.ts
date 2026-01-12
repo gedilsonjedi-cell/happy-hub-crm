@@ -281,11 +281,50 @@ Deno.serve(async (req) => {
     if (!zapiResponse.ok || responseData.error) {
       const errorMessage = responseData.error || responseData.message || 'Erro ao enviar mensagem via Z-API';
       console.error('Z-API error:', errorMessage);
+      
+      // Translate common Z-API error codes to user-friendly messages
+      let friendlyError = errorMessage;
+      if (typeof errorMessage === 'string') {
+        if (errorMessage.includes('restricted') || errorMessage.includes('blocked')) {
+          friendlyError = 'Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.';
+        } else if (errorMessage.includes('disconnected') || errorMessage.includes('desconectado')) {
+          friendlyError = 'Canal desconectado. Reconecte o WhatsApp para continuar enviando.';
+        } else if (errorMessage.includes('invalid') || errorMessage.includes('inválido')) {
+          friendlyError = 'Número de destino inválido ou não registrado no WhatsApp.';
+        }
+      }
+      
+      // Store failed message in database with error
+      const failedMessageId = `zapi_failed_${Date.now()}`;
+      await serviceRoleClient
+        .from('whatsapp_messages')
+        .insert({
+          channel_id: channelId,
+          organization_id: channel.organization_id,
+          message_id: failedMessageId,
+          sender_phone: channel.phone,
+          message_type: storedMessageType,
+          content: storedContent,
+          media_url: mediaUrl || null,
+          direction: 'outbound',
+          status: 'failed',
+          error_message: friendlyError,
+          metadata: { 
+            destination: cleanDestination, 
+            mediaType,
+            fileName,
+            provider: 'zapi',
+            sent_by_human: userId !== 'service_role',
+            originalError: errorMessage
+          }
+        });
+      
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: errorMessage,
-          details: responseData
+          error: friendlyError,
+          details: responseData,
+          messageId: failedMessageId
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
