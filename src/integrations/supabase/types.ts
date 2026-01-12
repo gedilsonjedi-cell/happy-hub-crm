@@ -494,6 +494,7 @@ export type Database = {
           name: string
           organization_id: string | null
           scheduled_at: string | null
+          sector_id: string | null
           sent_count: number
           started_at: string | null
           status: string
@@ -518,6 +519,7 @@ export type Database = {
           name: string
           organization_id?: string | null
           scheduled_at?: string | null
+          sector_id?: string | null
           sent_count?: number
           started_at?: string | null
           status?: string
@@ -542,6 +544,7 @@ export type Database = {
           name?: string
           organization_id?: string | null
           scheduled_at?: string | null
+          sector_id?: string | null
           sent_count?: number
           started_at?: string | null
           status?: string
@@ -565,6 +568,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
             referencedColumns: ["id"]
           },
           {
@@ -882,6 +892,7 @@ export type Database = {
           id: string
           is_bot_handling: boolean | null
           lead_id: string | null
+          sector_id: string | null
           status: string | null
           updated_at: string
         }
@@ -896,6 +907,7 @@ export type Database = {
           id?: string
           is_bot_handling?: boolean | null
           lead_id?: string | null
+          sector_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -910,6 +922,7 @@ export type Database = {
           id?: string
           is_bot_handling?: boolean | null
           lead_id?: string | null
+          sector_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -933,6 +946,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
             referencedColumns: ["id"]
           },
         ]

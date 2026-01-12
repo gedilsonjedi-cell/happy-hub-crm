@@ -52,6 +52,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+import { useUserSectors } from "@/hooks/useUserSectors";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
@@ -99,7 +101,7 @@ interface Campaign {
   completed_at?: string | null;
   min_interval?: number;
   max_interval?: number;
-  team?: string | null;
+  sector_id?: string | null;
   chatbot_enabled?: boolean;
 }
 
@@ -121,17 +123,22 @@ interface Sector {
 const Disparos = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { canSeeSector, hasFullAccess } = useUserSectors();
+  const { role } = useUserRole();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channelTemplateRelations, setChannelTemplateRelations] = useState<ChannelTemplate[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
   const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  
+  // Filter campaigns based on user's sector access
+  const campaigns = allCampaigns.filter(c => canSeeSector(c.sector_id ?? null));
   
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
@@ -248,7 +255,7 @@ const Disparos = () => {
       variable_mappings: t.variable_mappings as Record<string, string> | null
     }))]);
     setChannelTemplateRelations([...demoChannelTemplateRelations, ...realRelations]);
-    setCampaigns((campaignsData || []).map(c => ({
+    setAllCampaigns((campaignsData || []).map(c => ({
       ...c,
       status: c.status as Campaign["status"]
     })));
@@ -493,14 +500,16 @@ const Disparos = () => {
         ? formData.selectedChatbotId || null 
         : null;
 
-      // Create campaign with min/max intervals
+      // Create campaign with min/max intervals and sector_id
+      const sectorId = formData.department && formData.department !== "none" ? formData.department : null;
+      
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
           user_id: user?.id,
           organization_id: effectiveOrganizationId,
           name: formData.campaignName,
-          team: formData.department || null,
+          sector_id: sectorId,
           chatbot_enabled: formData.chatbot === "enabled",
           chatbot_id: chatbotId,
           dispatch_interval: parseInt(formData.minInterval),

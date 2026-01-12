@@ -56,6 +56,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -117,6 +118,7 @@ interface Conversation {
   status: "pending" | "in_progress" | "resolved" | "archived";
   assignedTo: string | null;
   assignedToName: string | null;
+  sectorId: string | null;
 }
 
 interface Channel {
@@ -182,7 +184,11 @@ const useNotificationSound = () => {
 const WhatsAppChat = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const { canSeeSector } = useUserSectors();
+  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  
+  // Filter conversations based on user's sector access
+  const conversations = allConversations.filter(c => canSeeSector(c.sectorId));
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -367,7 +373,7 @@ const WhatsAppChat = () => {
           .limit(5000), // Higher limit to capture more conversations
         supabase
           .from("conversation_assignments")
-          .select("conversation_phone, channel_id, assigned_to, status")
+          .select("conversation_phone, channel_id, assigned_to, status, sector_id")
           .in("channel_id", channelIds),
         supabase
           .from("profiles")
@@ -403,14 +409,15 @@ const WhatsAppChat = () => {
       // Store in ref for realtime updates to access
       leadsMapRef.current = leadsMap;
 
-      // Build a map of assignments by channel_phone key (including status from DB)
-      const assignmentsMap = new Map<string, { assignedTo: string | null; status: string | null }>();
+      // Build a map of assignments by channel_phone key (including status and sector from DB)
+      const assignmentsMap = new Map<string, { assignedTo: string | null; status: string | null; sectorId: string | null }>();
       assignmentsResult.data?.forEach((assignment) => {
         const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
         const key = `${assignment.channel_id}_${normalizedPhone}`;
         assignmentsMap.set(key, { 
           assignedTo: assignment.assigned_to,
-          status: assignment.status // Status from database
+          status: assignment.status, // Status from database
+          sectorId: assignment.sector_id // Sector from database
         });
       });
 
@@ -493,7 +500,8 @@ const WhatsAppChat = () => {
             channelId: msg.channel_id,
             status: dbStatus || "pending",
             assignedTo,
-            assignedToName
+            assignedToName,
+            sectorId: assignment?.sectorId || null
           });
         } else {
           const existing = conversationsMap.get(conversationKey)!;
@@ -515,7 +523,7 @@ const WhatsAppChat = () => {
 
       const convList = Array.from(conversationsMap.values());
       console.log("[WhatsAppChat] Built conversations:", convList.length);
-      setConversations(convList);
+      setAllConversations(convList);
       setLoading(false);
     };
 
@@ -595,7 +603,7 @@ const WhatsAppChat = () => {
         
         // Update unreadCount to 0 for this conversation
         const conversationKey = `${selectedConversation.channelId || 'unknown'}_${normalizedPhone}`;
-        setConversations(prev => prev.map(c => {
+        setAllConversations(prev => prev.map(c => {
           const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
           return key === conversationKey ? { ...c, unreadCount: 0 } : c;
         }));
@@ -758,7 +766,7 @@ const WhatsAppChat = () => {
 
           // Update conversations list - only for inbound messages to avoid flickering
           if (newMsg.direction === "inbound") {
-            setConversations(prev => {
+            setAllConversations(prev => {
               // Find by channelId + phone
               const existing = prev.find(c => 
                 c.channelId === newMsg.channel_id && 
@@ -837,7 +845,8 @@ const WhatsAppChat = () => {
                   channelId: newMsg.channel_id,
                   status: "pending" as const,
                   assignedTo: null,
-                  assignedToName: null
+                  assignedToName: null,
+                  sectorId: null
                 }, ...prev];
               }
             });
@@ -900,7 +909,7 @@ const WhatsAppChat = () => {
   const updateConversationStatus = useCallback(async (conversationKey: string, status: Conversation["status"]) => {
     // Update local state immediately for UI responsiveness
     setConversationStatuses(prev => ({ ...prev, [conversationKey]: status }));
-    setConversations(prev => prev.map(c => {
+    setAllConversations(prev => prev.map(c => {
       const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
       return key === conversationKey ? { ...c, status } : c;
     }));
@@ -958,7 +967,7 @@ const WhatsAppChat = () => {
     
     // Force the conversation to appear in active list by setting a fake lastInboundTime
     // This handles cases where conversation has no client response yet
-    setConversations(prev => prev.map(c => {
+    setAllConversations(prev => prev.map(c => {
       const convKey = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
       if (convKey === key && !c.lastInboundTime) {
         return { ...c, status: "in_progress", lastInboundTime: new Date().toISOString() };
@@ -1014,7 +1023,7 @@ const WhatsAppChat = () => {
 
       // Update local state
       const userName = profile.display_name || profile.email || 'Você';
-      setConversations(prev => prev.map(c => {
+      setAllConversations(prev => prev.map(c => {
         const key = getConversationKey(c);
         const convKey = getConversationKey(conversation);
         return key === convKey 
@@ -1170,7 +1179,7 @@ const WhatsAppChat = () => {
           if (!assignError) {
             // Update local state
             const normalizedSelectedPhone = selectedConversation.phone.replace(/\D/g, '');
-            setConversations(prev => prev.map(c => {
+            setAllConversations(prev => prev.map(c => {
               const normalizedCPhone = c.phone.replace(/\D/g, '');
               return normalizedCPhone === normalizedSelectedPhone && c.channelId === conversationChannelId
                 ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
@@ -1265,7 +1274,7 @@ const WhatsAppChat = () => {
 
           if (!assignError) {
             const normalizedSelectedPhone = selectedConversation.phone.replace(/\D/g, '');
-            setConversations(prev => prev.map(c => {
+            setAllConversations(prev => prev.map(c => {
               const normalizedCPhone = c.phone.replace(/\D/g, '');
               return normalizedCPhone === normalizedSelectedPhone && c.channelId === conversationChannelId
                 ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
@@ -2691,7 +2700,7 @@ const WhatsAppChat = () => {
             // Update the selected conversation
             setSelectedConversation(prev => prev ? { ...prev, assignedTo, assignedToName } : null);
             // Update the conversations list
-            setConversations(prev => prev.map(c => 
+            setAllConversations(prev => prev.map(c => 
               c.channelId === selectedConversation.channelId && 
               c.phone.replace(/\D/g, '') === selectedConversation.phone.replace(/\D/g, '')
                 ? { ...c, assignedTo, assignedToName }
