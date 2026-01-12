@@ -494,7 +494,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       onOpenChange(open);
     }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5" />
             Importar Leads
@@ -506,8 +506,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-4 py-4">
+        <ScrollArea className="flex-1 min-h-0 max-h-[60vh]">
+          <div className="space-y-4 py-4 pr-4">
             {step === "upload" && (
               <>
                 <Alert>
