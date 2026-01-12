@@ -121,7 +121,7 @@ export default function SuperAdmin() {
   const [newOrgSlug, setNewOrgSlug] = useState("");
   const [newOrgPlan, setNewOrgPlan] = useState("free");
   const [newOrgMaxUsers, setNewOrgMaxUsers] = useState(1);
-  const [newOrgMaxChannels, setNewOrgMaxChannels] = useState(1);
+  const [newOrgMaxChannels, setNewOrgMaxChannels] = useState(100);
   const [newOrgExpiryDate, setNewOrgExpiryDate] = useState<Date | undefined>(addMonths(new Date(), 1));
   const [isCreating, setIsCreating] = useState(false);
   
@@ -396,7 +396,7 @@ export default function SuperAdmin() {
     setNewOrgSlug("");
     setNewOrgPlan("free");
     setNewOrgMaxUsers(1);
-    setNewOrgMaxChannels(1);
+    setNewOrgMaxChannels(100);
     setNewOrgExpiryDate(addMonths(new Date(), 1));
     setAdminName("");
     setAdminEmail("");
