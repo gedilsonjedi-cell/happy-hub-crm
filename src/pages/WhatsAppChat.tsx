@@ -98,6 +98,7 @@ interface Message {
   status: string | null;
   created_at: string;
   metadata: Record<string, unknown> | null;
+  error_message?: string | null;
 }
 
 interface ConversationNote {
@@ -1146,8 +1147,11 @@ const WhatsAppChat = () => {
       if (error) {
         console.error('[SendMessage] Function invoke error:', error);
         toast.error('Erro ao enviar mensagem');
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => m.id !== tempId));
+        // Update optimistic message to failed status with error
+        setMessages(prev => prev.map(m => m.id === tempId 
+          ? { ...m, status: 'failed', error_message: 'Erro de conexão ao enviar mensagem' }
+          : m
+        ));
         setNewMessage(messageToSend); // Restore the message
         setSendingMessage(false);
         return;
@@ -1189,16 +1193,23 @@ const WhatsAppChat = () => {
           }
         }
       } else {
-        toast.error(data.error || 'Erro ao enviar mensagem');
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => m.id !== tempId));
+        const errorMsg = data.error || 'Erro ao enviar mensagem';
+        toast.error(errorMsg);
+        // Update optimistic message to failed status with error from API
+        setMessages(prev => prev.map(m => m.id === tempId 
+          ? { ...m, status: 'failed', error_message: errorMsg, message_id: data.messageId || tempId }
+          : m
+        ));
         setNewMessage(messageToSend); // Restore the message
       }
     } catch (err) {
       console.error('Send error:', err);
       toast.error('Erro ao enviar mensagem');
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      // Update optimistic message to failed status
+      setMessages(prev => prev.map(m => m.id === tempId 
+        ? { ...m, status: 'failed', error_message: 'Erro inesperado ao enviar mensagem' }
+        : m
+      ));
       setNewMessage(messageToSend); // Restore the message
     }
 
@@ -1234,6 +1245,23 @@ const WhatsAppChat = () => {
 
       if (error) {
         console.error('Send media error:', error);
+        // Add failed message for visibility
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: `failed_media_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone },
+          error_message: 'Erro de conexão ao enviar mídia'
+        };
+        setMessages(prev => [...prev, failedMessage]);
         toast.error('Erro ao enviar mídia');
         setSendingMessage(false);
         return;
@@ -1284,7 +1312,25 @@ const WhatsAppChat = () => {
           }
         }
       } else {
-        toast.error(data.error || 'Erro ao enviar mídia');
+        const errorMsg = data.error || 'Erro ao enviar mídia';
+        // Add failed message for visibility
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId || `failed_media_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone },
+          error_message: errorMsg
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error(errorMsg);
       }
     } catch (err) {
       console.error('Send media error:', err);
@@ -1549,6 +1595,23 @@ const WhatsAppChat = () => {
 
       if (error) {
         console.error('Send template error:', error);
+        // Add failed message for visibility
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: `failed_template_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams },
+          error_message: 'Erro de conexão ao enviar template'
+        };
+        setMessages(prev => [...prev, failedMessage]);
         toast.error('Erro ao enviar template');
         setSendingMessage(false);
         return;
@@ -1572,10 +1635,45 @@ const WhatsAppChat = () => {
         setMessages(prev => [...prev, optimisticMessage]);
         toast.success("Template enviado!");
       } else {
-        toast.error(data.error || 'Erro ao enviar template');
+        const errorMsg = data.error || 'Erro ao enviar template';
+        // Add failed message for visibility
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId || `failed_template_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams },
+          error_message: errorMsg
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error(errorMsg);
       }
     } catch (err) {
       console.error('Send template error:', err);
+      // Add failed message for visibility
+      const failedMessage: Message = {
+        id: `temp_failed_${Date.now()}`,
+        channel_id: conversationChannelId,
+        message_id: `failed_template_${Date.now()}`,
+        sender_phone: conversationChannel?.phone || "",
+        sender_name: null,
+        message_type: "template",
+        content: `Template: ${templateName}`,
+        media_url: null,
+        direction: "outbound",
+        status: "failed",
+        created_at: new Date().toISOString(),
+        metadata: { destination: selectedConversation.phone, templateName, templateParams },
+        error_message: 'Erro inesperado ao enviar template'
+      };
+      setMessages(prev => [...prev, failedMessage]);
       toast.error('Erro ao enviar template');
     }
 
@@ -2290,30 +2388,39 @@ const WhatsAppChat = () => {
                       }
 
                       const message = item.data;
+                      const isFailed = message.status === 'failed';
                       return (
                         <div
                           key={message.id}
                           className={cn(
-                            "flex",
-                            message.direction === "outbound" ? "justify-end" : "justify-start"
+                            "flex flex-col",
+                            message.direction === "outbound" ? "items-end" : "items-start"
                           )}
                         >
                           <div
                             className={cn(
                               "max-w-[85%] sm:max-w-[70%] rounded-lg px-3 py-2 sm:px-4",
                               message.direction === "outbound"
-                                ? "bg-emerald-700 text-white"
+                                ? isFailed 
+                                  ? "bg-destructive/80 text-destructive-foreground"
+                                  : "bg-emerald-700 text-white"
                                 : "bg-muted"
                             )}
                           >
                             {renderMessageContent(message)}
                             <div className={cn(
                               "flex items-center justify-end gap-1 mt-1",
-                              message.direction === "outbound" ? "text-white/70" : "text-muted-foreground"
+                              message.direction === "outbound" 
+                                ? isFailed 
+                                  ? "text-destructive-foreground/70"
+                                  : "text-white/70" 
+                                : "text-muted-foreground"
                             )}>
                               <span className="text-xs">{formatMessageTime(message.created_at)}</span>
                               {message.direction === "outbound" && (
-                                message.status === "read" ? (
+                                isFailed ? (
+                                  <AlertTriangle className="w-3 h-3" />
+                                ) : message.status === "read" ? (
                                   <CheckCheck className="w-3 h-3 text-blue-400" />
                                 ) : message.status === "delivered" ? (
                                   <CheckCheck className="w-3 h-3" />
@@ -2325,6 +2432,15 @@ const WhatsAppChat = () => {
                               )}
                             </div>
                           </div>
+                          {/* Error message below the bubble */}
+                          {isFailed && message.error_message && (
+                            <div className="flex items-center gap-1.5 mt-1 px-2 max-w-[85%] sm:max-w-[70%]">
+                              <AlertTriangle className="w-3 h-3 text-destructive shrink-0" />
+                              <span className="text-xs text-destructive">
+                                {message.error_message}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       );
                     });

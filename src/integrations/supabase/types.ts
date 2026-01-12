@@ -2541,6 +2541,7 @@ export type Database = {
           content: string | null
           created_at: string
           direction: string
+          error_message: string | null
           id: string
           is_read: boolean | null
           media_url: string | null
@@ -2558,6 +2559,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           direction?: string
+          error_message?: string | null
           id?: string
           is_read?: boolean | null
           media_url?: string | null
@@ -2575,6 +2577,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           direction?: string
+          error_message?: string | null
           id?: string
           is_read?: boolean | null
           media_url?: string | null

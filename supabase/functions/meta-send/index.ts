@@ -515,12 +515,64 @@ Deno.serve(async (req) => {
 
     if (!metaResponse.ok || responseData.error) {
       const errorMessage = responseData.error?.message || 'Erro ao enviar mensagem via Meta API';
+      const errorCode = responseData.error?.code || 'UNKNOWN_ERROR';
       console.error('Meta API error:', responseData.error);
+      
+      // Translate common Meta error codes to user-friendly messages
+      let friendlyError = errorMessage;
+      if (errorCode === 131031 || errorMessage.includes('restricted')) {
+        friendlyError = 'Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.';
+      } else if (errorCode === 131047) {
+        friendlyError = 'Limite de mensagens atingido. Aguarde antes de enviar mais mensagens.';
+      } else if (errorCode === 131053) {
+        friendlyError = 'Mídia inválida ou não suportada pelo WhatsApp.';
+      } else if (errorCode === 130472) {
+        friendlyError = 'Número de destino inválido ou não registrado no WhatsApp.';
+      } else if (errorCode === 131051) {
+        friendlyError = 'Formato de template incorreto ou parâmetros inválidos.';
+      }
+      
+      // Store failed message in database with error
+      const storedMessageType = templateName ? 'template' : (mediaUrl ? effectiveMediaType : 'text');
+      const storedContent = templateName ? `Template: ${templateName}` : (message || (mediaUrl ? `[${effectiveMediaType || 'file'}]` : ''));
+      
+      const failedMessageId = `failed_${Date.now()}`;
+      await serviceRoleClient
+        .from('whatsapp_messages')
+        .insert({
+          channel_id: channelId,
+          organization_id: channel.organization_id,
+          message_id: failedMessageId,
+          sender_phone: channel.phone,
+          message_type: storedMessageType || 'text',
+          content: storedContent,
+          media_url: mediaUrl || null,
+          direction: 'outbound',
+          status: 'failed',
+          error_message: friendlyError,
+          metadata: { 
+            destination: cleanDestination, 
+            templateName, 
+            templateParams,
+            templateLanguage,
+            templateContent,
+            templateButtons,
+            mediaType: effectiveMediaType,
+            fileName,
+            provider: 'meta',
+            sent_by_human: userId !== 'service_role',
+            campaignId: campaignId || null,
+            originalError: errorMessage,
+            errorCode: errorCode
+          }
+        });
+      
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: errorMessage,
-          details: responseData.error
+          error: friendlyError,
+          details: responseData.error,
+          messageId: failedMessageId
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
