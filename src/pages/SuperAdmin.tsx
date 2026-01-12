@@ -551,22 +551,26 @@ export default function SuperAdmin() {
   };
 
   const handleDeleteOrganization = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta organização? Esta ação não pode ser desfeita.")) {
+    if (!confirm("Tem certeza que deseja excluir esta organização? Esta ação não pode ser desfeita. Todos os dados relacionados (usuários, leads, canais, etc.) serão permanentemente removidos.")) {
       return;
     }
 
     try {
-      const { error } = await supabase.from("organizations").delete().eq("id", id);
+      const { data, error } = await supabase.rpc("delete_organization_cascade", {
+        _organization_id: id
+      });
 
       if (error) {
-        toast.error("Erro ao excluir organização");
+        console.error("Error deleting organization:", error);
+        toast.error("Erro ao excluir organização: " + error.message);
         return;
       }
 
-      toast.success("Organização excluída");
+      toast.success("Organização excluída com sucesso");
       fetchOrganizations();
     } catch (err) {
       console.error("Error deleting organization:", err);
+      toast.error("Erro ao excluir organização");
     }
   };
 

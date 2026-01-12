@@ -2649,6 +2649,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      delete_organization_cascade: {
+        Args: { _organization_id: string }
+        Returns: boolean
+      }
       generate_referral_code: { Args: never; Returns: string }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
