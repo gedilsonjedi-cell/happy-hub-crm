@@ -42,7 +42,8 @@ import {
   Mic,
   Square,
   X,
-  UserCheck
+  UserCheck,
+  ZoomIn
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotes
 import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
 import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
+import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
@@ -225,6 +227,12 @@ const WhatsAppChat = () => {
   const [showSaleConfirmationDialog, setShowSaleConfirmationDialog] = useState(false);
   const [conversationToArchive, setConversationToArchive] = useState<Conversation | null>(null);
   const [mediaDialogType, setMediaDialogType] = useState<"image" | "video" | "audio" | "document" | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{
+    isOpen: boolean;
+    url: string;
+    type: "image" | "video" | "document" | "file" | "sticker";
+    fileName?: string;
+  }>({ isOpen: false, url: "", type: "image" });
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -1701,11 +1709,23 @@ const WhatsAppChat = () => {
         case "sticker":
           return (
             <div className="space-y-1">
-              <img 
-                src={message.media_url} 
-                alt="Media" 
-                className="max-w-full rounded-lg max-h-60 object-cover"
-              />
+              <div 
+                className="cursor-pointer group relative"
+                onClick={() => setMediaPreview({
+                  isOpen: true,
+                  url: message.media_url!,
+                  type: message.message_type as "image" | "sticker",
+                })}
+              >
+                <img 
+                  src={message.media_url} 
+                  alt="Media" 
+                  className="max-w-full rounded-lg max-h-60 object-cover transition-opacity group-hover:opacity-90"
+                />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-lg">
+                  <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
+                </div>
+              </div>
               {message.content && message.content !== `[${message.message_type}]` && (
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               )}
@@ -1714,11 +1734,22 @@ const WhatsAppChat = () => {
         case "video":
           return (
             <div className="space-y-1">
-              <video 
-                src={message.media_url} 
-                controls 
-                className="max-w-full rounded-lg max-h-60"
-              />
+              <div 
+                className="cursor-pointer group relative"
+                onClick={() => setMediaPreview({
+                  isOpen: true,
+                  url: message.media_url!,
+                  type: "video",
+                })}
+              >
+                <video 
+                  src={message.media_url} 
+                  className="max-w-full rounded-lg max-h-60"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
+                  <Play className="w-12 h-12 text-white drop-shadow-lg" />
+                </div>
+              </div>
               {message.content && message.content !== "[video]" && (
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               )}
@@ -1731,15 +1762,19 @@ const WhatsAppChat = () => {
         case "document":
         case "file":
           return (
-            <a 
-              href={message.media_url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm underline"
+            <div 
+              className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+              onClick={() => setMediaPreview({
+                isOpen: true,
+                url: message.media_url!,
+                type: message.message_type as "document" | "file",
+                fileName: message.content || "Documento",
+              })}
             >
-              <FileText className="w-4 h-4" />
-              {message.content || "Documento"}
-            </a>
+              <FileText className="w-5 h-5 text-primary" />
+              <span className="flex-1 truncate">{message.content || "Documento"}</span>
+              <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            </div>
           );
         default:
           return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
@@ -2867,6 +2902,15 @@ const WhatsAppChat = () => {
         contactPhone={conversationToArchive?.phone || ""}
         contactName={conversationToArchive?.name || null}
         onConfirm={handleConfirmArchive}
+      />
+
+      {/* Media Preview Dialog */}
+      <MediaPreviewDialog
+        isOpen={mediaPreview.isOpen}
+        onClose={() => setMediaPreview(prev => ({ ...prev, isOpen: false }))}
+        mediaUrl={mediaPreview.url}
+        mediaType={mediaPreview.type}
+        fileName={mediaPreview.fileName}
       />
     </MainLayout>
   );
