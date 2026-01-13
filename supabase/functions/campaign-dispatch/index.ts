@@ -394,21 +394,34 @@ Deno.serve(async (req) => {
         );
       }
 
-      const { data: leads } = await supabase
-        .from('leads')
+      // First try to get recipients from campaign_recipients table
+      const { data: campaignRecipients } = await supabase
+        .from('campaign_recipients')
         .select('phone')
-        .eq('organization_id', campaign.organization_id)
-        .limit(campaign.total_recipients);
+        .eq('campaign_id', campaignId)
+        .eq('status', 'pending');
 
-      if (!leads || leads.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No recipients found' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      if (campaignRecipients && campaignRecipients.length > 0) {
+        recipients = campaignRecipients.map(r => r.phone);
+        console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from campaign_recipients`);
+      } else {
+        // Fallback to leads table for legacy campaigns
+        const { data: leads } = await supabase
+          .from('leads')
+          .select('phone')
+          .eq('organization_id', campaign.organization_id)
+          .limit(campaign.total_recipients);
+
+        if (!leads || leads.length === 0) {
+          return new Response(
+            JSON.stringify({ error: 'Nenhum destinatário encontrado. Esta campanha pode ter sido criada antes da última atualização. Crie uma nova campanha para usar a lista de números.' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        recipients = leads.map(l => l.phone);
+        console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from leads (legacy)`);
       }
-
-      recipients = leads.map(l => l.phone);
-      console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients`);
     }
 
     console.log(`Starting campaign ${campaignId} - ${recipients.length} recipients`);
