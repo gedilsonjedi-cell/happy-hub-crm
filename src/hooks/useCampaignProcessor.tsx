@@ -72,12 +72,21 @@ export function useCampaignProcessor({
       onUpdate();
 
       // If not done, schedule next batch
-      if (!data.done && data.status === 'running') {
-        const minInterval = campaign.min_interval || 5;
-        const maxInterval = campaign.max_interval || 120;
-        const waitTime = getRandomInterval(minInterval, maxInterval) * 1000;
+      // IMPORTANT: Also continue polling when status is 'waiting_retry' to pick up retries when they're ready
+      if (!data.done && (data.status === 'running' || data.status === 'waiting_retry')) {
+        let waitTime: number;
         
-        console.log(`[Processor] ${campaign.name}: waiting ${waitTime/1000}s before next...`);
+        if (data.status === 'waiting_retry') {
+          // When waiting for retries, poll every 30 seconds to check if any retry is ready
+          waitTime = 30000;
+          console.log(`[Processor] ${campaign.name}: ${data.pendingRetries} retries pending, polling every 30s`);
+        } else {
+          // Normal interval for sending
+          const minInterval = campaign.min_interval || 5;
+          const maxInterval = campaign.max_interval || 120;
+          waitTime = getRandomInterval(minInterval, maxInterval) * 1000;
+          console.log(`[Processor] ${campaign.name}: waiting ${waitTime/1000}s before next...`);
+        }
         
         const timeout = setTimeout(() => {
           processingRef.current.delete(campaign.id);
