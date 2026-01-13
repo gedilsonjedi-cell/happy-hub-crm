@@ -548,20 +548,42 @@ const Disparos = () => {
         return;
       }
 
-      // Save campaign recipients for future reference (resuming paused campaigns)
+      // CRITICAL: Save campaign recipients BEFORE starting the campaign
+      // Get lead names for the phones if available
+      const { data: leadsWithNames } = await supabase
+        .from("leads")
+        .select("phone, name")
+        .in("phone", recipientData.phones);
+      
+      const phoneToName = new Map(leadsWithNames?.map(l => [l.phone, l.name]) || []);
+      
       const recipientInserts = recipientData.phones.map((phone) => ({
         campaign_id: campaign.id,
         phone: phone,
-        name: null,
+        name: phoneToName.get(phone) || null,
         status: 'pending'
       }));
 
       // Insert in batches of 500 to avoid hitting limits
+      // CRITICAL: Wait for each batch and check for errors
       const batchSize = 500;
+      let recipientsSaved = 0;
       for (let i = 0; i < recipientInserts.length; i += batchSize) {
         const batch = recipientInserts.slice(i, i + batchSize);
-        await supabase.from("campaign_recipients").insert(batch);
+        const { error: recipientError } = await supabase.from("campaign_recipients").insert(batch);
+        
+        if (recipientError) {
+          console.error("Error saving campaign recipients batch:", recipientError);
+          toast.error("Erro ao salvar destinatários da campanha");
+          // Update campaign to failed status
+          await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
+          setIsCreating(false);
+          return;
+        }
+        recipientsSaved += batch.length;
       }
+      
+      console.log(`Successfully saved ${recipientsSaved} recipients for campaign ${campaign.id}`);
 
       // Close form and reset immediately to prevent double clicks
       setShowCreateForm(false);
