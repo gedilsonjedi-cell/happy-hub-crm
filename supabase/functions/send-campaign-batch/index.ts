@@ -33,12 +33,10 @@ const RETRYABLE_ERROR_CODES = ['131049', '131026', '131047'];
 const MAX_RETRY_ATTEMPTS = 5;
 
 // Calculate backoff delay in minutes based on retry count
-// Uses exponential backoff: 5min, 15min, 45min, 2h, 6h
+// Uses progressive backoff: 1min, 3min, 5min, 10min, 15min (more aggressive but Meta-compliant)
 function calculateBackoffMinutes(retryCount: number): number {
-  const baseMinutes = 5;
-  const multiplier = Math.pow(3, retryCount);
-  const maxMinutes = 360; // 6 hours max
-  return Math.min(baseMinutes * multiplier, maxMinutes);
+  const delays = [1, 3, 5, 10, 15]; // Minutes for each retry attempt
+  return delays[Math.min(retryCount, delays.length - 1)];
 }
 
 function getFirstName(fullName: string | undefined): string {
