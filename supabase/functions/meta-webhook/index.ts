@@ -884,8 +884,9 @@ Deno.serve(async (req) => {
                 timestamp: new Date().toISOString(),
               });
             }
-          } else if (existingAssignment.status === 'pending' || !existingAssignment.assigned_to) {
-            // Existing pending assignment - try auto-distribution again
+          } else if (!existingAssignment.assigned_to) {
+            // ONLY try auto-distribution if NO attendant is assigned
+            // Once someone accepts a conversation, it belongs to them exclusively
             const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
             
             if (sectorId) {
@@ -907,6 +908,7 @@ Deno.serve(async (req) => {
               }
             }
           }
+          // If assigned_to exists, conversation belongs exclusively to that attendant - do NOT reassign
         }
       }
 

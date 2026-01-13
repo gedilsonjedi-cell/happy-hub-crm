@@ -1858,8 +1858,14 @@ const WhatsAppChat = () => {
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
   
+  // CRITICAL: For regular attendants, only show unassigned OR their own conversations
+  // This prevents seeing conversations of other attendants
+  const visibleConversations = canSeeOthers 
+    ? activeConversations 
+    : activeConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+  
   // Filter active conversations by search and tab
-  const filteredConversations = activeConversations.filter(conv => {
+  const filteredConversations = visibleConversations.filter(conv => {
     const matchesSearch = conv.phone.includes(searchTerm) || 
       conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -1872,23 +1878,42 @@ const WhatsAppChat = () => {
       // "Meus" - conversas atribuídas ao usuário logado
       matchesFilter = conv.assignedTo === user?.id;
     } else if (filterStatus === "others") {
-      // "Outros" - conversas de outros atendentes
-      matchesFilter = conv.assignedTo !== null && conv.assignedTo !== user?.id;
+      // "Outros" - conversas de outros atendentes (ONLY for admins/supervisors)
+      matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
     }
     
     return matchesSearch && matchesFilter;
   });
 
-  // Filter archived conversations by search
-  const filteredArchived = archivedConversations.filter(conv =>
+  // Filter archived conversations by search - also apply visibility rules
+  const visibleArchivedConversations = canSeeOthers 
+    ? archivedConversations 
+    : archivedConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+    
+  const filteredArchived = visibleArchivedConversations.filter(conv =>
     conv.phone.includes(searchTerm) || 
     conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Get counts for filter badges
-  const newCount = activeConversations.filter(c => !c.assignedTo).length;
-  const mineCount = activeConversations.filter(c => c.assignedTo === user?.id).length;
-  const othersCount = activeConversations.filter(c => c.assignedTo !== null && c.assignedTo !== user?.id).length;
+  // Get counts for filter badges - use visible conversations only
+  const newCount = visibleConversations.filter(c => !c.assignedTo).length;
+  const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
+  const othersCount = canSeeOthers ? activeConversations.filter(c => c.assignedTo !== null && c.assignedTo !== user?.id).length : 0;
+  
+  // Check if current user can interact with selected conversation
+  const canInteractWithConversation = useMemo(() => {
+    if (!selectedConversation) return false;
+    // Can interact if: unassigned OR assigned to current user OR user is admin/supervisor
+    return !selectedConversation.assignedTo || 
+           selectedConversation.assignedTo === user?.id || 
+           canSeeOthers;
+  }, [selectedConversation, user?.id, canSeeOthers]);
+  
+  // Check if conversation belongs to current user (for blocking message input)
+  const isMyConversation = useMemo(() => {
+    if (!selectedConversation) return false;
+    return !selectedConversation.assignedTo || selectedConversation.assignedTo === user?.id;
+  }, [selectedConversation, user?.id]);
 
   // Get conversation context for Sales Assistant
   const conversationContext = messages.map(m => 
@@ -2574,16 +2599,22 @@ const WhatsAppChat = () => {
                   ) : (
                     <>
                       <Textarea
-                        placeholder={isWindowExpired ? "Use um template..." : "Mensagem..."}
+                        placeholder={
+                          !isMyConversation 
+                            ? "Esta conversa pertence a outro atendente" 
+                            : isWindowExpired 
+                              ? "Use um template..." 
+                              : "Mensagem..."
+                        }
                         className={cn(
                           "min-h-[40px] sm:min-h-[44px] max-h-24 sm:max-h-32 resize-none bg-muted/30 text-sm",
-                          isWindowExpired && "opacity-50 cursor-not-allowed"
+                          (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed"
                         )}
                         value={newMessage}
-                        onChange={(e) => !isWindowExpired && setNewMessage(e.target.value)}
-                        disabled={isWindowExpired}
+                        onChange={(e) => !isWindowExpired && isMyConversation && setNewMessage(e.target.value)}
+                        disabled={isWindowExpired || !isMyConversation}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired) {
+                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation) {
                             e.preventDefault();
                             handleSendMessage();
                           }
