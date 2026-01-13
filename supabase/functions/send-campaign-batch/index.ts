@@ -26,6 +26,21 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
+// Meta error codes that should trigger retry with backoff
+const RETRYABLE_ERROR_CODES = ['131049', '131026', '131047'];
+
+// Maximum retry attempts before marking as permanently failed
+const MAX_RETRY_ATTEMPTS = 5;
+
+// Calculate backoff delay in minutes based on retry count
+// Uses exponential backoff: 5min, 15min, 45min, 2h, 6h
+function calculateBackoffMinutes(retryCount: number): number {
+  const baseMinutes = 5;
+  const multiplier = Math.pow(3, retryCount);
+  const maxMinutes = 360; // 6 hours max
+  return Math.min(baseMinutes * multiplier, maxMinutes);
+}
+
 function getFirstName(fullName: string | undefined): string {
   if (!fullName) return '';
   return fullName.split(' ')[0];
@@ -40,6 +55,12 @@ function formatPhoneNumber(phone: string): string {
     cleaned = '55' + cleaned;
   }
   return cleaned;
+}
+
+// Extract Meta error code from error message
+function extractMetaErrorCode(errorMessage: string): string | null {
+  const match = errorMessage?.match(/(\d{6})/);
+  return match ? match[1] : null;
 }
 
 // Processa UM lote de mensagens e retorna imediatamente
@@ -154,18 +175,40 @@ Deno.serve(async (req) => {
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
-    // Get recipients from campaign_recipients table (skip already sent)
-    const { data: recipients } = await supabase
+    // PRIORITY 1: Get recipients ready for retry (their backoff time has passed)
+    const now = new Date().toISOString();
+    const { data: retryRecipients } = await supabase
       .from('campaign_recipients')
-      .select('id, phone, name, status')
+      .select('id, phone, name, status, retry_count')
       .eq('campaign_id', campaignId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .eq('status', 'retry_pending')
+      .lt('next_retry_at', now)
+      .lte('retry_count', MAX_RETRY_ATTEMPTS)
+      .order('next_retry_at', { ascending: true })
       .limit(batchSize);
+
+    // PRIORITY 2: Get pending recipients (never sent)
+    let pendingRecipients: typeof retryRecipients = [];
+    const retryCount = retryRecipients?.length || 0;
+    
+    if (retryCount < batchSize) {
+      const { data: pending } = await supabase
+        .from('campaign_recipients')
+        .select('id, phone, name, status, retry_count')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(batchSize - retryCount);
+      
+      pendingRecipients = pending || [];
+    }
+
+    // Combine recipients
+    const allRecipients = [...(retryRecipients || []), ...pendingRecipients];
 
     // If no recipients in campaign_recipients, try to get from leads table (legacy support)
     let leads: Recipient[] = [];
-    if (!recipients || recipients.length === 0) {
+    if (allRecipients.length === 0) {
       const { data: legacyLeads } = await supabase
         .from('leads')
         .select('phone, name, email, city, state, document, notes')
@@ -178,11 +221,40 @@ Deno.serve(async (req) => {
     }
 
     // Check if we have anything to send
-    const recipientsToSend = recipients && recipients.length > 0 
-      ? recipients.map(r => ({ phone: r.phone, name: r.name || undefined, recipientId: r.id }))
-      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null }));
+    const recipientsToSend = allRecipients.length > 0 
+      ? allRecipients.map(r => ({ 
+          phone: r.phone, 
+          name: r.name || undefined, 
+          recipientId: r.id,
+          retryCount: r.retry_count || 0,
+          isRetry: r.status === 'retry_pending'
+        }))
+      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null, retryCount: 0, isRetry: false }));
 
     if (recipientsToSend.length === 0) {
+      // Check if there are any retry_pending that haven't reached their time yet
+      const { count: pendingRetries } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'retry_pending')
+        .gt('next_retry_at', now);
+
+      if (pendingRetries && pendingRetries > 0) {
+        // There are retries pending but not ready yet - campaign should wait
+        console.log(`[Batch] ${pendingRetries} recipients waiting for retry backoff`);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            done: false,
+            status: 'waiting_retry',
+            pendingRetries,
+            message: `Aguardando intervalo para ${pendingRetries} retentativas`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Check if campaign is actually complete
       if (campaign.sent_count >= campaign.total_recipients) {
         await supabase.from('campaigns').update({
@@ -211,6 +283,7 @@ Deno.serve(async (req) => {
     let sentThisBatch = 0;
     let deliveredThisBatch = 0;
     let failedThisBatch = 0;
+    let retriesScheduled = 0;
 
     // Process each recipient in the batch
     for (const recipient of recipientsToSend) {
@@ -226,12 +299,13 @@ Deno.serve(async (req) => {
 
       if (!channel || !template) {
         failedThisBatch++;
-        sentThisBatch++;
+        if (!recipient.isRetry) sentThisBatch++;
         // Mark recipient as failed if we have the ID
         if (recipient.recipientId) {
           await supabase.from('campaign_recipients').update({
             status: 'failed',
-            error_message: 'Canal ou template não encontrado'
+            error_message: 'Canal ou template não encontrado',
+            last_error_code: 'CONFIG_ERROR'
           }).eq('id', recipient.recipientId);
         }
         continue;
@@ -277,13 +351,17 @@ Deno.serve(async (req) => {
 
         if (result.success) {
           deliveredThisBatch++;
-          console.log(`[Batch] ✓ Sent to ${formattedPhone}`);
+          if (!recipient.isRetry) sentThisBatch++;
+          console.log(`[Batch] ✓ Sent to ${formattedPhone}${recipient.isRetry ? ' (retry #' + recipient.retryCount + ')' : ''}`);
 
           // Update recipient status if we have the ID
           if (recipient.recipientId) {
             await supabase.from('campaign_recipients').update({
               status: 'sent',
-              sent_at: new Date().toISOString()
+              sent_at: new Date().toISOString(),
+              retry_count: recipient.retryCount,
+              next_retry_at: null,
+              last_error_code: null
             }).eq('id', recipient.recipientId);
           }
 
@@ -313,38 +391,82 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          failedThisBatch++;
-          console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error}`);
+          // Check if this is a retryable error (like 131049)
+          const errorCode = extractMetaErrorCode(result.error || '');
+          const isRetryable = errorCode && RETRYABLE_ERROR_CODES.includes(errorCode);
           
-          // Update recipient status if we have the ID
-          if (recipient.recipientId) {
-            await supabase.from('campaign_recipients').update({
-              status: 'failed',
-              error_message: result.error || 'Erro desconhecido'
-            }).eq('id', recipient.recipientId);
+          if (isRetryable && recipient.retryCount < MAX_RETRY_ATTEMPTS) {
+            // Schedule retry with exponential backoff
+            const backoffMinutes = calculateBackoffMinutes(recipient.retryCount);
+            const nextRetryAt = new Date(Date.now() + backoffMinutes * 60 * 1000);
+            
+            retriesScheduled++;
+            console.log(`[Batch] ⏳ Scheduling retry #${recipient.retryCount + 1} for ${formattedPhone} in ${backoffMinutes} minutes (error: ${errorCode})`);
+            
+            if (recipient.recipientId) {
+              await supabase.from('campaign_recipients').update({
+                status: 'retry_pending',
+                retry_count: recipient.retryCount + 1,
+                next_retry_at: nextRetryAt.toISOString(),
+                last_error_code: errorCode,
+                error_message: `Meta error ${errorCode} - Retry ${recipient.retryCount + 1}/${MAX_RETRY_ATTEMPTS}`
+              }).eq('id', recipient.recipientId);
+            }
+            
+            // Don't count as sent or failed yet
+            if (!recipient.isRetry) sentThisBatch++;
+          } else {
+            // Permanent failure
+            failedThisBatch++;
+            if (!recipient.isRetry) sentThisBatch++;
+            console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error} (attempts: ${recipient.retryCount + 1})`);
+            
+            if (recipient.recipientId) {
+              await supabase.from('campaign_recipients').update({
+                status: 'failed',
+                error_message: result.error || 'Erro desconhecido',
+                last_error_code: errorCode || 'UNKNOWN',
+                retry_count: recipient.retryCount + 1
+              }).eq('id', recipient.recipientId);
+            }
           }
         }
       } catch (error) {
         failedThisBatch++;
+        if (!recipient.isRetry) sentThisBatch++;
         console.error(`[Batch] Error sending to ${formattedPhone}:`, error);
         
         // Update recipient status if we have the ID
         if (recipient.recipientId) {
           await supabase.from('campaign_recipients').update({
             status: 'failed',
-            error_message: String(error)
+            error_message: String(error),
+            last_error_code: 'EXCEPTION'
           }).eq('id', recipient.recipientId);
         }
       }
-
-      sentThisBatch++;
     }
 
     // Update campaign progress
     const newSentCount = campaign.sent_count + sentThisBatch;
     const newDeliveredCount = campaign.delivered_count + deliveredThisBatch;
     const newFailedCount = campaign.failed_count + failedThisBatch;
-    const isComplete = newSentCount >= campaign.total_recipients;
+    
+    // Check if there are pending retries before marking as complete
+    const { count: remainingRetries } = await supabase
+      .from('campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'retry_pending');
+
+    const { count: remainingPending } = await supabase
+      .from('campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'pending');
+
+    const hasMoreWork = (remainingRetries || 0) > 0 || (remainingPending || 0) > 0;
+    const isComplete = newSentCount >= campaign.total_recipients && !hasMoreWork;
 
     await supabase.from('campaigns').update({
       sent_count: newSentCount,
@@ -354,7 +476,7 @@ Deno.serve(async (req) => {
       completed_at: isComplete ? new Date().toISOString() : null
     }).eq('id', campaignId);
 
-    console.log(`[Batch] Campaign ${campaignId}: ${newSentCount}/${campaign.total_recipients}`);
+    console.log(`[Batch] Campaign ${campaignId}: ${newSentCount}/${campaign.total_recipients} | Retries scheduled: ${retriesScheduled} | Pending retries: ${remainingRetries || 0}`);
 
     return new Response(
       JSON.stringify({
@@ -365,7 +487,9 @@ Deno.serve(async (req) => {
         delivered: newDeliveredCount,
         failed: newFailedCount,
         total: campaign.total_recipients,
-        batchProcessed: sentThisBatch
+        batchProcessed: sentThisBatch,
+        retriesScheduled,
+        pendingRetries: remainingRetries || 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

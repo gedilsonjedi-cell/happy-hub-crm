@@ -429,9 +429,12 @@ export type Database = {
           delivered_at: string | null
           error_message: string | null
           id: string
+          last_error_code: string | null
           lead_id: string | null
           name: string | null
+          next_retry_at: string | null
           phone: string
+          retry_count: number | null
           sent_at: string | null
           status: string
           updated_at: string
@@ -442,9 +445,12 @@ export type Database = {
           delivered_at?: string | null
           error_message?: string | null
           id?: string
+          last_error_code?: string | null
           lead_id?: string | null
           name?: string | null
+          next_retry_at?: string | null
           phone: string
+          retry_count?: number | null
           sent_at?: string | null
           status?: string
           updated_at?: string
@@ -455,9 +461,12 @@ export type Database = {
           delivered_at?: string | null
           error_message?: string | null
           id?: string
+          last_error_code?: string | null
           lead_id?: string | null
           name?: string | null
+          next_retry_at?: string | null
           phone?: string
+          retry_count?: number | null
           sent_at?: string | null
           status?: string
           updated_at?: string
