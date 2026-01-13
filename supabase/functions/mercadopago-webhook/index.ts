@@ -38,7 +38,7 @@ serve(async (req) => {
       const payment = await paymentResponse.json();
       console.log("Payment details:", JSON.stringify(payment, null, 2));
 
-      // Update payment status in database
+      // Find payment record in database
       const { data: pixPayment, error: fetchError } = await supabase
         .from("pix_payments")
         .select("*")
@@ -47,51 +47,101 @@ serve(async (req) => {
 
       if (fetchError) {
         console.error("Error fetching payment record:", fetchError);
+        // Payment not found in our database - ignore
+        return new Response(JSON.stringify({ received: true, ignored: "payment_not_found" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      if (pixPayment) {
-        // Update payment status
+      if (!pixPayment) {
+        console.log("Payment record not found for mercadopago_id:", paymentId);
+        return new Response(JSON.stringify({ received: true, ignored: "no_record" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // CRITICAL: Check if payment was already processed to prevent double-crediting
+      if (pixPayment.paid_at && pixPayment.status === "approved") {
+        console.log("Payment already processed at:", pixPayment.paid_at, "- Ignoring duplicate webhook");
+        return new Response(JSON.stringify({ received: true, ignored: "already_processed" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Only process if Mercado Pago confirms approved status
+      if (payment.status === "approved") {
+        console.log("Processing approved payment for organization:", pixPayment.organization_id);
+
+        const externalRef = payment.external_reference ? JSON.parse(payment.external_reference) : null;
+
+        if (externalRef?.paymentType === "balance") {
+          // Credit organization balance
+          const { error: rpcError } = await supabase.rpc("credit_organization_balance", {
+            _organization_id: pixPayment.organization_id,
+            _amount: pixPayment.amount,
+            _description: "Recarga via PIX - Mercado Pago",
+            _reference_type: "pix_payment",
+            _reference_id: pixPayment.id,
+          });
+
+          if (rpcError) {
+            console.error("ERROR crediting balance:", rpcError);
+            // Don't update paid_at so it can be retried
+            return new Response(JSON.stringify({ error: "Failed to credit balance" }), {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          console.log(`SUCCESS: Credited ${pixPayment.amount} to organization ${pixPayment.organization_id}`);
+        } else if (externalRef?.paymentType === "subscription") {
+          // Update subscription status
+          const subscriptionEnd = new Date();
+          subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
+
+          const { error: updateError } = await supabase
+            .from("organizations")
+            .update({
+              subscription_status: "active",
+              subscription_started_at: new Date().toISOString(),
+              subscription_ends_at: subscriptionEnd.toISOString(),
+              plan: "pro",
+            })
+            .eq("id", pixPayment.organization_id);
+
+          if (updateError) {
+            console.error("ERROR activating subscription:", updateError);
+            return new Response(JSON.stringify({ error: "Failed to activate subscription" }), {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          console.log(`SUCCESS: Activated subscription for organization ${pixPayment.organization_id}`);
+        }
+
+        // Update payment status AFTER successful processing
+        const { error: updateError } = await supabase
+          .from("pix_payments")
+          .update({
+            status: payment.status,
+            paid_at: new Date().toISOString(),
+          })
+          .eq("id", pixPayment.id);
+
+        if (updateError) {
+          console.error("Error updating payment record:", updateError);
+        }
+      } else {
+        // Update status for non-approved payments (pending, rejected, cancelled, etc.)
         await supabase
           .from("pix_payments")
           .update({
             status: payment.status,
-            paid_at: payment.status === "approved" ? new Date().toISOString() : null,
           })
           .eq("id", pixPayment.id);
 
-        // If payment approved, credit balance or activate subscription
-        if (payment.status === "approved") {
-          const externalRef = payment.external_reference ? JSON.parse(payment.external_reference) : null;
-
-          if (externalRef?.paymentType === "balance") {
-            // Credit organization balance
-            await supabase.rpc("credit_organization_balance", {
-              _organization_id: pixPayment.organization_id,
-              _amount: pixPayment.amount,
-              _description: "Recarga via PIX - Mercado Pago",
-              _reference_type: "pix_payment",
-              _reference_id: pixPayment.id,
-            });
-
-            console.log(`Credited ${pixPayment.amount} to organization ${pixPayment.organization_id}`);
-          } else if (externalRef?.paymentType === "subscription") {
-            // Update subscription status
-            const subscriptionEnd = new Date();
-            subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-
-            await supabase
-              .from("organizations")
-              .update({
-                subscription_status: "active",
-                subscription_started_at: new Date().toISOString(),
-                subscription_ends_at: subscriptionEnd.toISOString(),
-                plan: "pro",
-              })
-              .eq("id", pixPayment.organization_id);
-
-            console.log(`Activated subscription for organization ${pixPayment.organization_id}`);
-          }
-        }
+        console.log(`Payment status updated to: ${payment.status}`);
       }
     }
 
