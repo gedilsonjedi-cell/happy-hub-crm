@@ -578,13 +578,13 @@ Deno.serve(async (req) => {
         // Check if assignment already exists
         const { data: existingAssignment } = await supabase
           .from('conversation_assignments')
-          .select('id, assigned_to')
+          .select('id, assigned_to, status')
           .eq('conversation_phone', senderPhone)
           .eq('channel_id', channel.id)
           .single();
 
         if (!existingAssignment) {
-          // Check if lead is in someone's portfolio first
+          // NEW conversation - check if lead is in someone's portfolio first
           const { data: portfolioEntry } = await supabase
             .from('client_portfolios')
             .select('user_id')
@@ -647,6 +647,55 @@ Deno.serve(async (req) => {
             });
 
           console.log('Assignment created:', assignedTo ? `to ${assignedTo}` : 'pending (Novos)');
+        } else {
+          // EXISTING assignment found
+          const wasArchived = existingAssignment.status === 'archived';
+          const hasAttendant = !!existingAssignment.assigned_to;
+          
+          if (wasArchived) {
+            // CRITICAL: If conversation was ARCHIVED, reset it completely
+            // This allows a new attendant to pick it up
+            console.log('Archived conversation reactivated - resetting assignment for new distribution');
+            
+            await supabase
+              .from('conversation_assignments')
+              .update({
+                assigned_to: null,
+                assigned_at: null,
+                status: 'pending',
+                is_bot_handling: true,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingAssignment.id);
+
+            console.log('Conversation reset to pending (Novos) - available for any attendant');
+          } else if (!hasAttendant) {
+            // No attendant assigned yet - try auto-distribution
+            const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
+            
+            if (sectorId) {
+              const nextAttendant = await getNextAvailableAttendant(channel.organization_id, sectorId);
+              
+              if (nextAttendant) {
+                await supabase
+                  .from('conversation_assignments')
+                  .update({
+                    assigned_to: nextAttendant.userId,
+                    status: 'active',
+                    is_bot_handling: false,
+                    assigned_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', existingAssignment.id);
+
+                console.log('Assignment updated - auto-assigned to:', nextAttendant.userName);
+              }
+            }
+          } else {
+            // CRITICAL: Attendant is assigned - conversation belongs EXCLUSIVELY to them
+            // Do NOT reassign, do NOT change status, do NOT modify assignment
+            console.log('Conversation has owner:', existingAssignment.assigned_to, '- NO changes made (exclusive ownership)');
+          }
         }
       }
 
