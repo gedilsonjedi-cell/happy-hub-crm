@@ -154,39 +154,57 @@ Deno.serve(async (req) => {
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
-    // Get leads to send - skip already sent
-    const { data: leads } = await supabase
-      .from('leads')
-      .select('phone, name, email, city, state, document, notes')
-      .eq('organization_id', campaign.organization_id)
-      .limit(campaign.total_recipients);
+    // Get recipients from campaign_recipients table (skip already sent)
+    const { data: recipients } = await supabase
+      .from('campaign_recipients')
+      .select('id, phone, name, status')
+      .eq('campaign_id', campaignId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(batchSize);
 
-    if (!leads || leads.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No leads found', done: true }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // If no recipients in campaign_recipients, try to get from leads table (legacy support)
+    let leads: Recipient[] = [];
+    if (!recipients || recipients.length === 0) {
+      const { data: legacyLeads } = await supabase
+        .from('leads')
+        .select('phone, name, email, city, state, document, notes')
+        .eq('organization_id', campaign.organization_id)
+        .limit(campaign.total_recipients);
+      
+      if (legacyLeads && legacyLeads.length > 0) {
+        leads = legacyLeads.slice(campaign.sent_count, campaign.sent_count + batchSize);
+      }
     }
 
-    // Get the next batch to send
-    const currentIndex = campaign.sent_count;
-    const batchLeads = leads.slice(currentIndex, currentIndex + batchSize);
+    // Check if we have anything to send
+    const recipientsToSend = recipients && recipients.length > 0 
+      ? recipients.map(r => ({ phone: r.phone, name: r.name || undefined, recipientId: r.id }))
+      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null }));
 
-    if (batchLeads.length === 0) {
-      await supabase.from('campaigns').update({
-        status: 'completed',
-        completed_at: new Date().toISOString()
-      }).eq('id', campaignId);
+    if (recipientsToSend.length === 0) {
+      // Check if campaign is actually complete
+      if (campaign.sent_count >= campaign.total_recipients) {
+        await supabase.from('campaigns').update({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        }).eq('id', campaignId);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            done: true, 
+            status: 'completed',
+            sent: campaign.sent_count,
+            total: campaign.total_recipients
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          done: true, 
-          status: 'completed',
-          sent: campaign.sent_count,
-          total: campaign.total_recipients
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Nenhum destinatário encontrado para esta campanha', done: true }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -194,9 +212,9 @@ Deno.serve(async (req) => {
     let deliveredThisBatch = 0;
     let failedThisBatch = 0;
 
-    // Process each lead in the batch
-    for (const lead of batchLeads) {
-      const idx = currentIndex + sentThisBatch;
+    // Process each recipient in the batch
+    for (const recipient of recipientsToSend) {
+      const idx = campaign.sent_count + sentThisBatch;
       const campaignChannel = campaignChannels[idx % campaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id) as { 
@@ -209,10 +227,17 @@ Deno.serve(async (req) => {
       if (!channel || !template) {
         failedThisBatch++;
         sentThisBatch++;
+        // Mark recipient as failed if we have the ID
+        if (recipient.recipientId) {
+          await supabase.from('campaign_recipients').update({
+            status: 'failed',
+            error_message: 'Canal ou template não encontrado'
+          }).eq('id', recipient.recipientId);
+        }
         continue;
       }
 
-      const formattedPhone = formatPhoneNumber(lead.phone);
+      const formattedPhone = formatPhoneNumber(recipient.phone);
 
       // Build template params
       const templateParams: string[] = [];
@@ -222,10 +247,10 @@ Deno.serve(async (req) => {
           let value = varName;
 
           if (mapping === 'contact_first_name') {
-            value = getFirstName(lead.name) || varName;
+            value = getFirstName(recipient.name) || varName;
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
-            value = String((lead as Recipient)[field] || varName);
+            value = String((recipient as unknown as Recipient)[field] || varName);
           }
           templateParams.push(value);
         }
@@ -253,6 +278,14 @@ Deno.serve(async (req) => {
         if (result.success) {
           deliveredThisBatch++;
           console.log(`[Batch] ✓ Sent to ${formattedPhone}`);
+
+          // Update recipient status if we have the ID
+          if (recipient.recipientId) {
+            await supabase.from('campaign_recipients').update({
+              status: 'sent',
+              sent_at: new Date().toISOString()
+            }).eq('id', recipient.recipientId);
+          }
 
           // Handle chatbot
           if (campaign.chatbot_enabled && campaign.chatbot_id) {
@@ -282,10 +315,26 @@ Deno.serve(async (req) => {
         } else {
           failedThisBatch++;
           console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error}`);
+          
+          // Update recipient status if we have the ID
+          if (recipient.recipientId) {
+            await supabase.from('campaign_recipients').update({
+              status: 'failed',
+              error_message: result.error || 'Erro desconhecido'
+            }).eq('id', recipient.recipientId);
+          }
         }
       } catch (error) {
         failedThisBatch++;
         console.error(`[Batch] Error sending to ${formattedPhone}:`, error);
+        
+        // Update recipient status if we have the ID
+        if (recipient.recipientId) {
+          await supabase.from('campaign_recipients').update({
+            status: 'failed',
+            error_message: String(error)
+          }).eq('id', recipient.recipientId);
+        }
       }
 
       sentThisBatch++;

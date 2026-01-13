@@ -548,6 +548,21 @@ const Disparos = () => {
         return;
       }
 
+      // Save campaign recipients for future reference (resuming paused campaigns)
+      const recipientInserts = recipientData.phones.map((phone) => ({
+        campaign_id: campaign.id,
+        phone: phone,
+        name: null,
+        status: 'pending'
+      }));
+
+      // Insert in batches of 500 to avoid hitting limits
+      const batchSize = 500;
+      for (let i = 0; i < recipientInserts.length; i += batchSize) {
+        const batch = recipientInserts.slice(i, i + batchSize);
+        await supabase.from("campaign_recipients").insert(batch);
+      }
+
       // Close form and reset immediately to prevent double clicks
       setShowCreateForm(false);
       resetForm();
@@ -619,7 +634,7 @@ const Disparos = () => {
       // Update status to running
       const { error: updateError } = await supabase
         .from("campaigns")
-        .update({ status: "running" })
+        .update({ status: "running", updated_at: new Date().toISOString() })
         .eq("id", campaign.id);
 
       if (updateError) {
@@ -627,19 +642,13 @@ const Disparos = () => {
         return;
       }
 
-      // Trigger the dispatch function
-      const { error: dispatchError } = await supabase.functions.invoke("campaign-dispatch", {
-        body: { campaignId: campaign.id }
-      });
-
-      if (dispatchError) {
-        console.error("Dispatch error:", dispatchError);
-        toast.error("Erro ao iniciar disparo");
-        return;
-      }
-
       toast.success("Campanha retomada!");
+      
+      // Refresh data to trigger the campaign processor hook
       fetchData();
+      
+      // Also manually start processing for immediate feedback
+      startProcessing(campaign.id);
     } catch (error) {
       console.error("Error resuming campaign:", error);
       toast.error("Erro ao retomar campanha");
