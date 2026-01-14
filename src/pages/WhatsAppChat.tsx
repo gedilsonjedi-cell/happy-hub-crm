@@ -2103,27 +2103,11 @@ const WhatsAppChat = () => {
                         : "border-l-transparent hover:bg-muted/30"
                     )}
                   >
-                    {/* Accept button - OUTSIDE the button, fixed position, always visible */}
-                    {!conversation.assignedTo && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="absolute left-[70px] top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
-                        onClick={(e) => handleAcceptConversation(conversation, e)}
-                        title="Aceitar atendimento"
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        <span className="hidden sm:inline">Aceitar</span>
-                      </Button>
-                    )}
-                    {/* Archive button - position depends on whether accept button is showing */}
+                    {/* Archive button - always at right-2 */}
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={cn(
-                        "absolute opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 z-50",
-                        !conversation.assignedTo ? "right-24 sm:right-20 top-2" : "right-2 top-2"
-                      )}
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 z-50"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleArchive(conversation);
@@ -2132,6 +2116,19 @@ const WhatsAppChat = () => {
                     >
                       <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
                     </Button>
+                    {/* Accept button - to the left of trash icon */}
+                    {!conversation.assignedTo && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="absolute right-10 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
+                        onClick={(e) => handleAcceptConversation(conversation, e)}
+                        title="Aceitar atendimento"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        <span className="hidden sm:inline">Aceitar</span>
+                      </Button>
+                    )}
                     <button
                       onClick={() => setSelectedConversation(conversation)}
                       className="w-full p-3 sm:p-4 text-left transition-colors"
