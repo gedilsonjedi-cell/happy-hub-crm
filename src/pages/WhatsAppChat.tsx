@@ -2103,19 +2103,48 @@ const WhatsAppChat = () => {
                         : "border-l-transparent hover:bg-muted/30"
                     )}
                   >
+                    {/* Accept button - OUTSIDE the button, fixed at top right, always visible */}
+                    {!conversation.assignedTo && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="absolute right-2 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
+                        onClick={(e) => handleAcceptConversation(conversation, e)}
+                        title="Aceitar atendimento"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        <span className="hidden sm:inline">Aceitar</span>
+                      </Button>
+                    )}
+                    {/* Archive button - position depends on whether accept button is showing */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "absolute opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 z-50",
+                        !conversation.assignedTo ? "right-24 sm:right-20 top-2" : "right-2 top-2"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleArchive(conversation);
+                      }}
+                      title="Arquivar conversa"
+                    >
+                      <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                    </Button>
                     <button
                       onClick={() => setSelectedConversation(conversation)}
-                      className="w-full p-3 sm:p-4 text-left transition-colors overflow-hidden"
+                      className="w-full p-3 sm:p-4 text-left transition-colors"
                     >
-                      <div className="flex items-start gap-2 sm:gap-3 w-full overflow-hidden">
+                      <div className="flex items-start gap-2 sm:gap-3 w-full">
                         <Avatar className="w-9 h-9 sm:w-10 sm:h-10 shrink-0">
                           <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-xs sm:text-sm font-semibold">
                             {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0 overflow-hidden pr-16 sm:pr-20">
+                        <div className="flex-1 min-w-0 pr-20 sm:pr-24">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-foreground text-xs sm:text-sm truncate block max-w-[calc(100%-60px)]">
+                            <span className="font-medium text-foreground text-xs sm:text-sm truncate block">
                               {conversation.name || conversation.phone}
                             </span>
                             <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0 whitespace-nowrap">
@@ -2133,8 +2162,8 @@ const WhatsAppChat = () => {
                               📱 {channelInfo.name}
                             </p>
                           ) : null}
-                          <p className="text-xs text-muted-foreground line-clamp-2 mb-2 block w-full">
-                            {conversation.lastMessage}
+                          <p className="text-xs text-muted-foreground truncate mb-2">
+                            {conversation.lastMessage?.substring(0, 50)}{conversation.lastMessage && conversation.lastMessage.length > 50 ? '...' : ''}
                           </p>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge variant="outline" className={cn("text-[10px] sm:text-xs shrink-0", getStatusConfig(conversation.status).className)}>
@@ -2149,35 +2178,6 @@ const WhatsAppChat = () => {
                         </div>
                       </div>
                     </button>
-                    {/* Accept button - fixed at top right, always visible for unassigned conversations */}
-                    {!conversation.assignedTo && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="absolute right-2 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-20"
-                        onClick={(e) => handleAcceptConversation(conversation, e)}
-                        title="Aceitar atendimento"
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        <span className="hidden sm:inline">Aceitar</span>
-                      </Button>
-                    )}
-                    {/* Archive button - position depends on whether accept button is showing */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        "absolute opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6",
-                        !conversation.assignedTo ? "right-24 sm:right-20 top-2" : "right-2 top-2"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleArchive(conversation);
-                      }}
-                      title="Arquivar conversa"
-                    >
-                      <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
-                    </Button>
                   </div>
                   );
                 })
