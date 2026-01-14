@@ -2103,12 +2103,12 @@ const WhatsAppChat = () => {
                         : "border-l-transparent hover:bg-muted/30"
                     )}
                   >
-                    {/* Accept button - OUTSIDE the button, fixed at top right, always visible */}
+                    {/* Accept button - OUTSIDE the button, fixed at top LEFT, always visible */}
                     {!conversation.assignedTo && (
                       <Button
                         variant="default"
                         size="sm"
-                        className="absolute right-2 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
+                        className="absolute left-14 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
                         onClick={(e) => handleAcceptConversation(conversation, e)}
                         title="Aceitar atendimento"
                       >
