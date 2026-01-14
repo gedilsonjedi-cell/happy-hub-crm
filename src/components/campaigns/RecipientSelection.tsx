@@ -101,37 +101,72 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
       .map(n => {
         let digits = n.replace(/\D/g, '');
         
-        // Normalize: add 55 prefix if not present
-        if (digits.length >= 10 && digits.length <= 11) {
-          // Number without country code (10 or 11 digits)
-          digits = '55' + digits;
-        } else if (digits.length === 12 && !digits.startsWith('55')) {
-          // 12 digits but doesn't start with 55
-          digits = '55' + digits.slice(digits.length - 11);
-        } else if (digits.length === 13 && !digits.startsWith('55')) {
-          // 13 digits but doesn't start with 55
-          digits = '55' + digits.slice(digits.length - 11);
+        // Remove leading zero
+        if (digits.startsWith('0')) {
+          digits = digits.substring(1);
         }
+        
+        // Remove 55 prefix temporarily for normalization
+        if (digits.startsWith('55') && digits.length >= 12) {
+          digits = digits.substring(2);
+        }
+        
+        // Now digits should be DDD + number (10 or 11 digits)
+        if (digits.length === 10) {
+          const ddd = digits.slice(0, 2);
+          const firstDigit = digits[2];
+          
+          // Valid mobile prefixes (6, 7, 8, 9) - need to add the 9
+          if (['6', '7', '8', '9'].includes(firstDigit)) {
+            digits = ddd + '9' + digits.slice(2);
+            console.log(`[RecipientSelection] Added 9 to mobile: ${ddd}9${digits.slice(3)}`);
+          }
+        }
+        
+        // Add country code
+        digits = '55' + digits;
         
         return digits;
       })
-      .filter(n => n.length >= 12 && n.length <= 13 && n.startsWith('55'));
+      .filter(n => n.length === 13 && n.startsWith('55'));
     setParsedNumbers([...new Set(numbers)]);
   }, [numberList]);
+
+  // Normalize phone number - add 9 for mobile numbers missing it
+  const normalizePhone = (phone: string): string => {
+    let digits = phone.replace(/\D/g, '');
+    
+    // Remove leading zero
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    
+    // Remove 55 prefix temporarily for normalization
+    if (digits.startsWith('55') && digits.length >= 12) {
+      digits = digits.substring(2);
+    }
+    
+    // Now digits should be DDD + number (10 or 11 digits)
+    if (digits.length === 10) {
+      const ddd = digits.slice(0, 2);
+      const firstDigit = digits[2];
+      
+      // Valid mobile prefixes (6, 7, 8, 9) - need to add the 9
+      if (['6', '7', '8', '9'].includes(firstDigit)) {
+        digits = ddd + '9' + digits.slice(2);
+      }
+    }
+    
+    // Add country code
+    return '55' + digits;
+  };
 
   // Notify parent of selection changes
   useEffect(() => {
     if (sourceType === "contacts") {
       const selectedPhones = leads
         .filter(lead => selectedLeadIds.includes(lead.id))
-        .map(lead => {
-          let digits = lead.phone.replace(/\D/g, '');
-          // Normalize: add 55 prefix if not present
-          if (digits.length >= 10 && digits.length <= 11) {
-            digits = '55' + digits;
-          }
-          return digits;
-        });
+        .map(lead => normalizePhone(lead.phone));
       onSelectionChange({ phones: selectedPhones, source: "contacts" });
     } else if (sourceType === "numbers") {
       onSelectionChange({ phones: parsedNumbers, source: "numbers" });

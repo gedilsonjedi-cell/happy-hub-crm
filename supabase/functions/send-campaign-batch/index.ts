@@ -44,14 +44,72 @@ function getFirstName(fullName: string | undefined): string {
   return fullName.split(' ')[0];
 }
 
+// Lista de DDDs válidos do Brasil
+const VALID_BRAZILIAN_DDDS = [
+  '11', '12', '13', '14', '15', '16', '17', '18', '19', // São Paulo
+  '21', '22', '24', // Rio de Janeiro
+  '27', '28', // Espírito Santo
+  '31', '32', '33', '34', '35', '37', '38', // Minas Gerais
+  '41', '42', '43', '44', '45', '46', // Paraná
+  '47', '48', '49', // Santa Catarina
+  '51', '53', '54', '55', // Rio Grande do Sul
+  '61', // Distrito Federal
+  '62', '64', // Goiás
+  '63', // Tocantins
+  '65', '66', // Mato Grosso
+  '67', // Mato Grosso do Sul
+  '71', '73', '74', '75', '77', // Bahia
+  '79', // Sergipe
+  '81', '87', // Pernambuco
+  '82', // Alagoas
+  '83', // Paraíba
+  '84', // Rio Grande do Norte
+  '85', '88', // Ceará
+  '86', '89', // Piauí
+  '91', '93', '94', // Pará
+  '92', '97', // Amazonas
+  '95', // Roraima
+  '96', // Amapá
+  '98', '99', // Maranhão
+  '68', // Acre
+  '69', // Rondônia
+];
+
 function formatPhoneNumber(phone: string): string {
   let cleaned = phone.replace(/\D/g, '');
+  
+  // Remove leading zero
   if (cleaned.startsWith('0')) {
     cleaned = cleaned.substring(1);
   }
-  if (!cleaned.startsWith('55') && cleaned.length <= 11) {
+  
+  // Remove 55 prefix temporarily for normalization
+  let hasCountryCode = false;
+  if (cleaned.startsWith('55') && cleaned.length >= 12) {
+    hasCountryCode = true;
+    cleaned = cleaned.substring(2);
+  }
+  
+  // Now 'cleaned' should be just DDD + number (10 or 11 digits)
+  
+  // If it's 10 digits, might be missing the 9 for mobile
+  if (cleaned.length === 10) {
+    const ddd = cleaned.slice(0, 2);
+    const firstDigit = cleaned[2];
+    
+    // Check if it's a valid DDD and looks like a mobile (starts with 6, 7, 8, or 9)
+    if (VALID_BRAZILIAN_DDDS.includes(ddd) && ['6', '7', '8', '9'].includes(firstDigit)) {
+      // Add the missing 9 prefix for mobile numbers
+      cleaned = ddd + '9' + cleaned.slice(2);
+      console.log(`[FormatPhone] Added 9 to mobile: ${ddd}9${cleaned.slice(3)}`);
+    }
+  }
+  
+  // Ensure country code is present
+  if (!cleaned.startsWith('55')) {
     cleaned = '55' + cleaned;
   }
+  
   return cleaned;
 }
 
