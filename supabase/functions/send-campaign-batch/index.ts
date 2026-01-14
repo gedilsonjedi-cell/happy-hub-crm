@@ -253,28 +253,41 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Check if campaign is actually complete
-      if (campaign.sent_count >= campaign.total_recipients) {
-        await supabase.from('campaigns').update({
-          status: 'completed',
-          completed_at: new Date().toISOString()
-        }).eq('id', campaignId);
+      // No pending recipients and no retries waiting - campaign is done
+      // Count actual results
+      const { count: totalSent } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'sent');
 
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            done: true, 
-            status: 'completed',
-            sent: campaign.sent_count,
-            total: campaign.total_recipients
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const { count: totalFailed } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'failed');
+
+      // Update campaign with accurate counts and mark as completed
+      await supabase.from('campaigns').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        sent_count: campaign.total_recipients, // All were processed
+        delivered_count: totalSent || 0,
+        failed_count: totalFailed || 0
+      }).eq('id', campaignId);
+
+      console.log(`[Batch] Campaign ${campaignId} completed: ${totalSent} delivered, ${totalFailed} failed`);
 
       return new Response(
-        JSON.stringify({ error: 'Nenhum destinatário encontrado para esta campanha', done: true }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: true, 
+          done: true, 
+          status: 'completed',
+          delivered: totalSent || 0,
+          failed: totalFailed || 0,
+          total: campaign.total_recipients
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
