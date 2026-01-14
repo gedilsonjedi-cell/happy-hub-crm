@@ -1727,7 +1727,7 @@ const WhatsAppChat = () => {
                 </div>
               </div>
               {message.content && message.content !== `[${message.message_type}]` && (
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
               )}
             </div>
           );
@@ -1751,7 +1751,7 @@ const WhatsAppChat = () => {
                 </div>
               </div>
               {message.content && message.content !== "[video]" && (
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
               )}
             </div>
           );
@@ -1777,7 +1777,7 @@ const WhatsAppChat = () => {
             </div>
           );
         default:
-          return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+          return <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>;
       }
     }
 
@@ -1825,7 +1825,7 @@ const WhatsAppChat = () => {
               <FileText className="w-3 h-3" />
               <span className="font-medium">{templateName}</span>
             </div>
-            <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+            <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{displayContent}</p>
             
             {/* Render buttons if any */}
             {buttons.length > 0 && (
@@ -1873,7 +1873,7 @@ const WhatsAppChat = () => {
       );
     }
 
-    return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+    return <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>;
   };
 
   // Check if conversation has received a response (has inbound message)
@@ -2456,7 +2456,7 @@ const WhatsAppChat = () => {
                         >
                           <div
                             className={cn(
-                              "max-w-[85%] sm:max-w-[70%] rounded-lg px-3 py-2 sm:px-4",
+                              "max-w-[85%] sm:max-w-[70%] rounded-lg px-3 py-2 sm:px-4 break-words overflow-hidden",
                               message.direction === "outbound"
                                 ? isFailed 
                                   ? "bg-destructive/80 text-destructive-foreground"
