@@ -2121,7 +2121,7 @@ const WhatsAppChat = () => {
                       <Button
                         variant="default"
                         size="sm"
-                        className="absolute right-40 top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
+                        className="absolute right-[120px] top-2 h-7 sm:h-6 px-2 text-xs gap-1 z-50"
                         onClick={(e) => handleAcceptConversation(conversation, e)}
                         title="Aceitar atendimento"
                       >
