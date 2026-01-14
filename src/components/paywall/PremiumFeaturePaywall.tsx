@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Dialog,
@@ -43,14 +43,8 @@ export function PremiumFeaturePaywall({
   const [purchasing, setPurchasing] = useState(false);
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
 
-  // Fetch product info when dialog opens
-  useState(() => {
-    if (open && productName) {
-      fetchProduct();
-    }
-  });
-
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
+    if (!productName) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -68,12 +62,14 @@ export function PremiumFeaturePaywall({
     } finally {
       setLoading(false);
     }
-  };
+  }, [productName]);
 
-  // Re-fetch when dialog opens
-  if (open && !product && !loading) {
-    fetchProduct();
-  }
+  // Fetch product info when dialog opens
+  useEffect(() => {
+    if (open && productName) {
+      fetchProduct();
+    }
+  }, [open, productName, fetchProduct]);
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString("pt-BR", {
