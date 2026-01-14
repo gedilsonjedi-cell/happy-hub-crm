@@ -549,20 +549,36 @@ const Disparos = () => {
       }
 
       // CRITICAL: Save campaign recipients BEFORE starting the campaign
+      // IMPORTANT: Remove duplicate phone numbers to prevent sending multiple times
+      const uniquePhones = [...new Set(recipientData.phones)];
+      const duplicatesRemoved = recipientData.phones.length - uniquePhones.length;
+      
+      if (duplicatesRemoved > 0) {
+        console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
+      }
+      
       // Get lead names for the phones if available
       const { data: leadsWithNames } = await supabase
         .from("leads")
         .select("phone, name")
-        .in("phone", recipientData.phones);
+        .in("phone", uniquePhones);
       
       const phoneToName = new Map(leadsWithNames?.map(l => [l.phone, l.name]) || []);
       
-      const recipientInserts = recipientData.phones.map((phone) => ({
+      const recipientInserts = uniquePhones.map((phone) => ({
         campaign_id: campaign.id,
         phone: phone,
         name: phoneToName.get(phone) || null,
         status: 'pending'
       }));
+      
+      // Update total recipients with the deduplicated count
+      if (duplicatesRemoved > 0) {
+        await supabase
+          .from("campaigns")
+          .update({ total_recipients: uniquePhones.length })
+          .eq("id", campaign.id);
+      }
 
       // Insert in batches of 500 to avoid hitting limits
       // CRITICAL: Wait for each batch and check for errors
@@ -591,14 +607,16 @@ const Disparos = () => {
 
       // If starting now, trigger the campaign dispatch (in background)
       if (formData.startTime === "now") {
-        toast.success(`Campanha iniciada! Enviando para ${recipientData.phones.length} destinatários...`);
+        const duplicateMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicados removidos)` : '';
+        toast.success(`Campanha iniciada! Enviando para ${uniquePhones.length} destinatários${duplicateMsg}...`);
         
         // Don't await - let it run in background
+        // Use unique phones only to ensure no duplicates are sent
         supabase.functions.invoke('campaign-dispatch', {
           body: { 
             campaignId: campaign.id, 
             action: 'start',
-            recipients: recipientData.phones,
+            recipients: uniquePhones,
             manualVariables: Object.keys(manualVariables).length > 0 ? manualVariables : undefined
           }
         }).then(response => {
@@ -609,7 +627,8 @@ const Disparos = () => {
           console.error("Error triggering dispatch:", dispatchError);
         });
       } else {
-        toast.success("Campanha agendada com sucesso!");
+        const duplicateMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicados removidos)` : '';
+        toast.success(`Campanha agendada com sucesso!${duplicateMsg}`);
       }
 
       // Refresh data
