@@ -1116,14 +1116,18 @@ export default function Higienizacao() {
         {/* Module Selection Screen */}
         {selectedModule === null && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto py-8">
-            {/* Nova Vida TI Option */}
+            {/* Nova Vida TI Option - Disabled/Coming Soon */}
             <Card 
-              className="cursor-pointer hover:border-primary hover:shadow-lg transition-all group relative overflow-hidden"
-              onClick={() => setSelectedModule("nova-vida")}
+              className="relative overflow-hidden opacity-70 cursor-not-allowed"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute top-3 right-3 z-10">
+                <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-amber-500/30">
+                  Em breve
+                </Badge>
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/10" />
               <CardHeader className="text-center pb-2">
-                <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg group-hover:scale-105 transition-transform">
+                <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg opacity-60">
                   <Database className="w-10 h-10 text-white" />
                 </div>
                 <CardTitle className="text-xl">Nova Vida TI</CardTitle>
@@ -1141,9 +1145,9 @@ export default function Higienizacao() {
                   <Badge variant="secondary" className="text-xs">Receita Federal</Badge>
                   <Badge variant="secondary" className="text-xs">SEFAZ</Badge>
                 </div>
-                <Button className="w-full gap-2 mt-4">
+                <Button className="w-full gap-2 mt-4" disabled>
                   <UserSearch className="w-4 h-4" />
-                  Acessar Consultas
+                  Em breve
                 </Button>
               </CardContent>
             </Card>
