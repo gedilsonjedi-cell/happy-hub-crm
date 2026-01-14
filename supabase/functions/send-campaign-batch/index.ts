@@ -174,6 +174,7 @@ Deno.serve(async (req) => {
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
     // PRIORITY 1: Get recipients ready for retry (their backoff time has passed)
+    // CRITICAL: Only retry recipients that have FAILED, never re-send already sent messages
     const now = new Date().toISOString();
     const { data: retryRecipients } = await supabase
       .from('campaign_recipients')
@@ -185,7 +186,10 @@ Deno.serve(async (req) => {
       .order('next_retry_at', { ascending: true })
       .limit(batchSize);
 
-    // PRIORITY 2: Get pending recipients (never sent)
+    // PRIORITY 2: Get pending recipients (never sent before)
+    // CRITICAL: We explicitly check for 'pending' status to ensure we never send to:
+    // - Recipients with status 'sent' (already delivered successfully)
+    // - Recipients with status 'delivered' (confirmed delivery)
     let pendingRecipients: typeof retryRecipients = [];
     const retryCount = retryRecipients?.length || 0;
     
@@ -199,6 +203,34 @@ Deno.serve(async (req) => {
         .limit(batchSize - retryCount);
       
       pendingRecipients = pending || [];
+    }
+    
+    // SAFETY CHECK: Log phone numbers we're about to process for debugging
+    const allPhonesToProcess = [...(retryRecipients || []), ...pendingRecipients].map(r => r.phone);
+    console.log(`[Batch] Processing phones: ${allPhonesToProcess.join(', ')}`);
+    
+    // DOUBLE CHECK: Verify no recipients in this batch have already been sent
+    if (allPhonesToProcess.length > 0) {
+      const { data: alreadySent } = await supabase
+        .from('campaign_recipients')
+        .select('phone')
+        .eq('campaign_id', campaignId)
+        .in('phone', allPhonesToProcess)
+        .in('status', ['sent', 'delivered']);
+      
+      if (alreadySent && alreadySent.length > 0) {
+        console.warn(`[Batch] SKIPPING already sent phones: ${alreadySent.map(r => r.phone).join(', ')}`);
+        // Filter out already sent recipients
+        const sentPhones = new Set(alreadySent.map(r => r.phone));
+        if (retryRecipients) {
+          retryRecipients.forEach((r, idx) => {
+            if (sentPhones.has(r.phone)) {
+              retryRecipients.splice(idx, 1);
+            }
+          });
+        }
+        pendingRecipients = pendingRecipients?.filter(r => !sentPhones.has(r.phone)) || [];
+      }
     }
 
     // Combine recipients
