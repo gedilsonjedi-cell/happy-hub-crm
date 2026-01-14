@@ -94,12 +94,28 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
     setFilteredLeads(filtered);
   }, [leads, filterType, selectedTag, selectedDate, searchTerm]);
 
-  // Parse numbers when text changes
+  // Parse and normalize numbers when text changes
   useEffect(() => {
     const numbers = numberList
       .split(/[\n,;]/)
-      .map(n => n.replace(/\D/g, ''))
-      .filter(n => n.length >= 10 && n.length <= 13);
+      .map(n => {
+        let digits = n.replace(/\D/g, '');
+        
+        // Normalize: add 55 prefix if not present
+        if (digits.length >= 10 && digits.length <= 11) {
+          // Number without country code (10 or 11 digits)
+          digits = '55' + digits;
+        } else if (digits.length === 12 && !digits.startsWith('55')) {
+          // 12 digits but doesn't start with 55
+          digits = '55' + digits.slice(digits.length - 11);
+        } else if (digits.length === 13 && !digits.startsWith('55')) {
+          // 13 digits but doesn't start with 55
+          digits = '55' + digits.slice(digits.length - 11);
+        }
+        
+        return digits;
+      })
+      .filter(n => n.length >= 12 && n.length <= 13 && n.startsWith('55'));
     setParsedNumbers([...new Set(numbers)]);
   }, [numberList]);
 
@@ -108,7 +124,14 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
     if (sourceType === "contacts") {
       const selectedPhones = leads
         .filter(lead => selectedLeadIds.includes(lead.id))
-        .map(lead => lead.phone.replace(/\D/g, ''));
+        .map(lead => {
+          let digits = lead.phone.replace(/\D/g, '');
+          // Normalize: add 55 prefix if not present
+          if (digits.length >= 10 && digits.length <= 11) {
+            digits = '55' + digits;
+          }
+          return digits;
+        });
       onSelectionChange({ phones: selectedPhones, source: "contacts" });
     } else if (sourceType === "numbers") {
       onSelectionChange({ phones: parsedNumbers, source: "numbers" });
