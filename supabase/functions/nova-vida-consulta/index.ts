@@ -32,6 +32,8 @@ async function getToken(forceRefresh = false): Promise<string> {
     throw new Error('Credenciais Nova Vida TI não configuradas');
   }
 
+  console.log('Token request credentials:', { usuario, cliente, senhaLength: senha?.length });
+  
   const response = await fetch('https://wsnv.novavidati.com.br/wslocalizador.asmx/GerarTokenJson', {
     method: 'POST',
     headers: {
@@ -46,15 +48,23 @@ async function getToken(forceRefresh = false): Promise<string> {
     }),
   });
 
+  const tokenData = await response.text();
+  console.log('Token API response status:', response.status);
+  console.log('Token API raw response:', tokenData.substring(0, 200));
+
   if (!response.ok) {
-    throw new Error(`Erro ao gerar token: ${response.status}`);
+    throw new Error(`Erro ao gerar token: ${response.status} - ${tokenData}`);
   }
 
-  const tokenData = await response.text();
+  // Check if token response contains error
+  if (tokenData.includes('ERRO') || tokenData.includes('INVALIDO') || tokenData.includes('EXPIRADO')) {
+    throw new Error(`Credenciais inválidas: ${tokenData}`);
+  }
+
   cachedToken = tokenData.replace(/"/g, '').trim();
   tokenExpiry = now + 24 * 60 * 60 * 1000; // 24 hours
   
-  console.log('New token generated successfully');
+  console.log('New token generated successfully, length:', cachedToken.length);
   return cachedToken;
 }
 
@@ -75,22 +85,25 @@ async function queryNVCHECK(documento: string, token: string): Promise<any> {
   });
 
   if (!response.ok) {
-    throw new Error(`Erro na consulta: ${response.status}`);
+    const errorText = await response.text();
+    console.error('NVCHECK API error response:', errorText);
+    throw new Error(`Erro na consulta: ${response.status} - ${errorText}`);
   }
 
   const result = await response.json();
   
-  console.log('API response type:', typeof result?.d);
+  console.log('NVCHECK API raw response:', JSON.stringify(result).substring(0, 300));
   
   // Check if token expired in the response - handle various formats
   const responseStr = typeof result?.d === 'string' ? result.d : JSON.stringify(result?.d);
-  if (responseStr.includes('TOKEN EXPIRADO') || responseStr.includes('TOKEN_EXPIRED')) {
+  if (responseStr.includes('TOKEN EXPIRADO') || responseStr.includes('TOKEN_EXPIRED') || responseStr.includes('EXPIRADO')) {
+    console.error('Token expired in response:', responseStr.substring(0, 200));
     throw new Error('TOKEN_EXPIRED');
   }
   
   // Check if result is valid
   if (typeof result?.d === 'string' && !result.d.includes('CONSULTA')) {
-    console.error('Invalid API response:', result.d.substring(0, 100));
+    console.error('Invalid API response:', result.d.substring(0, 200));
     throw new Error(`Resposta inválida da API: ${result.d.substring(0, 100)}`);
   }
 
