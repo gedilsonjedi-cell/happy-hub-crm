@@ -140,6 +140,12 @@
   .animate-slide-up {
     animation: slideUp 0.4s ease-out;
   }
+
+  /* Text overflow utilities */
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }
 
 @keyframes fadeIn {
