@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
-import { User, UserCheck, Loader2, X } from "lucide-react";
+import { User, UserCheck, Loader2, X, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Profile {
@@ -41,9 +43,16 @@ export const AssignAttendantDialog = ({
   onAssigned,
 }: AssignAttendantDialogProps) => {
   const { user } = useAuth();
+  const { isSuperAdmin, isAdmin, isSupervisor, isAtendente } = useUserRole();
   const [attendants, setAttendants] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState<string | null>(null);
+  
+  // Atendentes só podem atribuir a si mesmos ou remover sua própria atribuição
+  // Apenas admins e supervisores podem transferir atendimentos de outros
+  const canTransferFromOthers = isSuperAdmin || isAdmin || isSupervisor;
+  const isAssignedToSomeoneElse = currentAssignedTo && currentAssignedTo !== user?.id;
+  const cannotTakeOver = isAtendente && isAssignedToSomeoneElse;
 
   useEffect(() => {
     const fetchAttendants = async () => {
@@ -161,6 +170,17 @@ export const AssignAttendantDialog = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Alerta para atendentes que não podem transferir */}
+          {cannotTakeOver && (
+            <Alert variant="destructive">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertDescription>
+                Este atendimento já está atribuído a outro atendente. 
+                Apenas administradores e supervisores podem transferir atendimentos.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {currentAssignedTo && (
             <div className="p-3 bg-muted/50 rounded-lg">
               <p className="text-xs text-muted-foreground mb-2">Atendente atual:</p>
@@ -173,19 +193,22 @@ export const AssignAttendantDialog = ({
                   </Avatar>
                   <span className="font-medium text-sm">{currentAssignedToName}</span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleAssign(null)}
-                  disabled={assigning !== null}
-                  className="text-destructive hover:text-destructive"
-                >
-                  {assigning === "remove" ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <X className="w-4 h-4" />
-                  )}
-                </Button>
+                {/* Só mostra botão de remover se pode transferir ou é o próprio atendente */}
+                {(canTransferFromOthers || currentAssignedTo === user?.id) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleAssign(null)}
+                    disabled={assigning !== null}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {assigning === "remove" ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -206,16 +229,21 @@ export const AssignAttendantDialog = ({
                   const isCurrentAssigned = attendant.user_id === currentAssignedTo;
                   const displayName = attendant.display_name || attendant.email || "Atendente";
                   const initials = displayName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                  
+                  // Atendente só pode se atribuir, não pode pegar de outros
+                  const isBlocked = cannotTakeOver && attendant.user_id !== currentAssignedTo;
 
                   return (
                     <button
                       key={attendant.user_id}
-                      onClick={() => !isCurrentAssigned && handleAssign(attendant)}
-                      disabled={isCurrentAssigned || assigning !== null}
+                      onClick={() => !isCurrentAssigned && !isBlocked && handleAssign(attendant)}
+                      disabled={isCurrentAssigned || assigning !== null || isBlocked}
                       className={cn(
                         "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left",
                         isCurrentAssigned
                           ? "bg-primary/10 border border-primary/30 cursor-default"
+                          : isBlocked
+                          ? "opacity-50 cursor-not-allowed border border-transparent"
                           : "hover:bg-muted/50 border border-transparent"
                       )}
                     >
