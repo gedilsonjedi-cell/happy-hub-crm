@@ -94,6 +94,10 @@ export const AssignAttendantDialog = ({
     setAssigning(attendant?.user_id || "remove");
     
     const normalizedPhone = conversationPhone.replace(/\D/g, '');
+    
+    // Capture previous assignment for transfer notification
+    const previousAssignedTo = currentAssignedTo;
+    const previousAssignedToName = currentAssignedToName;
 
     try {
       if (attendant) {
@@ -136,7 +140,22 @@ export const AssignAttendantDialog = ({
         }
 
         const attendantName = attendant.display_name || attendant.email || "Atendente";
-        toast.success(`Conversa atribuída para ${attendantName}`);
+        
+        // Check if this is a transfer (previous attendant existed and is different)
+        const isTransfer = previousAssignedTo && previousAssignedTo !== attendant.user_id;
+        
+        if (isTransfer) {
+          toast.success(
+            `Atendimento transferido de ${previousAssignedToName} para ${attendantName}`,
+            {
+              description: "O atendente anterior foi notificado sobre a transferência.",
+              duration: 5000,
+            }
+          );
+        } else {
+          toast.success(`Conversa atribuída para ${attendantName}`);
+        }
+        
         onAssigned(attendant.user_id, attendantName);
       } else {
         // Remove assignment
