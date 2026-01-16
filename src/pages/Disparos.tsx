@@ -19,7 +19,8 @@ import {
   Smartphone,
   Eye,
   RefreshCw,
-  Bot
+  Bot,
+  RotateCcw
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
 import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
+import { RecycleFailuresDialog } from "@/components/campaigns/RecycleFailuresDialog";
 import { useCampaignProcessor } from "@/hooks/useCampaignProcessor";
 
 interface Channel {
@@ -136,6 +138,8 @@ const Disparos = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showRecycleDialog, setShowRecycleDialog] = useState(false);
+  const [recyclingCampaign, setRecyclingCampaign] = useState<Campaign | null>(null);
   
   // Filter campaigns based on user's sector access
   const campaigns = allCampaigns.filter(c => canSeeSector(c.sector_id ?? null));
@@ -740,6 +744,11 @@ const Disparos = () => {
       setSelectedCampaign(campaign);
       setShowDetailsDialog(true);
     }
+  };
+
+  const handleRecycleCampaign = (campaign: Campaign) => {
+    setRecyclingCampaign(campaign);
+    setShowRecycleDialog(true);
   };
 
   const stats = {
@@ -1468,6 +1477,12 @@ const Disparos = () => {
                             Ver detalhes
                           </DropdownMenuItem>
                           <DropdownMenuItem>Duplicar</DropdownMenuItem>
+                          {campaign.status === "completed" && campaign.failed_count > 0 && (
+                            <DropdownMenuItem onClick={() => handleRecycleCampaign(campaign)}>
+                              <RotateCcw className="w-4 h-4 mr-2" />
+                              Reciclar falhas ({campaign.failed_count})
+                            </DropdownMenuItem>
+                          )}
                           {campaign.status === "running" && (
                             <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
                               <Pause className="w-4 h-4 mr-2" />
@@ -1502,6 +1517,14 @@ const Disparos = () => {
         campaign={selectedCampaign}
         open={showDetailsDialog}
         onOpenChange={setShowDetailsDialog}
+      />
+
+      {/* Recycle Failures Dialog */}
+      <RecycleFailuresDialog
+        campaign={recyclingCampaign}
+        open={showRecycleDialog}
+        onOpenChange={setShowRecycleDialog}
+        onSuccess={fetchData}
       />
     </MainLayout>
   );
