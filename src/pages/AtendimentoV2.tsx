@@ -217,12 +217,12 @@ const AtendimentoV2 = () => {
 
   return (
     <TopNavLayout>
-      <div className="h-8 bg-primary/10 border-b border-primary/20 flex items-center px-4 text-sm text-primary">
+      <div className="h-8 bg-primary/10 border-b border-primary/20 flex items-center px-4 text-sm text-primary shrink-0">
         <span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center text-xs">i</span>Ative as notificações na web</span>
       </div>
-      <div className="flex-1 flex overflow-hidden">
-        <div className="w-[380px] border-r border-border flex flex-col bg-card">
-          <div className="flex items-center gap-2 p-3 border-b border-border">
+      <div className="flex-1 flex min-h-0">
+        <div className="w-[380px] border-r border-border flex flex-col bg-card min-h-0">
+          <div className="flex items-center gap-2 p-3 border-b border-border shrink-0">
             <Button variant={filterTab === "new" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("new")} className="gap-1">Novos{counts.new > 0 && <Badge className="bg-destructive text-destructive-foreground text-[10px] px-1.5 rounded-full">{counts.new}</Badge>}</Button>
             <Button variant={filterTab === "mine" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("mine")}>Meus</Button>
             {canSeeOthers && <Button variant={filterTab === "others" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("others")}>Outros</Button>}
@@ -230,12 +230,12 @@ const AtendimentoV2 = () => {
             <Button variant="ghost" size="icon" className="h-8 w-8"><Archive className="w-4 h-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
           </div>
-          <div className="flex items-center gap-2 p-3 border-b border-border">
+          <div className="flex items-center gap-2 p-3 border-b border-border shrink-0">
             <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Buscar atendimento" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 bg-background border-border h-9" /></div>
             <Button variant="ghost" size="icon" className="h-9 w-9"><Filter className="w-4 h-4" /></Button>
             <Button variant="ghost" size="icon" className="h-9 w-9"><ArrowUpDown className="w-4 h-4" /></Button>
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             {loading ? <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div> : filtered.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-muted-foreground"><MessageSquare className="w-12 h-12 mb-2 opacity-50" /><p className="text-sm">Nenhuma conversa</p></div> : filtered.map(conv => (
               <div key={conv.phone} onClick={() => setSelectedConversation(conv)} className={cn("flex items-start gap-3 p-3 border-b border-border cursor-pointer hover:bg-muted/50", selectedConversation?.phone === conv.phone && "bg-muted")}>
                 <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary/10 text-primary text-sm">{(conv.name || conv.phone)?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
@@ -244,15 +244,15 @@ const AtendimentoV2 = () => {
               </div>
             ))}
           </ScrollArea>
-          <div className="p-3 border-t border-border flex items-center gap-2"><Select defaultValue="+55"><SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger><SelectContent className="bg-card border-border"><SelectItem value="+55">+55</SelectItem></SelectContent></Select><Input placeholder="(00) 0000-0000" className="flex-1 h-9 bg-background border-border" /><Button size="sm" variant="outline" className="h-9">Conversar</Button></div>
+          <div className="p-3 border-t border-border flex items-center gap-2 shrink-0"><Select defaultValue="+55"><SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger><SelectContent className="bg-card border-border"><SelectItem value="+55">+55</SelectItem></SelectContent></Select><Input placeholder="(00) 0000-0000" className="flex-1 h-9 bg-background border-border" /><Button size="sm" variant="outline" className="h-9">Conversar</Button></div>
         </div>
-        <div className="flex-1 flex flex-col bg-background">
+        <div className="flex-1 flex flex-col bg-background min-h-0">
           {selectedConversation ? (
             <>
-              <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-card">
+              <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-card shrink-0">
                 <div className="flex items-center gap-3"><Avatar className="h-9 w-9"><AvatarFallback className="bg-primary/10 text-primary">{(selectedConversation.name || selectedConversation.phone)?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div><p className="font-medium text-foreground">{selectedConversation.name || selectedConversation.phone}</p><p className="text-xs text-muted-foreground">{selectedConversation.phone}</p></div></div>
               </div>
-              <ScrollArea className="flex-1 p-4">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
                 <div className="space-y-3 max-w-3xl mx-auto">
                   {messages.map(msg => {
                     const out = msg.direction === "outbound";
@@ -260,8 +260,8 @@ const AtendimentoV2 = () => {
                   })}
                   <div ref={messagesEndRef} />
                 </div>
-              </ScrollArea>
-              <div className="border-t border-border p-3 bg-card">
+              </div>
+              <div className="border-t border-border p-3 bg-card shrink-0">
                 <div className="flex items-center gap-2 max-w-3xl mx-auto">
                   <Textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Digite sua mensagem..." className="flex-1 min-h-[40px] max-h-32 resize-none bg-background border-border" rows={1} />
                   <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim()} size="icon">{sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</Button>
