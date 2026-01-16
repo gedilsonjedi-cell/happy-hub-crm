@@ -189,41 +189,47 @@ async function getSectorFromCampaign(
   organizationId: string,
   senderPhone: string
 ): Promise<string | null> {
-  // Check if this phone was a recipient of a recent campaign with a team/sector
-  const { data: recipient } = await supabase
-    .from('campaign_recipients')
-    .select('campaign_id')
-    .eq('phone', senderPhone)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Normalize phone for search
+  const normalizedPhone = senderPhone.replace(/\D/g, '');
+  
+  // Try multiple phone formats for matching
+  const phonePatterns = [
+    senderPhone,
+    normalizedPhone,
+    `+${normalizedPhone}`,
+    normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone,
+    `55${normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone}`,
+  ];
 
-  if (!recipient?.campaign_id) {
+  // Check if this phone was a recipient of a recent campaign with a sector_id
+  const { data: recipients } = await supabase
+    .from('campaign_recipients')
+    .select('campaign_id, phone')
+    .in('phone', phonePatterns)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (!recipients || recipients.length === 0) {
+    console.log('No campaign recipient found for phone:', senderPhone);
     return null;
   }
 
-  // Get campaign team
-  const { data: campaign } = await supabase
-    .from('campaigns')
-    .select('team')
-    .eq('id', recipient.campaign_id)
-    .single();
-
-  if (campaign?.team) {
-    // Find sector by name
-    const { data: sector } = await supabase
-      .from('sectors')
-      .select('id')
+  // Get campaign with sector_id (directly from campaigns table)
+  for (const recipient of recipients) {
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('sector_id')
+      .eq('id', recipient.campaign_id)
       .eq('organization_id', organizationId)
-      .eq('name', campaign.team)
       .single();
 
-    if (sector) {
-      console.log('Found sector from campaign:', sector.id);
-      return sector.id;
+    if (campaign?.sector_id) {
+      console.log('Found sector_id from campaign:', campaign.sector_id, 'for phone:', senderPhone);
+      return campaign.sector_id;
     }
   }
 
+  console.log('Campaign found but no sector_id assigned for phone:', senderPhone);
   return null;
 }
 
@@ -806,7 +812,11 @@ Deno.serve(async (req) => {
             .single();
 
           if (!existingAssignment) {
-            // NEW conversation - check if lead is in someone's portfolio first
+            // NEW conversation - Get sector from campaign FIRST (for visibility filtering)
+            const sectorId = await getSectorFromCampaign(channel.organization_id!, senderPhone);
+            console.log('Sector for new conversation:', sectorId);
+            
+            // Check if lead is in someone's portfolio first
             const { data: portfolioEntry } = await supabase
               .from('client_portfolios')
               .select('user_id')
@@ -832,30 +842,25 @@ Deno.serve(async (req) => {
                 assignedTo = portfolioEntry.user_id;
                 status = 'active';
               }
-            } else {
-              // Not in portfolio - try auto-distribution by department
-              console.log('Lead not in portfolio, checking for auto-distribution...');
+            } else if (sectorId) {
+              // Not in portfolio but has sector - try auto-distribution by department
+              console.log('Lead not in portfolio, auto-distributing by sector:', sectorId);
               
-              // Get sector from campaign (if this message is response to a campaign)
-              const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
+              // Try to find available attendant in this sector (round-robin)
+              const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
               
-              if (sectorId) {
-                // Try to find available attendant in this sector (round-robin)
-                const nextAttendant = await getNextAvailableAttendant(channel.organization_id, sectorId);
-                
-                if (nextAttendant) {
-                  assignedTo = nextAttendant.userId;
-                  status = 'active';
-                  console.log('Auto-assigned to:', nextAttendant.userName);
-                } else {
-                  console.log('No online attendants in sector, conversation goes to Novos');
-                }
+              if (nextAttendant) {
+                assignedTo = nextAttendant.userId;
+                status = 'active';
+                console.log('Auto-assigned to:', nextAttendant.userName);
               } else {
-                console.log('No sector found for this conversation, goes to Novos');
+                console.log('No online attendants in sector, conversation goes to Novos of that sector');
               }
+            } else {
+              console.log('No sector found for this conversation, goes to general Novos');
             }
 
-            // Create assignment
+            // Create assignment WITH sector_id for visibility filtering
             const { error: assignError } = await supabase
               .from('conversation_assignments')
               .insert({
@@ -866,6 +871,7 @@ Deno.serve(async (req) => {
                 assigned_at: assignedTo ? new Date().toISOString() : null,
                 status: status,
                 is_bot_handling: !assignedTo,
+                sector_id: sectorId, // CRITICAL: Store sector for visibility filtering
               });
 
             if (assignError) {
@@ -889,30 +895,45 @@ Deno.serve(async (req) => {
             const wasArchived = existingAssignment.status === 'archived';
             const hasAttendant = !!existingAssignment.assigned_to;
             
+            // Get sector from campaign for existing assignments too
+            const sectorId = await getSectorFromCampaign(channel.organization_id!, senderPhone);
+            
             if (wasArchived) {
               // CRITICAL: If conversation was ARCHIVED, reset it completely
               // This allows a new attendant to pick it up
               console.log('Archived conversation reactivated - resetting assignment for new distribution');
               
+              // Try auto-distribution when reactivating
+              let newAssignedTo: string | null = null;
+              let newStatus = 'pending';
+              
+              if (sectorId) {
+                const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
+                if (nextAttendant) {
+                  newAssignedTo = nextAttendant.userId;
+                  newStatus = 'active';
+                  console.log('Reactivated and auto-assigned to:', nextAttendant.userName);
+                }
+              }
+              
               await supabase
                 .from('conversation_assignments')
                 .update({
-                  assigned_to: null,
-                  assigned_at: null,
-                  status: 'pending',
-                  is_bot_handling: true,
+                  assigned_to: newAssignedTo,
+                  assigned_at: newAssignedTo ? new Date().toISOString() : null,
+                  status: newStatus,
+                  is_bot_handling: !newAssignedTo,
+                  sector_id: sectorId, // Update sector on reactivation
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', existingAssignment.id);
 
-              console.log('Conversation reset to pending (Novos) - available for any attendant');
+              console.log('Conversation reactivated with sector:', sectorId);
             } else if (!hasAttendant) {
               // No attendant assigned yet - try auto-distribution
               // This happens when conversation is in "pending" status
-              const sectorId = await getSectorFromCampaign(channel.organization_id, senderPhone);
-              
               if (sectorId) {
-                const nextAttendant = await getNextAvailableAttendant(channel.organization_id, sectorId);
+                const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
                 
                 if (nextAttendant) {
                   await supabase
@@ -922,11 +943,12 @@ Deno.serve(async (req) => {
                       status: 'active',
                       is_bot_handling: false,
                       assigned_at: new Date().toISOString(),
+                      sector_id: sectorId, // Ensure sector is set
                       updated_at: new Date().toISOString(),
                     })
                     .eq('id', existingAssignment.id);
 
-                  console.log('Assignment updated - auto-assigned to:', nextAttendant.userName);
+                  console.log('Assignment updated - auto-assigned to:', nextAttendant.userName, 'sector:', sectorId);
                 }
               }
             } else {

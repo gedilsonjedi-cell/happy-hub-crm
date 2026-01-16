@@ -2686,6 +2686,10 @@ export type Database = {
         Returns: boolean
       }
       generate_referral_code: { Args: never; Returns: string }
+      get_campaign_sector_for_phone: {
+        Args: { _organization_id: string; _phone: string }
+        Returns: string
+      }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
@@ -2734,6 +2738,10 @@ export type Database = {
       update_session_activity: { Args: never; Returns: boolean }
       user_can_access_campaign: {
         Args: { campaign_sector_id: string }
+        Returns: boolean
+      }
+      user_can_access_conversation: {
+        Args: { conversation_sector_id: string }
         Returns: boolean
       }
       validate_user_session: {
