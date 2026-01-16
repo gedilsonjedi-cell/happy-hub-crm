@@ -2732,6 +2732,10 @@ export type Database = {
         Returns: undefined
       }
       update_session_activity: { Args: never; Returns: boolean }
+      user_can_access_campaign: {
+        Args: { campaign_sector_id: string }
+        Returns: boolean
+      }
       validate_user_session: {
         Args: { _session_token: string }
         Returns: boolean
