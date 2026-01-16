@@ -64,6 +64,7 @@ interface Conversation {
   status: string;
   assignedTo: string | null;
   assignedToName: string | null;
+  sectorId: string | null;
 }
 
 interface Channel {
@@ -78,7 +79,7 @@ type FilterTab = "new" | "mine" | "others";
 const AtendimentoV2 = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { hasFullAccess } = useUserSectors();
+  const { hasFullAccess, canSeeSector } = useUserSectors();
   const { isAdmin, isSupervisor } = useUserRole();
   
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
@@ -96,7 +97,10 @@ const AtendimentoV2 = () => {
   const canSeeOthers = hasFullAccess || isAdmin || isSupervisor;
 
   const conversations = useMemo(() => {
-    let filtered = allConversations;
+    // First filter by sector visibility (using RLS on backend, but also filter on frontend for security)
+    let filtered = allConversations.filter(conv => canSeeSector(conv.sectorId));
+    
+    // Then apply user access filter
     if (!canSeeOthers) {
       filtered = filtered.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
     }
@@ -106,16 +110,18 @@ const AtendimentoV2 = () => {
       case "others": return canSeeOthers ? filtered.filter(c => c.assignedTo && c.assignedTo !== user?.id) : [];
       default: return filtered;
     }
-  }, [allConversations, filterTab, user?.id, canSeeOthers]);
+  }, [allConversations, filterTab, user?.id, canSeeOthers, canSeeSector]);
 
   const counts = useMemo(() => {
-    const accessible = canSeeOthers ? allConversations : allConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+    // Filter by sector visibility first
+    const sectorFiltered = allConversations.filter(conv => canSeeSector(conv.sectorId));
+    const accessible = canSeeOthers ? sectorFiltered : sectorFiltered.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
     return {
       new: accessible.filter(c => !c.assignedTo).length,
       mine: accessible.filter(c => c.assignedTo === user?.id).length,
       others: canSeeOthers ? accessible.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0,
     };
-  }, [allConversations, user?.id, canSeeOthers]);
+  }, [allConversations, user?.id, canSeeOthers, canSeeSector]);
 
   useEffect(() => {
     const fetchChannels = async () => {
@@ -146,10 +152,10 @@ const AtendimentoV2 = () => {
 
       const { data: assignments } = await supabase
         .from("conversation_assignments")
-        .select("conversation_phone, assigned_to, status")
+        .select("conversation_phone, assigned_to, status, sector_id")
         .eq("channel_id", selectedChannel.id);
 
-      const assignmentMap = new Map(assignments?.map(a => [a.conversation_phone, { assignedTo: a.assigned_to, status: a.status }]) || []);
+      const assignmentMap = new Map(assignments?.map(a => [a.conversation_phone, { assignedTo: a.assigned_to, status: a.status, sectorId: a.sector_id }]) || []);
       const conversationMap = new Map<string, Conversation>();
       
       messagesData?.forEach(msg => {
@@ -166,6 +172,7 @@ const AtendimentoV2 = () => {
             status: assignment?.status || "pending",
             assignedTo: assignment?.assignedTo || null,
             assignedToName: null,
+            sectorId: assignment?.sectorId || null,
           });
         } else if (msg.direction === "inbound" && msg.status !== "read") {
           conversationMap.get(phone)!.unreadCount++;
