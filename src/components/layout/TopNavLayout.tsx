@@ -120,9 +120,9 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Top Navigation Bar */}
-      <header className="h-14 border-b border-border bg-card flex items-center px-4 sticky top-0 z-50">
+      <header className="h-14 border-b border-border bg-card flex items-center px-4 shrink-0 z-50">
         {/* Logo */}
         <Link to="/atendimento-v2" className="flex items-center gap-2 mr-8">
           <img src={optimusLogoDark} alt="Optimus" className="h-7" />
@@ -247,7 +247,7 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {children}
       </main>
     </div>
