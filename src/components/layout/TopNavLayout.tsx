@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   MessageSquare, 
@@ -21,17 +21,25 @@ import {
   Tag,
   Clock,
   Zap,
-  Plug
+  Plug,
+  Sun,
+  Moon,
+  X,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useUnreadMessagesCount } from "@/hooks/useUnreadMessagesCount";
 import { OnlineStatusToggle } from "@/components/header/OnlineStatusToggle";
+import { supabase } from "@/integrations/supabase/client";
+import { useTheme } from "next-themes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,11 +47,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuLabel,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import optimusLogoDark from "@/assets/optimus-logo-dark.png";
+import optimusLogoLight from "@/assets/optimus-logo.png";
 
 interface TopNavLayoutProps {
   children: React.ReactNode;
@@ -53,9 +59,40 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { isImpersonating } = useSuperAdmin();
+  const { isImpersonating, setSelectedOrganization } = useSuperAdmin();
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const unreadCount = useUnreadMessagesCount();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { currentBalance } = useOrganizationBalance();
+  const { theme, setTheme } = useTheme();
+  const [organizationName, setOrganizationName] = useState<string>("");
+  const [userProfile, setUserProfile] = useState<{ display_name: string | null; email: string | null } | null>(null);
+
+  useEffect(() => {
+    const fetchOrganization = async () => {
+      if (!effectiveOrganizationId) return;
+      const { data } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", effectiveOrganizationId)
+        .single();
+      if (data) setOrganizationName(data.name);
+    };
+    fetchOrganization();
+  }, [effectiveOrganizationId]);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name, email")
+        .eq("user_id", user.id)
+        .single();
+      if (data) setUserProfile(data);
+    };
+    fetchProfile();
+  }, [user?.id]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -106,7 +143,6 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
     },
   ];
 
-  // Add admin menu if user has admin/supervisor role
   if (isAdmin || isSupervisor || isSuperAdmin) {
     mainNavItems.push({
       label: "Admin",
@@ -121,106 +157,94 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Top Navigation Bar */}
-      <header className="h-14 border-b border-border bg-card flex items-center px-4 shrink-0 z-50">
+      {/* Top Header - Account & Settings */}
+      <header className="h-12 border-b border-border bg-card flex items-center px-4 shrink-0 z-50">
         {/* Logo */}
-        <Link to="/atendimento-v2" className="flex items-center gap-2 mr-8">
-          <img src={optimusLogoDark} alt="Optimus" className="h-7" />
+        <Link to="/atendimento-v2" className="flex items-center gap-2 mr-6">
+          <img 
+            src={theme === 'dark' ? optimusLogoDark : optimusLogoLight} 
+            alt="Optimus" 
+            className="h-6" 
+          />
         </Link>
 
-        {/* Main Navigation */}
-        <nav className="flex items-center gap-1 flex-1">
-          {mainNavItems.map((item) => {
-            if (item.submenu) {
-              return (
-                <DropdownMenu key={item.label}>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      className="gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    >
-                      <item.icon className="w-4 h-4" />
-                      {item.label}
-                      {item.badge && (
-                        <Badge className="ml-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0">
-                          {item.badge}
-                        </Badge>
-                      )}
-                      <ChevronDown className="w-3 h-3 ml-1" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="bg-card border-border min-w-[200px]">
-                    {item.submenu.map((subItem) => (
-                      <DropdownMenuItem 
-                        key={subItem.path}
-                        onClick={() => navigate(subItem.path)}
-                        className={cn(
-                          "cursor-pointer gap-2",
-                          isActive(subItem.path) && "bg-muted"
-                        )}
-                      >
-                        <subItem.icon className="w-4 h-4" />
-                        {subItem.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            }
+        {/* Theme Toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </Button>
 
-            return (
-              <Button
-                key={item.path}
-                variant="ghost"
-                className={cn(
-                  "gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                  isActive(item.path!) && "text-foreground bg-muted"
-                )}
-                onClick={() => navigate(item.path!)}
+        {/* Account Switcher (for admins/impersonating) */}
+        {(isSuperAdmin || isImpersonating) && organizationName && (
+          <div className="flex items-center gap-2 ml-4">
+            <div className="flex items-center gap-1 bg-primary/20 text-primary rounded-full px-3 py-1 text-sm">
+              <span className="w-4 h-4 rounded-full bg-primary/30 flex items-center justify-center text-[10px]">👁</span>
+              <span className="font-medium">{organizationName}</span>
+              {isImpersonating && (
+                <button 
+                  onClick={() => setSelectedOrganization(null)}
+                  className="ml-1 hover:bg-primary/30 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            {isSuperAdmin && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 gap-1 text-xs"
+                onClick={() => navigate("/super-admin")}
               >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-                {item.badge && (
-                  <Badge className="ml-1 bg-destructive text-destructive-foreground text-[10px] px-1.5 py-0 rounded-full min-w-[18px] h-[18px] flex items-center justify-center">
-                    {item.badge}
-                  </Badge>
-                )}
+                <RefreshCw className="w-3 h-3" />
+                Trocar
               </Button>
-            );
-          })}
-        </nav>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1" />
 
         {/* Right Side Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {/* Online Status Toggle */}
           <OnlineStatusToggle />
 
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <Bell className="w-5 h-5" />
-          </Button>
-
-          {/* Help */}
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <HelpCircle className="w-5 h-5" />
+          {/* Balance */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-8 gap-1.5 bg-primary/10 border-primary/30 text-primary hover:bg-primary/20"
+            onClick={() => navigate("/saldo")}
+          >
+            <Wallet className="w-4 h-4" />
+            <span className="font-semibold">R$ {currentBalance?.toFixed(2) || '0,00'}</span>
           </Button>
 
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                    {user?.email?.[0]?.toUpperCase() || "U"}
+              <Button variant="ghost" className="h-8 gap-2 px-2">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                    {userProfile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
+                <span className="text-sm text-muted-foreground hidden sm:inline">
+                  {userProfile?.display_name || user?.email?.split('@')[0]}
+                </span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-card border-border w-56">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium">{user?.email}</p>
-                  <p className="text-xs text-muted-foreground">Conta</p>
+                  <p className="text-sm font-medium">{userProfile?.display_name || user?.email}</p>
+                  <p className="text-xs text-muted-foreground">{user?.email}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -245,6 +269,84 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Second Header - Navigation Menu */}
+      <nav className="h-11 border-b border-border bg-muted/30 flex items-center px-4 shrink-0 z-40">
+        <div className="flex items-center gap-1">
+          {mainNavItems.map((item) => {
+            if (item.submenu) {
+              return (
+                <DropdownMenu key={item.label}>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 h-8"
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                      {item.badge && (
+                        <Badge className="ml-1 bg-primary text-primary-foreground text-[9px] px-1 py-0">
+                          {item.badge}
+                        </Badge>
+                      )}
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-card border-border min-w-[180px]">
+                    {item.submenu.map((subItem) => (
+                      <DropdownMenuItem 
+                        key={subItem.path}
+                        onClick={() => navigate(subItem.path)}
+                        className={cn(
+                          "cursor-pointer gap-2 text-sm",
+                          isActive(subItem.path) && "bg-muted"
+                        )}
+                      >
+                        <subItem.icon className="w-4 h-4" />
+                        {subItem.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            }
+
+            return (
+              <Button
+                key={item.path}
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 h-8",
+                  isActive(item.path!) && "text-foreground bg-muted"
+                )}
+                onClick={() => navigate(item.path!)}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+                {item.badge && (
+                  <Badge className="ml-1 bg-destructive text-destructive-foreground text-[9px] px-1 py-0 rounded-full min-w-[16px] h-[16px] flex items-center justify-center">
+                    {item.badge}
+                  </Badge>
+                )}
+              </Button>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Notifications & Help */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+            <Bell className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+            <HelpCircle className="w-4 h-4" />
+          </Button>
+        </div>
+      </nav>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
