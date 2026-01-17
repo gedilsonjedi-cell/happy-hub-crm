@@ -1,20 +1,49 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { 
   MessageSquare, 
   Send, 
   Search,
+  Phone,
   MoreVertical,
+  ArrowLeft,
+  Bell,
+  BellOff,
   Loader2,
+  User,
   Check,
   CheckCheck,
   Clock,
+  Paperclip,
   Archive,
-  Filter,
-  ArrowUpDown,
-  Settings,
+  Play,
+  Trash2,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Volume2,
+  VolumeX,
+  Zap,
+  FileText,
+  Image,
+  Bot,
+  CheckCircle2,
+  Sparkles,
+  AlertTriangle,
+  Ban,
+  Briefcase,
+  Tag,
+  GitBranch,
+  Video,
+  Music,
+  File,
+  CalendarClock,
+  StickyNote,
   Plus,
   Mic,
-  File
+  Square,
+  X,
+  UserCheck,
+  ZoomIn
 } from "lucide-react";
 import { TopNavLayout } from "@/components/layout/TopNavLayout";
 import { Button } from "@/components/ui/button";
@@ -30,15 +59,33 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
-import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
+import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
+import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
+import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
+import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
+import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
+import { AssignTagsFromChatDialog } from "@/components/whatsapp/AssignTagsFromChatDialog";
+import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
+import { ChangePipelineStageDialog } from "@/components/whatsapp/ChangePipelineStageDialog";
+import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDialog";
+import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
+import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
+import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
+import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
+import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
+import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 
 interface Message {
   id: string;
@@ -52,6 +99,15 @@ interface Message {
   direction: string;
   status: string | null;
   created_at: string;
+  metadata: Record<string, unknown> | null;
+  error_message?: string | null;
+}
+
+interface ConversationNote {
+  id: string;
+  content: string;
+  created_at: string;
+  created_by: string;
 }
 
 interface Conversation {
@@ -59,9 +115,10 @@ interface Conversation {
   name: string | null;
   lastMessage: string;
   lastMessageTime: string;
+  lastInboundTime: string | null;
   unreadCount: number;
   channelId: string | null;
-  status: string;
+  status: "pending" | "in_progress" | "resolved" | "archived";
   assignedTo: string | null;
   assignedToName: string | null;
   sectorId: string | null;
@@ -74,244 +131,1959 @@ interface Channel {
   provider: string;
 }
 
-type FilterTab = "new" | "mine" | "others";
+interface QuickResponse {
+  shortcut: string | null;
+  content: string;
+}
+
+const statusConfig: Record<string, { label: string; className: string }> = {
+  pending: { label: "Pendente", className: "bg-warning/10 text-warning border-warning/30" },
+  in_progress: { label: "Em atendimento", className: "bg-primary/10 text-primary border-primary/30" },
+  resolved: { label: "Resolvido", className: "bg-muted text-muted-foreground border-border" },
+  archived: { label: "Arquivado", className: "bg-destructive/10 text-destructive border-destructive/30" },
+  active: { label: "Ativo", className: "bg-primary/10 text-primary border-primary/30" }
+};
+
+const getStatusConfig = (status: string) => {
+  return statusConfig[status] || { label: status || "Pendente", className: "bg-muted text-muted-foreground border-border" };
+};
+
+type FilterStatus = "new" | "mine" | "others";
+
+// Audio notification using Web Audio API
+const useNotificationSound = () => {
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  const playNotificationSound = useCallback(() => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      const ctx = audioContextRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.setValueAtTime(1047, ctx.currentTime + 0.1);
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.3);
+    } catch (error) {
+      console.log("Could not play notification sound:", error);
+    }
+  }, []);
+  
+  return playNotificationSound;
+};
 
 const AtendimentoV2 = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { hasFullAccess, canSeeSector } = useUserSectors();
-  const { isAdmin, isSupervisor } = useUserRole();
-  
+  const { canSeeSector } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  
+  // Filter conversations based on user's sector access
+  const conversations = allConversations.filter(c => canSeeSector(c.sectorId));
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [templates, setTemplates] = useState<Map<string, { 
+    content: string; 
+    variables: string[] | null;
+    components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
+  }>>(new Map());
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterTab, setFilterTab] = useState<FilterTab>("new");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("new");
+  const [showArchived, setShowArchived] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   
+  const [showQuickResponses, setShowQuickResponses] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showManualSendDialog, setShowManualSendDialog] = useState(false);
+  const [manualPhoneInput, setManualPhoneInput] = useState("");
+  const [showSalesAssistant, setShowSalesAssistant] = useState(false);
+  const [showPortfolioDialog, setShowPortfolioDialog] = useState(false);
+  const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [showPipelineStageDialog, setShowPipelineStageDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showNotesDialog, setShowNotesDialog] = useState(false);
+  const [showLeadDetailsDialog, setShowLeadDetailsDialog] = useState(false);
+  const [showAssignAttendantDialog, setShowAssignAttendantDialog] = useState(false);
+  const [showSaleConfirmationDialog, setShowSaleConfirmationDialog] = useState(false);
+  const [conversationToArchive, setConversationToArchive] = useState<Conversation | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{
+    isOpen: boolean;
+    url: string;
+    type: "image" | "video" | "document" | "file" | "sticker";
+    fileName?: string;
+  }>({ isOpen: false, url: "", type: "image" });
+  const [contactTags, setContactTags] = useState<string[]>([]);
+  const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const canSeeOthers = hasFullAccess || isAdmin || isSupervisor;
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  
+  const playNotificationSound = useNotificationSound();
+  const { 
+    isRecording, 
+    recordingDuration, 
+    startRecording, 
+    stopRecording, 
+    cancelRecording
+  } = useAudioRecording();
 
-  const conversations = useMemo(() => {
-    // First filter by sector visibility (using RLS on backend, but also filter on frontend for security)
-    let filtered = allConversations.filter(conv => canSeeSector(conv.sectorId));
-    
-    // Then apply user access filter
-    if (!canSeeOthers) {
-      filtered = filtered.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
-    }
-    switch (filterTab) {
-      case "new": return filtered.filter(c => !c.assignedTo);
-      case "mine": return filtered.filter(c => c.assignedTo === user?.id);
-      case "others": return canSeeOthers ? filtered.filter(c => c.assignedTo && c.assignedTo !== user?.id) : [];
-      default: return filtered;
-    }
-  }, [allConversations, filterTab, user?.id, canSeeOthers, canSeeSector]);
+  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
 
-  const counts = useMemo(() => {
-    // Filter by sector visibility first
-    const sectorFiltered = allConversations.filter(conv => canSeeSector(conv.sectorId));
-    const accessible = canSeeOthers ? sectorFiltered : sectorFiltered.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
-    return {
-      new: accessible.filter(c => !c.assignedTo).length,
-      mine: accessible.filter(c => c.assignedTo === user?.id).length,
-      others: canSeeOthers ? accessible.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0,
+  // Fetch quick responses for shortcut detection
+  useEffect(() => {
+    const fetchQuickResponses = async () => {
+      const { data } = await supabase
+        .from("quick_responses")
+        .select("shortcut, content")
+        .not("shortcut", "is", null);
+      
+      if (data) {
+        setQuickResponses(data);
+      }
     };
-  }, [allConversations, user?.id, canSeeOthers, canSeeSector]);
+    
+    if (user) {
+      fetchQuickResponses();
+    }
+  }, [user]);
 
+  // Request notification permission
+  const requestNotificationPermission = useCallback(async () => {
+    if ("Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationsEnabled(permission === "granted");
+      if (permission === "granted") {
+        toast.success("Notificações ativadas!");
+      }
+    }
+  }, []);
+
+  // Show notification for new message
+  const showNotification = useCallback((message: Message) => {
+    if (notificationsEnabled && document.hidden && message.direction === "inbound") {
+      const notification = new Notification("Nova mensagem WhatsApp", {
+        body: `${message.sender_name || message.sender_phone}: ${message.content}`,
+        icon: "/favicon.ico",
+        tag: message.id
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    }
+  }, [notificationsEnabled]);
+
+  // Fetch channels
   useEffect(() => {
     const fetchChannels = async () => {
       if (!effectiveOrganizationId) return;
-      const { data } = await supabase
+      
+      const { data, error } = await supabase
         .from("channels")
         .select("id, name, phone, provider")
         .eq("organization_id", effectiveOrganizationId)
         .in("provider", ["meta", "zapi"])
         .eq("connected", true);
-      if (data) {
+
+      if (!error && data) {
         setChannels(data);
-        if (data.length > 0) setSelectedChannel(data[0]);
+        if (data.length > 0) {
+          setSelectedChannel(data[0]);
+        }
       }
     };
-    if (user && effectiveOrganizationId) fetchChannels();
+
+    if (user && effectiveOrganizationId) {
+      fetchChannels();
+    }
   }, [user, effectiveOrganizationId]);
 
+  // Fetch templates
   useEffect(() => {
-    const fetchConversations = async () => {
-      if (!selectedChannel || !effectiveOrganizationId) return;
-      setLoading(true);
+    const fetchTemplates = async () => {
+      if (!effectiveOrganizationId) return;
       
-      // Fetch messages
-      const { data: messagesData } = await supabase
-        .from("whatsapp_messages")
-        .select("*")
-        .eq("channel_id", selectedChannel.id)
-        .order("created_at", { ascending: false });
-
-      // Fetch assignments
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("conversation_phone, assigned_to, status, sector_id, lead_id")
-        .eq("channel_id", selectedChannel.id);
-
-      // Get unique phone numbers to fetch leads
-      const uniquePhones = [...new Set(messagesData?.map(m => m.sender_phone) || [])];
-      
-      // Fetch leads by phone to get the imported name (prioritize lead name over WhatsApp name)
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("id, name, phone")
+      const { data } = await supabase
+        .from("message_templates")
+        .select("name, content, variables, components")
         .eq("organization_id", effectiveOrganizationId);
 
-      // Create phone -> lead name map (normalize phones for matching)
-      const leadNameMap = new Map<string, string>();
-      leads?.forEach(lead => {
-        const normalizedPhone = lead.phone.replace(/\D/g, '');
-        leadNameMap.set(normalizedPhone, lead.name);
-        // Also store with variations
-        if (normalizedPhone.startsWith('55')) {
-          leadNameMap.set(normalizedPhone.slice(2), lead.name);
-        } else {
-          leadNameMap.set(`55${normalizedPhone}`, lead.name);
-        }
-      });
-
-      const assignmentMap = new Map(assignments?.map(a => [a.conversation_phone, { assignedTo: a.assigned_to, status: a.status, sectorId: a.sector_id, leadId: a.lead_id }]) || []);
-      const conversationMap = new Map<string, Conversation>();
-      
-      messagesData?.forEach(msg => {
-        const phone = msg.sender_phone;
-        const normalizedPhone = phone.replace(/\D/g, '');
-        const assignment = assignmentMap.get(phone);
-        
-        // Priority: Lead name from database > WhatsApp sender_name > phone number
-        const leadName = leadNameMap.get(normalizedPhone) || 
-                         leadNameMap.get(normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : `55${normalizedPhone}`);
-        const displayName = leadName || null; // Don't fallback to sender_name from WhatsApp
-        
-        if (!conversationMap.has(phone)) {
-          conversationMap.set(phone, {
-            phone,
-            name: displayName,
-            lastMessage: msg.content || `[${msg.message_type}]`,
-            lastMessageTime: msg.created_at,
-            unreadCount: msg.direction === "inbound" && msg.status !== "read" ? 1 : 0,
-            channelId: selectedChannel.id,
-            status: assignment?.status || "pending",
-            assignedTo: assignment?.assignedTo || null,
-            assignedToName: null,
-            sectorId: assignment?.sectorId || null,
+      if (data) {
+        const templatesMap = new Map<string, { 
+          content: string; 
+          variables: string[] | null;
+          components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
+        }>();
+        data.forEach(t => {
+          templatesMap.set(t.name, { 
+            content: t.content, 
+            variables: t.variables,
+            components: t.components as { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null
           });
-        } else if (msg.direction === "inbound" && msg.status !== "read") {
-          conversationMap.get(phone)!.unreadCount++;
+        });
+        setTemplates(templatesMap);
+      }
+    };
+
+    if (user && effectiveOrganizationId) {
+      fetchTemplates();
+    }
+  }, [user, effectiveOrganizationId]);
+
+  // Ref to store leads map for realtime updates
+  const leadsMapRef = useRef<Map<string, string>>(new Map());
+
+  // Fetch conversations from ALL channels
+  useEffect(() => {
+    const fetchConversations = async () => {
+      if (channels.length === 0) return;
+
+      setLoading(true);
+      const channelIds = channels.map(c => c.id);
+
+      const [messagesResult, assignmentsResult, profilesResult, leadsResult] = await Promise.all([
+        supabase
+          .from("whatsapp_messages")
+          .select("*")
+          .in("channel_id", channelIds)
+          .order("created_at", { ascending: false })
+          .limit(5000),
+        supabase
+          .from("conversation_assignments")
+          .select("conversation_phone, channel_id, assigned_to, status, sector_id")
+          .in("channel_id", channelIds),
+        supabase
+          .from("profiles")
+          .select("user_id, display_name, email"),
+        supabase
+          .from("leads")
+          .select("phone, name")
+          .eq("organization_id", effectiveOrganizationId)
+      ]);
+
+      if (messagesResult.error) {
+        setLoading(false);
+        return;
+      }
+
+      const data = messagesResult.data;
+
+      // Build leads map - prioritize system names over WhatsApp names
+      const leadsMap = new Map<string, string>();
+      leadsResult.data?.forEach((lead) => {
+        const normalizedPhone = lead.phone.replace(/\D/g, '');
+        const isAutoGenerated = lead.name.startsWith('LeadWhats-') || lead.name.startsWith('WhatsApp ');
+        if (!isAutoGenerated) {
+          leadsMap.set(normalizedPhone, lead.name);
+        }
+      });
+      leadsMapRef.current = leadsMap;
+
+      // Build assignments map
+      const assignmentsMap = new Map<string, { assignedTo: string | null; status: string | null; sectorId: string | null }>();
+      assignmentsResult.data?.forEach((assignment) => {
+        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+        const key = `${assignment.channel_id}_${normalizedPhone}`;
+        assignmentsMap.set(key, { 
+          assignedTo: assignment.assigned_to,
+          status: assignment.status,
+          sectorId: assignment.sector_id
+        });
+      });
+
+      // Build profiles map
+      const profilesMap = new Map<string, string>();
+      profilesResult.data?.forEach((profile) => {
+        profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
+      });
+
+      const conversationsMap = new Map<string, Conversation>();
+      
+      const normalizePhoneForKey = (phone: string): string => phone.replace(/\D/g, '');
+      const createConversationKey = (channelId: string | null, phone: string): string => {
+        return `${channelId || 'unknown'}_${normalizePhoneForKey(phone)}`;
+      };
+      
+      // Build statuses map
+      const dbStatuses: Record<string, string> = {};
+      assignmentsResult.data?.forEach((assignment) => {
+        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+        const key = `${assignment.channel_id}_${normalizedPhone}`;
+        if (assignment.status) {
+          dbStatuses[key] = assignment.status;
+        }
+      });
+      setConversationStatuses(dbStatuses as Record<string, Conversation["status"]>);
+      
+      data?.forEach((msg) => {
+        let contactPhone: string;
+        let contactName: string | null = null;
+        
+        if (msg.direction === "inbound") {
+          contactPhone = msg.sender_phone;
+          contactName = msg.sender_name;
+        } else {
+          const metadata = msg.metadata as { destination?: string } | null;
+          contactPhone = metadata?.destination || "";
+          if (!contactPhone) return;
+        }
+
+        const conversationKey = createConversationKey(msg.channel_id, contactPhone);
+        const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + contactPhone.replace(/\D/g, '');
+        const assignment = assignmentsMap.get(conversationKey);
+        const assignedTo = assignment?.assignedTo || null;
+        const assignedToName = assignedTo ? profilesMap.get(assignedTo) || null : null;
+        const normalizedContactPhone = contactPhone.replace(/\D/g, '');
+        const leadName = leadsMap.get(normalizedContactPhone);
+        const displayName = leadName || contactName;
+
+        if (!conversationsMap.has(conversationKey)) {
+          const dbStatus = assignment?.status as Conversation["status"] | null;
+          conversationsMap.set(conversationKey, {
+            phone: displayPhone,
+            name: displayName,
+            lastMessage: msg.content || "",
+            lastMessageTime: msg.created_at,
+            lastInboundTime: msg.direction === "inbound" ? msg.created_at : null,
+            unreadCount: msg.direction === "inbound" && msg.is_read === false ? 1 : 0,
+            channelId: msg.channel_id,
+            status: dbStatus || "pending",
+            assignedTo,
+            assignedToName,
+            sectorId: assignment?.sectorId || null
+          });
+        } else {
+          const existing = conversationsMap.get(conversationKey)!;
+          if (msg.direction === "inbound" && msg.sender_name && !leadName && !existing.name) {
+            existing.name = msg.sender_name;
+          }
+          if (msg.direction === "inbound" && (!existing.lastInboundTime || new Date(msg.created_at) > new Date(existing.lastInboundTime))) {
+            existing.lastInboundTime = msg.created_at;
+          }
+          if (msg.direction === "inbound" && msg.is_read === false) {
+            existing.unreadCount++;
+          }
         }
       });
 
-      setAllConversations(Array.from(conversationMap.values()).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()));
+      setAllConversations(Array.from(conversationsMap.values()));
       setLoading(false);
     };
-    fetchConversations();
-  }, [selectedChannel, effectiveOrganizationId]);
 
-  useEffect(() => {
-    if (!selectedConversation || !selectedChannel) { setMessages([]); return; }
-    const fetchMessages = async () => {
-      const { data } = await supabase
+    fetchConversations();
+  }, [channels, effectiveOrganizationId]);
+
+  // Helper function to get conversation key
+  const getConversationKey = (conv: Conversation) => {
+    return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
+  };
+
+  // Update conversation status in DB
+  const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
+    setConversationStatuses(prev => ({ ...prev, [conversationKey]: newStatus }));
+    setAllConversations(prev => prev.map(c => {
+      const key = getConversationKey(c);
+      return key === conversationKey ? { ...c, status: newStatus } : c;
+    }));
+    
+    // Parse key to get channel and phone
+    const parts = conversationKey.split('_');
+    const channelId = parts[0];
+    const phone = parts.slice(1).join('_');
+    
+    if (channelId && channelId !== 'unknown') {
+      await supabase
+        .from("conversation_assignments")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("channel_id", channelId)
+        .or(`conversation_phone.eq.${phone},conversation_phone.eq.+${phone}`);
+    }
+  };
+
+  // Fetch messages and notes for selected conversation
+  const fetchMessagesAndNotes = async () => {
+    if (!selectedConversation) {
+      setConversationNotes([]);
+      return;
+    }
+
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+    const conversationChannelId = selectedConversation.channelId;
+    if (!conversationChannelId) return;
+
+    const phoneWithPlus = `+${normalizedPhone}`;
+    
+    const [inboundResult, outboundResult, notesResult] = await Promise.all([
+      supabase
         .from("whatsapp_messages")
         .select("*")
-        .eq("channel_id", selectedChannel.id)
-        .eq("sender_phone", selectedConversation.phone)
-        .order("created_at", { ascending: true });
-      setMessages((data as Message[]) || []);
-    };
-    fetchMessages();
-  }, [selectedConversation, selectedChannel]);
+        .eq("channel_id", conversationChannelId)
+        .eq("direction", "inbound")
+        .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("whatsapp_messages")
+        .select("*")
+        .eq("channel_id", conversationChannelId)
+        .eq("direction", "outbound")
+        .or(`metadata->>destination.eq.${normalizedPhone},metadata->>destination.eq.${phoneWithPlus}`)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("conversation_notes")
+        .select("id, content, created_at, created_by")
+        .eq("channel_id", conversationChannelId)
+        .eq("contact_phone", normalizedPhone)
+        .order("created_at", { ascending: true })
+    ]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+    if (!inboundResult.error && !outboundResult.error) {
+      const allMessages = [
+        ...(inboundResult.data || []),
+        ...(outboundResult.data || [])
+      ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !selectedChannel || sendingMessage) return;
-    setSendingMessage(true);
-    const content = newMessage;
-    setNewMessage("");
-    try {
-      const fn = selectedChannel.provider === "zapi" ? "zapi-send" : "meta-send";
-      await supabase.functions.invoke(fn, { body: { channelId: selectedChannel.id, to: selectedConversation.phone, type: "text", content } });
-    } catch { toast.error("Erro ao enviar"); setNewMessage(content); }
-    finally { setSendingMessage(false); }
+      setMessages(allMessages as Message[]);
+      
+      // Mark as read
+      const unreadMessageIds = allMessages
+        .filter((msg: { direction: string; is_read?: boolean; id: string }) => msg.direction === "inbound" && msg.is_read === false)
+        .map((msg: { id: string }) => msg.id);
+      
+      if (unreadMessageIds.length > 0) {
+        await supabase
+          .from("whatsapp_messages")
+          .update({ is_read: true })
+          .in("id", unreadMessageIds);
+        
+        const conversationKey = getConversationKey(selectedConversation);
+        setAllConversations(prev => prev.map(c => {
+          const key = getConversationKey(c);
+          return key === conversationKey ? { ...c, unreadCount: 0 } : c;
+        }));
+      }
+    }
+
+    if (!notesResult.error && notesResult.data) {
+      setConversationNotes(notesResult.data as ConversationNote[]);
+    } else {
+      setConversationNotes([]);
+    }
+
+    // Mark as in_progress when selected
+    if (selectedConversation.status === "pending") {
+      const key = getConversationKey(selectedConversation);
+      updateConversationStatus(key, "in_progress");
+    }
   };
 
-  const formatTime = (d: string) => {
-    const date = new Date(d);
+  useEffect(() => {
+    fetchMessagesAndNotes();
+  }, [selectedConversation]);
+
+  // Fetch contact tags
+  useEffect(() => {
+    const fetchContactTags = async () => {
+      if (!selectedConversation) {
+        setContactTags([]);
+        return;
+      }
+
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+      const { data } = await supabase
+        .from("leads")
+        .select("tags")
+        .eq("phone", normalizedPhone)
+        .single();
+
+      if (data?.tags) {
+        setContactTags(data.tags);
+      } else {
+        setContactTags([]);
+      }
+    };
+
+    fetchContactTags();
+  }, [selectedConversation?.phone]);
+
+  // Refs for realtime updates
+  const selectedConversationRef = useRef<Conversation | null>(null);
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation;
+  }, [selectedConversation]);
+
+  const showNotificationRef = useRef(showNotification);
+  const soundEnabledRef = useRef(soundEnabled);
+  const playNotificationSoundRef = useRef(playNotificationSound);
+  
+  useEffect(() => {
+    showNotificationRef.current = showNotification;
+    soundEnabledRef.current = soundEnabled;
+    playNotificationSoundRef.current = playNotificationSound;
+  }, [showNotification, soundEnabled, playNotificationSound]);
+
+  // Real-time subscription
+  useEffect(() => {
+    if (channels.length === 0) return;
+
+    const channelSubscriptions = channels.map(ch => 
+      supabase
+        .channel(`atendimento-v2-${ch.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `channel_id=eq.${ch.id}`
+          },
+          (payload) => {
+            const newMsg = payload.new as Message;
+            
+            let contactPhone: string;
+            let contactName: string | null = null;
+            
+            if (newMsg.direction === "inbound") {
+              contactPhone = newMsg.sender_phone;
+              contactName = newMsg.sender_name;
+            } else {
+              const metadata = newMsg.metadata as { destination?: string } | null;
+              contactPhone = metadata?.destination || '';
+              if (!contactPhone) return;
+            }
+            
+            const normalizedContactPhone = contactPhone.replace(/\D/g, '');
+            const currentSelectedConv = selectedConversationRef.current;
+            const normalizedSelectedPhone = currentSelectedConv?.phone.replace(/\D/g, '') || '';
+            const selectedChannelId = currentSelectedConv?.channelId || '';
+            const msgConversationKey = `${newMsg.channel_id}_${normalizedContactPhone}`;
+            const selectedConversationKey = `${selectedChannelId}_${normalizedSelectedPhone}`;
+            
+            if (newMsg.direction === "inbound") {
+              showNotificationRef.current(newMsg);
+              if (soundEnabledRef.current) {
+                playNotificationSoundRef.current();
+                toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
+                  description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
+                });
+              }
+            }
+            
+            if (selectedConversationKey === msgConversationKey) {
+              setMessages(prev => {
+                const exists = prev.some(m => 
+                  m.message_id === newMsg.message_id || 
+                  m.id === newMsg.id ||
+                  (newMsg.direction === "outbound" && m.direction === "outbound" && m.content === newMsg.content && m.id.startsWith('temp_'))
+                );
+                
+                if (exists) {
+                  return prev.map(m => {
+                    if (m.id.startsWith('temp_') && m.direction === "outbound" && m.content === newMsg.content) {
+                      return { ...newMsg };
+                    }
+                    return m;
+                  });
+                }
+                
+                return [...prev, newMsg];
+              });
+            }
+
+            if (newMsg.direction === "inbound") {
+              setAllConversations(prev => {
+                const existing = prev.find(c => 
+                  c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
+                if (existing) {
+                  let newStatus = existing.status;
+                  if (existing.status === "archived") {
+                    newStatus = "pending";
+                    const convKey = `${existing.channelId}_${existing.phone.replace(/\D/g, '')}`;
+                    setConversationStatuses(prevStatuses => ({ ...prevStatuses, [convKey]: "pending" }));
+                    if (existing.channelId) {
+                      supabase
+                        .from("conversation_assignments")
+                        .update({ status: "pending", updated_at: new Date().toISOString() })
+                        .eq("channel_id", existing.channelId)
+                        .or(`conversation_phone.eq.${existing.phone.replace(/\D/g, '')},conversation_phone.eq.+${existing.phone.replace(/\D/g, '')}`)
+                        .then(() => {});
+                    }
+                  }
+                  
+                  const isCurrentConversation = selectedConversationKey === msgConversationKey;
+                  const leadNameFromSystem = leadsMapRef.current.get(normalizedContactPhone);
+                  const updated = prev.map(c => 
+                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
+                      ? { 
+                          ...c, 
+                          lastMessage: newMsg.content || "", 
+                          lastMessageTime: newMsg.created_at,
+                          lastInboundTime: newMsg.created_at,
+                          unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                          status: newStatus,
+                          name: leadNameFromSystem || c.name || contactName
+                        }
+                      : c
+                  );
+                  
+                  const updatedIndex = updated.findIndex(c => 
+                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                  );
+                  if (updatedIndex > 0) {
+                    return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+                  }
+                  return updated;
+                } else {
+                  const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
+                  const leadNameFromSystem = leadsMapRef.current.get(normalizedContactPhone);
+                  return [{
+                    phone: displayPhone,
+                    name: leadNameFromSystem || contactName,
+                    lastMessage: newMsg.content || "",
+                    lastMessageTime: newMsg.created_at,
+                    lastInboundTime: newMsg.created_at,
+                    unreadCount: 1,
+                    channelId: newMsg.channel_id,
+                    status: "pending" as const,
+                    assignedTo: null,
+                    assignedToName: null,
+                    sectorId: null
+                  }, ...prev];
+                }
+              });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `channel_id=eq.${ch.id}`
+          },
+          (payload) => {
+            const updatedMsg = payload.new as Message;
+            setMessages(prev => prev.map(m => 
+              m.message_id === updatedMsg.message_id || m.id === updatedMsg.id 
+                ? { ...m, status: updatedMsg.status }
+                : m
+            ));
+          }
+        )
+        .subscribe()
+    );
+
+    return () => {
+      channelSubscriptions.forEach(sub => supabase.removeChannel(sub));
+    };
+  }, [channels]);
+
+  // Auto scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Archive handlers
+  const handleArchive = (conversation: Conversation) => {
+    setConversationToArchive(conversation);
+    setShowSaleConfirmationDialog(true);
+  };
+
+  const handleConfirmArchive = async (saleCompleted: boolean) => {
+    if (!conversationToArchive) return;
+    
+    const key = getConversationKey(conversationToArchive);
+    updateConversationStatus(key, "archived");
+    
+    if (saleCompleted) {
+      toast.success("Venda registrada!");
+    }
+    
+    toast.success("Conversa arquivada");
+    setShowSaleConfirmationDialog(false);
+    setConversationToArchive(null);
+    
+    if (selectedConversation && getConversationKey(selectedConversation) === key) {
+      setSelectedConversation(null);
+    }
+  };
+
+  const handleRestore = async (conversation: Conversation) => {
+    const key = getConversationKey(conversation);
+    updateConversationStatus(key, "pending");
+    toast.success("Conversa restaurada");
+  };
+
+  // Accept conversation handler
+  const handleAcceptConversation = async (conversation: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!user) {
+      toast.error("Erro ao identificar usuário");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id, display_name, email")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    const normalizedPhone = conversation.phone.replace(/\D/g, '');
+
+    try {
+      const { error } = await supabase
+        .from("conversation_assignments")
+        .upsert({
+          conversation_phone: normalizedPhone,
+          channel_id: conversation.channelId,
+          assigned_to: user.id,
+          assigned_at: new Date().toISOString(),
+          status: "active"
+        }, {
+          onConflict: "conversation_phone,channel_id"
+        });
+
+      if (error) throw error;
+
+      const userName = profile.display_name || profile.email || 'Você';
+      setAllConversations(prev => prev.map(c => {
+        const key = getConversationKey(c);
+        const convKey = getConversationKey(conversation);
+        return key === convKey 
+          ? { ...c, assignedTo: user.id, assignedToName: userName, status: "in_progress" as const }
+          : c;
+      }));
+
+      updateConversationStatus(getConversationKey(conversation), "in_progress");
+      toast.success("Atendimento aceito!");
+      setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress" });
+    } catch (error) {
+      console.error("Erro ao aceitar atendimento:", error);
+      toast.error("Erro ao aceitar atendimento");
+    }
+  };
+
+  // Add to blacklist
+  const handleAddToBlacklist = async (conversation: Conversation) => {
+    if (!user) {
+      toast.error("Erro ao identificar usuário");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("blacklist")
+        .insert({
+          organization_id: profile.organization_id,
+          phone: conversation.phone.replace(/\D/g, ''),
+          name: conversation.name,
+          reason: "Adicionado do WhatsApp Chat",
+          blocked_by: user.id
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error("Este contato já está na lista negra");
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success(`${conversation.name || conversation.phone} adicionado à lista negra`);
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar à lista negra:", error);
+      toast.error("Erro ao adicionar à lista negra");
+    }
+  };
+
+  // Get channel for selected conversation
+  const selectedConversationChannel = useMemo(() => {
+    if (!selectedConversation?.channelId) return null;
+    return channels.find(c => c.id === selectedConversation.channelId) || null;
+  }, [selectedConversation?.channelId, channels]);
+
+  // Send message
+  const handleSendMessage = async () => {
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!newMessage.trim() || !selectedConversation || !conversationChannelId || sendingMessage) return;
+
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
+    const messageToSend = newMessage.trim();
+    setNewMessage("");
+    setSendingMessage(true);
+
+    const tempId = `temp_${Date.now()}_${Math.random()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      channel_id: conversationChannelId,
+      message_id: tempId,
+      sender_phone: conversationChannel?.phone || "",
+      sender_name: null,
+      message_type: "text",
+      content: messageToSend,
+      media_url: null,
+      direction: "outbound",
+      status: "sending",
+      created_at: new Date().toISOString(),
+      metadata: { destination: selectedConversation.phone }
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    try {
+      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
+      
+      const { data, error } = await supabase.functions.invoke(sendFunction, {
+        body: {
+          channelId: conversationChannelId,
+          destination: selectedConversation.phone,
+          message: messageToSend,
+          messageType: 'text'
+        }
+      });
+
+      if (error) {
+        toast.error('Erro ao enviar mensagem');
+        setMessages(prev => prev.map(m => m.id === tempId 
+          ? { ...m, status: 'failed', error_message: 'Erro de conexão ao enviar mensagem' }
+          : m
+        ));
+        setNewMessage(messageToSend);
+        setSendingMessage(false);
+        return;
+      }
+
+      if (data.success) {
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, message_id: data.messageId, status: "sent" }
+            : m
+        ));
+
+        // Auto-assign if not assigned
+        if (!selectedConversation.assignedTo && user?.id) {
+          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+          const { error: assignError } = await supabase
+            .from('conversation_assignments')
+            .upsert({
+              conversation_phone: normalizedPhone,
+              channel_id: conversationChannelId,
+              assigned_to: user.id,
+              assigned_at: new Date().toISOString(),
+              status: 'active'
+            }, { onConflict: 'conversation_phone,channel_id' });
+
+          if (!assignError) {
+            setAllConversations(prev => prev.map(c => {
+              const normalizedCPhone = c.phone.replace(/\D/g, '');
+              return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                : c;
+            }));
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+          }
+        }
+      } else {
+        const errorMsg = data.error || 'Erro ao enviar mensagem';
+        toast.error(errorMsg);
+        setMessages(prev => prev.map(m => m.id === tempId 
+          ? { ...m, status: 'failed', error_message: errorMsg, message_id: data.messageId || tempId }
+          : m
+        ));
+        setNewMessage(messageToSend);
+      }
+    } catch (err) {
+      console.error('Send error:', err);
+      toast.error('Erro ao enviar mensagem');
+      setMessages(prev => prev.map(m => m.id === tempId 
+        ? { ...m, status: 'failed', error_message: 'Erro inesperado ao enviar mensagem' }
+        : m
+      ));
+      setNewMessage(messageToSend);
+    }
+
+    setSendingMessage(false);
+  };
+
+  // Send media
+  const handleSendMedia = async (mediaData: {
+    mediaType: string;
+    mediaUrl: string;
+    mediaCaption?: string;
+    fileName?: string;
+  }) => {
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!selectedConversation || !conversationChannelId) return;
+
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
+    setSendingMessage(true);
+
+    try {
+      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
+      
+      const { data, error } = await supabase.functions.invoke(sendFunction, {
+        body: {
+          channelId: conversationChannelId,
+          destination: selectedConversation.phone,
+          messageType: mediaData.mediaType,
+          mediaUrl: mediaData.mediaUrl,
+          mediaCaption: mediaData.mediaCaption,
+          fileName: mediaData.fileName
+        }
+      });
+
+      if (error) {
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: `failed_media_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone },
+          error_message: 'Erro de conexão ao enviar mídia'
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error('Erro ao enviar mídia');
+        setSendingMessage(false);
+        return;
+      }
+
+      if (data.success) {
+        const optimisticMessage: Message = {
+          id: `temp_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || (mediaData.mediaType === 'ptt' ? '[Mensagem de voz]' : `[${mediaData.mediaType}]`),
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "sent",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone }
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        toast.success(mediaData.mediaType === 'ptt' ? "Áudio enviado!" : "Mídia enviada!");
+
+        // Auto-assign if not assigned
+        if (!selectedConversation.assignedTo && user?.id) {
+          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+          const { error: assignError } = await supabase
+            .from('conversation_assignments')
+            .upsert({
+              conversation_phone: normalizedPhone,
+              channel_id: conversationChannelId,
+              assigned_to: user.id,
+              assigned_at: new Date().toISOString(),
+              status: 'active'
+            }, { onConflict: 'conversation_phone,channel_id' });
+
+          if (!assignError) {
+            setAllConversations(prev => prev.map(c => {
+              const normalizedCPhone = c.phone.replace(/\D/g, '');
+              return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                : c;
+            }));
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+          }
+        }
+      } else {
+        const errorMsg = data.error || 'Erro ao enviar mídia';
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId || `failed_media_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
+          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+          media_url: mediaData.mediaUrl,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone },
+          error_message: errorMsg
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error(errorMsg);
+      }
+    } catch (err) {
+      console.error('Send media error:', err);
+      toast.error('Erro ao enviar mídia');
+    }
+
+    setSendingMessage(false);
+  };
+
+  // File upload handler
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, mediaType: "image" | "video" | "audio" | "document") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    setUploadingMedia(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        toast.error('Erro ao fazer upload do arquivo');
+        setUploadingMedia(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+
+      await handleSendMedia({
+        mediaType,
+        mediaUrl: urlData.publicUrl,
+        fileName: file.name
+      });
+
+    } catch (error) {
+      console.error('File upload error:', error);
+      toast.error('Erro ao enviar arquivo');
+    }
+
+    setUploadingMedia(false);
+  };
+
+  // Voice recording
+  const formatRecordingDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartVoiceRecording = async () => {
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    try {
+      await startRecording();
+    } catch (error) {
+      console.error('Recording error:', error);
+      toast.error("Não foi possível acessar o microfone");
+    }
+  };
+
+  const handleSendVoiceRecording = async () => {
+    const audioBlob = await stopRecording();
+    if (!audioBlob) {
+      toast.error("Erro ao gravar áudio");
+      return;
+    }
+
+    if (!selectedConversation) {
+      toast.error("Selecione uma conversa primeiro");
+      return;
+    }
+
+    setUploadingMedia(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (audioBlob.size === 0) {
+        toast.error('Erro: gravação vazia');
+        setUploadingMedia(false);
+        return;
+      }
+
+      const actualMimeType = audioBlob.type || 'audio/webm';
+      const isWebM = actualMimeType.includes('webm');
+
+      let extension = 'ogg';
+      if (actualMimeType.includes('ogg')) extension = 'ogg';
+      else if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) extension = 'm4a';
+      else if (actualMimeType.includes('webm')) extension = 'webm';
+
+      const fileName = `audio_${Date.now()}.${extension}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, audioBlob, { cacheControl: '3600', upsert: false, contentType: actualMimeType });
+
+      if (uploadError) {
+        toast.error('Erro ao fazer upload do áudio');
+        setUploadingMedia(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+      let publicUrl = urlData.publicUrl;
+
+      if (isWebM) {
+        toast.info('Convertendo áudio para formato compatível...');
+        
+        try {
+          const { data: convertData, error: convertError } = await supabase.functions.invoke('convert-audio', {
+            body: { audioUrl: publicUrl, organizationId: profile?.organization_id }
+          });
+
+          if (convertError || !convertData?.success) {
+            toast.error('Formato de áudio não suportado pelo WhatsApp. Use um dispositivo móvel para gravar áudio.');
+            setUploadingMedia(false);
+            return;
+          }
+
+          publicUrl = convertData.convertedUrl;
+          toast.success('Áudio convertido com sucesso!');
+        } catch {
+          toast.error('Seu navegador grava em formato WebM que não é suportado pelo WhatsApp.');
+          setUploadingMedia(false);
+          return;
+        }
+      }
+
+      await handleSendMedia({
+        mediaType: 'audio',
+        mediaUrl: publicUrl,
+        fileName: `gravacao.${extension === 'webm' ? 'ogg' : extension}`
+      });
+
+    } catch (error) {
+      console.error('Voice recording error:', error);
+      toast.error('Erro ao enviar áudio');
+    }
+
+    setUploadingMedia(false);
+  };
+
+  const handleCancelVoiceRecording = () => {
+    cancelRecording();
+    toast.info("Gravação cancelada");
+  };
+
+  // Send template
+  const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!selectedConversation || !conversationChannelId) return;
+
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
+    
+    if (conversationChannel?.provider === 'zapi') {
+      toast.error('Templates não são suportados em canais Z-API. Use mensagens de texto.');
+      return;
+    }
+    
+    setSendingMessage(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-send', {
+        body: {
+          channelId: conversationChannelId,
+          destination: selectedConversation.phone,
+          messageType: 'template',
+          templateName,
+          templateParams
+        }
+      });
+
+      if (error) {
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: `failed_template_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams },
+          error_message: 'Erro de conexão ao enviar template'
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error('Erro ao enviar template');
+        setSendingMessage(false);
+        return;
+      }
+
+      if (data.success) {
+        const optimisticMessage: Message = {
+          id: `temp_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "sent",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams }
+        };
+        setMessages(prev => [...prev, optimisticMessage]);
+        toast.success("Template enviado!");
+      } else {
+        const errorMsg = data.error || 'Erro ao enviar template';
+        const failedMessage: Message = {
+          id: `temp_failed_${Date.now()}`,
+          channel_id: conversationChannelId,
+          message_id: data.messageId || `failed_template_${Date.now()}`,
+          sender_phone: conversationChannel?.phone || "",
+          sender_name: null,
+          message_type: "template",
+          content: `Template: ${templateName}`,
+          media_url: null,
+          direction: "outbound",
+          status: "failed",
+          created_at: new Date().toISOString(),
+          metadata: { destination: selectedConversation.phone, templateName, templateParams },
+          error_message: errorMsg
+        };
+        setMessages(prev => [...prev, failedMessage]);
+        toast.error(errorMsg);
+      }
+    } catch {
+      toast.error('Erro ao enviar template');
+    }
+
+    setSendingMessage(false);
+  };
+
+  // Format helpers
+  const formatMessageTime = (dateStr: string) => format(new Date(dateStr), "HH:mm");
+
+  const formatConversationDate = (dateStr: string) => {
+    const date = new Date(dateStr);
     if (isToday(date)) return format(date, "HH:mm");
     if (isYesterday(date)) return "Ontem";
-    return formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+    return format(date, "dd/MM", { locale: ptBR });
   };
 
-  const filtered = conversations.filter(c => c.phone.includes(searchTerm) || c.name?.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Render message content
+  const renderMessageContent = (message: Message) => {
+    const isMedia = ["image", "video", "audio", "document", "file", "sticker"].includes(message.message_type);
+    
+    if (isMedia && message.media_url) {
+      switch (message.message_type) {
+        case "image":
+        case "sticker":
+          return (
+            <div className="space-y-1">
+              <div 
+                className="cursor-pointer group relative"
+                onClick={() => setMediaPreview({
+                  isOpen: true,
+                  url: message.media_url!,
+                  type: message.message_type as "image" | "sticker",
+                })}
+              >
+                <img 
+                  src={message.media_url} 
+                  alt="Media" 
+                  className="max-w-full rounded-lg max-h-60 object-cover transition-opacity group-hover:opacity-90"
+                />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-lg">
+                  <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
+                </div>
+              </div>
+              {message.content && message.content !== `[${message.message_type}]` && (
+                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+              )}
+            </div>
+          );
+        case "video":
+          return (
+            <div className="space-y-1">
+              <div 
+                className="cursor-pointer group relative"
+                onClick={() => setMediaPreview({
+                  isOpen: true,
+                  url: message.media_url!,
+                  type: "video",
+                })}
+              >
+                <video src={message.media_url} className="max-w-full rounded-lg max-h-60" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
+                  <Play className="w-12 h-12 text-white drop-shadow-lg" />
+                </div>
+              </div>
+              {message.content && message.content !== "[video]" && (
+                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+              )}
+            </div>
+          );
+        case "audio":
+          return <audio src={message.media_url} controls className="max-w-full" />;
+        case "document":
+        case "file":
+          return (
+            <div 
+              className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+              onClick={() => setMediaPreview({
+                isOpen: true,
+                url: message.media_url!,
+                type: message.message_type as "document" | "file",
+                fileName: message.content || "Documento",
+              })}
+            >
+              <FileText className="w-5 h-5 text-primary" />
+              <span className="flex-1 truncate">{message.content || "Documento"}</span>
+              <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            </div>
+          );
+        default:
+          return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
+      }
+    }
+
+    // Template messages
+    if (message.message_type === "template" || message.content?.startsWith("Template:")) {
+      const metadata = message.metadata as { 
+        templateName?: string; 
+        templateParams?: string[]; 
+        templateContent?: string;
+        templateButtons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>;
+      } | null;
+      
+      let templateName = metadata?.templateName || "";
+      const templateParams = metadata?.templateParams || [];
+      
+      if (!templateName && message.content?.startsWith("Template:")) {
+        templateName = message.content.replace("Template:", "").trim();
+      }
+
+      const templateData = templates.get(templateName);
+      let displayContent = metadata?.templateContent || templateData?.content || "";
+      const buttons = metadata?.templateButtons || templateData?.components?.buttons || [];
+      
+      if (displayContent) {
+        templateParams.forEach((param, index) => {
+          displayContent = displayContent.replace(`{{${index + 1}}}`, param);
+        });
+
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/80 mb-1">
+              <FileText className="w-3 h-3" />
+              <span className="font-medium">{templateName}</span>
+            </div>
+            <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p>
+            
+            {buttons.length > 0 && (
+              <div className="flex flex-col gap-1 pt-2 border-t border-border/30">
+                {buttons.map((button, idx) => (
+                  <div key={idx} className="flex items-center justify-center gap-2 py-1.5 px-3 rounded bg-background/20 text-xs font-medium text-center">
+                    {button.type === "URL" && <><span className="text-primary">🔗</span><span>{button.text}</span></>}
+                    {button.type === "PHONE_NUMBER" && <><Phone className="w-3 h-3 text-primary" /><span>{button.text}</span></>}
+                    {button.type === "QUICK_REPLY" && <span>{button.text}</span>}
+                    {!["URL", "PHONE_NUMBER", "QUICK_REPLY"].includes(button.type) && <span>{button.text}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+      
+      return (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+            <FileText className="w-3 h-3" />
+            <span className="font-medium">{templateName || "Template"}</span>
+          </div>
+          <p className="text-sm text-muted-foreground italic">Conteúdo do template indisponível</p>
+        </div>
+      );
+    }
+
+    return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
+  };
+
+  // Computed values
+  const hasClientResponse = (conv: Conversation) => conv.lastInboundTime !== null;
+  const activeConversations = conversations.filter(conv => conv.status !== "archived" && hasClientResponse(conv));
+  const archivedConversations = conversations.filter(conv => conv.status === "archived" || !hasClientResponse(conv));
+
+  const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
+  const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
+  
+  const visibleConversations = canSeeOthers 
+    ? activeConversations 
+    : activeConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+  
+  const filteredConversations = visibleConversations.filter(conv => {
+    const matchesSearch = conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let matchesFilter = false;
+    if (filterStatus === "new") matchesFilter = !conv.assignedTo;
+    else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
+    else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  const visibleArchivedConversations = canSeeOthers 
+    ? archivedConversations 
+    : archivedConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+    
+  const filteredArchived = visibleArchivedConversations.filter(conv =>
+    conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Counts
+  const newCount = visibleConversations.filter(c => !c.assignedTo).length;
+  const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
+  const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
+
+  // 24-hour window
+  const is24HourWindowExpired = (lastInboundTime: string | null) => {
+    if (!lastInboundTime) return true;
+    const lastInbound = new Date(lastInboundTime);
+    const now = new Date();
+    const hoursDiff = (now.getTime() - lastInbound.getTime()) / (1000 * 60 * 60);
+    return hoursDiff > 24;
+  };
+
+  const getWindowTimeRemaining = (lastInboundTime: string | null) => {
+    if (!lastInboundTime) return null;
+    const lastInbound = new Date(lastInboundTime);
+    const expireTime = new Date(lastInbound.getTime() + 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const remainingMs = expireTime.getTime() - now.getTime();
+    if (remainingMs <= 0) return null;
+    
+    const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+    const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}min`;
+  };
+
+  const isWindowExpired = selectedConversation ? is24HourWindowExpired(selectedConversation.lastInboundTime) : false;
+  const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(selectedConversation.lastInboundTime) : null;
+  const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id;
 
   return (
     <TopNavLayout>
-      <div className="h-8 bg-primary/10 border-b border-primary/20 flex items-center px-4 text-sm text-primary shrink-0">
-        <span className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center text-xs">i</span>Ative as notificações na web</span>
-      </div>
-      <div className="flex-1 flex min-h-0">
-        <div className="w-[380px] border-r border-border flex flex-col bg-card min-h-0">
-          <div className="flex items-center gap-2 p-3 border-b border-border shrink-0">
-            <Button variant={filterTab === "new" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("new")} className="gap-1">Novos{counts.new > 0 && <Badge className="bg-destructive text-destructive-foreground text-[10px] px-1.5 rounded-full">{counts.new}</Badge>}</Button>
-            <Button variant={filterTab === "mine" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("mine")}>Meus</Button>
-            {canSeeOthers && <Button variant={filterTab === "others" ? "default" : "ghost"} size="sm" onClick={() => setFilterTab("others")}>Outros</Button>}
-            <div className="flex-1" />
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Archive className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
-          </div>
-          <div className="flex items-center gap-2 p-3 border-b border-border shrink-0">
-            <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Buscar atendimento" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 bg-background border-border h-9" /></div>
-            <Button variant="ghost" size="icon" className="h-9 w-9"><Filter className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9"><ArrowUpDown className="w-4 h-4" /></Button>
-          </div>
-          <ScrollArea className="flex-1 min-h-0">
-            {loading ? <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div> : filtered.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-muted-foreground"><MessageSquare className="w-12 h-12 mb-2 opacity-50" /><p className="text-sm">Nenhuma conversa</p></div> : filtered.map(conv => (
-              <div key={conv.phone} onClick={() => setSelectedConversation(conv)} className={cn("flex items-start gap-3 p-3 border-b border-border cursor-pointer hover:bg-muted/50", selectedConversation?.phone === conv.phone && "bg-muted")}>
-                <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary/10 text-primary text-sm">{(conv.name || conv.phone)?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
-                <div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-0.5"><span className="font-medium text-foreground truncate">{conv.name || conv.phone}</span></div><p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p></div>
-                <div className="flex flex-col items-end gap-1"><Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-primary text-primary-foreground border-primary">Geral</Badge><div className="flex items-center gap-1"><span className="text-xs text-muted-foreground">{formatTime(conv.lastMessageTime)}</span>{conv.unreadCount > 0 && <Badge className="bg-destructive text-destructive-foreground text-[10px] px-1.5 h-5 min-w-[20px] flex items-center justify-center rounded-full">{conv.unreadCount}</Badge>}</div></div>
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-h-0">
+        {/* Sidebar */}
+        <div className={cn(
+          "w-full lg:w-80 xl:w-96 bg-card rounded-lg border border-border flex flex-col min-h-0",
+          selectedConversation ? "hidden lg:flex" : "flex"
+        )}>
+          {/* Header */}
+          <div className="p-3 border-b border-border space-y-3 shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BalanceIndicator />
               </div>
-            ))}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className="h-8 w-8"
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4 text-primary" /> : <VolumeX className="w-4 h-4 text-muted-foreground" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : requestNotificationPermission}
+                  className={cn("h-8 w-8", notificationsEnabled ? "text-primary" : "text-muted-foreground")}
+                >
+                  {notificationsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Buscar..." className="pl-10 bg-muted/30 border-border h-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            </div>
+            
+            <div className="flex gap-1 overflow-x-auto">
+              <Button variant={filterStatus === "new" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("new")} className="text-xs px-3 h-7 gap-1 shrink-0">
+                <Clock className="w-3 h-3" />Novos
+                {newCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground">{newCount}</Badge>}
+              </Button>
+              <Button variant={filterStatus === "mine" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("mine")} className="text-xs px-3 h-7 gap-1 shrink-0">
+                <User className="w-3 h-3" />Meus
+                {mineCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">{mineCount}</Badge>}
+              </Button>
+              {canSeeOthers && (
+                <Button variant={filterStatus === "others" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("others")} className="text-xs px-3 h-7 gap-1 shrink-0">
+                  <UserCheck className="w-3 h-3" />Outros
+                  {othersCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">{othersCount}</Badge>}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Conversations list */}
+          <ScrollArea className="flex-1">
+            <div className="divide-y divide-border">
+              {loading ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Carregando...
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Nenhuma conversa encontrada</p>
+                </div>
+              ) : (
+                filteredConversations.map((conversation) => {
+                  const conversationKey = getConversationKey(conversation);
+                  const channelInfo = channels.find(c => c.id === conversation.channelId);
+                  const isSelected = selectedConversation && getConversationKey(selectedConversation) === conversationKey;
+                  
+                  return (
+                    <div key={conversationKey} className={cn("group relative border-l-2 transition-colors", isSelected ? "bg-primary/10 border-l-primary" : "border-l-transparent hover:bg-muted/30")}>
+                      <Button variant="ghost" size="icon" className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 z-50" onClick={(e) => { e.stopPropagation(); handleArchive(conversation); }}>
+                        <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                      {!conversation.assignedTo && (
+                        <Button variant="default" size="sm" className="absolute right-[120px] top-2 h-6 px-2 text-xs gap-1 z-50" onClick={(e) => handleAcceptConversation(conversation, e)}>
+                          <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Aceitar</span>
+                        </Button>
+                      )}
+                      <button onClick={() => setSelectedConversation(conversation)} className="w-full p-3 text-left transition-colors">
+                        <div className="flex items-start gap-3 w-full">
+                          <Avatar className="w-10 h-10 shrink-0">
+                            <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-sm font-semibold">
+                              {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0 pr-24">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-foreground text-sm truncate">{conversation.name || conversation.phone}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{formatConversationDate(conversation.lastMessageTime)}</span>
+                            </div>
+                            {conversation.assignedToName ? (
+                              <p className="text-[10px] text-emerald-500/80 truncate mb-0.5 flex items-center gap-1">
+                                <User className="w-2.5 h-2.5" />{conversation.assignedToName}
+                              </p>
+                            ) : channelInfo && channels.length > 1 ? (
+                              <p className="text-[10px] text-primary/70 truncate mb-0.5">📱 {channelInfo.name}</p>
+                            ) : null}
+                            <p className="text-xs text-muted-foreground truncate mb-2">
+                              {conversation.lastMessage?.substring(0, 50)}{conversation.lastMessage && conversation.lastMessage.length > 50 ? '...' : ''}
+                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="outline" className={cn("text-xs shrink-0", getStatusConfig(conversation.status).className)}>
+                                {getStatusConfig(conversation.status).label}
+                              </Badge>
+                              {conversation.unreadCount > 0 && (
+                                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">{conversation.unreadCount}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </ScrollArea>
-          <div className="p-3 border-t border-border flex items-center gap-2 shrink-0"><Select defaultValue="+55"><SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger><SelectContent className="bg-card border-border"><SelectItem value="+55">+55</SelectItem></SelectContent></Select><Input placeholder="(00) 0000-0000" className="flex-1 h-9 bg-background border-border" /><Button size="sm" variant="outline" className="h-9">Conversar</Button></div>
+
+          {/* Manual send */}
+          <div className="border-t border-border p-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center px-2 h-9 bg-muted rounded-md border border-border text-xs font-medium text-muted-foreground shrink-0">+55</div>
+              <Input placeholder="DDD + Número" className="flex-1 h-9 text-sm" value={manualPhoneInput} onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))} />
+              <Button onClick={() => setShowManualSendDialog(true)} size="icon" className="h-9 w-9 shrink-0" disabled={!manualPhoneInput.trim()}><Send className="w-4 h-4" /></Button>
+            </div>
+          </div>
+
+          {/* Archived */}
+          {archivedConversations.length > 0 && (
+            <div className="border-t border-border shrink-0">
+              <button onClick={() => setShowArchived(!showArchived)} className="w-full p-3 flex items-center justify-between text-sm text-muted-foreground hover:bg-muted/30 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Archive className="w-4 h-4" /><span>Arquivados</span>
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">{archivedConversations.length}</Badge>
+                </div>
+                {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              
+              {showArchived && (
+                <ScrollArea className="max-h-48">
+                  <div className="divide-y divide-border bg-muted/20">
+                    {filteredArchived.map((conv) => {
+                      const convKey = getConversationKey(conv);
+                      const channelInfo = channels.find(c => c.id === conv.channelId);
+                      
+                      return (
+                        <div key={convKey} className="group relative p-3 hover:bg-muted/30 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="w-8 h-8">
+                              <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
+                                {conv.name ? conv.name.split(" ").map(n => n[0]).join("") : <User className="w-3 h-3" />}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium text-muted-foreground text-sm truncate block">{conv.name || conv.phone}</span>
+                              {channelInfo && channels.length > 1 && <span className="text-[10px] text-primary/60 block">📱 {channelInfo.name}</span>}
+                              <span className="text-xs text-muted-foreground/70">{formatConversationDate(conv.lastMessageTime)}</span>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRestore(conv)}>
+                              <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex-1 flex flex-col bg-background min-h-0">
+
+        {/* Chat area */}
+        <div className={cn("flex-1 bg-card rounded-lg border border-border flex flex-col overflow-hidden", !selectedConversation ? "hidden lg:flex" : "flex")}>
           {selectedConversation ? (
             <>
-              <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-card shrink-0">
-                <div className="flex items-center gap-3"><Avatar className="h-9 w-9"><AvatarFallback className="bg-primary/10 text-primary">{(selectedConversation.name || selectedConversation.phone)?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div><p className="font-medium text-foreground">{selectedConversation.name || selectedConversation.phone}</p><p className="text-xs text-muted-foreground">{selectedConversation.phone}</p></div></div>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                <div className="space-y-3 max-w-3xl mx-auto">
-                  {messages.map(msg => {
-                    const out = msg.direction === "outbound";
-                    return (<div key={msg.id} className={cn("flex", out ? "justify-end" : "justify-start")}><div className={cn("max-w-[70%] rounded-lg px-3 py-2", out ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>{msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}{msg.media_url && <img src={msg.media_url} alt="" className="max-w-full rounded max-h-48" />}<div className={cn("flex items-center gap-1 mt-1 text-[10px]", out ? "text-primary-foreground/70 justify-end" : "text-muted-foreground")}><span>{format(new Date(msg.created_at), "HH:mm")}</span>{out && (msg.status === "read" ? <CheckCheck className="w-3 h-3 text-blue-400" /> : msg.status === "delivered" ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}</div></div></div>);
-                  })}
-                  <div ref={messagesEndRef} />
+              {/* Chat header */}
+              <div className="p-3 border-b border-border shrink-0">
+                {selectedConversationChannel && (
+                  <div className="flex items-center gap-2 mb-2 p-2 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="text-xs font-medium text-primary truncate">{selectedConversationChannel.name}</span>
+                    <span className="text-xs text-muted-foreground hidden sm:inline">({selectedConversationChannel.phone})</span>
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8 shrink-0" onClick={() => setSelectedConversation(null)}>
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <button onClick={() => setShowLeadDetailsDialog(true)} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0">
+                      <Avatar className="w-10 h-10 shrink-0">
+                        <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold text-sm">
+                          {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <h3 className="font-semibold text-foreground truncate">{selectedConversation.name || selectedConversation.phone}</h3>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                          <Phone className="w-3 h-3 shrink-0" /><span className="truncate">{selectedConversation.phone}</span>
+                        </p>
+                        {contactTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 hidden sm:flex">
+                            {contactTags.slice(0, 2).map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">{tag}</Badge>
+                            ))}
+                            {contactTags.length > 2 && <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-muted/50">+{contactTags.length - 2}</Badge>}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant={showSalesAssistant ? "default" : "outline"} size="sm" onClick={() => setShowSalesAssistant(!showSalesAssistant)} className="gap-1 h-8 px-2">
+                      <Sparkles className="w-3 h-3" /><span className="hidden sm:inline">IA</span>
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56 bg-popover">
+                        <DropdownMenuItem onClick={() => setShowQuickResponses(true)}><Zap className="w-4 h-4 mr-2" />Respostas rápidas</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowPortfolioDialog(true)}><Briefcase className="w-4 h-4 mr-2" />Adicionar à carteira</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowTagsDialog(true)}><Tag className="w-4 h-4 mr-2" />Gerenciar tags</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowPipelineStageDialog(true)}><GitBranch className="w-4 h-4 mr-2" />Mover no pipeline</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowFollowUpDialog(true)}><CalendarClock className="w-4 h-4 mr-2" />Iniciar follow-up</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowAssignAttendantDialog(true)}><UserCheck className="w-4 h-4 mr-2" />Atribuir atendente</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleAddToBlacklist(selectedConversation)} className="text-destructive">
+                          <Ban className="w-4 h-4 mr-2" />Bloquear contato
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleArchive(selectedConversation)} className="text-destructive">
+                          <Archive className="w-4 h-4 mr-2" />Arquivar conversa
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
-              <div className="border-t border-border p-3 bg-card shrink-0">
-                <div className="flex items-center gap-2 max-w-3xl mx-auto">
-                  <Textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder="Digite sua mensagem..." className="flex-1 min-h-[40px] max-h-32 resize-none bg-background border-border" rows={1} />
-                  <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim()} size="icon">{sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</Button>
+
+              {/* Messages */}
+              <ScrollArea className="flex-1 p-4">
+                <div className="space-y-4 max-w-3xl mx-auto">
+                  {(() => {
+                    let lastDate = "";
+                    return messages.map((message) => {
+                      const messageDate = format(new Date(message.created_at), "yyyy-MM-dd");
+                      const showDateSeparator = messageDate !== lastDate;
+                      lastDate = messageDate;
+                      
+                      const isOutbound = message.direction === "outbound";
+                      const isFailed = message.status === "failed";
+                      
+                      return (
+                        <div key={message.id}>
+                          {showDateSeparator && (
+                            <div className="flex items-center justify-center my-4">
+                              <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs">
+                                {isToday(new Date(message.created_at)) ? "Hoje" : isYesterday(new Date(message.created_at)) ? "Ontem" : format(new Date(message.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                              </div>
+                            </div>
+                          )}
+                          <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
+                            <div className={cn("max-w-[80%] rounded-2xl px-4 py-2 shadow-sm", isOutbound ? isFailed ? "bg-destructive/80 text-destructive-foreground" : "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
+                              {isFailed && (
+                                <div className="flex items-center gap-1.5 mb-1 text-xs opacity-80">
+                                  <AlertTriangle className="w-3 h-3" /><span>Falha ao enviar</span>
+                                </div>
+                              )}
+                              {renderMessageContent(message)}
+                              <div className={cn("flex items-center gap-1.5 mt-1 text-[10px]", isOutbound ? "justify-end text-primary-foreground/70" : "text-muted-foreground")}>
+                                <span>{formatMessageTime(message.created_at)}</span>
+                                {isOutbound && !isFailed && (
+                                  message.status === "read" ? <CheckCheck className="w-3.5 h-3.5 text-blue-400" /> :
+                                  message.status === "delivered" ? <CheckCheck className="w-3.5 h-3.5" /> :
+                                  message.status === "sending" ? <Clock className="w-3.5 h-3.5" /> :
+                                  <Check className="w-3.5 h-3.5" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              {/* Message input */}
+              <div className="p-3 border-t border-border space-y-2 shrink-0">
+                {isWindowExpired ? (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/30 text-warning">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <p className="text-xs">Janela de 24h expirada. Use um <button onClick={() => setShowTemplateSelector(true)} className="font-semibold underline hover:no-underline">template aprovado</button>.</p>
+                  </div>
+                ) : windowTimeRemaining && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="w-3 h-3" /><span>Expira em {windowTimeRemaining}</span>
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="shrink-0 h-10 w-10"><Plus className="w-5 h-5 text-muted-foreground" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56 bg-popover">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar mídia</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => imageInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Image className="w-4 h-4 mr-2 text-emerald-500" />Imagem</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => videoInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Video className="w-4 h-4 mr-2 text-blue-500" />Vídeo</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => audioInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Music className="w-4 h-4 mr-2 text-purple-500" />Áudio</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => documentInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><File className="w-4 h-4 mr-2 text-orange-500" />Documento</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Mensagens</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => setShowTemplateSelector(true)}><FileText className="w-4 h-4 mr-2 text-primary" />Modelo de mensagem</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowScheduleDialog(true)} disabled={isWindowExpired}><CalendarClock className="w-4 h-4 mr-2 text-warning" />Agendar mensagem</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Conversa</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => setShowNotesDialog(true)}><StickyNote className="w-4 h-4 mr-2 text-yellow-500" />Adicionar nota</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  
+                  {isRecording ? (
+                    <div className="flex items-center gap-3 flex-1 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 border border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shrink-0" />
+                        <span className="text-red-600 dark:text-red-400 font-medium text-sm">{formatRecordingDuration(recordingDuration)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={handleCancelVoiceRecording} className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100"><X className="w-5 h-5" /></Button>
+                        <Button onClick={handleSendVoiceRecording} disabled={uploadingMedia} className="h-9 px-4 bg-green-600 hover:bg-green-700">
+                          {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Textarea
+                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Mensagem..."}
+                        className={cn("min-h-[44px] max-h-32 resize-none bg-muted/30 text-sm", (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed")}
+                        value={newMessage}
+                        onChange={(e) => !isWindowExpired && isMyConversation && setNewMessage(e.target.value)}
+                        disabled={isWindowExpired || !isMyConversation}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                      />
+                      {isWindowExpired ? (
+                        <Button onClick={() => setShowTemplateSelector(true)} className="h-11 px-4 shrink-0"><FileText className="w-5 h-5" /></Button>
+                      ) : newMessage.trim() ? (
+                        <Button onClick={handleSendMessage} disabled={sendingMessage} className="h-11 px-4 shrink-0">
+                          {sendingMessage ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                        </Button>
+                      ) : (
+                        <Button onClick={handleStartVoiceRecording} disabled={uploadingMedia} variant="default" className="h-11 px-4 bg-green-600 hover:bg-green-700 shrink-0">
+                          {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                        </Button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground"><MessageSquare className="w-16 h-16 mb-4 opacity-30" /><p className="text-lg">Escolha um atendimento para iniciar a conversa</p></div>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
+                <p className="text-sm">Selecione uma conversa ou envie uma mensagem manual</p>
+              </div>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Dialogs */}
+      <QuickResponsesPanel isOpen={showQuickResponses} onClose={() => setShowQuickResponses(false)} onSelectResponse={(content) => setNewMessage(content)} />
+
+      <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => handleFileSelect(e, "image")} />
+      <input ref={videoInputRef} type="file" accept="video/mp4,video/3gpp,video/quicktime" className="hidden" onChange={(e) => handleFileSelect(e, "video")} />
+      <input ref={audioInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/ogg,audio/wav,audio/aac" className="hidden" onChange={(e) => handleFileSelect(e, "audio")} />
+      <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" className="hidden" onChange={(e) => handleFileSelect(e, "document")} />
+
+      <TemplateSelector isOpen={showTemplateSelector} onClose={() => setShowTemplateSelector(false)} onSend={handleSendTemplate} channelId={selectedConversation?.channelId || null} />
+
+      <SalesAssistant isOpen={showSalesAssistant} onClose={() => setShowSalesAssistant(false)} customerName={selectedConversation?.name || selectedConversation?.phone} conversationContext={messages.map(m => `${m.direction === 'inbound' ? (m.sender_name || 'Cliente') : 'Atendente'}: ${m.content || '[mídia]'}`).join('\n')} />
+
+      {selectedConversation && <AddToPortfolioDialog open={showPortfolioDialog} onOpenChange={setShowPortfolioDialog} contactPhone={selectedConversation.phone} contactName={selectedConversation.name} />}
+
+      {selectedConversation && (
+        <AssignTagsFromChatDialog
+          open={showTagsDialog}
+          onOpenChange={setShowTagsDialog}
+          contactPhone={selectedConversation.phone}
+          contactName={selectedConversation.name}
+          onSuccess={() => {
+            const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+            supabase.from("leads").select("tags").eq("phone", normalizedPhone).single().then(({ data }) => {
+              if (data?.tags) setContactTags(data.tags);
+            });
+          }}
+        />
+      )}
+
+      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} />
+
+      {selectedConversation && <FollowUpDialog isOpen={showFollowUpDialog} onClose={() => setShowFollowUpDialog(false)} leadId={null} leadName={selectedConversation?.name || selectedConversation?.phone || ""} leadPhone={selectedConversation?.phone || ""} channelId={selectedConversation?.channelId || null} />}
+
+      {selectedConversation && <ChangePipelineStageDialog isOpen={showPipelineStageDialog} onClose={() => setShowPipelineStageDialog(false)} leadId={null} leadName={selectedConversation?.name || selectedConversation?.phone || ""} currentStageId={null} />}
+
+      {selectedConversation && <ScheduleMessageDialog isOpen={showScheduleDialog} onClose={() => setShowScheduleDialog(false)} contactPhone={selectedConversation.phone} contactName={selectedConversation?.name} channelId={selectedConversation?.channelId || null} leadId={null} />}
+
+      {selectedConversation && <ConversationNotesDialog isOpen={showNotesDialog} onClose={() => setShowNotesDialog(false)} contactPhone={selectedConversation.phone} contactName={selectedConversation?.name} channelId={selectedConversation?.channelId} onNoteAdded={fetchMessagesAndNotes} />}
+
+      {selectedConversation && <LeadDetailsDialog open={showLeadDetailsDialog} onOpenChange={setShowLeadDetailsDialog} phone={selectedConversation.phone} name={selectedConversation.name} />}
+
+      {selectedConversation && (
+        <AssignAttendantDialog
+          open={showAssignAttendantDialog}
+          onOpenChange={setShowAssignAttendantDialog}
+          conversationPhone={selectedConversation.phone}
+          channelId={selectedConversation.channelId}
+          currentAssignedTo={selectedConversation.assignedTo}
+          currentAssignedToName={selectedConversation.assignedToName}
+          onAssigned={(assignedTo, assignedToName) => {
+            setSelectedConversation(prev => prev ? { ...prev, assignedTo, assignedToName } : null);
+            setAllConversations(prev => prev.map(c => 
+              c.channelId === selectedConversation.channelId && c.phone.replace(/\D/g, '') === selectedConversation.phone.replace(/\D/g, '')
+                ? { ...c, assignedTo, assignedToName } : c
+            ));
+          }}
+        />
+      )}
+
+      <SaleConfirmationDialog
+        open={showSaleConfirmationDialog}
+        onOpenChange={(open) => { setShowSaleConfirmationDialog(open); if (!open) setConversationToArchive(null); }}
+        contactPhone={conversationToArchive?.phone || ""}
+        contactName={conversationToArchive?.name || null}
+        onConfirm={handleConfirmArchive}
+      />
+
+      <MediaPreviewDialog isOpen={mediaPreview.isOpen} onClose={() => setMediaPreview(prev => ({ ...prev, isOpen: false }))} mediaUrl={mediaPreview.url} mediaType={mediaPreview.type} fileName={mediaPreview.fileName} />
     </TopNavLayout>
   );
 };
