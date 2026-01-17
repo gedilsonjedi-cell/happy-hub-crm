@@ -448,8 +448,8 @@ export function LeadDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-4 border-b border-border shrink-0">
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="pb-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="w-14 h-14">
               <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-lg font-semibold">
@@ -470,7 +470,8 @@ export function LeadDetailsDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+        <div className="flex-1 overflow-hidden min-h-0">
+          <ScrollArea className="h-full -mx-6 px-6">
           {loadingLead ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -686,9 +687,10 @@ export function LeadDetailsDialog({
               )}
             </div>
           )}
-        </ScrollArea>
+          </ScrollArea>
+        </div>
 
-        <div className="pt-4 border-t border-border">
+        <div className="pt-4 border-t border-border flex-shrink-0">
           <Button onClick={handleSave} disabled={saving || !formData.name} className="w-full gap-2">
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
