@@ -734,15 +734,33 @@ Deno.serve(async (req) => {
           `+${normalizedSenderPhone}`,
           `55${localNumber}`,
           `+55${localNumber}`,
+          localNumber, // Local number without country code
         ];
         
-        const { data: existingLead } = await supabase
+        // First try exact match
+        let { data: existingLead } = await supabase
           .from('leads')
-          .select('id, name, custom_fields, document')
+          .select('id, name, custom_fields, document, tags')
           .eq('organization_id', channel.organization_id)
           .in('phone', phoneSearchPatterns)
           .limit(1)
           .maybeSingle();
+        
+        // If not found, try suffix matching with last 8 digits
+        if (!existingLead && phoneEnd8.length === 8) {
+          const { data: leadBySuffix } = await supabase
+            .from('leads')
+            .select('id, name, custom_fields, document, tags')
+            .eq('organization_id', channel.organization_id)
+            .like('phone', `%${phoneEnd8}`)
+            .limit(1)
+            .maybeSingle();
+          
+          if (leadBySuffix) {
+            existingLead = leadBySuffix;
+            console.log('Lead found by phone suffix:', phoneEnd8);
+          }
+        }
 
         let leadId = existingLead?.id;
 
