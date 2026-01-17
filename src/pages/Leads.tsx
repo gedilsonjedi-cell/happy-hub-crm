@@ -92,6 +92,7 @@ const Leads = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
@@ -102,6 +103,14 @@ const Leads = () => {
   const [showTagFilterPopover, setShowTagFilterPopover] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // Debounce search term to avoid too many queries
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
@@ -121,51 +130,81 @@ const Leads = () => {
     enabled: !!effectiveOrganizationId,
   });
 
+  // Fetch leads with server-side search
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["leads", effectiveOrganizationId],
+    queryKey: ["leads", effectiveOrganizationId, debouncedSearchTerm, selectedTagFilters],
     queryFn: async () => {
       if (!effectiveOrganizationId) return [];
 
-      // First get the count to know how many leads exist
-      const { count, error: countError } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", effectiveOrganizationId);
+      const term = debouncedSearchTerm.trim().toLowerCase();
+      const termDigits = debouncedSearchTerm.replace(/\D/g, '');
 
-      if (countError) throw countError;
-
-      // If more than 1000 leads, fetch in batches
-      const totalLeads = count || 0;
-      let allLeads: Lead[] = [];
-
-      if (totalLeads <= 1000) {
-        const { data, error } = await supabase
+      // If searching, use server-side search with OR conditions
+      if (term) {
+        // Build the query with multiple OR conditions for search
+        let query = supabase
           .from("leads")
           .select("*")
-          .eq("organization_id", effectiveOrganizationId)
-          .order("created_at", { ascending: false });
+          .eq("organization_id", effectiveOrganizationId);
+
+        // Use or() for multiple field search
+        const orConditions: string[] = [];
+        
+        // Name search (case insensitive)
+        orConditions.push(`name.ilike.%${term}%`);
+        
+        // Email search
+        orConditions.push(`email.ilike.%${term}%`);
+        
+        // Document search
+        orConditions.push(`document.ilike.%${term}%`);
+        
+        // City search
+        orConditions.push(`city.ilike.%${term}%`);
+        
+        // State search
+        orConditions.push(`state.ilike.%${term}%`);
+        
+        // Notes search
+        orConditions.push(`notes.ilike.%${term}%`);
+
+        // Phone search - use digits only for better matching
+        if (termDigits.length >= 4) {
+          orConditions.push(`phone.ilike.%${termDigits}%`);
+        }
+
+        query = query.or(orConditions.join(','));
+
+        // Apply tag filter if selected
+        if (selectedTagFilters.length > 0) {
+          query = query.contains('tags', selectedTagFilters);
+        }
+
+        const { data, error } = await query
+          .order("created_at", { ascending: false })
+          .limit(500);
 
         if (error) throw error;
-        allLeads = (data || []) as Lead[];
-      } else {
-        // Fetch in batches of 1000
-        const batchSize = 1000;
-        const batches = Math.ceil(totalLeads / batchSize);
-        
-        for (let i = 0; i < batches; i++) {
-          const { data, error } = await supabase
-            .from("leads")
-            .select("*")
-            .eq("organization_id", effectiveOrganizationId)
-            .order("created_at", { ascending: false })
-            .range(i * batchSize, (i + 1) * batchSize - 1);
-
-          if (error) throw error;
-          allLeads = [...allLeads, ...(data || []) as Lead[]];
-        }
+        return (data || []) as Lead[];
       }
 
-      return allLeads;
+      // No search term - fetch with pagination and tag filter
+      let query = supabase
+        .from("leads")
+        .select("*")
+        .eq("organization_id", effectiveOrganizationId);
+
+      // Apply tag filter if selected
+      if (selectedTagFilters.length > 0) {
+        query = query.contains('tags', selectedTagFilters);
+      }
+
+      const { data, error } = await query
+        .order("created_at", { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+      return (data || []) as Lead[];
     },
     enabled: !!effectiveOrganizationId,
   });
@@ -316,65 +355,36 @@ const Leads = () => {
     }
   };
 
-  // Filter leads by search term and tags
-  const filteredLeads = leads.filter(lead => {
-    // Search filter - normalize search term
-    const term = searchTerm.toLowerCase().trim();
-    const termDigits = searchTerm.replace(/\D/g, ''); // Extract only digits for phone search
-    
-    if (!term) {
-      // No search term, check only tags
-      const matchesTags = selectedTagFilters.length === 0 || 
-        selectedTagFilters.every(tag => lead.tags?.includes(tag));
-      return matchesTags;
-    }
-    
-    // Search in multiple fields
-    const matchesName = lead.name.toLowerCase().includes(term);
-    const matchesPhone = termDigits ? lead.phone.replace(/\D/g, '').includes(termDigits) : false;
-    const matchesEmail = lead.email?.toLowerCase().includes(term) || false;
-    const matchesDocument = lead.document?.toLowerCase().includes(term) || false;
-    const matchesCity = lead.city?.toLowerCase().includes(term) || false;
-    const matchesState = lead.state?.toLowerCase().includes(term) || false;
-    const matchesNotes = lead.notes?.toLowerCase().includes(term) || false;
-    
-    // Search in custom fields
-    let matchesCustomFields = false;
-    if (lead.custom_fields && typeof lead.custom_fields === 'object') {
-      matchesCustomFields = Object.values(lead.custom_fields).some(value => 
-        value && String(value).toLowerCase().includes(term)
-      );
-    }
-    
-    // Search in tags
-    const matchesTagContent = lead.tags?.some(tag => tag.toLowerCase().includes(term)) || false;
-    
-    const matchesSearch = matchesName || matchesPhone || matchesEmail || 
-      matchesDocument || matchesCity || matchesState || matchesNotes || 
-      matchesCustomFields || matchesTagContent;
-
-    // Tag filter - lead must have ALL selected tags
-    const matchesTags = selectedTagFilters.length === 0 || 
-      selectedTagFilters.every(tag => lead.tags?.includes(tag));
-
-    return matchesSearch && matchesTags;
-  });
+  // Use leads directly - filtering is done server-side now
+  const filteredLeads = leads;
 
   const isAllSelected = filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length;
   const isSomeSelected = selectedLeads.size > 0 && selectedLeads.size < filteredLeads.length;
 
-  const getStatusCounts = () => {
-    const counts: Record<string, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
-    leads.forEach(lead => {
-      const status = lead.status || "new";
-      if (counts[status] !== undefined) {
-        counts[status]++;
-      }
-    });
-    return counts;
-  };
+  // Fetch status counts separately to show accurate total counts
+  const { data: statusCounts = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 } } = useQuery({
+    queryKey: ["leads-status-counts", effectiveOrganizationId],
+    queryFn: async () => {
+      if (!effectiveOrganizationId) return { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
 
-  const statusCounts = getStatusCounts();
+      const { data, error } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("organization_id", effectiveOrganizationId);
+
+      if (error) throw error;
+
+      const counts: Record<string, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
+      (data || []).forEach((lead: { status: string }) => {
+        const status = lead.status || "new";
+        if (counts[status] !== undefined) {
+          counts[status]++;
+        }
+      });
+      return counts;
+    },
+    enabled: !!effectiveOrganizationId,
+  });
 
   return (
     <MainLayout>
