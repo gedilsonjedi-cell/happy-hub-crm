@@ -131,6 +131,11 @@ interface Channel {
   provider: string;
 }
 
+interface Sector {
+  id: string;
+  name: string;
+}
+
 interface QuickResponse {
   shortcut: string | null;
   content: string;
@@ -194,6 +199,7 @@ const AtendimentoV2 = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [templates, setTemplates] = useState<Map<string, { 
     content: string; 
     variables: string[] | null;
@@ -318,6 +324,26 @@ const AtendimentoV2 = () => {
 
     if (user && effectiveOrganizationId) {
       fetchChannels();
+    }
+  }, [user, effectiveOrganizationId]);
+
+  // Fetch sectors/departments
+  useEffect(() => {
+    const fetchSectors = async () => {
+      if (!effectiveOrganizationId) return;
+      
+      const { data, error } = await supabase
+        .from("sectors")
+        .select("id, name")
+        .eq("organization_id", effectiveOrganizationId);
+
+      if (!error && data) {
+        setSectors(data);
+      }
+    };
+
+    if (user && effectiveOrganizationId) {
+      fetchSectors();
     }
   }, [user, effectiveOrganizationId]);
 
@@ -1789,7 +1815,7 @@ const AtendimentoV2 = () => {
               ) : (
                 filteredConversations.map((conversation) => {
                   const conversationKey = getConversationKey(conversation);
-                  const channelInfo = channels.find(c => c.id === conversation.channelId);
+                  const sectorInfo = sectors.find(s => s.id === conversation.sectorId);
                   const isSelected = selectedConversation && getConversationKey(selectedConversation) === conversationKey;
                   
                   return (
@@ -1820,9 +1846,9 @@ const AtendimentoV2 = () => {
                             <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
                               {conversation.name || conversation.phone}
                             </span>
-                            {channelInfo && (
-                              <Badge variant="outline" className="text-[10px] h-5 px-2 bg-primary text-primary-foreground border-0 shrink-0 max-w-[80px] truncate">
-                                {channelInfo.name}
+                            {sectorInfo && (
+                              <Badge variant="outline" className="text-[10px] h-5 px-2 bg-primary text-primary-foreground border-0 shrink-0 max-w-[90px] truncate">
+                                {sectorInfo.name}
                               </Badge>
                             )}
                           </div>
