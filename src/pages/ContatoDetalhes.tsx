@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,14 +21,18 @@ import {
   Trash2,
   MessageCircle,
   Tag,
-  User
+  User,
+  Send,
+  Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { EditLeadDialog } from "@/components/leads/EditLeadDialog";
 import { DeleteLeadDialog } from "@/components/leads/DeleteLeadDialog";
 import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
+import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface Lead {
   id: string;
@@ -86,6 +90,36 @@ const ContatoDetalhes = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTagsDialog, setShowTagsDialog] = useState(false);
+  const [showManualSendDialog, setShowManualSendDialog] = useState(false);
+  const [checkingConversation, setCheckingConversation] = useState(false);
+
+  // Fetch available channels
+  const { data: channels = [] } = useQuery({
+    queryKey: ["channels", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await supabase
+        .from("channels")
+        .select("id, name, phone, provider")
+        .eq("organization_id", organizationId)
+        .in("provider", ["meta", "zapi"])
+        .eq("connected", true);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!organizationId,
+  });
+
+  const [selectedChannel, setSelectedChannel] = useState<typeof channels[0] | null>(null);
+
+  // Set default channel when channels are loaded
+  useEffect(() => {
+    if (channels.length > 0 && !selectedChannel) {
+      setSelectedChannel(channels[0]);
+    }
+  }, [channels, selectedChannel]);
 
   // Fetch lead details
   const { data: lead, isLoading } = useQuery({
@@ -172,6 +206,56 @@ const ContatoDetalhes = () => {
     navigate("/leads");
   };
 
+  // Handle starting a conversation - check if there's an active conversation first
+  const handleStartConversation = async () => {
+    if (!lead || !organizationId) return;
+
+    // Check if we have channels
+    if (channels.length === 0) {
+      toast.error("Nenhum canal conectado. Conecte um número de WhatsApp primeiro.");
+      return;
+    }
+
+    setCheckingConversation(true);
+
+    try {
+      const cleanPhone = lead.phone.replace(/\D/g, "");
+
+      // Check if there's an existing conversation with messages
+      const { data: existingMessages, error } = await supabase
+        .from("whatsapp_messages")
+        .select("id, channel_id")
+        .eq("organization_id", organizationId)
+        .eq("sender_phone", cleanPhone)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (existingMessages && existingMessages.length > 0) {
+        // There's an existing conversation - navigate to chat with phone pre-selected
+        toast.success("Abrindo conversa existente...");
+        navigate(`/atendimento?phone=${cleanPhone}`);
+      } else {
+        // No existing conversation - open the manual send dialog
+        if (!selectedChannel && channels.length > 0) {
+          setSelectedChannel(channels[0]);
+        }
+        setShowManualSendDialog(true);
+      }
+    } catch (error) {
+      console.error("Error checking conversation:", error);
+      toast.error("Erro ao verificar conversa");
+      // Fallback to opening manual send dialog
+      if (!selectedChannel && channels.length > 0) {
+        setSelectedChannel(channels[0]);
+      }
+      setShowManualSendDialog(true);
+    } finally {
+      setCheckingConversation(false);
+    }
+  };
+
   const formatPhone = (phone: string) => {
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 11) {
@@ -232,7 +316,20 @@ const ContatoDetalhes = () => {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button 
+            size="sm" 
+            onClick={handleStartConversation}
+            disabled={checkingConversation}
+            className="gap-2"
+          >
+            {checkingConversation ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            Iniciar Conversa
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowTagsDialog(true)}>
             <Tag className="w-4 h-4 mr-2" />
             Tags
@@ -466,6 +563,18 @@ const ContatoDetalhes = () => {
         currentTags={lead.tags || []}
         onSuccess={handleLeadUpdated}
       />
+
+      {selectedChannel && (
+        <ManualSendDialog
+          isOpen={showManualSendDialog}
+          onClose={() => setShowManualSendDialog(false)}
+          channels={channels}
+          selectedChannel={selectedChannel}
+          onChannelChange={setSelectedChannel}
+          initialPhone={lead.phone.replace(/\D/g, "").replace(/^55/, "")}
+          onPhoneUsed={() => {}}
+        />
+      )}
     </MainLayout>
   );
 };
