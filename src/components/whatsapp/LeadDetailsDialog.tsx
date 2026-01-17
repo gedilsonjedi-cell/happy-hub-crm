@@ -110,21 +110,35 @@ export function LeadDetailsDialog({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Normalize phone for query - handle 8th/9th digit variations
+  // Normalize phone for query - get last 8 digits (most stable part)
   const normalizedPhone = phone.replace(/\D/g, "");
-  // Remove country code (55) if present to get local number
-  const localNumber = normalizedPhone.startsWith("55") 
-    ? normalizedPhone.slice(2) 
-    : normalizedPhone;
-  // Get last 8 digits (most stable part of the number)
-  const phoneEnd8 = localNumber.slice(-8);
-  // Create variation with 9 (for mobile) and without
-  const ddd = localNumber.length >= 10 ? localNumber.slice(0, 2) : "";
+  const phoneEnd8 = normalizedPhone.slice(-8);
+
+  // Reset form state when dialog opens with new phone
+  useEffect(() => {
+    if (open) {
+      // Reset to defaults when opening
+      setFormData({
+        name: name || "",
+        phone: phone,
+        email: "",
+        document: "",
+        city: "",
+        state: "",
+        status: "new",
+        notes: "",
+      });
+      setCustomFieldValues({});
+      setSelectedTags([]);
+    }
+  }, [open, phone, name]);
 
   // Fetch lead by phone - prioritize leads with tags and real names
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
-    queryKey: ["lead-by-phone", normalizedPhone],
+    queryKey: ["lead-by-phone", phoneEnd8, open],
     queryFn: async () => {
+      if (!open) return null;
+      
       const { data: profile } = await supabase
         .from("profiles")
         .select("organization_id")
@@ -133,25 +147,22 @@ export function LeadDetailsDialog({
 
       if (!profile?.organization_id) return null;
 
-      // Build search patterns for different phone formats
-      // Pattern matches: exact, with +, ending with last 8 digits (most reliable)
-      const searchPatterns = [
-        `phone.eq.${normalizedPhone}`,
-        `phone.eq.+${normalizedPhone}`,
-        `phone.eq.55${localNumber}`,
-        `phone.eq.+55${localNumber}`,
-        `phone.ilike.%${phoneEnd8}`, // Last 8 digits are most stable
-      ].join(",");
+      console.log('[LeadDetailsDialog] Searching lead with phone suffix:', phoneEnd8, 'org:', profile.organization_id);
 
-      // Fetch all potential matches to find the best one
+      // Search using phone suffix (last 8 digits) - most reliable
       const { data: allMatches, error } = await supabase
         .from("leads")
         .select("*")
         .eq("organization_id", profile.organization_id)
-        .or(searchPatterns)
-        .limit(10);
+        .ilike("phone", `%${phoneEnd8}`);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[LeadDetailsDialog] Query error:', error);
+        throw error;
+      }
+      
+      console.log('[LeadDetailsDialog] Found matches:', allMatches?.length, allMatches);
+      
       if (!allMatches || allMatches.length === 0) return null;
       
       // If only one match, return it
@@ -179,9 +190,12 @@ export function LeadDetailsDialog({
       
       // Sort by score descending and return best match
       scored.sort((a, b) => b.score - a.score);
+      console.log('[LeadDetailsDialog] Best match:', scored[0]?.lead);
       return scored[0].lead as Lead;
     },
-    enabled: open && !!normalizedPhone && !!user,
+    enabled: open && !!phoneEnd8 && !!user,
+    staleTime: 0, // Always refetch when dialog opens
+    gcTime: 0, // Don't cache
   });
 
   // Fetch custom field definitions
@@ -244,12 +258,10 @@ export function LeadDetailsDialog({
 
       if (!profile?.organization_id) return [];
 
-      // Build search patterns for phone matching
+      // Build search patterns for phone matching (use last 8 digits for best matching)
       const phonePatterns = [
         normalizedPhone,
         `+${normalizedPhone}`,
-        `55${localNumber}`,
-        `+55${localNumber}`,
       ];
 
       // Get recipients that match any of the phone patterns
@@ -298,7 +310,10 @@ export function LeadDetailsDialog({
 
   // Populate form when lead data loads
   useEffect(() => {
+    if (!open) return;
+    
     if (lead) {
+      console.log('[LeadDetailsDialog] Populating form with lead:', lead.id, lead.name, lead.tags);
       setFormData({
         name: lead.name || "",
         phone: lead.phone || "",
@@ -311,22 +326,11 @@ export function LeadDetailsDialog({
       });
       setCustomFieldValues((lead.custom_fields as Record<string, unknown>) || {});
       setSelectedTags(lead.tags || []);
-    } else if (open) {
-      // New lead - pre-fill with conversation data
-      setFormData({
-        name: name || "",
-        phone: phone,
-        email: "",
-        document: "",
-        city: "",
-        state: "",
-        status: "new",
-        notes: "",
-      });
-      setCustomFieldValues({});
-      setSelectedTags([]);
+    } else if (!loadingLead) {
+      // No lead found and not loading - keep defaults set on open
+      console.log('[LeadDetailsDialog] No lead found, using defaults');
     }
-  }, [lead, open, name, phone]);
+  }, [lead, open, loadingLead]);
 
   const handleSave = async () => {
     if (!user) return;
