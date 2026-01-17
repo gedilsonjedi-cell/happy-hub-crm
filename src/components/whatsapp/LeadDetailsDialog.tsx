@@ -33,7 +33,12 @@ import {
   Loader2,
   Save,
   Tag,
+  Megaphone,
+  Calendar,
+  Building2,
 } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface LeadDetailsDialogProps {
   open: boolean;
@@ -70,6 +75,15 @@ interface LeadTag {
   id: string;
   name: string;
   color: string | null;
+}
+
+interface CampaignDispatch {
+  id: string;
+  campaign_name: string;
+  sector_name: string | null;
+  sent_at: string | null;
+  created_at: string;
+  status: string;
 }
 
 export function LeadDetailsDialog({
@@ -189,6 +203,70 @@ export function LeadDetailsDialog({
       return data as LeadTag[];
     },
     enabled: open && !!user,
+  });
+
+  // Fetch campaign dispatch history for this phone
+  const { data: campaignHistory } = useQuery({
+    queryKey: ["campaign-history", normalizedPhone],
+    queryFn: async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (!profile?.organization_id) return [];
+
+      // Build search patterns for phone matching
+      const phonePatterns = [
+        normalizedPhone,
+        `+${normalizedPhone}`,
+        `55${localNumber}`,
+        `+55${localNumber}`,
+      ];
+
+      // Get recipients that match any of the phone patterns
+      const { data: recipients, error } = await supabase
+        .from("campaign_recipients")
+        .select(`
+          id,
+          phone,
+          sent_at,
+          created_at,
+          status,
+          campaign_id,
+          campaigns!inner(
+            id,
+            name,
+            sector_id,
+            organization_id,
+            sectors(name)
+          )
+        `)
+        .or(phonePatterns.map(p => `phone.ilike.%${p.slice(-8)}`).join(","))
+        .not("sent_at", "is", null)
+        .order("sent_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching campaign history:", error);
+        return [];
+      }
+
+      // Filter to only include campaigns from the user's organization
+      const filtered = recipients?.filter(
+        (r) => (r.campaigns as { organization_id: string })?.organization_id === profile.organization_id
+      ) || [];
+
+      return filtered.map((r) => ({
+        id: r.id,
+        campaign_name: (r.campaigns as { name: string })?.name || "Campanha",
+        sector_name: (r.campaigns as { sectors: { name: string } | null })?.sectors?.name || null,
+        sent_at: r.sent_at,
+        created_at: r.created_at,
+        status: r.status,
+      })) as CampaignDispatch[];
+    },
+    enabled: open && !!user && !!normalizedPhone,
   });
 
   // Populate form when lead data loads
@@ -553,6 +631,57 @@ export function LeadDetailsDialog({
                       {renderCustomField(field)}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Campaign History */}
+              {campaignHistory && campaignHistory.length > 0 && (
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <Label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                    <Megaphone className="w-3 h-3" />
+                    Histórico de Campanhas
+                  </Label>
+                  <div className="space-y-2">
+                    {campaignHistory.map((dispatch) => (
+                      <div 
+                        key={dispatch.id} 
+                        className="p-3 rounded-lg bg-muted/50 border border-border space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {dispatch.campaign_name}
+                          </span>
+                          <Badge 
+                            variant="outline" 
+                            className={
+                              dispatch.status === "delivered" 
+                                ? "bg-green-500/10 text-green-600 border-green-500/30 text-[10px]" 
+                                : dispatch.status === "failed" 
+                                  ? "bg-red-500/10 text-red-600 border-red-500/30 text-[10px]"
+                                  : "bg-blue-500/10 text-blue-600 border-blue-500/30 text-[10px]"
+                            }
+                          >
+                            {dispatch.status === "delivered" ? "Entregue" : dispatch.status === "failed" ? "Falhou" : dispatch.status === "sent" ? "Enviado" : dispatch.status}
+                          </Badge>
+                        </div>
+                        {dispatch.sector_name && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Building2 className="w-3 h-3" />
+                            <span>{dispatch.sector_name}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {dispatch.sent_at 
+                              ? format(new Date(dispatch.sent_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                              : format(new Date(dispatch.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
