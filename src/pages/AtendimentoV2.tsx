@@ -1852,8 +1852,16 @@ const AtendimentoV2 = () => {
                               </Badge>
                             )}
                           </div>
+                          {conversation.assignedToName && (
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <UserCheck className="w-3 h-3 text-blue-400" />
+                              <span className="text-[11px] text-blue-400 font-medium truncate">
+                                {conversation.assignedToName}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs text-primary truncate flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
                               {conversation.lastMessage}
                             </p>
                             <div className="flex items-center gap-2 shrink-0">
