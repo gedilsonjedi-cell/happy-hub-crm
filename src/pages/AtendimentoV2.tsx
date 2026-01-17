@@ -1632,59 +1632,147 @@ const AtendimentoV2 = () => {
 
   return (
     <TopNavLayout>
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* Sidebar */}
         <div className={cn(
-          "w-full lg:w-80 xl:w-96 bg-card rounded-lg border border-border flex flex-col min-h-0",
+          "w-full lg:w-80 xl:w-96 bg-card border-r border-border flex flex-col min-h-0",
           selectedConversation ? "hidden lg:flex" : "flex"
         )}>
-          {/* Header */}
+          {/* Notification banner */}
+          {!notificationsEnabled && (
+            <button 
+              onClick={requestNotificationPermission}
+              className="w-full px-4 py-2 bg-primary text-primary-foreground text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors"
+            >
+              <Bell className="w-4 h-4" />
+              <span>Ative as notificações na web</span>
+            </button>
+          )}
+
+          {/* Tabs header */}
           <div className="p-3 border-b border-border space-y-3 shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BalanceIndicator />
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setFilterStatus("new")} 
+                  className={cn(
+                    "text-sm font-medium flex items-center gap-1.5 transition-colors",
+                    filterStatus === "new" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Novos
+                  {newCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold min-w-5 text-center">
+                      {newCount}
+                    </span>
+                  )}
+                </button>
+                <button 
+                  onClick={() => setFilterStatus("mine")} 
+                  className={cn(
+                    "text-sm font-medium transition-colors",
+                    filterStatus === "mine" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Meus
+                </button>
+                {canSeeOthers && (
+                  <button 
+                    onClick={() => setFilterStatus("others")} 
+                    className={cn(
+                      "text-sm font-medium transition-colors",
+                      filterStatus === "others" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Outros
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  onClick={() => setShowArchived(!showArchived)}
                   className="h-8 w-8"
+                  title="Arquivados"
                 >
-                  {soundEnabled ? <Volume2 className="w-4 h-4 text-primary" /> : <VolumeX className="w-4 h-4 text-muted-foreground" />}
+                  <Archive className="w-4 h-4 text-muted-foreground" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : requestNotificationPermission}
-                  className={cn("h-8 w-8", notificationsEnabled ? "text-primary" : "text-muted-foreground")}
-                >
-                  {notificationsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-popover">
+                    <DropdownMenuItem onClick={() => setSoundEnabled(!soundEnabled)}>
+                      {soundEnabled ? <Volume2 className="w-4 h-4 mr-2" /> : <VolumeX className="w-4 h-4 mr-2" />}
+                      {soundEnabled ? "Desativar som" : "Ativar som"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowArchived(!showArchived)}>
+                      <Archive className="w-4 h-4 mr-2" />
+                      {showArchived ? "Ocultar arquivados" : "Ver arquivados"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Buscar..." className="pl-10 bg-muted/30 border-border h-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
             
-            <div className="flex gap-1 overflow-x-auto">
-              <Button variant={filterStatus === "new" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("new")} className="text-xs px-3 h-7 gap-1 shrink-0">
-                <Clock className="w-3 h-3" />Novos
-                {newCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground">{newCount}</Badge>}
-              </Button>
-              <Button variant={filterStatus === "mine" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("mine")} className="text-xs px-3 h-7 gap-1 shrink-0">
-                <User className="w-3 h-3" />Meus
-                {mineCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">{mineCount}</Badge>}
-              </Button>
-              {canSeeOthers && (
-                <Button variant={filterStatus === "others" ? "default" : "outline"} size="sm" onClick={() => setFilterStatus("others")} className="text-xs px-3 h-7 gap-1 shrink-0">
-                  <UserCheck className="w-3 h-3" />Outros
-                  {othersCount > 0 && <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">{othersCount}</Badge>}
-                </Button>
-              )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Buscar atendimento" 
+                  className="pl-10 bg-muted/30 border-border h-9 text-sm" 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
+              </div>
             </div>
           </div>
+
+          {/* Archived section (collapsible at top) */}
+          {showArchived && archivedConversations.length > 0 && (
+            <div className="border-b border-border bg-muted/30 shrink-0">
+              <div className="p-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                  <Archive className="w-3 h-3" />
+                  Arquivados ({archivedConversations.length})
+                </span>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowArchived(false)}>
+                  <ChevronUp className="w-4 h-4" />
+                </Button>
+              </div>
+              <ScrollArea className="max-h-40">
+                <div className="divide-y divide-border">
+                  {filteredArchived.map((conv) => {
+                    const convKey = getConversationKey(conv);
+                    
+                    return (
+                      <div key={convKey} className="group relative p-2 px-3 hover:bg-muted/50 transition-colors flex items-center gap-3">
+                        <Avatar className="w-8 h-8 shrink-0">
+                          <AvatarFallback className="bg-muted text-muted-foreground text-xs">
+                            {conv.name ? conv.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-3 h-3" />}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-muted-foreground truncate block">{conv.name || conv.phone}</span>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" 
+                          onClick={() => handleRestore(conv)}
+                        >
+                          <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
 
           {/* Conversations list */}
           <ScrollArea className="flex-1">
@@ -1705,111 +1793,100 @@ const AtendimentoV2 = () => {
                   const isSelected = selectedConversation && getConversationKey(selectedConversation) === conversationKey;
                   
                   return (
-                    <div key={conversationKey} className={cn("group relative border-l-2 transition-colors", isSelected ? "bg-primary/10 border-l-primary" : "border-l-transparent hover:bg-muted/30")}>
-                      <Button variant="ghost" size="icon" className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 z-50" onClick={(e) => { e.stopPropagation(); handleArchive(conversation); }}>
-                        <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
-                      </Button>
-                      {!conversation.assignedTo && (
-                        <Button variant="default" size="sm" className="absolute right-[120px] top-2 h-6 px-2 text-xs gap-1 z-50" onClick={(e) => handleAcceptConversation(conversation, e)}>
-                          <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Aceitar</span>
-                        </Button>
+                    <button 
+                      key={conversationKey} 
+                      onClick={() => setSelectedConversation(conversation)} 
+                      className={cn(
+                        "w-full p-3 text-left transition-colors flex items-center gap-3 hover:bg-muted/30",
+                        isSelected && "bg-primary/5"
                       )}
-                      <button onClick={() => setSelectedConversation(conversation)} className="w-full p-3 text-left transition-colors">
-                        <div className="flex items-start gap-3 w-full">
-                          <Avatar className="w-10 h-10 shrink-0">
-                            <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-sm font-semibold">
-                              {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0 pr-24">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-foreground text-sm truncate">{conversation.name || conversation.phone}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">{formatConversationDate(conversation.lastMessageTime)}</span>
-                            </div>
-                            {conversation.assignedToName ? (
-                              <p className="text-[10px] text-emerald-500/80 truncate mb-0.5 flex items-center gap-1">
-                                <User className="w-2.5 h-2.5" />{conversation.assignedToName}
-                              </p>
-                            ) : channelInfo && channels.length > 1 ? (
-                              <p className="text-[10px] text-primary/70 truncate mb-0.5">📱 {channelInfo.name}</p>
-                            ) : null}
-                            <p className="text-xs text-muted-foreground truncate mb-2">
-                              {conversation.lastMessage?.substring(0, 50)}{conversation.lastMessage && conversation.lastMessage.length > 50 ? '...' : ''}
-                            </p>
-                            <div className="flex items-center gap-1.5">
-                              <Badge variant="outline" className={cn("text-xs shrink-0", getStatusConfig(conversation.status).className)}>
-                                {getStatusConfig(conversation.status).label}
-                              </Badge>
-                              {conversation.unreadCount > 0 && (
-                                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">{conversation.unreadCount}</span>
-                              )}
-                            </div>
-                          </div>
+                    >
+                      {/* Avatar with WhatsApp icon overlay */}
+                      <div className="relative shrink-0">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-pink-100 text-pink-600 text-sm font-semibold">
+                            {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                          <MessageSquare className="w-2.5 h-2.5 text-white" />
                         </div>
-                      </button>
-                    </div>
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-medium text-foreground text-sm truncate">
+                            {conversation.name || conversation.phone}
+                          </span>
+                          {contactTags.length > 0 && selectedConversation?.phone === conversation.phone && (
+                            <Badge variant="default" className="text-[10px] h-4 px-1.5 bg-blue-500 text-white shrink-0">
+                              {contactTags[0]}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-primary truncate">
+                          {conversation.lastMessage?.substring(0, 35)}{conversation.lastMessage && conversation.lastMessage.length > 35 ? '...' : ''}
+                        </p>
+                      </div>
+                      
+                      {/* Right side info */}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {channelInfo && (
+                          <Badge variant="outline" className="text-xs h-5 px-2 bg-primary text-primary-foreground border-0">
+                            {channelInfo.name.length > 8 ? channelInfo.name.substring(0, 8) + '...' : channelInfo.name}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatConversationDate(conversation.lastMessageTime)}
+                        </span>
+                        {conversation.unreadCount > 0 && (
+                          <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                            {conversation.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   );
                 })
               )}
             </div>
           </ScrollArea>
 
-          {/* Manual send */}
+          {/* Manual send footer */}
           <div className="border-t border-border p-3 shrink-0">
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center px-2 h-9 bg-muted rounded-md border border-border text-xs font-medium text-muted-foreground shrink-0">+55</div>
-              <Input placeholder="DDD + Número" className="flex-1 h-9 text-sm" value={manualPhoneInput} onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))} />
-              <Button onClick={() => setShowManualSendDialog(true)} size="icon" className="h-9 w-9 shrink-0" disabled={!manualPhoneInput.trim()}><Send className="w-4 h-4" /></Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 px-3 gap-1 shrink-0">
+                    +55
+                    <ChevronDown className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="bg-popover">
+                  <DropdownMenuItem>+55 (Brasil)</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Input 
+                placeholder="(00) 0000-0000" 
+                className="flex-1 h-9 text-sm" 
+                value={manualPhoneInput} 
+                onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))} 
+              />
+              <Button 
+                onClick={() => setShowManualSendDialog(true)} 
+                variant="outline"
+                className="h-9 px-4 shrink-0" 
+                disabled={!manualPhoneInput.trim()}
+              >
+                Conversar
+              </Button>
             </div>
           </div>
-
-          {/* Archived */}
-          {archivedConversations.length > 0 && (
-            <div className="border-t border-border shrink-0">
-              <button onClick={() => setShowArchived(!showArchived)} className="w-full p-3 flex items-center justify-between text-sm text-muted-foreground hover:bg-muted/30 transition-colors">
-                <div className="flex items-center gap-2">
-                  <Archive className="w-4 h-4" /><span>Arquivados</span>
-                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">{archivedConversations.length}</Badge>
-                </div>
-                {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-              
-              {showArchived && (
-                <ScrollArea className="max-h-48">
-                  <div className="divide-y divide-border bg-muted/20">
-                    {filteredArchived.map((conv) => {
-                      const convKey = getConversationKey(conv);
-                      const channelInfo = channels.find(c => c.id === conv.channelId);
-                      
-                      return (
-                        <div key={convKey} className="group relative p-3 hover:bg-muted/30 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="w-8 h-8">
-                              <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
-                                {conv.name ? conv.name.split(" ").map(n => n[0]).join("") : <User className="w-3 h-3" />}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <span className="font-medium text-muted-foreground text-sm truncate block">{conv.name || conv.phone}</span>
-                              {channelInfo && channels.length > 1 && <span className="text-[10px] text-primary/60 block">📱 {channelInfo.name}</span>}
-                              <span className="text-xs text-muted-foreground/70">{formatConversationDate(conv.lastMessageTime)}</span>
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRestore(conv)}>
-                              <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Chat area */}
-        <div className={cn("flex-1 bg-card rounded-lg border border-border flex flex-col overflow-hidden", !selectedConversation ? "hidden lg:flex" : "flex")}>
+        <div className={cn("flex-1 bg-card flex flex-col overflow-hidden", !selectedConversation ? "hidden lg:flex" : "flex")}>
           {selectedConversation ? (
             <>
               {/* Chat header */}
@@ -1829,7 +1906,7 @@ const AtendimentoV2 = () => {
                     </Button>
                     <button onClick={() => setShowLeadDetailsDialog(true)} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0">
                       <Avatar className="w-10 h-10 shrink-0">
-                        <AvatarFallback className="bg-emerald-500/10 text-emerald-500 font-semibold text-sm">
+                        <AvatarFallback className="bg-pink-100 text-pink-600 font-semibold text-sm">
                           {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
                         </AvatarFallback>
                       </Avatar>
@@ -2005,11 +2082,10 @@ const AtendimentoV2 = () => {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center bg-muted/10">
               <div className="text-center text-muted-foreground">
-                <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <h3 className="text-lg font-medium text-foreground mb-1">Nenhuma conversa selecionada</h3>
-                <p className="text-sm">Selecione uma conversa ou envie uma mensagem manual</p>
+                <MessageSquare className="w-20 h-20 mx-auto mb-4 opacity-20 stroke-1" />
+                <p className="text-base text-muted-foreground/70">Escolha um atendimento para iniciar a conversa</p>
               </div>
             </div>
           )}
