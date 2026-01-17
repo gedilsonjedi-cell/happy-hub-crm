@@ -138,6 +138,9 @@ const Leads = () => {
 
       const term = debouncedSearchTerm.trim().toLowerCase();
       const termDigits = debouncedSearchTerm.replace(/\D/g, '');
+      
+      // Split search term into individual words for better matching
+      const searchWords = term.split(/\s+/).filter(w => w.length >= 2);
 
       // If searching, use server-side search with OR conditions
       if (term) {
@@ -150,8 +153,19 @@ const Leads = () => {
         // Use or() for multiple field search
         const orConditions: string[] = [];
         
-        // Name search (case insensitive)
-        orConditions.push(`name.ilike.%${term}%`);
+        // Name search - if multiple words, each word must be present
+        if (searchWords.length > 1) {
+          // For multi-word search, we'll search for the whole phrase first
+          orConditions.push(`name.ilike.%${term}%`);
+          // Also add individual word matching - find records where ALL words appear
+          // This is done by searching for each word separately
+          searchWords.forEach(word => {
+            orConditions.push(`name.ilike.%${word}%`);
+          });
+        } else {
+          // Single word search
+          orConditions.push(`name.ilike.%${term}%`);
+        }
         
         // Email search
         orConditions.push(`email.ilike.%${term}%`);
@@ -180,11 +194,20 @@ const Leads = () => {
           query = query.contains('tags', selectedTagFilters);
         }
 
-        const { data, error } = await query
+        let { data, error } = await query
           .order("created_at", { ascending: false })
           .limit(500);
 
         if (error) throw error;
+        
+        // If multiple search words, filter client-side to ensure ALL words match the name
+        if (searchWords.length > 1 && data) {
+          data = data.filter(lead => {
+            const leadName = lead.name.toLowerCase();
+            return searchWords.every(word => leadName.includes(word));
+          });
+        }
+        
         return (data || []) as Lead[];
       }
 
