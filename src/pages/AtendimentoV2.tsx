@@ -142,29 +142,61 @@ const AtendimentoV2 = () => {
 
   useEffect(() => {
     const fetchConversations = async () => {
-      if (!selectedChannel) return;
+      if (!selectedChannel || !effectiveOrganizationId) return;
       setLoading(true);
+      
+      // Fetch messages
       const { data: messagesData } = await supabase
         .from("whatsapp_messages")
         .select("*")
         .eq("channel_id", selectedChannel.id)
         .order("created_at", { ascending: false });
 
+      // Fetch assignments
       const { data: assignments } = await supabase
         .from("conversation_assignments")
-        .select("conversation_phone, assigned_to, status, sector_id")
+        .select("conversation_phone, assigned_to, status, sector_id, lead_id")
         .eq("channel_id", selectedChannel.id);
 
-      const assignmentMap = new Map(assignments?.map(a => [a.conversation_phone, { assignedTo: a.assigned_to, status: a.status, sectorId: a.sector_id }]) || []);
+      // Get unique phone numbers to fetch leads
+      const uniquePhones = [...new Set(messagesData?.map(m => m.sender_phone) || [])];
+      
+      // Fetch leads by phone to get the imported name (prioritize lead name over WhatsApp name)
+      const { data: leads } = await supabase
+        .from("leads")
+        .select("id, name, phone")
+        .eq("organization_id", effectiveOrganizationId);
+
+      // Create phone -> lead name map (normalize phones for matching)
+      const leadNameMap = new Map<string, string>();
+      leads?.forEach(lead => {
+        const normalizedPhone = lead.phone.replace(/\D/g, '');
+        leadNameMap.set(normalizedPhone, lead.name);
+        // Also store with variations
+        if (normalizedPhone.startsWith('55')) {
+          leadNameMap.set(normalizedPhone.slice(2), lead.name);
+        } else {
+          leadNameMap.set(`55${normalizedPhone}`, lead.name);
+        }
+      });
+
+      const assignmentMap = new Map(assignments?.map(a => [a.conversation_phone, { assignedTo: a.assigned_to, status: a.status, sectorId: a.sector_id, leadId: a.lead_id }]) || []);
       const conversationMap = new Map<string, Conversation>();
       
       messagesData?.forEach(msg => {
         const phone = msg.sender_phone;
+        const normalizedPhone = phone.replace(/\D/g, '');
         const assignment = assignmentMap.get(phone);
+        
+        // Priority: Lead name from database > WhatsApp sender_name > phone number
+        const leadName = leadNameMap.get(normalizedPhone) || 
+                         leadNameMap.get(normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : `55${normalizedPhone}`);
+        const displayName = leadName || null; // Don't fallback to sender_name from WhatsApp
+        
         if (!conversationMap.has(phone)) {
           conversationMap.set(phone, {
             phone,
-            name: msg.sender_name,
+            name: displayName,
             lastMessage: msg.content || `[${msg.message_type}]`,
             lastMessageTime: msg.created_at,
             unreadCount: msg.direction === "inbound" && msg.status !== "read" ? 1 : 0,
@@ -183,7 +215,7 @@ const AtendimentoV2 = () => {
       setLoading(false);
     };
     fetchConversations();
-  }, [selectedChannel]);
+  }, [selectedChannel, effectiveOrganizationId]);
 
   useEffect(() => {
     if (!selectedConversation || !selectedChannel) { setMessages([]); return; }
