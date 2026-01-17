@@ -79,14 +79,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { organizationId, dryRun = true } = body;
+    const { organizationId, dryRun = true, batchStart = 0, batchLimit = 2000 } = body;
 
-    console.log(`[normalize-lead-phones] Starting normalization for org: ${organizationId || 'ALL'}, dryRun: ${dryRun}`);
+    console.log(`[normalize-lead-phones] Starting normalization for org: ${organizationId || 'ALL'}, dryRun: ${dryRun}, batch: ${batchStart}-${batchStart + batchLimit}`);
 
-    // Build query for leads to normalize
+    // Build query for leads to normalize with pagination
     let query = supabase
       .from("leads")
-      .select("id, phone, name, organization_id");
+      .select("id, phone, name, organization_id")
+      .range(batchStart, batchStart + batchLimit - 1);
 
     if (organizationId) {
       query = query.eq("organization_id", organizationId);
@@ -99,7 +100,7 @@ Deno.serve(async (req: Request) => {
       throw fetchError;
     }
 
-    console.log(`[normalize-lead-phones] Found ${leads?.length || 0} leads to check`);
+    console.log(`[normalize-lead-phones] Found ${leads?.length || 0} leads to check in this batch`);
 
     // Find leads that need normalization
     const leadsToUpdate: { id: string; oldPhone: string; newPhone: string; name: string }[] = [];
