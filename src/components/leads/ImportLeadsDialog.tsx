@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 
 interface ImportLeadsDialogProps {
@@ -53,6 +54,47 @@ interface LeadTag {
   color: string;
 }
 
+interface ParsedLead {
+  phone: string;
+  name: string;
+  email: string | null;
+  document: string | null;
+  city: string | null;
+  state: string | null;
+  customFields: Record<string, string>;
+  rowIndex: number;
+}
+
+interface ExistingLead {
+  id: string;
+  phone: string;
+  name: string;
+  email: string | null;
+  document: string | null;
+  city: string | null;
+  state: string | null;
+  tags: string[] | null;
+  custom_fields: Record<string, string> | null;
+}
+
+// Conflict types
+interface SpreadsheetConflict {
+  type: "spreadsheet";
+  phone: string;
+  leads: ParsedLead[];
+  selectedIndex: number | null;
+}
+
+interface DatabaseConflict {
+  type: "database";
+  phone: string;
+  newLead: ParsedLead;
+  existingLead: ExistingLead;
+  resolution: "update" | "skip" | null;
+}
+
+type Conflict = SpreadsheetConflict | DatabaseConflict;
+
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308",
   "#84cc16", "#22c55e", "#10b981", "#14b8a6",
@@ -66,7 +108,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [step, setStep] = useState<"upload" | "mapping" | "tags">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "conflicts" | "tags">("upload");
   const [parsedFileData, setParsedFileData] = useState<ParsedFileData | null>(null);
   
   // Column mapping states
@@ -82,6 +124,12 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const [newFieldColumnIndex, setNewFieldColumnIndex] = useState<number | null>(null);
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [isCreatingField, setIsCreatingField] = useState(false);
+  
+  // Conflict resolution states
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [parsedLeads, setParsedLeads] = useState<ParsedLead[]>([]);
+  const [existingLeadsMap, setExistingLeadsMap] = useState<Map<string, ExistingLead>>(new Map());
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
   
   // Tags states
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -223,11 +271,172 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     }
   };
 
-  const handleMappingConfirm = () => {
+  // Normalize phone for comparison (get last 8 digits)
+  const normalizePhoneForCompare = (phone: string) => {
+    const digits = phone.replace(/\D/g, "");
+    return digits.slice(-8);
+  };
+
+  const handleMappingConfirm = async () => {
     if (selectedPhoneColumn === null) {
       toast.error("Selecione a coluna de telefone");
       return;
     }
+    
+    if (!parsedFileData || !organizationId) return;
+    
+    setCheckingConflicts(true);
+    
+    try {
+      // Parse all leads from file
+      const leads: ParsedLead[] = parsedFileData.rows
+        .map((row, rowIndex) => {
+          const phone = row[selectedPhoneColumn]?.replace(/\D/g, "");
+          if (!phone || phone.length < 10) return null;
+          
+          const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
+          const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;
+          const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : null;
+          const city = selectedCityColumn !== null ? row[selectedCityColumn] : null;
+          const state = selectedStateColumn !== null ? row[selectedStateColumn] : null;
+
+          const customFields: Record<string, string> = {};
+          Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
+            const value = row[colIndex];
+            if (value) customFields[fieldName] = value;
+          });
+
+          return {
+            phone,
+            name: name?.trim() || `Lead ${phone}`,
+            email: email?.trim() || null,
+            document: document?.trim() || null,
+            city: city?.trim() || null,
+            state: state?.trim() || null,
+            customFields,
+            rowIndex,
+          };
+        })
+        .filter((l): l is ParsedLead => l !== null);
+      
+      setParsedLeads(leads);
+      
+      // Check for duplicates within the spreadsheet
+      const phoneGroups = new Map<string, ParsedLead[]>();
+      leads.forEach(lead => {
+        const normalizedPhone = normalizePhoneForCompare(lead.phone);
+        const existing = phoneGroups.get(normalizedPhone) || [];
+        existing.push(lead);
+        phoneGroups.set(normalizedPhone, existing);
+      });
+      
+      const spreadsheetConflicts: SpreadsheetConflict[] = [];
+      phoneGroups.forEach((groupLeads, phone) => {
+        if (groupLeads.length > 1) {
+          spreadsheetConflicts.push({
+            type: "spreadsheet",
+            phone,
+            leads: groupLeads,
+            selectedIndex: null,
+          });
+        }
+      });
+      
+      // Get unique phones from file (deduplicated)
+      const uniquePhones = leads.map(l => l.phone);
+      const phoneSuffixes = [...new Set(leads.map(l => normalizePhoneForCompare(l.phone)))];
+      
+      // Check which phones already exist in database using suffix matching
+      const { data: existingLeads } = await supabase
+        .from("leads")
+        .select("id, phone, name, email, document, city, state, tags, custom_fields")
+        .eq("organization_id", organizationId);
+      
+      // Build map of existing leads by phone suffix
+      const existingMap = new Map<string, ExistingLead>();
+      (existingLeads || []).forEach(lead => {
+        const suffix = normalizePhoneForCompare(lead.phone);
+        // Keep the one with more data (tags, name, etc.)
+        const existing = existingMap.get(suffix);
+        if (!existing || (lead.tags && lead.tags.length > 0) || (lead.name && !lead.name.startsWith('Lead '))) {
+          existingMap.set(suffix, lead as ExistingLead);
+        }
+      });
+      
+      setExistingLeadsMap(existingMap);
+      
+      // Find database conflicts
+      const databaseConflicts: DatabaseConflict[] = [];
+      const seenPhoneSuffixes = new Set<string>();
+      
+      leads.forEach(lead => {
+        const suffix = normalizePhoneForCompare(lead.phone);
+        if (seenPhoneSuffixes.has(suffix)) return; // Skip duplicates in file
+        seenPhoneSuffixes.add(suffix);
+        
+        const existingLead = existingMap.get(suffix);
+        if (existingLead) {
+          databaseConflicts.push({
+            type: "database",
+            phone: suffix,
+            newLead: lead,
+            existingLead,
+            resolution: "update", // Default to update
+          });
+        }
+      });
+      
+      const allConflicts = [...spreadsheetConflicts, ...databaseConflicts];
+      setConflicts(allConflicts);
+      
+      if (allConflicts.length > 0) {
+        setStep("conflicts");
+      } else {
+        setStep("tags");
+      }
+    } catch (error) {
+      console.error("Error checking conflicts:", error);
+      toast.error("Erro ao verificar conflitos");
+    } finally {
+      setCheckingConflicts(false);
+    }
+  };
+
+  const resolvedConflictsCount = useMemo(() => {
+    return conflicts.filter(c => {
+      if (c.type === "spreadsheet") return c.selectedIndex !== null;
+      if (c.type === "database") return c.resolution !== null;
+      return false;
+    }).length;
+  }, [conflicts]);
+
+  const updateSpreadsheetConflictSelection = (phone: string, selectedIndex: number) => {
+    setConflicts(prev => prev.map(c => 
+      c.type === "spreadsheet" && c.phone === phone 
+        ? { ...c, selectedIndex } 
+        : c
+    ));
+  };
+
+  const updateDatabaseConflictResolution = (phone: string, resolution: "update" | "skip") => {
+    setConflicts(prev => prev.map(c => 
+      c.type === "database" && c.phone === phone 
+        ? { ...c, resolution } 
+        : c
+    ));
+  };
+
+  const handleConflictsConfirm = () => {
+    // Check spreadsheet conflicts are resolved
+    const unresolvedSpreadsheet = conflicts.filter(
+      c => c.type === "spreadsheet" && c.selectedIndex === null
+    );
+    
+    if (unresolvedSpreadsheet.length > 0) {
+      toast.error(`Resolva ${unresolvedSpreadsheet.length} conflito(s) de planilha`);
+      return;
+    }
+    
     setStep("tags");
   };
 
@@ -316,81 +525,74 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   };
 
   const handleImport = async () => {
-    if (!user || !organizationId || !parsedFileData || selectedPhoneColumn === null) return;
+    if (!user || !organizationId) return;
 
     setImporting(true);
 
     try {
-      // Parse all valid leads from file
-      const leadsFromFile = parsedFileData.rows
-        .filter(row => {
-          const phone = row[selectedPhoneColumn]?.replace(/\D/g, "");
-          return phone && phone.length >= 10;
-        })
-        .map(row => {
-          const phone = row[selectedPhoneColumn].replace(/\D/g, "");
-          const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
-          const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;
-          const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : null;
-          const city = selectedCityColumn !== null ? row[selectedCityColumn] : null;
-          const state = selectedStateColumn !== null ? row[selectedStateColumn] : null;
-
-          // Build custom fields
-          const customFields: Record<string, string> = {};
-          Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
-            const value = row[colIndex];
-            if (value) {
-              customFields[fieldName] = value;
-            }
-          });
-
-          return {
-            phone,
-            name: name?.trim() || `Lead ${phone}`,
-            email: email?.trim() || null,
-            document: document?.trim() || null,
-            city: city?.trim() || null,
-            state: state?.trim() || null,
-            customFields,
-          };
+      // Build list of leads to import based on conflict resolutions
+      const spreadsheetConflicts = conflicts.filter(c => c.type === "spreadsheet") as SpreadsheetConflict[];
+      const databaseConflicts = conflicts.filter(c => c.type === "database") as DatabaseConflict[];
+      
+      // Get phones that should be skipped from spreadsheet conflicts
+      const selectedFromConflicts = new Set<number>();
+      spreadsheetConflicts.forEach(c => {
+        if (c.selectedIndex !== null) {
+          selectedFromConflicts.add(c.leads[c.selectedIndex].rowIndex);
+        }
+      });
+      
+      // Get leads to import (either from parsedLeads or filtered by conflicts)
+      let leadsToProcess: ParsedLead[];
+      
+      if (spreadsheetConflicts.length > 0) {
+        // Only include leads that were selected from conflicts OR are not in any conflict
+        const conflictPhones = new Set(spreadsheetConflicts.map(c => c.phone));
+        leadsToProcess = parsedLeads.filter(lead => {
+          const suffix = normalizePhoneForCompare(lead.phone);
+          if (conflictPhones.has(suffix)) {
+            return selectedFromConflicts.has(lead.rowIndex);
+          }
+          return true;
         });
-
-      if (leadsFromFile.length === 0) {
-        toast.error("Nenhum lead válido para importar");
+      } else {
+        leadsToProcess = parsedLeads;
+      }
+      
+      if (leadsToProcess.length === 0) {
+        toast.error("Nenhum lead para importar");
         setImporting(false);
         return;
       }
-
-      // Get all phones from the file
-      const phonesFromFile = leadsFromFile.map(l => l.phone);
-
-      // Check which phones already exist in database
-      const { data: existingLeads } = await supabase
-        .from("leads")
-        .select("id, phone, custom_fields, tags")
-        .eq("organization_id", organizationId)
-        .in("phone", phonesFromFile);
-
-      const existingPhoneMap = new Map(
-        (existingLeads || []).map(l => [l.phone, l])
+      
+      // Build maps for database conflict resolutions
+      const dbConflictResolutions = new Map(
+        databaseConflicts.map(c => [c.phone, { resolution: c.resolution, existingLead: c.existingLead }])
       );
-
+      
       // Separate into updates and inserts
       const leadsToInsert: any[] = [];
       const leadsToUpdate: { id: string; data: any }[] = [];
+      const processedSuffixes = new Set<string>();
 
-      for (const lead of leadsFromFile) {
-        const existing = existingPhoneMap.get(lead.phone);
+      for (const lead of leadsToProcess) {
+        const suffix = normalizePhoneForCompare(lead.phone);
+        if (processedSuffixes.has(suffix)) continue;
+        processedSuffixes.add(suffix);
         
-        if (existing) {
-          // Merge custom fields and tags
+        const dbConflict = dbConflictResolutions.get(suffix);
+        
+        if (dbConflict) {
+          if (dbConflict.resolution === "skip") continue;
+          
+          // Update existing lead
+          const existing = dbConflict.existingLead;
           const mergedCustomFields = {
-            ...(existing.custom_fields as Record<string, string> || {}),
+            ...(existing.custom_fields || {}),
             ...lead.customFields,
           };
           
-          // Merge tags (existing + new selected)
-          const existingTags = (existing.tags as string[]) || [];
+          const existingTags = existing.tags || [];
           const mergedTags = [...new Set([...existingTags, ...selectedTags])];
 
           leadsToUpdate.push({
@@ -407,19 +609,46 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
             },
           });
         } else {
-          leadsToInsert.push({
-            organization_id: organizationId,
-            user_id: user.id,
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            document: lead.document,
-            city: lead.city,
-            state: lead.state,
-            custom_fields: Object.keys(lead.customFields).length > 0 ? lead.customFields : null,
-            tags: selectedTags.length > 0 ? selectedTags : null,
-            status: "new" as const,
-          });
+          // Check if exists by suffix in our map
+          const existingLead = existingLeadsMap.get(suffix);
+          
+          if (existingLead) {
+            const mergedCustomFields = {
+              ...(existingLead.custom_fields || {}),
+              ...lead.customFields,
+            };
+            
+            const existingTags = existingLead.tags || [];
+            const mergedTags = [...new Set([...existingTags, ...selectedTags])];
+
+            leadsToUpdate.push({
+              id: existingLead.id,
+              data: {
+                name: lead.name,
+                email: lead.email,
+                document: lead.document,
+                city: lead.city,
+                state: lead.state,
+                custom_fields: Object.keys(mergedCustomFields).length > 0 ? mergedCustomFields : null,
+                tags: mergedTags.length > 0 ? mergedTags : null,
+                updated_at: new Date().toISOString(),
+              },
+            });
+          } else {
+            leadsToInsert.push({
+              organization_id: organizationId,
+              user_id: user.id,
+              name: lead.name,
+              phone: lead.phone,
+              email: lead.email,
+              document: lead.document,
+              city: lead.city,
+              state: lead.state,
+              custom_fields: Object.keys(lead.customFields).length > 0 ? lead.customFields : null,
+              tags: selectedTags.length > 0 ? selectedTags : null,
+              status: "new" as const,
+            });
+          }
         }
       }
 
@@ -477,6 +706,9 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     setShowCreateTag(false);
     setNewTagName("");
     setNewTagColor("#3b82f6");
+    setConflicts([]);
+    setParsedLeads([]);
+    setExistingLeadsMap(new Map());
     setStep("upload");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -502,6 +734,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           <DialogDescription>
             {step === "upload" && "Selecione um arquivo CSV para importar"}
             {step === "mapping" && "Configure o mapeamento das colunas"}
+            {step === "conflicts" && "Resolva conflitos de telefones duplicados"}
             {step === "tags" && "Adicione tags aos leads importados (opcional)"}
           </DialogDescription>
         </DialogHeader>
@@ -787,14 +1020,159 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               </>
             )}
 
+            {step === "conflicts" && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning" />
+                      Conflitos encontrados
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Revise os registros duplicados e escolha qual manter
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold">{resolvedConflictsCount} / {conflicts.length}</p>
+                    <p className="text-xs text-muted-foreground">Resolvidos</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Spreadsheet Conflicts */}
+                  {conflicts.filter(c => c.type === "spreadsheet").map((conflict) => {
+                    const c = conflict as SpreadsheetConflict;
+                    return (
+                      <div key={c.phone} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Users className="w-4 h-4" />
+                          <span>Contatos duplicados na planilha</span>
+                          <Badge variant="outline" className="ml-auto">
+                            ({c.leads[0].phone.slice(0, 2)}) {c.leads[0].phone.slice(2, 7)}-{c.leads[0].phone.slice(7)}
+                          </Badge>
+                        </div>
+                        
+                        <RadioGroup
+                          value={c.selectedIndex?.toString() ?? ""}
+                          onValueChange={(v) => updateSpreadsheetConflictSelection(c.phone, parseInt(v))}
+                        >
+                          {c.leads.map((lead, idx) => (
+                            <div 
+                              key={idx} 
+                              className={cn(
+                                "flex items-center justify-between p-3 rounded-lg border transition-colors",
+                                c.selectedIndex === idx 
+                                  ? "border-primary bg-primary/5" 
+                                  : "border-border hover:border-primary/50"
+                              )}
+                            >
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value={idx.toString()} id={`${c.phone}-${idx}`} />
+                                <div>
+                                  <p className="font-medium">{lead.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {lead.document || "-"} • {lead.city || "-"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${c.phone}-${idx}`} className="text-sm cursor-pointer">
+                                  Manter este
+                                </Label>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    // Could show more details
+                                  }}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Database Conflicts */}
+                  {conflicts.filter(c => c.type === "database").map((conflict) => {
+                    const c = conflict as DatabaseConflict;
+                    return (
+                      <div key={c.phone} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <AlertCircle className="w-4 h-4 text-blue-500" />
+                          <span>Contato já existe no sistema</span>
+                          <Badge variant="outline" className="ml-auto">
+                            ({c.newLead.phone.slice(0, 2)}) {c.newLead.phone.slice(2, 7)}-{c.newLead.phone.slice(7)}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 rounded-lg bg-muted/50 border">
+                            <p className="text-xs text-muted-foreground mb-1">Na planilha (novo)</p>
+                            <p className="font-medium text-sm">{c.newLead.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.newLead.document || "-"} • {c.newLead.city || "-"}
+                            </p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                            <p className="text-xs text-blue-500 mb-1">No sistema (existente)</p>
+                            <p className="font-medium text-sm">{c.existingLead.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.existingLead.document || "-"} • {c.existingLead.city || "-"}
+                            </p>
+                            {c.existingLead.tags && c.existingLead.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {c.existingLead.tags.slice(0, 2).map((tag, i) => (
+                                  <Badge key={i} variant="secondary" className="text-[10px] h-4">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                                {c.existingLead.tags.length > 2 && (
+                                  <Badge variant="secondary" className="text-[10px] h-4">
+                                    +{c.existingLead.tags.length - 2}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <RadioGroup
+                          value={c.resolution ?? ""}
+                          onValueChange={(v) => updateDatabaseConflictResolution(c.phone, v as "update" | "skip")}
+                          className="flex gap-4"
+                        >
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="update" id={`${c.phone}-update`} />
+                            <Label htmlFor={`${c.phone}-update`} className="text-sm cursor-pointer">
+                              Atualizar com dados da planilha
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="skip" id={`${c.phone}-skip`} />
+                            <Label htmlFor={`${c.phone}-skip`} className="text-sm cursor-pointer">
+                              Manter dados do sistema
+                            </Label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             {step === "tags" && parsedFileData && (
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">{parsedFileData.rows.length} leads prontos para importar</p>
+                    <p className="font-medium">{parsedLeads.length > 0 ? parsedLeads.length : parsedFileData.rows.length} leads prontos para importar</p>
                     <p className="text-sm text-muted-foreground">Adicione tags opcionalmente</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setStep("mapping")}>
+                  <Button variant="outline" size="sm" onClick={() => conflicts.length > 0 ? setStep("conflicts") : setStep("mapping")}>
                     Voltar
                   </Button>
                 </div>
@@ -939,9 +1317,22 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
             Cancelar
           </Button>
           {step === "mapping" && (
-            <Button onClick={handleMappingConfirm} disabled={selectedPhoneColumn === null}>
-              Continuar
+            <Button onClick={handleMappingConfirm} disabled={selectedPhoneColumn === null || checkingConflicts}>
+              {checkingConflicts ? "Verificando..." : "Continuar"}
             </Button>
+          )}
+          {step === "conflicts" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("mapping")}>
+                Voltar
+              </Button>
+              <Button 
+                onClick={handleConflictsConfirm}
+                disabled={conflicts.filter(c => c.type === "spreadsheet" && c.selectedIndex === null).length > 0}
+              >
+                Próximo
+              </Button>
+            </>
           )}
           {step === "tags" && (
             <Button 
@@ -950,7 +1341,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               className="gap-2"
             >
               <Check className="w-4 h-4" />
-              {importing ? "Importando..." : `Importar ${parsedFileData?.rows.length} leads`}
+              {importing ? "Importando..." : `Importar ${parsedLeads.length > 0 ? parsedLeads.length : parsedFileData?.rows.length} leads`}
             </Button>
           )}
         </DialogFooter>
