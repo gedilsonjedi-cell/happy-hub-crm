@@ -318,11 +318,40 @@ const Leads = () => {
 
   // Filter leads by search term and tags
   const filteredLeads = leads.filter(lead => {
-    // Search filter
-    const matchesSearch = 
-      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.phone.includes(searchTerm) ||
-      (lead.email && lead.email.toLowerCase().includes(searchTerm.toLowerCase()));
+    // Search filter - normalize search term
+    const term = searchTerm.toLowerCase().trim();
+    const termDigits = searchTerm.replace(/\D/g, ''); // Extract only digits for phone search
+    
+    if (!term) {
+      // No search term, check only tags
+      const matchesTags = selectedTagFilters.length === 0 || 
+        selectedTagFilters.every(tag => lead.tags?.includes(tag));
+      return matchesTags;
+    }
+    
+    // Search in multiple fields
+    const matchesName = lead.name.toLowerCase().includes(term);
+    const matchesPhone = termDigits ? lead.phone.replace(/\D/g, '').includes(termDigits) : false;
+    const matchesEmail = lead.email?.toLowerCase().includes(term) || false;
+    const matchesDocument = lead.document?.toLowerCase().includes(term) || false;
+    const matchesCity = lead.city?.toLowerCase().includes(term) || false;
+    const matchesState = lead.state?.toLowerCase().includes(term) || false;
+    const matchesNotes = lead.notes?.toLowerCase().includes(term) || false;
+    
+    // Search in custom fields
+    let matchesCustomFields = false;
+    if (lead.custom_fields && typeof lead.custom_fields === 'object') {
+      matchesCustomFields = Object.values(lead.custom_fields).some(value => 
+        value && String(value).toLowerCase().includes(term)
+      );
+    }
+    
+    // Search in tags
+    const matchesTagContent = lead.tags?.some(tag => tag.toLowerCase().includes(term)) || false;
+    
+    const matchesSearch = matchesName || matchesPhone || matchesEmail || 
+      matchesDocument || matchesCity || matchesState || matchesNotes || 
+      matchesCustomFields || matchesTagContent;
 
     // Tag filter - lead must have ALL selected tags
     const matchesTags = selectedTagFilters.length === 0 || 
