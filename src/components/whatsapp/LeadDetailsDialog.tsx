@@ -448,7 +448,7 @@ export function LeadDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-lg h-[90vh] flex flex-col">
         <DialogHeader className="pb-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="w-14 h-14">
@@ -470,8 +470,7 @@ export function LeadDetailsDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden min-h-0">
-          <ScrollArea className="h-full -mx-6 px-6">
+        <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {loadingLead ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -687,7 +686,6 @@ export function LeadDetailsDialog({
               )}
             </div>
           )}
-          </ScrollArea>
         </div>
 
         <div className="pt-4 border-t border-border flex-shrink-0">
