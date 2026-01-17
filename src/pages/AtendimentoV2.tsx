@@ -1797,54 +1797,51 @@ const AtendimentoV2 = () => {
                       key={conversationKey} 
                       onClick={() => setSelectedConversation(conversation)} 
                       className={cn(
-                        "w-full p-3 text-left transition-colors flex items-center gap-3 hover:bg-muted/30",
+                        "w-full p-3 text-left transition-colors hover:bg-muted/30",
                         isSelected && "bg-primary/5"
                       )}
                     >
-                      {/* Avatar with WhatsApp icon overlay */}
-                      <div className="relative shrink-0">
-                        <Avatar className="w-10 h-10">
-                          <AvatarFallback className="bg-pink-100 text-pink-600 text-sm font-semibold">
-                            {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                          <MessageSquare className="w-2.5 h-2.5 text-white" />
+                      <div className="flex items-start gap-3">
+                        {/* Avatar with WhatsApp icon overlay */}
+                        <div className="relative shrink-0">
+                          <Avatar className="w-10 h-10">
+                            <AvatarFallback className="bg-pink-100 text-pink-600 text-sm font-semibold">
+                              {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                            <MessageSquare className="w-2.5 h-2.5 text-white" />
+                          </div>
                         </div>
-                      </div>
-                      
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="font-medium text-foreground text-sm truncate">
-                            {conversation.name || conversation.phone}
-                          </span>
-                          {contactTags.length > 0 && selectedConversation?.phone === conversation.phone && (
-                            <Badge variant="default" className="text-[10px] h-4 px-1.5 bg-blue-500 text-white shrink-0">
-                              {contactTags[0]}
-                            </Badge>
-                          )}
+                        
+                        {/* Content - Name and Last Message */}
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
+                              {conversation.name || conversation.phone}
+                            </span>
+                            {channelInfo && (
+                              <Badge variant="outline" className="text-[10px] h-5 px-2 bg-primary text-primary-foreground border-0 shrink-0 max-w-[80px] truncate">
+                                {channelInfo.name}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-primary truncate flex-1 min-w-0">
+                              {conversation.lastMessage}
+                            </p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {formatConversationDate(conversation.lastMessageTime)}
+                              </span>
+                              {conversation.unreadCount > 0 && (
+                                <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {conversation.unreadCount}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-xs text-primary truncate">
-                          {conversation.lastMessage?.substring(0, 35)}{conversation.lastMessage && conversation.lastMessage.length > 35 ? '...' : ''}
-                        </p>
-                      </div>
-                      
-                      {/* Right side info */}
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        {channelInfo && (
-                          <Badge variant="outline" className="text-xs h-5 px-2 bg-primary text-primary-foreground border-0">
-                            {channelInfo.name.length > 8 ? channelInfo.name.substring(0, 8) + '...' : channelInfo.name}
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatConversationDate(conversation.lastMessageTime)}
-                        </span>
-                        {conversation.unreadCount > 0 && (
-                          <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                            {conversation.unreadCount}
-                          </span>
-                        )}
                       </div>
                     </button>
                   );
