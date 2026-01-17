@@ -146,6 +146,34 @@ export function validateBrazilianPhone(phone: string): PhoneValidationResult {
 }
 
 /**
+ * Normaliza o telefone para armazenamento no banco de dados
+ * SEMPRE adiciona o 55 na frente se não tiver
+ * Retorna apenas dígitos com o 55 na frente (sem o +)
+ */
+export function normalizePhoneForStorage(phone: string): string {
+  // Remove tudo que não é dígito
+  let digits = phone.replace(/\D/g, '');
+  
+  // Se está vazio, retorna vazio
+  if (!digits) return '';
+  
+  // Se já começa com 55 E tem mais de 11 dígitos (55 + DDD + número), está ok
+  if (digits.startsWith('55') && digits.length > 11) {
+    return digits;
+  }
+  
+  // Se começa com 55 mas tem exatamente 11 ou menos dígitos, 
+  // pode ser que os 55 são parte do DDD (ex: 55991234567 = DDD 55 + número)
+  // Nesse caso, precisamos adicionar o 55 na frente
+  if (digits.startsWith('55') && digits.length <= 11) {
+    return '55' + digits;
+  }
+  
+  // Não começa com 55, adiciona na frente
+  return '55' + digits;
+}
+
+/**
  * Formata um número brasileiro para o padrão internacional
  * Adiciona o 9 se for celular e estiver faltando
  */

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
+import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
 import {
   Dialog,
   DialogContent,
@@ -137,14 +138,16 @@ export function AddLeadDialog({ open, onOpenChange, onSuccess }: AddLeadDialogPr
     setIsSubmitting(true);
 
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
+      // Normaliza o telefone: SEMPRE adiciona 55 na frente
+      const normalizedPhone = normalizePhoneForStorage(phone);
 
-      // Check if lead already exists with this phone
+      // Check if lead already exists with this phone (busca com sufixo para evitar duplicatas)
+      const phoneEnd8 = normalizedPhone.slice(-8);
       const { data: existingLead } = await supabase
         .from("leads")
-        .select("id, custom_fields, tags")
+        .select("id, custom_fields, tags, phone")
         .eq("organization_id", organizationId)
-        .eq("phone", cleanPhone)
+        .ilike("phone", `%${phoneEnd8}`)
         .maybeSingle();
 
       if (existingLead) {
@@ -172,10 +175,10 @@ export function AddLeadDialog({ open, onOpenChange, onSuccess }: AddLeadDialogPr
         if (error) throw error;
         toast.success("Contato atualizado com sucesso");
       } else {
-        // Insert new lead
+        // Insert new lead with normalized phone (always with 55)
         const { error } = await supabase.from("leads").insert({
           name: name.trim(),
-          phone: cleanPhone,
+          phone: normalizedPhone,
           email: email.trim() || null,
           document: document.trim() || null,
           city: city.trim() || null,

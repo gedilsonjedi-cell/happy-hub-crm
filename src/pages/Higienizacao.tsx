@@ -74,7 +74,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
+import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, normalizePhoneForStorage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
 import { useHasAddon } from "@/hooks/useHasAddon";
 import { PremiumFeaturePaywall } from "@/components/paywall/PremiumFeaturePaywall";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
@@ -903,7 +903,7 @@ export default function Higienizacao() {
     }
     
     const leadsToInsert = entriesToSave.map((e) => ({
-      phone: e.formattedPhone,
+      phone: normalizePhoneForStorage(e.formattedPhone),
       name: e.name || `Lead ${e.formattedPhone}`,
       document: e.document || null,
       city: e.city || null,
@@ -2616,7 +2616,7 @@ function NovaVidaTIModule({ organizationId }: { organizationId?: string }) {
         organization_id: organizationId,
         user_id: user.id,
         name: isCPF ? cadastrais.NOME : (cadastrais.RAZAO || cadastrais.NOME_FANTASIA),
-        phone: phone,
+        phone: normalizePhoneForStorage(phone),
         email: email || null,
         document: isCPF ? cadastrais.CPF : cadastrais.CNPJ,
         city: address?.CIDADE || null,
