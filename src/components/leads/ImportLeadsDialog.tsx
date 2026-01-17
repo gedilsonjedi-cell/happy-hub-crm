@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
 import {
   Dialog,
   DialogContent,
@@ -291,8 +292,11 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       // Parse all leads from file
       const leads: ParsedLead[] = parsedFileData.rows
         .map((row, rowIndex) => {
-          const phone = row[selectedPhoneColumn]?.replace(/\D/g, "");
-          if (!phone || phone.length < 10) return null;
+          const rawPhone = row[selectedPhoneColumn]?.replace(/\D/g, "");
+          if (!rawPhone || rawPhone.length < 10) return null;
+          
+          // Normaliza o telefone: SEMPRE adiciona 55 na frente
+          const phone = normalizePhoneForStorage(rawPhone);
           
           const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
           const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;

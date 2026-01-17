@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
 import {
   Dialog,
   DialogContent,
@@ -362,9 +363,12 @@ export function LeadDetailsDialog({
         return;
       }
 
+      // Normaliza o telefone: SEMPRE adiciona 55 na frente
+      const normalizedPhone = normalizePhoneForStorage(formData.phone);
+
       const leadData = {
         name: formData.name,
-        phone: formData.phone.replace(/\D/g, ""),
+        phone: normalizedPhone,
         email: formData.email || null,
         document: formData.document || null,
         city: formData.city || null,

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
+import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
 import {
   Dialog,
   DialogContent,
@@ -151,13 +152,14 @@ export function EditLeadDialog({ open, onOpenChange, lead, onSuccess }: EditLead
     setIsSubmitting(true);
 
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
+      // Normaliza o telefone: SEMPRE adiciona 55 na frente
+      const normalizedPhone = normalizePhoneForStorage(phone);
 
       const { error } = await supabase
         .from("leads")
         .update({
           name: name.trim(),
-          phone: cleanPhone,
+          phone: normalizedPhone,
           email: email.trim() || null,
           document: document.trim() || null,
           city: city.trim() || null,

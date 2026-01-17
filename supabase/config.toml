@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.cleanup-duplicate-leads]
 verify_jwt = false
+
+[functions.normalize-lead-phones]
+verify_jwt = false
