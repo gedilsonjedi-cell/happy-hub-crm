@@ -448,8 +448,8 @@ export function LeadDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-4 border-b border-border">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-4 border-b border-border shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="w-14 h-14">
               <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-lg font-semibold">
@@ -470,7 +470,7 @@ export function LeadDetailsDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
           {loadingLead ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
