@@ -110,9 +110,11 @@ export function LeadDetailsDialog({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Normalize phone for query - get last 8 digits (most stable part)
+  // Normalize phone for query - use multiple suffix lengths for better matching
   const normalizedPhone = phone.replace(/\D/g, "");
+  const phoneEnd9 = normalizedPhone.slice(-9);
   const phoneEnd8 = normalizedPhone.slice(-8);
+  const phoneEnd7 = normalizedPhone.slice(-7);
 
   // Reset form state when dialog opens with new phone
   useEffect(() => {
@@ -135,7 +137,7 @@ export function LeadDetailsDialog({
 
   // Fetch lead by phone - prioritize leads with tags and real names
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
-    queryKey: ["lead-by-phone", phoneEnd8, open],
+    queryKey: ["lead-by-phone", normalizedPhone, open],
     queryFn: async () => {
       if (!open) return null;
       
@@ -147,23 +149,35 @@ export function LeadDetailsDialog({
 
       if (!profile?.organization_id) return null;
 
-      console.log('[LeadDetailsDialog] Searching lead with phone suffix:', phoneEnd8, 'org:', profile.organization_id);
+      console.log('[LeadDetailsDialog] Searching lead with phone:', normalizedPhone, 'org:', profile.organization_id);
 
-      // Search using phone suffix (last 8 digits) - most reliable
-      const { data: allMatches, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("organization_id", profile.organization_id)
-        .ilike("phone", `%${phoneEnd8}`);
-
-      if (error) {
-        console.error('[LeadDetailsDialog] Query error:', error);
-        throw error;
+      // Try multiple suffix lengths to handle different phone formats
+      // First try with 9 digits, then 8, then 7 for better matching
+      let allMatches: Lead[] | null = null;
+      
+      for (const suffix of [phoneEnd9, phoneEnd8, phoneEnd7]) {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("organization_id", profile.organization_id)
+          .ilike("phone", `%${suffix}`);
+        
+        if (error) {
+          console.error('[LeadDetailsDialog] Query error:', error);
+          throw error;
+        }
+        
+        if (data && data.length > 0) {
+          allMatches = data as Lead[];
+          console.log('[LeadDetailsDialog] Found matches with suffix', suffix, ':', allMatches.length);
+          break;
+        }
       }
-      
-      console.log('[LeadDetailsDialog] Found matches:', allMatches?.length, allMatches);
-      
-      if (!allMatches || allMatches.length === 0) return null;
+
+      if (!allMatches || allMatches.length === 0) {
+        console.log('[LeadDetailsDialog] No matches found with any suffix');
+        return null;
+      }
       
       // If only one match, return it
       if (allMatches.length === 1) return allMatches[0] as Lead;
@@ -193,7 +207,7 @@ export function LeadDetailsDialog({
       console.log('[LeadDetailsDialog] Best match:', scored[0]?.lead);
       return scored[0].lead as Lead;
     },
-    enabled: open && !!phoneEnd8 && !!user,
+    enabled: open && !!normalizedPhone && !!user,
     staleTime: 0, // Always refetch when dialog opens
     gcTime: 0, // Don't cache
   });
