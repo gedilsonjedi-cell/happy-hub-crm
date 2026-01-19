@@ -113,7 +113,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Home route that shows landing for non-authenticated users and redirects to dashboard for authenticated
+// Home route that shows landing for non-authenticated users and redirects to atendimento for authenticated
 const HomeRoute = () => {
   const { user, loading } = useAuth();
 
@@ -125,9 +125,9 @@ const HomeRoute = () => {
     );
   }
 
-  // If user is authenticated, redirect to dashboard
+  // If user is authenticated, redirect to atendimento-v2 (main page)
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/atendimento-v2" replace />;
   }
 
   // Show landing page for non-authenticated users
