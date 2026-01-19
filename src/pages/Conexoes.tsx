@@ -1068,19 +1068,59 @@ const Conexoes = () => {
     const channelToDelete = channels.find(c => c.id === id);
     setChannels(prev => prev.filter(c => c.id !== id));
     
-    const { error } = await supabase.from("channels").delete().eq("id", id);
+    try {
+      // Delete related records first to avoid foreign key constraint errors
+      // Order matters: delete children before parent
+      
+      // 1. Delete chatbot config linked to this channel
+      await supabase.from("chatbot_config").delete().eq("channel_id", id);
+      
+      // 2. Delete campaign_channels references
+      await supabase.from("campaign_channels").delete().eq("channel_id", id);
+      
+      // 3. Delete channel_templates
+      await supabase.from("channel_templates").delete().eq("channel_id", id);
+      
+      // 4. Nullify channel_id in conversation_assignments (preserve history)
+      await supabase.from("conversation_assignments").update({ channel_id: null }).eq("channel_id", id);
+      
+      // 5. Delete conversation_memory
+      await supabase.from("conversation_memory").delete().eq("channel_id", id);
+      
+      // 6. Delete conversation_notes
+      await supabase.from("conversation_notes").delete().eq("channel_id", id);
+      
+      // 7. Nullify channel_id in follow_up_instances (preserve history)
+      await supabase.from("follow_up_instances").update({ channel_id: null }).eq("channel_id", id);
+      
+      // 8. Delete scheduled_messages for this channel
+      await supabase.from("scheduled_messages").delete().eq("channel_id", id);
+      
+      // 9. Nullify channel_id in whatsapp_messages (preserve message history)
+      await supabase.from("whatsapp_messages").update({ channel_id: null }).eq("channel_id", id);
+      
+      // Finally delete the channel
+      const { error } = await supabase.from("channels").delete().eq("id", id);
 
-    if (error) {
-      console.error('Delete channel error:', error);
+      if (error) {
+        console.error('Delete channel error:', error);
+        // Revert optimistic update
+        if (channelToDelete) {
+          setChannels(prev => [...prev, channelToDelete]);
+        }
+        toast.error("Erro ao excluir canal: " + error.message);
+        return;
+      }
+
+      toast.success("Canal excluído com sucesso");
+    } catch (err: any) {
+      console.error('Delete channel exception:', err);
       // Revert optimistic update
       if (channelToDelete) {
         setChannels(prev => [...prev, channelToDelete]);
       }
-      toast.error("Erro ao excluir canal");
-      return;
+      toast.error("Erro ao excluir canal: " + (err.message || "Erro desconhecido"));
     }
-
-    toast.success("Canal excluído");
   };
 
   // Subscribe channel to webhook manually
