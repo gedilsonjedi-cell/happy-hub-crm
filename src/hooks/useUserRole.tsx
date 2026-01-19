@@ -118,6 +118,8 @@ export function useUserRole(): UserRoleState {
     }
 
     try {
+      console.log("[useUserRole] Fetching role for user:", user.id, user.email);
+      
       // Fetch role
       const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
@@ -125,12 +127,15 @@ export function useUserRole(): UserRoleState {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      console.log("[useUserRole] Role fetch result:", { roleData, roleError: roleError?.message });
+
       if (roleError) {
         console.error("Error fetching user role:", roleError);
         if (!cached) setRole(null);
       } else if (roleData) {
         setRole(roleData.role as AppRole);
       } else {
+        console.log("[useUserRole] No role found for user");
         if (!cached) setRole(null);
       }
 
@@ -141,15 +146,20 @@ export function useUserRole(): UserRoleState {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      console.log("[useUserRole] Profile fetch result:", { profileData, profileError: profileError?.message });
+
       if (profileError) {
         console.error("Error fetching profile:", profileError);
       } else if (profileData) {
         setOrganizationId(profileData.organization_id);
+      } else {
+        console.log("[useUserRole] No profile found for user");
       }
 
       // Update cache with fresh data
       const finalRole = roleData?.role as AppRole | null ?? cached?.role ?? null;
       const finalOrgId = profileData?.organization_id ?? cached?.organizationId ?? null;
+      console.log("[useUserRole] Final values:", { finalRole, finalOrgId });
       setCachedRole(user.id, finalRole, finalOrgId);
       
     } catch (err) {

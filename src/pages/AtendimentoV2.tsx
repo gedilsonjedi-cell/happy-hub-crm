@@ -312,7 +312,16 @@ const AtendimentoV2 = () => {
   // Fetch channels
   useEffect(() => {
     const fetchChannels = async () => {
-      if (!effectiveOrganizationId) return;
+      console.log("[AtendimentoV2] fetchChannels called", { 
+        effectiveOrganizationId, 
+        userId: user?.id,
+        email: user?.email 
+      });
+      
+      if (!effectiveOrganizationId) {
+        console.log("[AtendimentoV2] No effectiveOrganizationId, skipping fetch");
+        return;
+      }
       
       const { data, error } = await supabase
         .from("channels")
@@ -320,6 +329,12 @@ const AtendimentoV2 = () => {
         .eq("organization_id", effectiveOrganizationId)
         .in("provider", ["meta", "zapi"])
         .eq("connected", true);
+
+      console.log("[AtendimentoV2] Channels fetched", { 
+        count: data?.length, 
+        error: error?.message,
+        channels: data 
+      });
 
       if (!error && data) {
         setChannels(data);
@@ -331,6 +346,11 @@ const AtendimentoV2 = () => {
 
     if (user && effectiveOrganizationId) {
       fetchChannels();
+    } else {
+      console.log("[AtendimentoV2] Waiting for user or org", { 
+        hasUser: !!user, 
+        effectiveOrganizationId 
+      });
     }
   }, [user, effectiveOrganizationId]);
 
