@@ -50,25 +50,38 @@ const setCachedOrganization = (org: Organization | null) => {
 };
 
 export function SuperAdminProvider({ children }: { children: ReactNode }) {
-  const { isSuperAdmin } = useUserRole();
+  const { isSuperAdmin, role, loading: roleLoading } = useUserRole();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [selectedOrganization, setSelectedOrganizationState] = useState<Organization | null>(() => {
-    // Initialize from sessionStorage
-    return getCachedOrganization();
-  });
+  const [selectedOrganization, setSelectedOrganizationState] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   const setSelectedOrganization = useCallback((org: Organization | null) => {
     setSelectedOrganizationState(org);
     setCachedOrganization(org);
   }, []);
 
+  // Initialize cached org only for super admins, clear for others
+  useEffect(() => {
+    if (roleLoading) return;
+    
+    if (isSuperAdmin) {
+      // Super admin: restore cached organization
+      const cached = getCachedOrganization();
+      if (cached) {
+        setSelectedOrganizationState(cached);
+      }
+    } else {
+      // Not super admin: clear any cached impersonation
+      setCachedOrganization(null);
+      setSelectedOrganizationState(null);
+    }
+    setInitialized(true);
+  }, [isSuperAdmin, roleLoading]);
+
   const fetchOrganizations = async () => {
     if (!isSuperAdmin) {
       setLoading(false);
-      // Clear cached org if not super admin
-      setCachedOrganization(null);
-      setSelectedOrganizationState(null);
       return;
     }
 

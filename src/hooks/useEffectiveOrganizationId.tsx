@@ -7,8 +7,11 @@ import { useUserRole } from "@/hooks/useUserRole";
  * Otherwise, it returns the current user's organization ID.
  */
 export function useEffectiveOrganizationId() {
-  const { organizationId } = useUserRole();
-  const { selectedOrganization, isImpersonating } = useSuperAdmin();
+  const { organizationId, loading: roleLoading } = useUserRole();
+  const { selectedOrganization, isImpersonating, loading: superAdminLoading } = useSuperAdmin();
+
+  // Wait for both to finish loading before determining effective org
+  const isLoading = roleLoading || superAdminLoading;
 
   // If super admin is impersonating, use the selected organization's ID
   const effectiveOrganizationId = isImpersonating 
@@ -16,9 +19,10 @@ export function useEffectiveOrganizationId() {
     : organizationId;
 
   return {
-    effectiveOrganizationId,
+    effectiveOrganizationId: isLoading ? null : effectiveOrganizationId,
     isImpersonating,
     realOrganizationId: organizationId,
     impersonatedOrganizationId: selectedOrganization?.id,
+    isLoading,
   };
 }
