@@ -349,8 +349,10 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {children}
+      <main className="flex-1 overflow-auto">
+        <div className="p-2 sm:p-4 md:p-6">
+          {children}
+        </div>
       </main>
     </div>
   );
