@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useLeadActivityLog } from "@/hooks/useLeadActivityLog";
 import { toast } from "sonner";
 import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
 import {
@@ -14,9 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -37,9 +38,12 @@ import {
   Megaphone,
   Calendar,
   Building2,
+  Clock,
+  Edit,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { LeadActivityTimeline } from "@/components/leads/LeadActivityTimeline";
 
 interface LeadDetailsDialogProps {
   open: boolean;
@@ -96,6 +100,7 @@ export function LeadDetailsDialog({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("details");
 
   // Form state
   const [formData, setFormData] = useState({
@@ -323,6 +328,9 @@ export function LeadDetailsDialog({
     enabled: open && !!user && !!normalizedPhone,
   });
 
+  // Activity log
+  const { activities, loading: loadingActivities } = useLeadActivityLog(lead?.id || null);
+
   // Populate form when lead data loads
   useEffect(() => {
     if (!open) return;
@@ -525,7 +533,20 @@ export function LeadDetailsDialog({
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-4 py-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="details" className="flex items-center gap-2">
+                  <Edit className="w-4 h-4" />
+                  Dados
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Histórico
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="details" className="mt-0">
+                <div className="space-y-4 py-2">
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
@@ -733,7 +754,13 @@ export function LeadDetailsDialog({
                   </div>
                 </div>
               )}
-            </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="history" className="mt-0">
+                <LeadActivityTimeline activities={activities} loading={loadingActivities} maxHeight="calc(90vh - 280px)" />
+              </TabsContent>
+            </Tabs>
           )}
         </div>
 
