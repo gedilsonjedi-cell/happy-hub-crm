@@ -968,6 +968,35 @@ const AtendimentoV2 = () => {
                     }
                     if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
                   }
+                  
+                  // Buscar assignment do banco para obter sectorId (importante para isolamento por departamento)
+                  supabase
+                    .from('conversation_assignments')
+                    .select('sector_id, assigned_to')
+                    .eq('channel_id', newMsg.channel_id)
+                    .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+                    .maybeSingle()
+                    .then(({ data: assignment }) => {
+                      const sectorIdFromDb = assignment?.sector_id || null;
+                      const assignedToFromDb = assignment?.assigned_to || null;
+                      
+                      setAllConversations(currentPrev => {
+                        // Verificar se a conversa já foi adicionada
+                        const alreadyExists = currentPrev.some(c => 
+                          c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                        );
+                        if (alreadyExists) {
+                          // Atualizar com sectorId e assignedTo do banco
+                          return currentPrev.map(c => 
+                            c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                              ? { ...c, sectorId: sectorIdFromDb, assignedTo: assignedToFromDb || c.assignedTo }
+                              : c
+                          );
+                        }
+                        return currentPrev;
+                      });
+                    });
+                  
                   return [{
                     phone: displayPhone,
                     name: leadNameFromSystem || contactName,
@@ -979,7 +1008,7 @@ const AtendimentoV2 = () => {
                     status: "pending" as const,
                     assignedTo: null,
                     assignedToName: null,
-                    sectorId: null,
+                    sectorId: null, // Será atualizado pelo fetch acima
                     tags: leadTagsFromSystem || null
                   }, ...prev];
                 }
@@ -1007,8 +1036,78 @@ const AtendimentoV2 = () => {
         .subscribe()
     );
 
+    // Subscription para mudanças em conversation_assignments (atribuições)
+    const assignmentSubscription = supabase
+      .channel('atendimento-v2-assignments')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversation_assignments'
+        },
+        async (payload) => {
+          const assignment = payload.new as { 
+            conversation_phone: string; 
+            channel_id: string | null; 
+            assigned_to: string | null;
+            sector_id: string | null;
+            status: string | null;
+          };
+          
+          if (!assignment?.conversation_phone) return;
+          
+          const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+          
+          // Buscar nome do atendente
+          let assignedToName: string | null = null;
+          if (assignment.assigned_to) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('display_name, email')
+              .eq('user_id', assignment.assigned_to)
+              .single();
+            
+            assignedToName = profile?.display_name || profile?.email || 'Atendente';
+          }
+          
+          // Atualizar todas as conversas que correspondem
+          setAllConversations(prev => prev.map(c => {
+            const cNormalized = c.phone.replace(/\D/g, '');
+            if (cNormalized === normalizedPhone && c.channelId === assignment.channel_id) {
+              return { 
+                ...c, 
+                assignedTo: assignment.assigned_to,
+                assignedToName: assignedToName,
+                sectorId: assignment.sector_id || c.sectorId,
+                status: (assignment.status as Conversation["status"]) || c.status
+              };
+            }
+            return c;
+          }));
+          
+          // Atualizar conversa selecionada se for a mesma
+          setSelectedConversation(prev => {
+            if (!prev) return null;
+            const prevNormalized = prev.phone.replace(/\D/g, '');
+            if (prevNormalized === normalizedPhone && prev.channelId === assignment.channel_id) {
+              return { 
+                ...prev, 
+                assignedTo: assignment.assigned_to,
+                assignedToName: assignedToName,
+                sectorId: assignment.sector_id || prev.sectorId,
+                status: (assignment.status as Conversation["status"]) || prev.status
+              };
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
     return () => {
       channelSubscriptions.forEach(sub => supabase.removeChannel(sub));
+      supabase.removeChannel(assignmentSubscription);
     };
   }, [channels]);
 
@@ -1183,6 +1282,44 @@ const AtendimentoV2 = () => {
     try {
       const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
       
+      // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+      const { data: currentAssignment } = await supabase
+        .from('conversation_assignments')
+        .select('assigned_to, sector_id')
+        .eq('channel_id', conversationChannelId)
+        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+        .maybeSingle();
+      
+      // Se já está atribuída a outro atendente, bloquear envio
+      if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
+        toast.error('Esta conversa já foi assumida por outro atendente');
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(messageToSend);
+        setSendingMessage(false);
+        
+        // Atualizar estado local para refletir a atribuição
+        const { data: assignedProfile } = await supabase
+          .from('profiles')
+          .select('display_name, email')
+          .eq('user_id', currentAssignment.assigned_to)
+          .single();
+        
+        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+        
+        setAllConversations(prev => prev.map(c => {
+          const cNormalized = c.phone.replace(/\D/g, '');
+          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+            : c;
+        }));
+        setSelectedConversation(prev => prev 
+          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName } 
+          : null
+        );
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke(sendFunction, {
         body: {
           channelId: conversationChannelId,
@@ -1210,9 +1347,8 @@ const AtendimentoV2 = () => {
             : m
         ));
 
-        // Auto-assign if not assigned
+        // Auto-assign quando envia primeira mensagem (usar insert com onConflict para garantir atomicidade)
         if (!selectedConversation.assignedTo && user?.id) {
-          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
           const { error: assignError } = await supabase
             .from('conversation_assignments')
             .upsert({
@@ -1220,7 +1356,8 @@ const AtendimentoV2 = () => {
               channel_id: conversationChannelId,
               assigned_to: user.id,
               assigned_at: new Date().toISOString(),
-              status: 'active'
+              status: 'in_progress',
+              sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
             }, { onConflict: 'conversation_phone,channel_id' });
 
           if (!assignError) {
@@ -1270,6 +1407,42 @@ const AtendimentoV2 = () => {
 
     try {
       const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
+      
+      // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+      const { data: currentAssignment } = await supabase
+        .from('conversation_assignments')
+        .select('assigned_to, sector_id')
+        .eq('channel_id', conversationChannelId)
+        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+        .maybeSingle();
+      
+      // Se já está atribuída a outro atendente, bloquear envio
+      if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
+        toast.error('Esta conversa já foi assumida por outro atendente');
+        setSendingMessage(false);
+        
+        // Atualizar estado local para refletir a atribuição
+        const { data: assignedProfile } = await supabase
+          .from('profiles')
+          .select('display_name, email')
+          .eq('user_id', currentAssignment.assigned_to)
+          .single();
+        
+        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+        
+        setAllConversations(prev => prev.map(c => {
+          const cNormalized = c.phone.replace(/\D/g, '');
+          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+            : c;
+        }));
+        setSelectedConversation(prev => prev 
+          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName } 
+          : null
+        );
+        return;
+      }
       
       const { data, error } = await supabase.functions.invoke(sendFunction, {
         body: {
@@ -1322,9 +1495,8 @@ const AtendimentoV2 = () => {
         setMessages(prev => [...prev, optimisticMessage]);
         toast.success(mediaData.mediaType === 'ptt' ? "Áudio enviado!" : "Mídia enviada!");
 
-        // Auto-assign if not assigned
+        // Auto-assign quando envia (usar insert com onConflict para garantir atomicidade)
         if (!selectedConversation.assignedTo && user?.id) {
-          const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
           const { error: assignError } = await supabase
             .from('conversation_assignments')
             .upsert({
@@ -1332,7 +1504,8 @@ const AtendimentoV2 = () => {
               channel_id: conversationChannelId,
               assigned_to: user.id,
               assigned_at: new Date().toISOString(),
-              status: 'active'
+              status: 'in_progress',
+              sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
             }, { onConflict: 'conversation_phone,channel_id' });
 
           if (!assignError) {
