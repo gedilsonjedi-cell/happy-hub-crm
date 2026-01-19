@@ -2026,8 +2026,8 @@ const AtendimentoV2 = () => {
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id;
 
   return (
-    <TopNavLayout>
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+    <TopNavLayout noPadding>
+      <div className="h-full flex flex-col lg:flex-row overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
           "w-full lg:w-80 xl:w-96 bg-card border-r border-border flex flex-col min-h-0",
