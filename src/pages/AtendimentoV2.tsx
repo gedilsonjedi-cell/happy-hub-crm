@@ -1805,9 +1805,15 @@ const AtendimentoV2 = () => {
     ? archivedConversations 
     : archivedConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
     
-  const filteredArchived = visibleArchivedConversations.filter(conv =>
-    conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredArchived = visibleArchivedConversations
+    .filter(conv =>
+      conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return timeB - timeA; // Mais recentes primeiro
+    });
 
   // Counts
   const newCount = visibleConversations.filter(c => !c.assignedTo).length;
