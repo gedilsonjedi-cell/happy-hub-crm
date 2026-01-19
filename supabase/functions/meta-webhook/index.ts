@@ -10,15 +10,28 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// ===========================================
+// PHONE NORMALIZATION (Single source of truth)
+// ===========================================
+function normalizePhone(phone: string): string {
+  // Remove all non-digits
+  let digits = phone.replace(/\D/g, '');
+  
+  // Ensure it starts with 55 (Brazil)
+  if (!digits.startsWith('55')) {
+    digits = '55' + digits;
+  }
+  
+  return digits;
+}
+
 // Helper function to check if currently within business hours
 async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: boolean; awayMessage: string | null }> {
-  // Get current date/time in Brazil timezone (most common for this app)
   const now = new Date();
   const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-  const dayOfWeek = brazilTime.getDay(); // 0 = Sunday, 6 = Saturday
-  const currentTime = brazilTime.toTimeString().slice(0, 5); // HH:MM format
+  const dayOfWeek = brazilTime.getDay();
+  const currentTime = brazilTime.toTimeString().slice(0, 5);
 
-  // Check business hours for today
   const { data: businessHour } = await supabase
     .from('business_hours')
     .select('*')
@@ -26,13 +39,10 @@ async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: 
     .eq('day_of_week', dayOfWeek)
     .single();
 
-  // If no business hours configured, consider as always open (optional feature)
   if (!businessHour) {
-    console.log('No business hours configured for day', dayOfWeek, '- skipping check');
     return { isOpen: true, awayMessage: null };
   }
 
-  // If day is not active, check for away message
   if (!businessHour.is_active) {
     const { data: awayConfig } = await supabase
       .from('away_message_config')
@@ -46,7 +56,6 @@ async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: 
     return { isOpen: false, awayMessage: null };
   }
 
-  // Check if current time is within business hours
   const startTime = businessHour.start_time.slice(0, 5);
   const endTime = businessHour.end_time.slice(0, 5);
   
@@ -71,10 +80,9 @@ async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: 
 async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; awayMessage: string | null }> {
   const now = new Date();
   const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-  const today = brazilTime.toISOString().slice(0, 10); // YYYY-MM-DD
-  const monthDay = today.slice(5); // MM-DD for recurring check
+  const today = brazilTime.toISOString().slice(0, 10);
+  const monthDay = today.slice(5);
 
-  // Check for exact date match
   const { data: exactHoliday } = await supabase
     .from('holidays')
     .select('*')
@@ -96,7 +104,6 @@ async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; 
     return { isHoliday: true, awayMessage: null };
   }
 
-  // Check for recurring holidays (same month-day every year)
   const { data: holidays } = await supabase
     .from('holidays')
     .select('*')
@@ -127,13 +134,11 @@ async function getNextAvailableAttendant(
   organizationId: string, 
   sectorId: string | null
 ): Promise<{ userId: string; userName: string } | null> {
-  // If no sector specified, return null (goes to "Novos")
   if (!sectorId) {
     console.log('No sector specified, conversation goes to Novos');
     return null;
   }
 
-  // Get all users in this sector who are online
   const { data: sectorUsers } = await supabase
     .from('user_sectors')
     .select('user_id')
@@ -146,7 +151,6 @@ async function getNextAvailableAttendant(
 
   const userIds = sectorUsers.map(u => u.user_id);
 
-  // Get availability for these users, ordered by last_assignment_at (oldest first = round-robin)
   const { data: availableAttendants } = await supabase
     .from('attendant_availability')
     .select('user_id, last_assignment_at')
@@ -160,10 +164,8 @@ async function getNextAvailableAttendant(
     return null;
   }
 
-  // Get the first one (oldest assignment = next in line)
   const nextAttendant = availableAttendants[0];
 
-  // Get user name from profiles
   const { data: profile } = await supabase
     .from('profiles')
     .select('display_name, email')
@@ -174,7 +176,6 @@ async function getNextAvailableAttendant(
 
   console.log('Selected attendant:', nextAttendant.user_id, userName);
 
-  // Update last_assignment_at for round-robin
   await supabase
     .from('attendant_availability')
     .update({ last_assignment_at: new Date().toISOString() })
@@ -184,56 +185,176 @@ async function getNextAvailableAttendant(
   return { userId: nextAttendant.user_id, userName };
 }
 
-// Helper function to get sector from campaign if conversation came from a campaign
-async function getSectorFromCampaign(
+// ===========================================
+// FIND OR CREATE LEAD (ID-centric approach)
+// ===========================================
+async function findOrCreateLead(
   organizationId: string,
-  senderPhone: string
-): Promise<string | null> {
-  // Normalize phone for search
-  const normalizedPhone = senderPhone.replace(/\D/g, '');
-  
-  // Get last 8 digits for suffix matching (most reliable)
-  const localNumber = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+  channelUserId: string,
+  rawPhone: string,
+  senderName: string | null
+): Promise<{ leadId: string; isNew: boolean }> {
+  const normalizedPhone = normalizePhone(rawPhone);
+  const localNumber = normalizedPhone.slice(2); // Remove 55
   const phoneEnd8 = localNumber.slice(-8);
   
-  // Try multiple phone formats for matching
-  const phonePatterns = [
-    senderPhone,
+  // Multiple search patterns for robustness
+  const phoneSearchPatterns = [
     normalizedPhone,
     `+${normalizedPhone}`,
-    normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone,
-    `55${normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone}`,
+    `55${localNumber}`,
+    `+55${localNumber}`,
+    localNumber,
+    rawPhone,
   ];
+  
+  // Search by exact match first
+  const { data: exactMatches } = await supabase
+    .from('leads')
+    .select('id, name, phone, tags, document')
+    .eq('organization_id', organizationId)
+    .in('phone', phoneSearchPatterns)
+    .limit(10);
+  
+  // Also try suffix match (last 8 digits - most reliable)
+  let suffixMatches: typeof exactMatches = [];
+  if (phoneEnd8.length === 8) {
+    const { data: suffixData } = await supabase
+      .from('leads')
+      .select('id, name, phone, tags, document')
+      .eq('organization_id', organizationId)
+      .like('phone', `%${phoneEnd8}`)
+      .limit(10);
+    suffixMatches = suffixData || [];
+  }
+  
+  // Combine and deduplicate
+  const allMatches = [...(exactMatches || []), ...suffixMatches];
+  const uniqueMatches = allMatches.filter((lead, index, self) => 
+    index === self.findIndex(l => l.id === lead.id)
+  );
+  
+  if (uniqueMatches.length > 0) {
+    // Score leads to find the best one
+    const scored = uniqueMatches.map(lead => {
+      let score = 0;
+      const isAutoGenerated = lead.name?.startsWith('LeadWhats-') || lead.name?.startsWith('WhatsApp ');
+      
+      if (lead.tags && lead.tags.length > 0) score += 100;
+      if (lead.name && !isAutoGenerated) score += 50;
+      if (lead.document) score += 5;
+      // Prefer leads with normalized phone format
+      if (lead.phone === normalizedPhone) score += 10;
+      
+      return { lead, score };
+    });
+    
+    scored.sort((a, b) => b.score - a.score);
+    const bestLead = scored[0].lead;
+    
+    console.log(`Found ${uniqueMatches.length} leads for phone ${rawPhone}, selected: ${bestLead.id}`);
+    
+    // Update lead name if it was auto-generated
+    const isAutoGeneratedName = bestLead.name?.startsWith('LeadWhats-') || 
+                                 bestLead.name?.startsWith('WhatsApp ');
+    if (isAutoGeneratedName && senderName) {
+      await supabase
+        .from('leads')
+        .update({ 
+          name: senderName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', bestLead.id);
+      console.log('Lead name updated to:', senderName);
+    }
+    
+    // Update phone to normalized format if different
+    if (bestLead.phone !== normalizedPhone) {
+      await supabase
+        .from('leads')
+        .update({ 
+          phone: normalizedPhone,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', bestLead.id);
+      console.log('Lead phone normalized to:', normalizedPhone);
+    }
+    
+    return { leadId: bestLead.id, isNew: false };
+  }
+  
+  // Create new lead with normalized phone
+  const { data: newLead, error: leadError } = await supabase
+    .from('leads')
+    .insert({
+      phone: normalizedPhone,
+      name: senderName || `WhatsApp ${normalizedPhone}`,
+      user_id: channelUserId,
+      organization_id: organizationId,
+      status: 'new',
+      notes: 'Lead criado automaticamente via WhatsApp (Meta)'
+    })
+    .select('id')
+    .single();
 
-  // First try exact match
-  let { data: recipients } = await supabase
+  if (leadError) {
+    console.error('Error creating lead:', leadError);
+    throw new Error('Failed to create lead');
+  }
+
+  console.log('New lead created:', newLead.id, 'phone:', normalizedPhone);
+  return { leadId: newLead.id, isNew: true };
+}
+
+// ===========================================
+// FIND SECTOR FROM CAMPAIGN (uses lead_id)
+// ===========================================
+async function findSectorFromCampaign(
+  organizationId: string,
+  leadId: string
+): Promise<string | null> {
+  // First try to find by lead_id in campaign_recipients
+  const { data: recipientByLead } = await supabase
     .from('campaign_recipients')
-    .select('campaign_id, phone')
-    .in('phone', phonePatterns)
+    .select('campaign_id')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (recipientByLead && recipientByLead.length > 0) {
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('sector_id')
+      .eq('id', recipientByLead[0].campaign_id)
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (campaign?.sector_id) {
+      console.log('Found sector_id from campaign via lead_id:', campaign.sector_id);
+      return campaign.sector_id;
+    }
+  }
+
+  // Fallback: get lead phone and search by phone suffix
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('phone')
+    .eq('id', leadId)
+    .single();
+
+  if (!lead?.phone) return null;
+
+  const normalizedPhone = normalizePhone(lead.phone);
+  const phoneEnd8 = normalizedPhone.slice(-8);
+
+  const { data: suffixRecipients } = await supabase
+    .from('campaign_recipients')
+    .select('campaign_id')
+    .like('phone', `%${phoneEnd8}`)
     .order('created_at', { ascending: false })
     .limit(5);
 
-  // If no exact match, try suffix matching (last 8 digits)
-  if ((!recipients || recipients.length === 0) && phoneEnd8.length === 8) {
-    console.log('Trying suffix match with:', phoneEnd8);
-    const { data: suffixRecipients } = await supabase
-      .from('campaign_recipients')
-      .select('campaign_id, phone')
-      .like('phone', `%${phoneEnd8}`)
-      .order('created_at', { ascending: false })
-      .limit(5);
-    recipients = suffixRecipients;
-  }
-
-  if (!recipients || recipients.length === 0) {
-    console.log('No campaign recipient found for phone:', senderPhone);
-    return null;
-  }
-
-  console.log('Found campaign recipients for phone:', senderPhone, recipients.length, 'matches');
-
-  // Get campaign with sector_id (directly from campaigns table)
-  for (const recipient of recipients) {
+  for (const recipient of suffixRecipients || []) {
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('sector_id')
@@ -242,13 +363,255 @@ async function getSectorFromCampaign(
       .single();
 
     if (campaign?.sector_id) {
-      console.log('Found sector_id from campaign:', campaign.sector_id, 'for phone:', senderPhone);
+      console.log('Found sector_id from campaign via phone suffix:', campaign.sector_id);
       return campaign.sector_id;
     }
   }
 
-  console.log('Campaign found but no sector_id assigned for phone:', senderPhone);
   return null;
+}
+
+// ===========================================
+// FIND OR CREATE CONVERSATION ASSIGNMENT (ID-centric)
+// ===========================================
+async function handleConversationAssignment(
+  organizationId: string,
+  channelId: string,
+  leadId: string,
+  normalizedPhone: string
+): Promise<{ assignmentId: string; assignedTo: string | null; status: string }> {
+  
+  // PRIMARY LOOKUP: By lead_id + channel_id (most reliable)
+  let { data: existingAssignment } = await supabase
+    .from('conversation_assignments')
+    .select('id, assigned_to, status, sector_id, conversation_phone')
+    .eq('lead_id', leadId)
+    .eq('channel_id', channelId)
+    .single();
+  
+  // FALLBACK: If no match by lead_id, try by phone (for legacy data)
+  if (!existingAssignment) {
+    const phoneEnd8 = normalizedPhone.slice(-8);
+    const { data: phoneMatch } = await supabase
+      .from('conversation_assignments')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+      .eq('channel_id', channelId)
+      .like('conversation_phone', `%${phoneEnd8}`)
+      .single();
+    
+    if (phoneMatch) {
+      existingAssignment = phoneMatch;
+      
+      // Update the assignment to include lead_id for future lookups
+      if (!phoneMatch.lead_id) {
+        await supabase
+          .from('conversation_assignments')
+          .update({ 
+            lead_id: leadId,
+            conversation_phone: normalizedPhone,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', phoneMatch.id);
+        console.log('Updated legacy assignment with lead_id:', leadId);
+      }
+    }
+  }
+  
+  if (existingAssignment) {
+    // EXISTING assignment found
+    const wasArchived = existingAssignment.status === 'archived';
+    const hasAttendant = !!existingAssignment.assigned_to;
+    
+    // Update conversation_phone to normalized format if different
+    if (existingAssignment.conversation_phone !== normalizedPhone) {
+      await supabase
+        .from('conversation_assignments')
+        .update({ 
+          conversation_phone: normalizedPhone,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingAssignment.id);
+    }
+    
+    if (wasArchived) {
+      // Conversation was ARCHIVED - reactivate
+      console.log('Reactivating archived conversation');
+      
+      // If had previous attendant, return to them
+      if (hasAttendant) {
+        console.log('Returning to previous attendant:', existingAssignment.assigned_to);
+        
+        await supabase
+          .from('conversation_assignments')
+          .update({
+            status: 'active',
+            is_bot_handling: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingAssignment.id);
+        
+        return {
+          assignmentId: existingAssignment.id,
+          assignedTo: existingAssignment.assigned_to,
+          status: 'active'
+        };
+      }
+      
+      // No previous attendant - try auto-distribution
+      const sectorId = await findSectorFromCampaign(organizationId, leadId);
+      
+      if (sectorId) {
+        const nextAttendant = await getNextAvailableAttendant(organizationId, sectorId);
+        
+        if (nextAttendant) {
+          await supabase
+            .from('conversation_assignments')
+            .update({
+              assigned_to: nextAttendant.userId,
+              assigned_at: new Date().toISOString(),
+              status: 'active',
+              is_bot_handling: false,
+              sector_id: sectorId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingAssignment.id);
+          
+          console.log('Reactivated and auto-assigned to:', nextAttendant.userName);
+          return {
+            assignmentId: existingAssignment.id,
+            assignedTo: nextAttendant.userId,
+            status: 'active'
+          };
+        }
+      }
+      
+      // No attendant available - set to pending
+      await supabase
+        .from('conversation_assignments')
+        .update({
+          status: 'pending',
+          is_bot_handling: true,
+          sector_id: sectorId || existingAssignment.sector_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingAssignment.id);
+      
+      return {
+        assignmentId: existingAssignment.id,
+        assignedTo: null,
+        status: 'pending'
+      };
+    }
+    
+    if (!hasAttendant && existingAssignment.status === 'pending') {
+      // Still pending - try auto-distribution
+      const sectorId = await findSectorFromCampaign(organizationId, leadId);
+      
+      if (sectorId) {
+        const nextAttendant = await getNextAvailableAttendant(organizationId, sectorId);
+        
+        if (nextAttendant) {
+          await supabase
+            .from('conversation_assignments')
+            .update({
+              assigned_to: nextAttendant.userId,
+              assigned_at: new Date().toISOString(),
+              status: 'active',
+              is_bot_handling: false,
+              sector_id: sectorId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingAssignment.id);
+          
+          console.log('Pending conversation auto-assigned to:', nextAttendant.userName);
+          return {
+            assignmentId: existingAssignment.id,
+            assignedTo: nextAttendant.userId,
+            status: 'active'
+          };
+        }
+      }
+    }
+    
+    // Has attendant - belongs to them exclusively
+    console.log('Conversation belongs to:', existingAssignment.assigned_to);
+    return {
+      assignmentId: existingAssignment.id,
+      assignedTo: existingAssignment.assigned_to,
+      status: existingAssignment.status
+    };
+  }
+  
+  // NEW conversation - create assignment
+  console.log('Creating new conversation assignment');
+  
+  // Get sector from campaign
+  const sectorId = await findSectorFromCampaign(organizationId, leadId);
+  console.log('Sector for new conversation:', sectorId);
+  
+  // Check portfolio first
+  const { data: portfolioEntry } = await supabase
+    .from('client_portfolios')
+    .select('user_id')
+    .eq('lead_id', leadId)
+    .eq('organization_id', organizationId)
+    .single();
+
+  let assignedTo: string | null = null;
+  let status = 'pending';
+
+  if (portfolioEntry) {
+    // Lead is in portfolio
+    console.log('Lead is in portfolio of:', portfolioEntry.user_id);
+    
+    const { data: ownerAvailability } = await supabase
+      .from('attendant_availability')
+      .select('is_available')
+      .eq('user_id', portfolioEntry.user_id)
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (ownerAvailability?.is_available === true) {
+      assignedTo = portfolioEntry.user_id;
+      status = 'active';
+    }
+  } else if (sectorId) {
+    // Not in portfolio but has sector - auto-distribute
+    const nextAttendant = await getNextAvailableAttendant(organizationId, sectorId);
+    
+    if (nextAttendant) {
+      assignedTo = nextAttendant.userId;
+      status = 'active';
+      console.log('Auto-assigned to:', nextAttendant.userName);
+    }
+  }
+
+  const { data: newAssignment, error: assignError } = await supabase
+    .from('conversation_assignments')
+    .insert({
+      conversation_phone: normalizedPhone,
+      channel_id: channelId,
+      lead_id: leadId,
+      assigned_to: assignedTo,
+      assigned_at: assignedTo ? new Date().toISOString() : null,
+      status: status,
+      is_bot_handling: !assignedTo,
+      sector_id: sectorId,
+    })
+    .select('id')
+    .single();
+
+  if (assignError) {
+    console.error('Error creating assignment:', assignError);
+    throw new Error('Failed to create assignment');
+  }
+
+  console.log('Assignment created:', newAssignment.id, 'assigned to:', assignedTo || 'pending');
+  return {
+    assignmentId: newAssignment.id,
+    assignedTo: assignedTo,
+    status: status
+  };
 }
 
 // Helper function to send WhatsApp message via Meta API
@@ -282,17 +645,13 @@ async function sendWhatsAppMessage(phoneNumberId: string, accessToken: string, r
   }
 }
 
-// Helper function to dispatch webhook events to configured webhooks
+// Helper function to dispatch webhook events
 async function dispatchWebhookEvent(
   organizationId: string, 
   event: string, 
   data: Record<string, unknown>
 ): Promise<void> {
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    
-    // Fetch active webhooks for this organization that listen to this event
     const { data: webhooks, error: fetchError } = await supabase
       .from("webhooks")
       .select("*")
@@ -304,7 +663,6 @@ async function dispatchWebhookEvent(
       return;
     }
 
-    // Filter webhooks that listen to this specific event
     const matchingWebhooks = (webhooks || []).filter(
       (webhook: { events: string[] }) => webhook.events.includes(event)
     );
@@ -316,7 +674,6 @@ async function dispatchWebhookEvent(
 
     console.log(`Dispatching ${event} to ${matchingWebhooks.length} webhook(s)`);
 
-    // Dispatch to each matching webhook
     for (const webhook of matchingWebhooks) {
       try {
         const webhookPayload = {
@@ -333,7 +690,6 @@ async function dispatchWebhookEvent(
           "X-Webhook-ID": webhook.id,
         };
 
-        // Add custom headers if configured
         if (webhook.headers && typeof webhook.headers === "object") {
           Object.assign(headers, webhook.headers as Record<string, string>);
         }
@@ -370,7 +726,6 @@ async function downloadAndStoreMedia(
   try {
     console.log('Downloading media from Meta, ID:', mediaId);
     
-    // Step 1: Get media URL from Meta
     const mediaInfoResponse = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -389,7 +744,6 @@ async function downloadAndStoreMedia(
     
     console.log('Media info:', { url: mediaUrl, mimeType: mediaMimeType });
     
-    // Step 2: Download media binary
     const mediaDownloadResponse = await fetch(mediaUrl, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -405,7 +759,6 @@ async function downloadAndStoreMedia(
     const arrayBuffer = await mediaBlob.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
-    // Step 3: Determine file extension
     let extension = 'bin';
     if (mediaMimeType.includes('audio/ogg')) {
       extension = 'ogg';
@@ -429,7 +782,6 @@ async function downloadAndStoreMedia(
       extension = 'pdf';
     }
     
-    // Step 4: Upload to Supabase Storage
     const fileName = `${organizationId}/inbound_${Date.now()}_${mediaId.slice(-8)}.${extension}`;
     
     const { data: uploadData, error: uploadError } = await supabase
@@ -445,7 +797,6 @@ async function downloadAndStoreMedia(
       return null;
     }
     
-    // Step 5: Get public URL
     const { data: publicUrlData } = supabase
       .storage
       .from('whatsapp-media')
@@ -460,6 +811,9 @@ async function downloadAndStoreMedia(
   }
 }
 
+// ===========================================
+// MAIN WEBHOOK HANDLER
+// ===========================================
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   
@@ -472,7 +826,6 @@ Deno.serve(async (req) => {
     console.log('Webhook verification request:', { mode, token, challenge });
 
     if (mode === 'subscribe' && token) {
-      // Find any channel with this verify token (may be shared across multiple channels in same WABA)
       const { data: channels, error } = await supabase
         .from('channels')
         .select('id, waba_id')
@@ -493,18 +846,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Handle webhook events (POST request from Meta)
   if (req.method === 'POST') {
     try {
       const body = await req.json();
       console.log('Meta webhook received:', JSON.stringify(body, null, 2));
 
-      // Meta sends events in this structure
       const entry = body.entry?.[0];
       if (!entry) {
         console.log('No entry in webhook payload');
@@ -524,9 +874,7 @@ Deno.serve(async (req) => {
 
       console.log('Webhook metadata:', { phoneNumberId, displayPhoneNumber });
 
-      // Supabase client already created at top level
-
-      // Find channel by phone number ID (stored in app_name) or phone number
+      // Find channel
       let channel = null;
       
       if (phoneNumberId) {
@@ -566,6 +914,9 @@ Deno.serve(async (req) => {
         const messageType = msg.type;
 
         console.log('Processing message:', { messageId, senderPhone, messageType });
+
+        // Normalize phone immediately
+        const normalizedPhone = normalizePhone(senderPhone);
 
         // Check for duplicate
         const { data: existingMessage } = await supabase
@@ -652,7 +1003,6 @@ Deno.serve(async (req) => {
           if (storedMediaUrl) {
             mediaUrl = storedMediaUrl;
           } else {
-            // Fallback: store media ID so we can try again later or show error
             mediaUrl = mediaId;
             console.warn('Failed to download media, storing ID only:', mediaId);
           }
@@ -662,14 +1012,14 @@ Deno.serve(async (req) => {
         const contact = value.contacts?.find((c: { wa_id: string }) => c.wa_id === senderPhone);
         const senderName = contact?.profile?.name || null;
 
-        // Store message
+        // Store message with normalized phone
         const { error: insertError } = await supabase
           .from('whatsapp_messages')
           .insert({
             channel_id: channel.id,
             organization_id: channel.organization_id,
             message_id: messageId,
-            sender_phone: senderPhone,
+            sender_phone: normalizedPhone,
             sender_name: senderName,
             message_type: messageType,
             content: content,
@@ -680,7 +1030,8 @@ Deno.serve(async (req) => {
             metadata: {
               timestamp,
               raw: msg,
-              provider: 'meta'
+              provider: 'meta',
+              original_phone: senderPhone
             }
           });
 
@@ -689,13 +1040,13 @@ Deno.serve(async (req) => {
         } else {
           console.log('Message stored successfully:', messageId);
 
-          // Dispatch webhook event for message_created
+          // Dispatch webhook event
           if (channel.organization_id) {
             await dispatchWebhookEvent(channel.organization_id, 'message_created', {
               message_id: messageId,
               channel_id: channel.id,
               channel_name: channel.name,
-              sender_phone: senderPhone,
+              sender_phone: normalizedPhone,
               sender_name: senderName,
               message_type: messageType,
               content: content,
@@ -705,21 +1056,19 @@ Deno.serve(async (req) => {
             });
           }
 
-          // Check business hours and holidays for away message (only if organization configured)
+          // Check business hours and holidays
           if (channel.organization_id && channel.access_token && channel.app_name) {
-            // First check if it's a holiday
             const holidayCheck = await isHoliday(channel.organization_id);
             
             if (holidayCheck.isHoliday && holidayCheck.awayMessage) {
               console.log('Sending holiday away message');
               await sendWhatsAppMessage(
-                channel.app_name, // phone_number_id
+                channel.app_name,
                 channel.access_token,
-                senderPhone,
+                normalizedPhone,
                 holidayCheck.awayMessage
               );
             } else if (!holidayCheck.isHoliday) {
-              // Not a holiday, check business hours
               const businessCheck = await isWithinBusinessHours(channel.organization_id);
               
               if (!businessCheck.isOpen && businessCheck.awayMessage) {
@@ -727,7 +1076,7 @@ Deno.serve(async (req) => {
                 await sendWhatsAppMessage(
                   channel.app_name,
                   channel.access_token,
-                  senderPhone,
+                  normalizedPhone,
                   businessCheck.awayMessage
                 );
               }
@@ -735,294 +1084,53 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Check if sender is a lead, if not create one
-        // Also update lead name if it was auto-generated and we now have the real WhatsApp name
-        // Normalize phone for search - remove all non-digits
-        const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
-        // Remove country code to get local number
-        const localNumber = normalizedSenderPhone.startsWith('55') 
-          ? normalizedSenderPhone.slice(2) 
-          : normalizedSenderPhone;
-        // Get last 8 digits (most stable - doesn't change with 9th digit)
-        const phoneEnd8 = localNumber.slice(-8);
-        
-        // Search for lead using multiple phone format patterns including 8-digit suffix
-        const phoneSearchPatterns = [
-          normalizedSenderPhone,
-          `+${normalizedSenderPhone}`,
-          `55${localNumber}`,
-          `+55${localNumber}`,
-          localNumber, // Local number without country code
-        ];
-        
-        // First try exact match - get all matches to find the best one
-        const { data: exactMatches } = await supabase
-          .from('leads')
-          .select('id, name, custom_fields, document, tags')
-          .eq('organization_id', channel.organization_id)
-          .in('phone', phoneSearchPatterns)
-          .limit(10);
-        
-        let existingLead = null;
-        
-        // Also get suffix matches
-        let suffixMatches: typeof exactMatches = [];
-        if (phoneEnd8.length === 8) {
-          const { data: suffixData } = await supabase
-            .from('leads')
-            .select('id, name, custom_fields, document, tags')
-            .eq('organization_id', channel.organization_id)
-            .like('phone', `%${phoneEnd8}`)
-            .limit(10);
-          suffixMatches = suffixData || [];
-        }
-        
-        // Combine all matches and deduplicate by id
-        const allMatches = [...(exactMatches || []), ...suffixMatches];
-        const uniqueMatches = allMatches.filter((lead, index, self) => 
-          index === self.findIndex(l => l.id === lead.id)
-        );
-        
-        if (uniqueMatches.length > 0) {
-          // Score each lead to find the best one (prioritize tags and real names)
-          const scored = uniqueMatches.map(lead => {
-            let score = 0;
-            const isAutoGenerated = lead.name?.startsWith('LeadWhats-') || lead.name?.startsWith('WhatsApp ');
-            
-            // Has tags = highest priority
-            if (lead.tags && lead.tags.length > 0) score += 100;
-            // Has real name (not auto-generated)
-            if (lead.name && !isAutoGenerated) score += 50;
-            // Has additional data
-            if (lead.document) score += 5;
-            
-            return { lead, score };
-          });
-          
-          // Sort by score descending and get best match
-          scored.sort((a, b) => b.score - a.score);
-          existingLead = scored[0].lead;
-          
-          if (uniqueMatches.length > 1) {
-            console.log(`Found ${uniqueMatches.length} leads for phone ${senderPhone}, selected best match: ${existingLead.id}`);
-          }
-        }
+        // Handle lead and assignment (ID-centric approach)
+        if (channel.organization_id) {
+          try {
+            // Step 1: Find or create lead (returns lead_id)
+            const { leadId, isNew } = await findOrCreateLead(
+              channel.organization_id,
+              channel.user_id,
+              senderPhone,
+              senderName
+            );
 
-        let leadId = existingLead?.id;
-
-        if (!existingLead && channel.organization_id) {
-          // Create new lead
-          const { data: newLead, error: leadError } = await supabase
-            .from('leads')
-            .insert({
-              phone: senderPhone,
-              name: senderName || `WhatsApp ${senderPhone}`,
-              user_id: channel.user_id,
-              organization_id: channel.organization_id,
-              status: 'new',
-              notes: 'Lead criado automaticamente via WhatsApp (Meta)'
-            })
-            .select('id')
-            .single();
-
-          if (leadError) {
-            console.error('Error creating lead:', leadError);
-          } else {
-            console.log('Lead created for:', senderPhone);
-            leadId = newLead?.id;
-            
-            // Dispatch webhook event for contact_created
-            await dispatchWebhookEvent(channel.organization_id!, 'contact_created', {
-              lead_id: newLead?.id,
-              phone: senderPhone,
-              name: senderName || `WhatsApp ${senderPhone}`,
-              channel_id: channel.id,
-              channel_name: channel.name,
-              source: 'whatsapp_meta',
-              timestamp: new Date().toISOString(),
-            });
-          }
-        } else if (existingLead && senderName && channel.organization_id) {
-          // Check if lead has auto-generated name (LeadWhats- pattern or WhatsApp pattern)
-          const isAutoGeneratedName = existingLead.name.startsWith('LeadWhats-') || 
-                                       existingLead.name.startsWith('WhatsApp ');
-          
-          if (isAutoGeneratedName) {
-            // Update lead with real WhatsApp name
-            const { error: updateLeadError } = await supabase
-              .from('leads')
-              .update({ 
-                name: senderName,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', existingLead.id);
-
-            if (updateLeadError) {
-              console.error('Error updating lead name:', updateLeadError);
-            } else {
-              console.log('Lead name updated from', existingLead.name, 'to', senderName);
-            }
-          }
-        }
-
-        // Handle conversation assignment
-        if (leadId && channel.organization_id) {
-          // Check if assignment already exists
-          const { data: existingAssignment } = await supabase
-            .from('conversation_assignments')
-            .select('id, assigned_to, status, sector_id')
-            .eq('conversation_phone', senderPhone)
-            .eq('channel_id', channel.id)
-            .single();
-
-          if (!existingAssignment) {
-            // NEW conversation - Get sector from campaign FIRST (for visibility filtering)
-            const sectorId = await getSectorFromCampaign(channel.organization_id!, senderPhone);
-            console.log('Sector for new conversation:', sectorId);
-            
-            // Check if lead is in someone's portfolio first
-            const { data: portfolioEntry } = await supabase
-              .from('client_portfolios')
-              .select('user_id')
-              .eq('lead_id', leadId)
-              .eq('organization_id', channel.organization_id)
-              .single();
-
-            let assignedTo: string | null = null;
-            let status = 'pending';
-
-            if (portfolioEntry) {
-              // Lead is in portfolio - check if owner is available
-              console.log('Lead is in portfolio of user:', portfolioEntry.user_id);
-              
-              const { data: ownerAvailability } = await supabase
-                .from('attendant_availability')
-                .select('is_available')
-                .eq('user_id', portfolioEntry.user_id)
-                .eq('organization_id', channel.organization_id)
-                .single();
-
-              if (ownerAvailability?.is_available === true) {
-                assignedTo = portfolioEntry.user_id;
-                status = 'active';
-              }
-            } else if (sectorId) {
-              // Not in portfolio but has sector - try auto-distribution by department
-              console.log('Lead not in portfolio, auto-distributing by sector:', sectorId);
-              
-              // Try to find available attendant in this sector (round-robin)
-              const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
-              
-              if (nextAttendant) {
-                assignedTo = nextAttendant.userId;
-                status = 'active';
-                console.log('Auto-assigned to:', nextAttendant.userName);
-              } else {
-                console.log('No online attendants in sector, conversation goes to Novos of that sector');
-              }
-            } else {
-              console.log('No sector found for this conversation, goes to general Novos');
-            }
-
-            // Create assignment WITH sector_id for visibility filtering
-            const { error: assignError } = await supabase
-              .from('conversation_assignments')
-              .insert({
-                conversation_phone: senderPhone,
-                channel_id: channel.id,
+            // Dispatch contact_created webhook if new
+            if (isNew) {
+              await dispatchWebhookEvent(channel.organization_id, 'contact_created', {
                 lead_id: leadId,
-                assigned_to: assignedTo,
-                assigned_at: assignedTo ? new Date().toISOString() : null,
-                status: status,
-                is_bot_handling: !assignedTo,
-                sector_id: sectorId, // CRITICAL: Store sector for visibility filtering
-              });
-
-            if (assignError) {
-              console.error('Error creating assignment:', assignError);
-            } else {
-              console.log('Assignment created:', assignedTo ? `to ${assignedTo}` : 'pending (Novos)');
-              
-              // Dispatch webhook event for conversation_created
-              await dispatchWebhookEvent(channel.organization_id!, 'conversation_created', {
-                conversation_phone: senderPhone,
+                phone: normalizedPhone,
+                name: senderName || `WhatsApp ${normalizedPhone}`,
                 channel_id: channel.id,
                 channel_name: channel.name,
-                lead_id: leadId,
-                assigned_to: assignedTo,
-                status: status,
+                source: 'whatsapp_meta',
                 timestamp: new Date().toISOString(),
               });
             }
-          } else {
-            // EXISTING assignment found
-            const wasArchived = existingAssignment.status === 'archived';
-            const hasAttendant = !!existingAssignment.assigned_to;
-            
-            // Get sector from campaign for existing assignments too
-            const sectorId = await getSectorFromCampaign(channel.organization_id!, senderPhone);
-            
-            if (wasArchived) {
-              // If conversation was ARCHIVED and had a previous attendant, return to them
-              // Otherwise, try auto-distribution
-              console.log('Archived conversation reactivated');
-              
-              let newAssignedTo: string | null = existingAssignment.assigned_to; // Keep previous attendant
-              let newStatus = existingAssignment.assigned_to ? 'active' : 'pending';
-              
-              // Only redistribute if there was NO previous attendant
-              if (!existingAssignment.assigned_to && sectorId) {
-                const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
-                if (nextAttendant) {
-                  newAssignedTo = nextAttendant.userId;
-                  newStatus = 'active';
-                  console.log('Reactivated and auto-assigned to:', nextAttendant.userName);
-                }
-              } else if (existingAssignment.assigned_to) {
-                console.log('Reactivated - returning to previous attendant:', existingAssignment.assigned_to);
-              }
-              
-              await supabase
-                .from('conversation_assignments')
-                .update({
-                  assigned_to: newAssignedTo,
-                  assigned_at: newAssignedTo ? new Date().toISOString() : null,
-                  status: newStatus,
-                  is_bot_handling: !newAssignedTo,
-                  sector_id: sectorId || existingAssignment.sector_id, // Keep existing sector if no new one
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', existingAssignment.id);
 
-              console.log('Conversation reactivated with sector:', sectorId || 'kept existing');
-            } else if (!hasAttendant) {
-              // No attendant assigned yet - try auto-distribution
-              // This happens when conversation is in "pending" status
-              if (sectorId) {
-                const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
-                
-                if (nextAttendant) {
-                  await supabase
-                    .from('conversation_assignments')
-                    .update({
-                      assigned_to: nextAttendant.userId,
-                      status: 'active',
-                      is_bot_handling: false,
-                      assigned_at: new Date().toISOString(),
-                      sector_id: sectorId, // Ensure sector is set
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', existingAssignment.id);
+            // Step 2: Handle conversation assignment using lead_id
+            const assignment = await handleConversationAssignment(
+              channel.organization_id,
+              channel.id,
+              leadId,
+              normalizedPhone
+            );
 
-                  console.log('Assignment updated - auto-assigned to:', nextAttendant.userName, 'sector:', sectorId);
-                }
-              }
-            } else {
-              // CRITICAL: Attendant is assigned - conversation belongs EXCLUSIVELY to them
-              // Do NOT reassign, do NOT change status, do NOT modify assignment
-              // Even if attendant is offline, the conversation stays with them
-              console.log('Conversation has owner:', existingAssignment.assigned_to, '- NO changes made (exclusive ownership)');
+            // Dispatch conversation_created webhook if needed
+            if (isNew) {
+              await dispatchWebhookEvent(channel.organization_id, 'conversation_created', {
+                conversation_phone: normalizedPhone,
+                channel_id: channel.id,
+                channel_name: channel.name,
+                lead_id: leadId,
+                assigned_to: assignment.assignedTo,
+                status: assignment.status,
+                timestamp: new Date().toISOString(),
+              });
             }
+
+          } catch (error) {
+            console.error('Error handling lead/assignment:', error);
           }
         }
       }
@@ -1031,11 +1139,10 @@ Deno.serve(async (req) => {
       const statuses = value.statuses || [];
       for (const status of statuses) {
         const messageId = status.id;
-        const statusValue = status.status; // sent, delivered, read, failed
+        const statusValue = status.status;
 
         console.log('Processing status update:', { messageId, status: statusValue });
 
-        // Get the message to check if it was part of a campaign
         const { data: messageData } = await supabase
           .from('whatsapp_messages')
           .select('id, status, metadata')
@@ -1057,7 +1164,6 @@ Deno.serve(async (req) => {
         } else {
           console.log('Message status updated:', messageId, statusValue);
 
-          // Dispatch webhook event for message_updated
           if (channel.organization_id) {
             await dispatchWebhookEvent(channel.organization_id, 'message_updated', {
               message_id: messageId,
@@ -1069,7 +1175,7 @@ Deno.serve(async (req) => {
             });
           }
 
-          // If message failed and was previously sent/delivered, update campaign counters
+          // Update campaign counters for failed messages
           if (statusValue === 'failed' && previousStatus !== 'failed' && messageData?.metadata) {
             const metadata = messageData.metadata as Record<string, unknown>;
             const campaignId = metadata?.campaignId as string | undefined;
@@ -1077,7 +1183,6 @@ Deno.serve(async (req) => {
             if (campaignId) {
               console.log('Updating campaign counters for failed message, campaignId:', campaignId);
               
-              // Get current campaign counts
               const { data: campaign } = await supabase
                 .from('campaigns')
                 .select('delivered_count, failed_count')
@@ -1085,7 +1190,6 @@ Deno.serve(async (req) => {
                 .single();
               
               if (campaign) {
-                // Decrement delivered, increment failed
                 const newDeliveredCount = Math.max(0, (campaign.delivered_count || 0) - 1);
                 const newFailedCount = (campaign.failed_count || 0) + 1;
                 
@@ -1108,7 +1212,7 @@ Deno.serve(async (req) => {
 
     } catch (error) {
       console.error('Error processing webhook:', error);
-      return new Response('OK', { status: 200 }); // Always return 200 to Meta
+      return new Response('OK', { status: 200 });
     }
   }
 
