@@ -1020,6 +1020,105 @@ export type Database = {
           },
         ]
       }
+      conversation_metrics: {
+        Row: {
+          agent_message_count: number | null
+          assigned_to: string | null
+          channel_id: string | null
+          conversation_assignment_id: string | null
+          created_at: string
+          customer_message_count: number | null
+          first_message_at: string | null
+          first_response_at: string | null
+          first_response_time_seconds: number | null
+          id: string
+          lead_id: string | null
+          message_count: number | null
+          organization_id: string | null
+          resolved_at: string | null
+          sector_id: string | null
+          total_handling_time_seconds: number | null
+          updated_at: string
+          wait_time_seconds: number | null
+        }
+        Insert: {
+          agent_message_count?: number | null
+          assigned_to?: string | null
+          channel_id?: string | null
+          conversation_assignment_id?: string | null
+          created_at?: string
+          customer_message_count?: number | null
+          first_message_at?: string | null
+          first_response_at?: string | null
+          first_response_time_seconds?: number | null
+          id?: string
+          lead_id?: string | null
+          message_count?: number | null
+          organization_id?: string | null
+          resolved_at?: string | null
+          sector_id?: string | null
+          total_handling_time_seconds?: number | null
+          updated_at?: string
+          wait_time_seconds?: number | null
+        }
+        Update: {
+          agent_message_count?: number | null
+          assigned_to?: string | null
+          channel_id?: string | null
+          conversation_assignment_id?: string | null
+          created_at?: string
+          customer_message_count?: number | null
+          first_message_at?: string | null
+          first_response_at?: string | null
+          first_response_time_seconds?: number | null
+          id?: string
+          lead_id?: string | null
+          message_count?: number | null
+          organization_id?: string | null
+          resolved_at?: string | null
+          sector_id?: string | null
+          total_handling_time_seconds?: number | null
+          updated_at?: string
+          wait_time_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_metrics_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_conversation_assignment_id_fkey"
+            columns: ["conversation_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_notes: {
         Row: {
           channel_id: string | null
@@ -1476,6 +1575,77 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_activity_log: {
+        Row: {
+          activity_type: string
+          campaign_id: string | null
+          channel_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          lead_id: string
+          metadata: Json | null
+          organization_id: string | null
+          performed_by: string | null
+          title: string
+        }
+        Insert: {
+          activity_type: string
+          campaign_id?: string | null
+          channel_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          lead_id: string
+          metadata?: Json | null
+          organization_id?: string | null
+          performed_by?: string | null
+          title: string
+        }
+        Update: {
+          activity_type?: string
+          campaign_id?: string | null
+          channel_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          lead_id?: string
+          metadata?: Json | null
+          organization_id?: string | null
+          performed_by?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activity_log_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
