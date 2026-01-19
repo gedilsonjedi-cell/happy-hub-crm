@@ -882,13 +882,19 @@ const AtendimentoV2 = () => {
                 if (existing) {
                   let newStatus = existing.status;
                   if (existing.status === "archived") {
-                    newStatus = "pending";
+                    // Se tinha atendente anterior, volta para ele (in_progress)
+                    // Se não tinha, vai para pending
+                    const hadPreviousAttendant = existing.assignedTo !== null;
+                    newStatus = hadPreviousAttendant ? "in_progress" : "pending";
                     const convKey = `${existing.channelId}_${existing.phone.replace(/\D/g, '')}`;
-                    setConversationStatuses(prevStatuses => ({ ...prevStatuses, [convKey]: "pending" }));
+                    setConversationStatuses(prevStatuses => ({ ...prevStatuses, [convKey]: newStatus }));
                     if (existing.channelId) {
                       supabase
                         .from("conversation_assignments")
-                        .update({ status: "pending", updated_at: new Date().toISOString() })
+                        .update({ 
+                          status: newStatus, 
+                          updated_at: new Date().toISOString() 
+                        })
                         .eq("channel_id", existing.channelId)
                         .or(`conversation_phone.eq.${existing.phone.replace(/\D/g, '')},conversation_phone.eq.+${existing.phone.replace(/\D/g, '')}`)
                         .then(() => {});
