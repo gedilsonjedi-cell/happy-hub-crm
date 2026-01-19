@@ -1941,50 +1941,134 @@ const AtendimentoV2 = () => {
             </div>
           </div>
 
-          {/* Archived section (collapsible at top) */}
-          {showArchived && archivedConversations.length > 0 && (
-            <div className="border-b border-border bg-muted/30 shrink-0">
-              <div className="p-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                  <Archive className="w-3 h-3" />
-                  Arquivados ({archivedConversations.length})
+          {/* Archived section (collapsible panel - full list when showing) */}
+          {showArchived && (
+            <div className="flex-1 flex flex-col min-h-0 bg-muted/20">
+              <div className="p-3 border-b border-border flex items-center justify-between shrink-0">
+                <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Archive className="w-4 h-4" />
+                  Conversas Arquivadas ({archivedConversations.length})
                 </span>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowArchived(false)}>
-                  <ChevronUp className="w-4 h-4" />
+                <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => setShowArchived(false)}>
+                  <X className="w-4 h-4" />
+                  Fechar
                 </Button>
               </div>
-              <ScrollArea className="max-h-40">
-                <div className="divide-y divide-border">
-                  {filteredArchived.map((conv) => {
-                    const convKey = getConversationKey(conv);
-                    
-                    return (
-                      <div key={convKey} className="group relative p-2 px-3 hover:bg-muted/50 transition-colors flex items-center gap-3">
-                        <Avatar className="w-8 h-8 shrink-0">
-                          <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                            {conv.name ? conv.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-3 h-3" />}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm text-muted-foreground truncate block">{conv.name || conv.phone}</span>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" 
-                          onClick={() => handleRestore(conv)}
-                        >
-                          <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-primary" />
-                        </Button>
-                      </div>
-                    );
-                  })}
+              
+              {archivedConversations.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <div className="text-center text-muted-foreground">
+                    <Archive className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">Nenhuma conversa arquivada</p>
+                  </div>
                 </div>
-              </ScrollArea>
+              ) : (
+                <ScrollArea className="flex-1">
+                  <div className="divide-y divide-border">
+                    {filteredArchived.map((conv) => {
+                      const convKey = getConversationKey(conv);
+                      const sectorInfo = sectors.find(s => s.id === conv.sectorId);
+                      const isSelected = selectedConversation && getConversationKey(selectedConversation) === convKey;
+                      
+                      return (
+                        <div 
+                          key={convKey} 
+                          className={cn(
+                            "group relative p-3 hover:bg-muted/50 transition-colors cursor-pointer",
+                            isSelected && "bg-primary/5"
+                          )}
+                          onClick={() => {
+                            setSelectedConversation(conv);
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Avatar with status */}
+                            <div className="relative shrink-0">
+                              <Avatar className="w-10 h-10">
+                                <AvatarFallback className="bg-muted text-muted-foreground text-sm font-semibold">
+                                  {conv.name ? conv.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
+                                <Archive className="w-2.5 h-2.5 text-white" />
+                              </div>
+                            </div>
+                            
+                            {/* Content */}
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
+                                  {conv.name || conv.phone}
+                                </span>
+                                {sectorInfo && (
+                                  <Badge variant="outline" className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-0 shrink-0 max-w-[90px] truncate">
+                                    {sectorInfo.name}
+                                  </Badge>
+                                )}
+                              </div>
+                              
+                              {/* Tags */}
+                              {conv.tags && conv.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mb-0.5">
+                                  {conv.tags.slice(0, 2).map((tagName, idx) => {
+                                    const tagColor = tagColors.get(tagName) || '#6366f1';
+                                    return (
+                                      <Badge 
+                                        key={idx}
+                                        variant="outline" 
+                                        className="text-[9px] h-4 px-1.5 border-0"
+                                        style={{
+                                          backgroundColor: tagColor + "30",
+                                          color: tagColor
+                                        }}
+                                      >
+                                        {tagName}
+                                      </Badge>
+                                    );
+                                  })}
+                                  {conv.tags.length > 2 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-0">
+                                      +{conv.tags.length - 2}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                              
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
+                                  {conv.lastMessage || "Sem mensagens"}
+                                </p>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {formatConversationDate(conv.lastMessageTime)}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* Restore button */}
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="h-7 px-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestore(conv);
+                              }}
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span className="hidden sm:inline text-xs">Restaurar</span>
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
             </div>
           )}
 
-          {/* Conversations list */}
+          {/* Conversations list - hidden when showing archived */}
+          {!showArchived && (
           <ScrollArea className="flex-1">
             <div className="divide-y divide-border">
               {loading ? (
@@ -2093,6 +2177,7 @@ const AtendimentoV2 = () => {
               )}
             </div>
           </ScrollArea>
+          )}
 
           {/* Manual send footer */}
           <div className="border-t border-border p-3 shrink-0">
