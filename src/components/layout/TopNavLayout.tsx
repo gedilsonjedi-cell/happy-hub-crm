@@ -23,9 +23,7 @@ import {
   Zap,
   Plug,
   Sun,
-  Moon,
-  X,
-  RefreshCw
+  Moon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -50,6 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import optimusLogoDark from "@/assets/optimus-logo-dark.png";
 import optimusLogoLight from "@/assets/optimus-logo.png";
+import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 
 interface TopNavLayoutProps {
   children: React.ReactNode;
@@ -160,10 +159,10 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Top Header - Account & Settings */}
       <header className="h-12 border-b border-border bg-card flex items-center px-4 shrink-0 z-50">
-        {/* Logo */}
+        {/* Logo - inverted: dark logo for light theme, light logo for dark theme */}
         <Link to="/atendimento-v2" className="flex items-center gap-2 mr-6">
           <img 
-            src={theme === 'dark' ? optimusLogoDark : optimusLogoLight} 
+            src={theme === 'dark' ? optimusLogoLight : optimusLogoDark} 
             alt="Optimus" 
             className="h-6" 
           />
@@ -179,34 +178,8 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
 
-        {/* Account Switcher (for admins/impersonating) */}
-        {(isSuperAdmin || isImpersonating) && organizationName && (
-          <div className="flex items-center gap-2 ml-4">
-            <div className="flex items-center gap-1 bg-primary/20 text-primary rounded-full px-3 py-1 text-sm">
-              <span className="w-4 h-4 rounded-full bg-primary/30 flex items-center justify-center text-[10px]">👁</span>
-              <span className="font-medium">{organizationName}</span>
-              {isImpersonating && (
-                <button 
-                  onClick={() => setSelectedOrganization(null)}
-                  className="ml-1 hover:bg-primary/30 rounded-full p-0.5"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-            {isSuperAdmin && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 gap-1 text-xs"
-                onClick={() => navigate("/super-admin")}
-              >
-                <RefreshCw className="w-3 h-3" />
-                Trocar
-              </Button>
-            )}
-          </div>
-        )}
+        {/* Account Switcher (for super admins) - uses ClientSwitcher dropdown */}
+        {isSuperAdmin && <ClientSwitcher />}
 
         <div className="flex-1" />
 
