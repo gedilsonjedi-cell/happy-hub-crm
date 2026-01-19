@@ -2202,6 +2202,10 @@ const WhatsAppChat = () => {
                             <p className="text-[10px] text-primary/70 truncate mb-0.5">
                               📱 {channelInfo.name}
                             </p>
+                          ) : !channelInfo && conversation.channelId ? (
+                            <p className="text-[10px] text-destructive/70 truncate mb-0.5">
+                              ⚠️ Canal removido
+                            </p>
                           ) : null}
                           <p className="text-xs text-muted-foreground truncate mb-2">
                             {conversation.lastMessage?.substring(0, 50)}{conversation.lastMessage && conversation.lastMessage.length > 50 ? '...' : ''}
@@ -2289,11 +2293,15 @@ const WhatsAppChat = () => {
                             <span className="font-medium text-muted-foreground text-sm truncate block">
                               {conv.name || conv.phone}
                             </span>
-                            {channelInfo && channels.length > 1 && (
+                            {channelInfo && channels.length > 1 ? (
                               <span className="text-[10px] text-primary/60 block">
                                 📱 {channelInfo.name}
                               </span>
-                            )}
+                            ) : !channelInfo && conv.channelId ? (
+                              <span className="text-[10px] text-destructive/60 block">
+                                ⚠️ Canal removido
+                              </span>
+                            ) : null}
                             <span className="text-xs text-muted-foreground/70">
                               {formatConversationDate(conv.lastMessageTime)}
                             </span>
@@ -2328,7 +2336,7 @@ const WhatsAppChat = () => {
               {/* Chat Header */}
               <div className="p-2 sm:p-3 md:p-4 border-b border-border">
                 {/* Channel indicator */}
-                {selectedConversationChannel && (
+                {selectedConversationChannel ? (
                   <div className="flex items-center gap-2 mb-2 sm:mb-3 p-1.5 sm:p-2 rounded-lg bg-primary/5 border border-primary/20">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span className="text-xs font-medium text-primary truncate">
@@ -2338,7 +2346,17 @@ const WhatsAppChat = () => {
                       ({selectedConversationChannel.phone})
                     </span>
                   </div>
-                )}
+                ) : selectedConversation?.channelId ? (
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3 p-1.5 sm:p-2 rounded-lg bg-destructive/5 border border-destructive/20">
+                    <AlertTriangle className="w-3 h-3 text-destructive shrink-0" />
+                    <span className="text-xs font-medium text-destructive truncate">
+                      Canal removido
+                    </span>
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      (histórico preservado)
+                    </span>
+                  </div>
+                ) : null}
                 
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
