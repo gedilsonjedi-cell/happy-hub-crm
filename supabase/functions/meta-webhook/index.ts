@@ -192,6 +192,10 @@ async function getSectorFromCampaign(
   // Normalize phone for search
   const normalizedPhone = senderPhone.replace(/\D/g, '');
   
+  // Get last 8 digits for suffix matching (most reliable)
+  const localNumber = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+  const phoneEnd8 = localNumber.slice(-8);
+  
   // Try multiple phone formats for matching
   const phonePatterns = [
     senderPhone,
@@ -201,18 +205,32 @@ async function getSectorFromCampaign(
     `55${normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone}`,
   ];
 
-  // Check if this phone was a recipient of a recent campaign with a sector_id
-  const { data: recipients } = await supabase
+  // First try exact match
+  let { data: recipients } = await supabase
     .from('campaign_recipients')
     .select('campaign_id, phone')
     .in('phone', phonePatterns)
     .order('created_at', { ascending: false })
     .limit(5);
 
+  // If no exact match, try suffix matching (last 8 digits)
+  if ((!recipients || recipients.length === 0) && phoneEnd8.length === 8) {
+    console.log('Trying suffix match with:', phoneEnd8);
+    const { data: suffixRecipients } = await supabase
+      .from('campaign_recipients')
+      .select('campaign_id, phone')
+      .like('phone', `%${phoneEnd8}`)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    recipients = suffixRecipients;
+  }
+
   if (!recipients || recipients.length === 0) {
     console.log('No campaign recipient found for phone:', senderPhone);
     return null;
   }
+
+  console.log('Found campaign recipients for phone:', senderPhone, recipients.length, 'matches');
 
   // Get campaign with sector_id (directly from campaigns table)
   for (const recipient of recipients) {
@@ -852,7 +870,7 @@ Deno.serve(async (req) => {
           // Check if assignment already exists
           const { data: existingAssignment } = await supabase
             .from('conversation_assignments')
-            .select('id, assigned_to, status')
+            .select('id, assigned_to, status, sector_id')
             .eq('conversation_phone', senderPhone)
             .eq('channel_id', channel.id)
             .single();
@@ -945,21 +963,23 @@ Deno.serve(async (req) => {
             const sectorId = await getSectorFromCampaign(channel.organization_id!, senderPhone);
             
             if (wasArchived) {
-              // CRITICAL: If conversation was ARCHIVED, reset it completely
-              // This allows a new attendant to pick it up
-              console.log('Archived conversation reactivated - resetting assignment for new distribution');
+              // If conversation was ARCHIVED and had a previous attendant, return to them
+              // Otherwise, try auto-distribution
+              console.log('Archived conversation reactivated');
               
-              // Try auto-distribution when reactivating
-              let newAssignedTo: string | null = null;
-              let newStatus = 'pending';
+              let newAssignedTo: string | null = existingAssignment.assigned_to; // Keep previous attendant
+              let newStatus = existingAssignment.assigned_to ? 'active' : 'pending';
               
-              if (sectorId) {
+              // Only redistribute if there was NO previous attendant
+              if (!existingAssignment.assigned_to && sectorId) {
                 const nextAttendant = await getNextAvailableAttendant(channel.organization_id!, sectorId);
                 if (nextAttendant) {
                   newAssignedTo = nextAttendant.userId;
                   newStatus = 'active';
                   console.log('Reactivated and auto-assigned to:', nextAttendant.userName);
                 }
+              } else if (existingAssignment.assigned_to) {
+                console.log('Reactivated - returning to previous attendant:', existingAssignment.assigned_to);
               }
               
               await supabase
@@ -969,12 +989,12 @@ Deno.serve(async (req) => {
                   assigned_at: newAssignedTo ? new Date().toISOString() : null,
                   status: newStatus,
                   is_bot_handling: !newAssignedTo,
-                  sector_id: sectorId, // Update sector on reactivation
+                  sector_id: sectorId || existingAssignment.sector_id, // Keep existing sector if no new one
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', existingAssignment.id);
 
-              console.log('Conversation reactivated with sector:', sectorId);
+              console.log('Conversation reactivated with sector:', sectorId || 'kept existing');
             } else if (!hasAttendant) {
               // No attendant assigned yet - try auto-distribution
               // This happens when conversation is in "pending" status
