@@ -53,9 +53,10 @@ import optimusLogoLight from "@/assets/optimus-logo.png";
 
 interface TopNavLayoutProps {
   children: React.ReactNode;
+  noPadding?: boolean;
 }
 
-export function TopNavLayout({ children }: TopNavLayoutProps) {
+export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -349,10 +350,11 @@ export function TopNavLayout({ children }: TopNavLayoutProps) {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-2 sm:p-4 md:p-6">
-          {children}
-        </div>
+      <main className={cn(
+        "flex-1 flex flex-col min-h-0",
+        noPadding ? "overflow-hidden" : "overflow-auto p-2 sm:p-4 md:p-6"
+      )}>
+        {children}
       </main>
     </div>
   );
