@@ -159,6 +159,8 @@ const Disparos = () => {
     chatbotSource: "channel" as "channel" | "custom",
     selectedChatbotId: "",
     startTime: "now",
+    scheduledDate: "",
+    scheduledTime: "",
     unifiedTemplate: "",
     minInterval: "5",
     maxInterval: "120"
@@ -458,6 +460,19 @@ const Disparos = () => {
       }
     }
 
+    // Validate scheduled date/time if scheduling
+    if (formData.startTime === "scheduled") {
+      if (!formData.scheduledDate || !formData.scheduledTime) {
+        toast.error("Selecione a data e hora para o agendamento");
+        return;
+      }
+      const scheduledDateTime = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`);
+      if (scheduledDateTime <= new Date()) {
+        toast.error("A data/hora de agendamento deve ser no futuro");
+        return;
+      }
+    }
+
     // Block the button immediately
     setIsCreating(true);
 
@@ -507,6 +522,11 @@ const Disparos = () => {
       // Create campaign with min/max intervals and sector_id
       const sectorId = formData.department && formData.department !== "none" ? formData.department : null;
       
+      // Calculate scheduled_at if scheduling for later
+      const scheduledAt = formData.startTime === "scheduled" && formData.scheduledDate && formData.scheduledTime
+        ? new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString()
+        : null;
+      
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -522,6 +542,7 @@ const Disparos = () => {
           use_unified_template: useUnifiedTemplate,
           unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
           status: formData.startTime === "now" ? "running" : "scheduled",
+          scheduled_at: scheduledAt,
           total_recipients: recipientData.phones.length,
         })
         .select()
@@ -658,6 +679,8 @@ const Disparos = () => {
       chatbotSource: "channel",
       selectedChatbotId: "",
       startTime: "now",
+      scheduledDate: "",
+      scheduledTime: "",
       unifiedTemplate: "",
       minInterval: "5",
       maxInterval: "120"
@@ -1080,10 +1103,45 @@ const Disparos = () => {
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     <SelectItem value="now">Iniciar agora</SelectItem>
-                    <SelectItem value="scheduled">Agendar</SelectItem>
+                    <SelectItem value="scheduled">Agendar para depois</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.startTime === "scheduled" && (
+                <div className="space-y-3 p-3 bg-warning/10 rounded-lg border border-warning/30">
+                  <div className="flex items-center gap-2 text-sm text-warning">
+                    <Calendar className="w-4 h-4" />
+                    <span className="font-medium">Agendamento do disparo</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Data</Label>
+                      <Input
+                        type="date"
+                        value={formData.scheduledDate}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
+                        className="bg-card border-border"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Horário</Label>
+                      <Input
+                        type="time"
+                        value={formData.scheduledTime}
+                        onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                        className="bg-card border-border"
+                      />
+                    </div>
+                  </div>
+                  {formData.scheduledDate && formData.scheduledTime && (
+                    <p className="text-xs text-warning">
+                      📅 Disparo programado para {new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toLocaleString('pt-BR')}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Summary */}
               <div className="pt-4 border-t border-border space-y-2">
