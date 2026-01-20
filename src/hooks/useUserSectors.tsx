@@ -93,46 +93,34 @@ export function useUserSectors() {
   }, [user?.id, organizationId, role]);
 
   // CRITICAL: Sector-based visibility for conversations
-  // If user has assigned sectors, they can ONLY see conversations from those sectors
-  // Conversations without sector (null) are visible only to users WITHOUT sector assignments OR admins
+  // - Conversations WITHOUT sector (null) = visible to ALL attendants
+  // - Conversations WITH sector = visible only to attendants in that sector
   const canSeeSector = useCallback((sectorId: string | null): boolean => {
     // Admins can see everything
     if (role === "super_admin" || role === "admin") return true;
     
-    // User has sectors assigned
-    if (sectorIds.length > 0) {
-      // If conversation has a sector, check if user belongs to it
-      if (sectorId) {
-        return sectorIds.includes(sectorId);
-      }
-      // Conversation has NO sector - user with sectors CANNOT see it
-      // This prevents cross-department visibility
-      return false;
+    // Conversation has NO sector - visible to ALL attendants
+    if (!sectorId) {
+      return true;
     }
     
-    // User has NO sectors assigned
-    // They can only see conversations without sector
-    return !sectorId;
+    // Conversation HAS a sector - only visible if user belongs to it
+    return sectorIds.includes(sectorId);
   }, [role, sectorIds]);
 
-  // Check if user can interact with a conversation (same logic as canSeeSector now)
-  // Used for actions like sending messages, accepting conversations
+  // Check if user can interact with a conversation
+  // Same logic: no sector = everyone can interact; with sector = only that department
   const canInteractWithSector = useCallback((sectorId: string | null): boolean => {
     // Admins can interact with everything
     if (role === "super_admin" || role === "admin") return true;
     
-    // User has sectors assigned
-    if (sectorIds.length > 0) {
-      // If conversation has a sector, check if user belongs to it
-      if (sectorId) {
-        return sectorIds.includes(sectorId);
-      }
-      // Conversation has NO sector - user with sectors CANNOT interact
-      return false;
+    // Conversation has NO sector - all attendants can interact
+    if (!sectorId) {
+      return true;
     }
     
-    // User has NO sectors assigned - can only interact with conversations without sector
-    return !sectorId;
+    // Conversation HAS a sector - only users in that sector can interact
+    return sectorIds.includes(sectorId);
   }, [role, sectorIds]);
 
   return {
