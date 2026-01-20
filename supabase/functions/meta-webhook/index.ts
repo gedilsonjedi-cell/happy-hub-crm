@@ -313,24 +313,28 @@ async function findSectorFromCampaign(
   organizationId: string,
   leadId: string
 ): Promise<string | null> {
+  // REGRA FUNDAMENTAL: Lead disparado com departamento PERTENCE a esse departamento PARA SEMPRE
+  // Buscamos a PRIMEIRA campanha com sector_id (a original), não a mais recente
+  
   // First try to find by lead_id in campaign_recipients
   const { data: recipientByLead } = await supabase
     .from('campaign_recipients')
-    .select('campaign_id')
+    .select('campaign_id, created_at')
     .eq('lead_id', leadId)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .order('created_at', { ascending: true }); // OLDEST FIRST - original campaign
 
-  if (recipientByLead && recipientByLead.length > 0) {
+  // Check all campaigns for this lead, prioritize the one with sector_id
+  for (const recipient of recipientByLead || []) {
     const { data: campaign } = await supabase
       .from('campaigns')
-      .select('sector_id')
-      .eq('id', recipientByLead[0].campaign_id)
+      .select('sector_id, name')
+      .eq('id', recipient.campaign_id)
       .eq('organization_id', organizationId)
+      .not('sector_id', 'is', null)
       .single();
 
     if (campaign?.sector_id) {
-      console.log('Found sector_id from campaign via lead_id:', campaign.sector_id);
+      console.log(`Found sector_id from campaign "${campaign.name}" via lead_id:`, campaign.sector_id);
       return campaign.sector_id;
     }
   }
@@ -348,7 +352,7 @@ async function findSectorFromCampaign(
   const phoneEnd8 = normalizedPhone.slice(-8);
   const phoneEnd9 = normalizedPhone.slice(-9);
 
-  // CRITICAL FIX: Search campaign_recipients by phone directly
+  // CRITICAL: Search campaign_recipients by phone directly
   // Many campaign_recipients have null lead_id, so we must search by phone
   console.log('Searching campaign_recipients by phone suffix:', phoneEnd8);
   
@@ -360,26 +364,34 @@ async function findSectorFromCampaign(
     `55${normalizedPhone.slice(-11)}`,
   ];
   
+  // Collect ALL campaign_recipients that match this phone
+  const allCampaignIds = new Set<string>();
+  
   for (const pattern of phonePatterns) {
     const { data: phoneRecipients } = await supabase
       .from('campaign_recipients')
-      .select('campaign_id')
+      .select('campaign_id, created_at')
       .like('phone', pattern)
-      .order('created_at', { ascending: false })
-      .limit(5);
+      .order('created_at', { ascending: true }); // OLDEST FIRST
 
     for (const recipient of phoneRecipients || []) {
-      const { data: campaign } = await supabase
-        .from('campaigns')
-        .select('sector_id')
-        .eq('id', recipient.campaign_id)
-        .eq('organization_id', organizationId)
-        .single();
+      allCampaignIds.add(recipient.campaign_id);
+    }
+  }
 
-      if (campaign?.sector_id) {
-        console.log('Found sector_id from campaign via phone pattern:', pattern, '->', campaign.sector_id);
-        return campaign.sector_id;
-      }
+  // Now check each campaign (oldest first will be checked first due to Set order)
+  for (const campaignId of allCampaignIds) {
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('sector_id, name')
+      .eq('id', campaignId)
+      .eq('organization_id', organizationId)
+      .not('sector_id', 'is', null)
+      .single();
+
+    if (campaign?.sector_id) {
+      console.log(`Found sector_id from campaign "${campaign.name}" via phone:`, campaign.sector_id);
+      return campaign.sector_id;
     }
   }
 
