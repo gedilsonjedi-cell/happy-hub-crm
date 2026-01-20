@@ -17,7 +17,9 @@ import {
   Eye,
   Edit,
   Trash2,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
@@ -103,14 +105,22 @@ const Leads = () => {
   const [showTagFilterPopover, setShowTagFilterPopover] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 100;
 
   // Debounce search term to avoid too many queries
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // Reset to first page on search
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Reset page when tag filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTagFilters]);
 
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
@@ -339,7 +349,12 @@ const Leads = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedLeads(new Set(filteredLeads.map(lead => lead.id)));
+      // Only select leads on current page
+      const currentPageLeads = filteredLeads.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+      );
+      setSelectedLeads(new Set(currentPageLeads.map(lead => lead.id)));
     } else {
       setSelectedLeads(new Set());
     }
@@ -381,8 +396,59 @@ const Leads = () => {
   // Use leads directly - filtering is done server-side now
   const filteredLeads = leads;
 
-  const isAllSelected = filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length;
-  const isSomeSelected = selectedLeads.size > 0 && selectedLeads.size < filteredLeads.length;
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredLeads.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedLeads = filteredLeads.slice(startIndex, endIndex);
+
+  const isAllSelected = paginatedLeads.length > 0 && paginatedLeads.every(lead => selectedLeads.has(lead.id));
+  const isSomeSelected = selectedLeads.size > 0 && !isAllSelected;
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedLeads(new Set()); // Clear selection when changing pages
+  };
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Always show first page
+      pages.push(1);
+      
+      if (currentPage > 3) {
+        pages.push('...');
+      }
+      
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) {
+          pages.push(i);
+        }
+      }
+      
+      if (currentPage < totalPages - 2) {
+        pages.push('...');
+      }
+      
+      // Always show last page
+      if (!pages.includes(totalPages)) {
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
 
   // Fetch status counts separately to show accurate total counts
   const { data: statusCounts = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 } } = useQuery({
@@ -645,14 +711,14 @@ const Leads = () => {
                   Carregando...
                 </TableCell>
               </TableRow>
-            ) : filteredLeads.length === 0 ? (
+            ) : paginatedLeads.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   {leads.length === 0 ? "Nenhum lead cadastrado" : "Nenhum lead encontrado"}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLeads.map((lead) => (
+              paginatedLeads.map((lead) => (
                 <TableRow 
                   key={lead.id}
                   className={cn(
@@ -776,6 +842,54 @@ const Leads = () => {
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 px-2">
+          <p className="text-sm text-muted-foreground">
+            Mostrando {startIndex + 1}-{Math.min(endIndex, filteredLeads.length)} de {filteredLeads.length} contatos
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            {getPageNumbers().map((page, index) => (
+              typeof page === 'number' ? (
+                <Button
+                  key={index}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => handlePageChange(page)}
+                >
+                  {page}
+                </Button>
+              ) : (
+                <span key={index} className="px-2 text-muted-foreground">
+                  {page}
+                </span>
+              )
+            ))}
+            
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Dialogs */}
       <ImportLeadsDialog
