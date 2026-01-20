@@ -307,7 +307,7 @@ async function findOrCreateLead(
 }
 
 // ===========================================
-// FIND SECTOR FROM CAMPAIGN (uses lead_id)
+// FIND SECTOR FROM CAMPAIGN (uses lead_id AND phone)
 // ===========================================
 async function findSectorFromCampaign(
   organizationId: string,
@@ -335,7 +335,7 @@ async function findSectorFromCampaign(
     }
   }
 
-  // Fallback: get lead phone and search by phone suffix
+  // Get lead phone for phone-based searches
   const { data: lead } = await supabase
     .from('leads')
     .select('phone')
@@ -346,28 +346,44 @@ async function findSectorFromCampaign(
 
   const normalizedPhone = normalizePhone(lead.phone);
   const phoneEnd8 = normalizedPhone.slice(-8);
+  const phoneEnd9 = normalizedPhone.slice(-9);
 
-  const { data: suffixRecipients } = await supabase
-    .from('campaign_recipients')
-    .select('campaign_id')
-    .like('phone', `%${phoneEnd8}`)
-    .order('created_at', { ascending: false })
-    .limit(5);
+  // CRITICAL FIX: Search campaign_recipients by phone directly
+  // Many campaign_recipients have null lead_id, so we must search by phone
+  console.log('Searching campaign_recipients by phone suffix:', phoneEnd8);
+  
+  // Try multiple phone formats for robust matching
+  const phonePatterns = [
+    `%${phoneEnd8}`,
+    `%${phoneEnd9}`,
+    normalizedPhone,
+    `55${normalizedPhone.slice(-11)}`,
+  ];
+  
+  for (const pattern of phonePatterns) {
+    const { data: phoneRecipients } = await supabase
+      .from('campaign_recipients')
+      .select('campaign_id')
+      .like('phone', pattern)
+      .order('created_at', { ascending: false })
+      .limit(5);
 
-  for (const recipient of suffixRecipients || []) {
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('sector_id')
-      .eq('id', recipient.campaign_id)
-      .eq('organization_id', organizationId)
-      .single();
+    for (const recipient of phoneRecipients || []) {
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('sector_id')
+        .eq('id', recipient.campaign_id)
+        .eq('organization_id', organizationId)
+        .single();
 
-    if (campaign?.sector_id) {
-      console.log('Found sector_id from campaign via phone suffix:', campaign.sector_id);
-      return campaign.sector_id;
+      if (campaign?.sector_id) {
+        console.log('Found sector_id from campaign via phone pattern:', pattern, '->', campaign.sector_id);
+        return campaign.sector_id;
+      }
     }
   }
 
+  console.log('No sector_id found for lead:', leadId);
   return null;
 }
 

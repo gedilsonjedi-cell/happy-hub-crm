@@ -1189,6 +1189,36 @@ const AtendimentoV2 = () => {
       return;
     }
 
+    const normalizedPhone = conversation.phone.replace(/\D/g, '');
+
+    // CRÍTICO: Verificar no banco se a conversa já está atribuída a outro atendente
+    const { data: currentAssignment } = await supabase
+      .from('conversation_assignments')
+      .select('assigned_to, sector_id, status')
+      .eq('channel_id', conversation.channelId)
+      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+      .maybeSingle();
+
+    // Se já está atribuída a outro atendente e está ativa, bloquear
+    if (currentAssignment?.assigned_to && 
+        currentAssignment.assigned_to !== user.id && 
+        currentAssignment.status !== 'archived') {
+      // Atendentes não podem assumir conversas de outros atendentes
+      // Apenas supervisors e admins podem fazer isso
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+      
+      const canTakeOver = userRole?.role === 'super_admin' || userRole?.role === 'admin' || userRole?.role === 'supervisor';
+      
+      if (!canTakeOver) {
+        toast.error("Esta conversa já está em atendimento por outro colaborador. Somente supervisores podem transferir.");
+        return;
+      }
+    }
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id, display_name, email")
@@ -1200,10 +1230,8 @@ const AtendimentoV2 = () => {
       return;
     }
 
-    const normalizedPhone = conversation.phone.replace(/\D/g, '');
-
     // Get user's first sector to assign to the conversation if it doesn't have one
-    let sectorToAssign = conversation.sectorId;
+    let sectorToAssign = conversation.sectorId || currentAssignment?.sector_id;
     if (!sectorToAssign && sectorIds.length > 0) {
       // Inherit sector from the user accepting the conversation
       sectorToAssign = sectorIds[0];
