@@ -1317,7 +1317,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         </ScrollArea>
 
         <DialogFooter className="pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => {
+            handleReset();
+            onOpenChange(false);
+          }}>
             Cancelar
           </Button>
           {step === "mapping" && (
