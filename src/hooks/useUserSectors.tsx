@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -92,19 +92,38 @@ export function useUserSectors() {
     fetchUserSectors();
   }, [user?.id, organizationId, role]);
 
+  // Memoize canSeeSector to avoid stale closure issues
+  const canSeeSector = useCallback((sectorId: string | null): boolean => {
+    // Admins can see everything
+    if (role === "super_admin" || role === "admin") return true;
+    // No sector means everyone can see
+    if (!sectorId) return true;
+    // Check if user is assigned to this sector
+    return sectorIds.includes(sectorId);
+  }, [role, sectorIds]);
+
+  // Check if user can interact with a conversation (stricter than canSeeSector)
+  // Used for actions like sending messages, accepting conversations
+  const canInteractWithSector = useCallback((sectorId: string | null): boolean => {
+    // Admins can interact with everything
+    if (role === "super_admin" || role === "admin") return true;
+    // Supervisors can interact with their assigned sectors
+    if (role === "supervisor") {
+      if (!sectorId) return true;
+      return sectorIds.includes(sectorId);
+    }
+    // Attendants can ONLY interact with their own sectors
+    // If conversation has a sector, must be in user's sectors
+    if (!sectorId) return true;
+    return sectorIds.includes(sectorId);
+  }, [role, sectorIds]);
+
   return {
     sectors,
     sectorIds,
     loading,
-    // Helper to check if user can see a specific sector
-    canSeeSector: (sectorId: string | null) => {
-      // Admins can see everything
-      if (role === "super_admin" || role === "admin") return true;
-      // No sector means everyone can see
-      if (!sectorId) return true;
-      // Check if user is assigned to this sector
-      return sectorIds.includes(sectorId);
-    },
+    canSeeSector,
+    canInteractWithSector,
     // Helper to check if user has full access (admin/super_admin)
     hasFullAccess: role === "super_admin" || role === "admin",
   };

@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useUserSectors } from "@/hooks/useUserSectors";
 import { toast } from "sonner";
 import { User, UserCheck, Loader2, X, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ interface AssignAttendantDialogProps {
   channelId: string | null;
   currentAssignedTo: string | null;
   currentAssignedToName: string | null;
+  conversationSectorId: string | null;
   onAssigned: (assignedTo: string | null, assignedToName: string | null) => void;
 }
 
@@ -40,10 +42,12 @@ export const AssignAttendantDialog = ({
   channelId,
   currentAssignedTo,
   currentAssignedToName,
+  conversationSectorId,
   onAssigned,
 }: AssignAttendantDialogProps) => {
   const { user } = useAuth();
   const { isSuperAdmin, isAdmin, isSupervisor, isAtendente } = useUserRole();
+  const { canInteractWithSector, sectorIds } = useUserSectors();
   const [attendants, setAttendants] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -53,6 +57,9 @@ export const AssignAttendantDialog = ({
   const canTransferFromOthers = isSuperAdmin || isAdmin || isSupervisor;
   const isAssignedToSomeoneElse = currentAssignedTo && currentAssignedTo !== user?.id;
   const cannotTakeOver = isAtendente && isAssignedToSomeoneElse;
+  
+  // Verificar se o usuário pode interagir com o setor da conversa
+  const canInteract = canInteractWithSector(conversationSectorId);
 
   useEffect(() => {
     const fetchAttendants = async () => {
@@ -68,14 +75,42 @@ export const AssignAttendantDialog = ({
         .single();
 
       if (userProfile?.organization_id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("user_id, display_name, email")
-          .eq("organization_id", userProfile.organization_id)
-          .eq("is_active", true);
+        // Se a conversa tem um setor, filtrar atendentes por setor
+        // Admins podem transferir para qualquer pessoa, mas a conversa continua no setor original
+        if (conversationSectorId && !isSuperAdmin && !isAdmin) {
+          // Buscar usuários do setor da conversa
+          const { data: sectorUsers } = await supabase
+            .from("user_sectors")
+            .select("user_id")
+            .eq("sector_id", conversationSectorId);
+          
+          const sectorUserIds = sectorUsers?.map(su => su.user_id) || [];
+          
+          if (sectorUserIds.length > 0) {
+            const { data } = await supabase
+              .from("profiles")
+              .select("user_id, display_name, email")
+              .eq("organization_id", userProfile.organization_id)
+              .eq("is_active", true)
+              .in("user_id", sectorUserIds);
 
-        if (data) {
-          setAttendants(data);
+            if (data) {
+              setAttendants(data);
+            }
+          } else {
+            setAttendants([]);
+          }
+        } else {
+          // Admins podem ver todos
+          const { data } = await supabase
+            .from("profiles")
+            .select("user_id, display_name, email")
+            .eq("organization_id", userProfile.organization_id)
+            .eq("is_active", true);
+
+          if (data) {
+            setAttendants(data);
+          }
         }
       }
       
@@ -83,7 +118,7 @@ export const AssignAttendantDialog = ({
     };
 
     fetchAttendants();
-  }, [open, user?.id]);
+  }, [open, user?.id, conversationSectorId, isSuperAdmin, isAdmin]);
 
   const handleAssign = async (attendant: Profile | null) => {
     if (!channelId) {
@@ -189,8 +224,18 @@ export const AssignAttendantDialog = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Alerta quando usuário não tem acesso ao setor da conversa */}
+          {!canInteract && (
+            <Alert variant="destructive">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertDescription>
+                Você não tem acesso a este departamento. Não é possível atribuir atendentes para conversas fora do seu departamento.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Alerta para atendentes que não podem transferir */}
-          {cannotTakeOver && (
+          {canInteract && cannotTakeOver && (
             <Alert variant="destructive">
               <ShieldAlert className="h-4 w-4" />
               <AlertDescription>
@@ -212,8 +257,8 @@ export const AssignAttendantDialog = ({
                   </Avatar>
                   <span className="font-medium text-sm">{currentAssignedToName}</span>
                 </div>
-                {/* Só mostra botão de remover se pode transferir ou é o próprio atendente */}
-                {(canTransferFromOthers || currentAssignedTo === user?.id) && (
+                {/* Só mostra botão de remover se pode transferir ou é o próprio atendente E tem acesso ao setor */}
+                {canInteract && (canTransferFromOthers || currentAssignedTo === user?.id) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -250,13 +295,14 @@ export const AssignAttendantDialog = ({
                   const initials = displayName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
                   
                   // Atendente só pode se atribuir, não pode pegar de outros
-                  const isBlocked = cannotTakeOver && attendant.user_id !== currentAssignedTo;
+                  // Também bloquear se não tem acesso ao setor
+                  const isBlocked = !canInteract || (cannotTakeOver && attendant.user_id !== currentAssignedTo);
 
                   return (
                     <button
                       key={attendant.user_id}
                       onClick={() => !isCurrentAssigned && !isBlocked && handleAssign(attendant)}
-                      disabled={isCurrentAssigned || assigning !== null || isBlocked}
+                      disabled={isCurrentAssigned || assigning !== null || isBlocked || !canInteract}
                       className={cn(
                         "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left",
                         isCurrentAssigned

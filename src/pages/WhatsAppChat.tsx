@@ -2964,6 +2964,7 @@ const WhatsAppChat = () => {
           channelId={selectedConversation.channelId}
           currentAssignedTo={selectedConversation.assignedTo}
           currentAssignedToName={selectedConversation.assignedToName}
+          conversationSectorId={selectedConversation.sectorId}
           onAssigned={(assignedTo, assignedToName) => {
             // Update the selected conversation
             setSelectedConversation(prev => prev ? { ...prev, assignedTo, assignedToName } : null);
