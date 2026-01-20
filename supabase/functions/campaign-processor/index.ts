@@ -21,6 +21,38 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // First, check for scheduled campaigns that should start
+    const now = new Date().toISOString()
+    const { data: scheduledCampaigns, error: schedError } = await supabase
+      .from('campaigns')
+      .select('id, name, scheduled_at')
+      .eq('status', 'scheduled')
+      .lte('scheduled_at', now)
+    
+    if (!schedError && scheduledCampaigns && scheduledCampaigns.length > 0) {
+      console.log(`[Processor] Found ${scheduledCampaigns.length} scheduled campaign(s) ready to start`)
+      
+      for (const scheduled of scheduledCampaigns) {
+        console.log(`[Processor] Starting scheduled campaign: ${scheduled.name}`)
+        
+        // Update status to running
+        const { error: updateError } = await supabase
+          .from('campaigns')
+          .update({ 
+            status: 'running', 
+            started_at: now,
+            updated_at: now 
+          })
+          .eq('id', scheduled.id)
+        
+        if (updateError) {
+          console.error(`[Processor] Error starting scheduled campaign ${scheduled.name}:`, updateError)
+        } else {
+          console.log(`[Processor] Successfully started scheduled campaign: ${scheduled.name}`)
+        }
+      }
+    }
+
     // Get all running campaigns
     const { data: campaigns, error: campError } = await supabase
       .from('campaigns')
@@ -40,7 +72,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         message: 'No running campaigns',
-        processed: 0
+        processed: 0,
+        scheduledStarted: scheduledCampaigns?.length || 0
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })

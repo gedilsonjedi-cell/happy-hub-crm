@@ -1081,6 +1081,33 @@ const Conexoes = () => {
       // 3. Delete channel_templates
       await supabase.from("channel_templates").delete().eq("channel_id", id);
       
+      // 3.1 Delete orphan templates (templates without any channel_templates links)
+      // Get templates that were linked to this organization and now have no channel links
+      const { data: organizationTemplates } = await supabase
+        .from("message_templates")
+        .select("id")
+        .eq("organization_id", channelToDelete?.organization_id);
+      
+      if (organizationTemplates && organizationTemplates.length > 0) {
+        const templateIds = organizationTemplates.map(t => t.id);
+        
+        // Get templates that still have channel links
+        const { data: linkedTemplates } = await supabase
+          .from("channel_templates")
+          .select("template_id")
+          .in("template_id", templateIds);
+        
+        const linkedTemplateIds = new Set(linkedTemplates?.map(lt => lt.template_id) || []);
+        
+        // Find orphan templates (no channel links)
+        const orphanTemplateIds = templateIds.filter(tId => !linkedTemplateIds.has(tId));
+        
+        if (orphanTemplateIds.length > 0) {
+          console.log(`Deleting ${orphanTemplateIds.length} orphan templates after channel deletion`);
+          await supabase.from("message_templates").delete().in("id", orphanTemplateIds);
+        }
+      }
+      
       // 4. Nullify channel_id in conversation_assignments (preserve history)
       await supabase.from("conversation_assignments").update({ channel_id: null }).eq("channel_id", id);
       
