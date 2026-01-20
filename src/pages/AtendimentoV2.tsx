@@ -198,7 +198,7 @@ const useNotificationSound = () => {
 const AtendimentoV2 = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { canSeeSector } = useUserSectors();
+  const { canSeeSector, canInteractWithSector, loading: sectorsLoading } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   
   // Filter conversations based on user's sector access
@@ -1183,6 +1183,12 @@ const AtendimentoV2 = () => {
       return;
     }
 
+    // Verificar se o usuário pode interagir com este setor
+    if (!canInteractWithSector(conversation.sectorId)) {
+      toast.error("Você não tem permissão para atender conversas deste departamento");
+      return;
+    }
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id, display_name, email")
@@ -1317,6 +1323,16 @@ const AtendimentoV2 = () => {
         .eq('channel_id', conversationChannelId)
         .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
         .maybeSingle();
+      
+      // Verificar se o usuário tem acesso ao setor da conversa
+      const assignmentSectorId = currentAssignment?.sector_id || selectedConversation.sectorId;
+      if (!canInteractWithSector(assignmentSectorId)) {
+        toast.error('Você não tem permissão para enviar mensagens para este departamento');
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(messageToSend);
+        setSendingMessage(false);
+        return;
+      }
       
       // Se já está atribuída a outro atendente, bloquear envio
       if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
@@ -2711,6 +2727,7 @@ const AtendimentoV2 = () => {
           channelId={selectedConversation.channelId}
           currentAssignedTo={selectedConversation.assignedTo}
           currentAssignedToName={selectedConversation.assignedToName}
+          conversationSectorId={selectedConversation.sectorId}
           onAssigned={(assignedTo, assignedToName) => {
             setSelectedConversation(prev => prev ? { ...prev, assignedTo, assignedToName } : null);
             setAllConversations(prev => prev.map(c => 
