@@ -61,6 +61,7 @@ import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
@@ -2551,15 +2552,41 @@ const WhatsAppChat = () => {
                               )}
                             </div>
                           </div>
-                          {/* Error message below the bubble */}
-                          {isFailed && message.error_message && (
-                            <div className="flex items-center gap-1.5 mt-1 px-2 max-w-[85%] sm:max-w-[70%]">
-                              <AlertTriangle className="w-3 h-3 text-destructive shrink-0" />
-                              <span className="text-xs text-destructive">
-                                {message.error_message}
-                              </span>
-                            </div>
-                          )}
+                          {/* Detailed error message panel */}
+                          {isFailed && message.error_message && (() => {
+                            const errorDetails = formatErrorDisplay(message.error_message);
+                            return (
+                              <div className="mt-2 max-w-[85%] sm:max-w-[70%] rounded-xl bg-card border border-warning/30 p-3 text-sm">
+                                <div className="flex items-start gap-2 text-warning mb-1.5">
+                                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                  <div className="font-medium">
+                                    Atenção{errorDetails.code ? `: ${errorDetails.code}` : ""} - {errorDetails.title}
+                                  </div>
+                                </div>
+                                <p className="text-muted-foreground text-xs mb-2 pl-6">
+                                  {errorDetails.description}
+                                </p>
+                                <p className="text-muted-foreground text-xs pl-6">
+                                  {errorDetails.suggestion}
+                                </p>
+                                {errorDetails.link && (
+                                  <div className="mt-2 pt-2 border-t border-border pl-6">
+                                    <p className="text-xs text-muted-foreground">
+                                      Para saber mais acesse esse link:
+                                    </p>
+                                    <a 
+                                      href={errorDetails.link} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer" 
+                                      className="text-xs text-primary hover:underline break-all"
+                                    >
+                                      {errorDetails.link}
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     });
