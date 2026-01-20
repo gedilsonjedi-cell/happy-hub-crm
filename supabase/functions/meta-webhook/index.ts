@@ -533,6 +533,25 @@ async function handleConversationAssignment(
       }
     }
     
+    // IMPORTANT: If conversation has no sector_id but we can find one from campaign, update it
+    // This ensures existing conversations get properly tagged with their department
+    if (!existingAssignment.sector_id) {
+      const sectorId = await findSectorFromCampaign(organizationId, leadId);
+      if (sectorId) {
+        console.log('Updating existing conversation with sector_id:', sectorId);
+        await supabase
+          .from('conversation_assignments')
+          .update({
+            sector_id: sectorId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingAssignment.id);
+        
+        // Update the local object for return value
+        existingAssignment.sector_id = sectorId;
+      }
+    }
+    
     // Has attendant - belongs to them exclusively
     console.log('Conversation belongs to:', existingAssignment.assigned_to);
     return {

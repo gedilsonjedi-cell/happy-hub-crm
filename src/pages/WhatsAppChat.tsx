@@ -188,7 +188,7 @@ const useNotificationSound = () => {
 const WhatsAppChat = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { canSeeSector } = useUserSectors();
+  const { canSeeSector, canInteractWithSector, sectorIds } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   
   // Filter conversations based on user's sector access
@@ -1046,6 +1046,12 @@ const WhatsAppChat = () => {
       return;
     }
 
+    // Check if user can interact with this sector
+    if (!canInteractWithSector(conversation.sectorId)) {
+      toast.error("Você não tem permissão para atender conversas deste departamento");
+      return;
+    }
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("organization_id, display_name, email")
@@ -1059,8 +1065,15 @@ const WhatsAppChat = () => {
 
     const normalizedPhone = conversation.phone.replace(/\D/g, '');
 
+    // Get user's first sector to assign to the conversation if it doesn't have one
+    let sectorToAssign = conversation.sectorId;
+    if (!sectorToAssign && sectorIds.length > 0) {
+      // Inherit sector from the user accepting the conversation
+      sectorToAssign = sectorIds[0];
+    }
+
     try {
-      // Upsert assignment
+      // Upsert assignment with sector_id
       const { error } = await supabase
         .from("conversation_assignments")
         .upsert({
@@ -1068,7 +1081,8 @@ const WhatsAppChat = () => {
           channel_id: conversation.channelId,
           assigned_to: user.id,
           assigned_at: new Date().toISOString(),
-          status: "active"
+          status: "active",
+          sector_id: sectorToAssign
         }, {
           onConflict: "conversation_phone,channel_id"
         });
@@ -1081,7 +1095,7 @@ const WhatsAppChat = () => {
         const key = getConversationKey(c);
         const convKey = getConversationKey(conversation);
         return key === convKey 
-          ? { ...c, assignedTo: user.id, assignedToName: userName, status: "in_progress" as const }
+          ? { ...c, assignedTo: user.id, assignedToName: userName, status: "in_progress" as const, sectorId: sectorToAssign }
           : c;
       }));
 
@@ -1091,7 +1105,7 @@ const WhatsAppChat = () => {
       toast.success("Atendimento aceito!");
       
       // Select this conversation
-      setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress" });
+      setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress", sectorId: sectorToAssign });
     } catch (error) {
       console.error("Erro ao aceitar atendimento:", error);
       toast.error("Erro ao aceitar atendimento");
