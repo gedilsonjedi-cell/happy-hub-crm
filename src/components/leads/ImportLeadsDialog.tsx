@@ -743,8 +743,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 max-h-[60vh]">
-          <div className="space-y-4 py-4 pr-4">
+        <ScrollArea className="flex-1 min-h-0 overflow-auto" viewportClassName="max-h-[60vh]">
+          <div className="space-y-4 py-4 pr-4 pl-1">
             {step === "upload" && (
               <>
                 <Alert>
