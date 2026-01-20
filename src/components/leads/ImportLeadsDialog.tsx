@@ -1005,18 +1005,62 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
                   {previewData.length > 0 && (
                     <>
                       <h4 className="font-medium mt-4">Prévia dos dados</h4>
-                      <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/50 rounded-lg max-h-32 overflow-y-auto">
-                        {previewData.map((row, i) => (
-                          <div key={i} className="flex gap-2">
-                            <span className="font-medium">
-                              {selectedNameColumn !== null ? row[selectedNameColumn] : "Sem nome"}
-                            </span>
-                            <span>-</span>
-                            <span>
-                              {selectedPhoneColumn !== null ? row[selectedPhoneColumn] : "Sem telefone"}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="text-xs text-muted-foreground space-y-2 p-3 bg-muted/50 rounded-lg max-h-48 overflow-y-auto">
+                        {previewData.map((row, i) => {
+                          const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
+                          const phone = selectedPhoneColumn !== null ? row[selectedPhoneColumn] : null;
+                          const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;
+                          const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : null;
+                          const city = selectedCityColumn !== null ? row[selectedCityColumn] : null;
+                          const state = selectedStateColumn !== null ? row[selectedStateColumn] : null;
+                          
+                          const customFieldsValues: { label: string; value: string }[] = [];
+                          Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
+                            const value = row[colIndex];
+                            if (value) {
+                              const fieldDef = customFieldDefinitions.find(f => f.field_name === fieldName);
+                              customFieldsValues.push({
+                                label: fieldDef?.field_label || fieldName,
+                                value: value
+                              });
+                            }
+                          });
+                          
+                          return (
+                            <div key={i} className="border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                <span className="font-medium text-foreground">
+                                  {name || "Sem nome"}
+                                </span>
+                                <span className="text-primary">
+                                  {phone || "Sem telefone"}
+                                </span>
+                              </div>
+                              
+                              {(email || document || city || state || customFieldsValues.length > 0) && (
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-muted-foreground">
+                                  {email && (
+                                    <span>📧 {email}</span>
+                                  )}
+                                  {document && (
+                                    <span>📄 {document}</span>
+                                  )}
+                                  {city && (
+                                    <span>📍 {city}{state ? ` - ${state}` : ''}</span>
+                                  )}
+                                  {!city && state && (
+                                    <span>📍 {state}</span>
+                                  )}
+                                  {customFieldsValues.map((cf, cfIndex) => (
+                                    <span key={cfIndex} className="text-primary/80">
+                                      {cf.label}: {cf.value}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}
