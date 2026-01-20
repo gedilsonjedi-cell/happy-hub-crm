@@ -61,6 +61,7 @@ import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
@@ -2508,22 +2509,60 @@ const AtendimentoV2 = () => {
                             </div>
                           )}
                           <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
-                            <div className={cn("max-w-[80%] rounded-2xl px-4 py-2 shadow-sm", isOutbound ? isFailed ? "bg-destructive/80 text-destructive-foreground" : "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
-                              {isFailed && (
-                                <div className="flex items-center gap-1.5 mb-1 text-xs opacity-80">
-                                  <AlertTriangle className="w-3 h-3" /><span>Falha ao enviar</span>
-                                </div>
-                              )}
-                              {renderMessageContent(message)}
-                              <div className={cn("flex items-center gap-1.5 mt-1 text-[10px]", isOutbound ? "justify-end text-primary-foreground/70" : "text-muted-foreground")}>
-                                <span>{formatMessageTime(message.created_at)}</span>
-                                {isOutbound && !isFailed && (
-                                  message.status === "read" ? <CheckCheck className="w-3.5 h-3.5 text-blue-400" /> :
-                                  message.status === "delivered" ? <CheckCheck className="w-3.5 h-3.5" /> :
-                                  message.status === "sending" ? <Clock className="w-3.5 h-3.5" /> :
-                                  <Check className="w-3.5 h-3.5" />
+                            <div className={cn("max-w-[80%]", isFailed ? "space-y-2" : "")}>
+                              <div className={cn("rounded-2xl px-4 py-2 shadow-sm", isOutbound ? isFailed ? "bg-destructive/80 text-destructive-foreground" : "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
+                                {isFailed && (
+                                  <div className="flex items-center gap-1.5 mb-1 text-xs opacity-80">
+                                    <AlertTriangle className="w-3 h-3" /><span>Falha ao enviar</span>
+                                  </div>
                                 )}
+                                {renderMessageContent(message)}
+                                <div className={cn("flex items-center gap-1.5 mt-1 text-[10px]", isOutbound ? "justify-end text-primary-foreground/70" : "text-muted-foreground")}>
+                                  <span>{formatMessageTime(message.created_at)}</span>
+                                  {isOutbound && !isFailed && (
+                                    message.status === "read" ? <CheckCheck className="w-3.5 h-3.5 text-blue-400" /> :
+                                    message.status === "delivered" ? <CheckCheck className="w-3.5 h-3.5" /> :
+                                    message.status === "sending" ? <Clock className="w-3.5 h-3.5" /> :
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                </div>
                               </div>
+                              
+                              {/* Detailed error message panel */}
+                              {isFailed && message.error_message && (() => {
+                                const errorDetails = formatErrorDisplay(message.error_message);
+                                return (
+                                  <div className="rounded-xl bg-card border border-warning/30 p-3 text-sm">
+                                    <div className="flex items-start gap-2 text-warning mb-1.5">
+                                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                      <div className="font-medium">
+                                        Atenção{errorDetails.code ? `: ${errorDetails.code}` : ""} - {errorDetails.title}
+                                      </div>
+                                    </div>
+                                    <p className="text-muted-foreground text-xs mb-2 pl-6">
+                                      {errorDetails.description}
+                                    </p>
+                                    <p className="text-muted-foreground text-xs pl-6">
+                                      {errorDetails.suggestion}
+                                    </p>
+                                    {errorDetails.link && (
+                                      <div className="mt-2 pt-2 border-t border-border pl-6">
+                                        <p className="text-xs text-muted-foreground">
+                                          Para saber mais acesse esse link:
+                                        </p>
+                                        <a 
+                                          href={errorDetails.link} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer" 
+                                          className="text-xs text-primary hover:underline break-all"
+                                        >
+                                          {errorDetails.link}
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
