@@ -177,7 +177,11 @@ Deno.serve(async (req) => {
     let totalSynced = 0;
     let totalCreated = 0;
     let totalUpdated = 0;
+    let totalRemoved = 0;
     const syncedTemplates: Array<{ name: string; status: string; waba_id: string }> = [];
+    
+    // Track all template names found in Meta for cleanup
+    const allMetaTemplateNames: Set<string> = new Set();
 
     // Fetch templates for each WABA
     for (const wabaGroup of Object.values(wabaGroups)) {
@@ -205,6 +209,9 @@ Deno.serve(async (req) => {
         console.log('Found templates from Meta:', metaTemplates.length);
 
         for (const metaTemplate of metaTemplates) {
+          // Track template name for cleanup
+          allMetaTemplateNames.add(metaTemplate.name);
+          
           // Extract body content from components
           const bodyComponent = metaTemplate.components?.find(c => c.type === 'BODY');
           const content = bodyComponent?.text || '';
@@ -317,15 +324,50 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log('Sync completed:', { totalSynced, totalCreated, totalUpdated });
+    // Remove templates that no longer exist in any connected WABA
+    console.log('Checking for templates to remove. Found in Meta:', allMetaTemplateNames.size);
+    
+    // Get all templates for this organization
+    const { data: allOrgTemplates } = await supabase
+      .from('message_templates')
+      .select('id, name')
+      .eq('organization_id', organizationId);
+
+    if (allOrgTemplates && allOrgTemplates.length > 0) {
+      for (const template of allOrgTemplates) {
+        // If template doesn't exist in any connected WABA, remove it
+        if (!allMetaTemplateNames.has(template.name)) {
+          console.log('Removing template not found in Meta:', template.name);
+          
+          // Delete channel_templates first
+          await supabase
+            .from('channel_templates')
+            .delete()
+            .eq('template_id', template.id);
+          
+          // Delete the template
+          const { error: deleteError } = await supabase
+            .from('message_templates')
+            .delete()
+            .eq('id', template.id);
+          
+          if (!deleteError) {
+            totalRemoved++;
+          }
+        }
+      }
+    }
+
+    console.log('Sync completed:', { totalSynced, totalCreated, totalUpdated, totalRemoved });
 
     return new Response(JSON.stringify({
       success: true,
-      message: `Sincronização concluída: ${totalCreated} novos, ${totalUpdated} atualizados`,
+      message: `Sincronização concluída: ${totalCreated} novos, ${totalUpdated} atualizados, ${totalRemoved} removidos`,
       stats: {
         total: totalSynced,
         created: totalCreated,
         updated: totalUpdated,
+        removed: totalRemoved,
       },
       templates: syncedTemplates,
     }), {
