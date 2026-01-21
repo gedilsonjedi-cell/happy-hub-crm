@@ -251,6 +251,7 @@ const AtendimentoV2 = () => {
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [pastedImage, setPastedImage] = useState<{ file: File; preview: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -2488,6 +2489,79 @@ const AtendimentoV2 = () => {
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(selectedConversation.lastInboundTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id;
 
+  // Handle paste event for images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (!selectedConversation || isWindowExpired || !isMyConversation) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          const preview = URL.createObjectURL(file);
+          setPastedImage({ file, preview });
+        }
+        return;
+      }
+    }
+  }, [selectedConversation, isWindowExpired, isMyConversation]);
+
+  // Send pasted image
+  const handleSendPastedImage = async () => {
+    if (!pastedImage || !selectedConversation) return;
+
+    setUploadingMedia(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      const fileExt = pastedImage.file.type.split('/')[1] || 'png';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, pastedImage.file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        toast.error('Erro ao fazer upload da imagem');
+        setUploadingMedia(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+
+      await handleSendMedia({
+        mediaType: 'image',
+        mediaUrl: urlData.publicUrl,
+        fileName: `imagem_colada.${fileExt}`
+      });
+
+      // Clean up
+      URL.revokeObjectURL(pastedImage.preview);
+      setPastedImage(null);
+
+    } catch (error) {
+      console.error('Paste image upload error:', error);
+      toast.error('Erro ao enviar imagem');
+    }
+
+    setUploadingMedia(false);
+  };
+
+  // Cancel pasted image
+  const handleCancelPastedImage = () => {
+    if (pastedImage) {
+      URL.revokeObjectURL(pastedImage.preview);
+      setPastedImage(null);
+    }
+  };
+
   return (
     <TopNavLayout noPadding>
       <div className="h-full flex flex-col lg:flex-row overflow-hidden">
@@ -3064,14 +3138,44 @@ const AtendimentoV2 = () => {
                         </Button>
                       </div>
                     </div>
+                  ) : pastedImage ? (
+                    <div className="flex items-center gap-3 flex-1 bg-muted/30 rounded-lg p-2 border border-border">
+                      <div className="relative shrink-0">
+                        <img 
+                          src={pastedImage.preview} 
+                          alt="Imagem colada" 
+                          className="w-16 h-16 object-cover rounded-md border border-border"
+                        />
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
+                          onClick={handleCancelPastedImage}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">Imagem pronta para enviar</p>
+                        <p className="text-xs text-muted-foreground">Clique para enviar ou X para cancelar</p>
+                      </div>
+                      <Button 
+                        onClick={handleSendPastedImage} 
+                        disabled={uploadingMedia}
+                        className="h-11 px-4 shrink-0"
+                      >
+                        {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                      </Button>
+                    </div>
                   ) : (
                     <>
                       <Textarea
-                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Mensagem..."}
+                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Mensagem... (Ctrl+V para colar imagem)"}
                         className={cn("min-h-[44px] max-h-32 resize-none bg-muted/30 text-sm", (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed")}
                         value={newMessage}
                         onChange={(e) => !isWindowExpired && isMyConversation && setNewMessage(e.target.value)}
                         disabled={isWindowExpired || !isMyConversation}
+                        onPaste={handlePaste}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation) {
                             e.preventDefault();
