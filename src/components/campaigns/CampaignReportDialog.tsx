@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { ConversationPreviewDialog } from "./ConversationPreviewDialog";
 
 interface Campaign {
   id: string;
@@ -140,6 +141,8 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [classificationFilter, setClassificationFilter] = useState<string>("all");
+  const [previewPhone, setPreviewPhone] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && campaign) {
@@ -571,7 +574,14 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
                           const classification = classifyError(recipient.error_message, recipient.last_error_code);
                           
                           return (
-                            <TableRow key={recipient.id}>
+                            <TableRow 
+                              key={recipient.id} 
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => {
+                                setPreviewPhone(recipient.phone);
+                                setPreviewName(recipient.name);
+                              }}
+                            >
                               <TableCell>
                                 <div>
                                   <p className="font-mono text-sm">{formatPhone(recipient.phone)}</p>
@@ -595,7 +605,16 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
                                   <Badge className={cn("text-xs", statusConfig.className)}>
                                     {statusConfig.label}
                                   </Badge>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPreviewPhone(recipient.phone);
+                                      setPreviewName(recipient.name);
+                                    }}
+                                  >
                                     <ExternalLink className="w-4 h-4" />
                                   </Button>
                                 </div>
@@ -616,6 +635,19 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
             </div>
           </div>
         </ScrollArea>
+
+        {/* Conversation Preview Dialog */}
+        <ConversationPreviewDialog
+          open={!!previewPhone}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPreviewPhone(null);
+              setPreviewName(null);
+            }
+          }}
+          phone={previewPhone || ""}
+          name={previewName}
+        />
       </DialogContent>
     </Dialog>
   );
