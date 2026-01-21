@@ -664,7 +664,7 @@ Deno.serve(async (req) => {
         .single();
       
       if (existingAssignment) {
-        // Update existing assignment - assign to this user and set to active
+        // Update existing assignment - assign to this user and set to in_progress
         await serviceRoleClient
           .from('conversation_assignments')
           .update({ 
@@ -672,12 +672,12 @@ Deno.serve(async (req) => {
             is_bot_handling: false,
             assigned_to: userId,
             assigned_at: now,
-            status: 'active',
+            status: 'in_progress',
             updated_at: now
           })
           .eq('id', existingAssignment.id);
         
-        console.log('Updated conversation assignment for manual send:', cleanDestination, 'assigned to:', userId);
+        console.log('Updated conversation assignment for manual send:', cleanDestination, 'assigned to:', userId, 'status: in_progress');
       } else {
         // Create new assignment - this ensures the conversation appears in "Meus"
         await serviceRoleClient
@@ -688,12 +688,12 @@ Deno.serve(async (req) => {
             organization_id: channel.organization_id,
             assigned_to: userId,
             assigned_at: now,
-            status: 'active',
+            status: 'in_progress',
             is_bot_handling: false,
             bot_paused_until: botPausedUntil
           });
         
-        console.log('Created new conversation assignment for manual send:', cleanDestination, 'assigned to:', userId);
+        console.log('Created new conversation assignment for manual send:', cleanDestination, 'assigned to:', userId, 'status: in_progress');
       }
     }
 
