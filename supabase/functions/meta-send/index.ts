@@ -641,23 +641,52 @@ Deno.serve(async (req) => {
         }
       });
     
-    // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
-    // This prevents the bot from responding while a human is handling the conversation
-    if (userId !== 'service_role') {
+    // When a human sends a message manually, ensure the conversation is assigned to them
+    // This creates or updates the conversation assignment to put it in "Meus" (active, assigned to user)
+    if (userId && userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
       
-      await serviceRoleClient
+      // Check if conversation assignment already exists
+      const { data: existingAssignment } = await serviceRoleClient
         .from('conversation_assignments')
-        .update({ 
-          bot_paused_until: botPausedUntil,
-          is_bot_handling: false,
-          assigned_to: userId,
-          assigned_at: new Date().toISOString()
-        })
+        .select('id')
         .eq('channel_id', channelId)
-        .eq('conversation_phone', cleanDestination);
+        .eq('conversation_phone', cleanDestination)
+        .single();
       
-      console.log('Bot paused for 24 hours for conversation with:', cleanDestination);
+      if (existingAssignment) {
+        // Update existing assignment - assign to this user and set to active
+        await serviceRoleClient
+          .from('conversation_assignments')
+          .update({ 
+            bot_paused_until: botPausedUntil,
+            is_bot_handling: false,
+            assigned_to: userId,
+            assigned_at: now,
+            status: 'active',
+            updated_at: now
+          })
+          .eq('id', existingAssignment.id);
+        
+        console.log('Updated conversation assignment for manual send:', cleanDestination, 'assigned to:', userId);
+      } else {
+        // Create new assignment - this ensures the conversation appears in "Meus"
+        await serviceRoleClient
+          .from('conversation_assignments')
+          .insert({
+            channel_id: channelId,
+            conversation_phone: cleanDestination,
+            organization_id: channel.organization_id,
+            assigned_to: userId,
+            assigned_at: now,
+            status: 'active',
+            is_bot_handling: false,
+            bot_paused_until: botPausedUntil
+          });
+        
+        console.log('Created new conversation assignment for manual send:', cleanDestination, 'assigned to:', userId);
+      }
     }
 
     return new Response(
