@@ -2114,6 +2114,100 @@ const AtendimentoV2 = () => {
     setSendingMessage(false);
   };
 
+  // Handler for when template is sent manually via ManualSendDialog
+  // This creates the conversation immediately in the UI so it appears in "Meus"
+  const handleManualTemplateSent = async (data: { 
+    phone: string; 
+    channelId: string; 
+    templateName: string;
+    templateContent: string;
+  }) => {
+    const normalizedPhone = data.phone.replace(/\D/g, '');
+    const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
+    
+    // Check if conversation already exists
+    const existingConv = allConversations.find(c => 
+      c.channelId === data.channelId && 
+      c.phone.replace(/\D/g, '') === normalizedPhone
+    );
+    
+    if (existingConv) {
+      // Update existing conversation and assign to current user
+      setAllConversations(prev => prev.map(c => {
+        if (c.channelId === data.channelId && c.phone.replace(/\D/g, '') === normalizedPhone) {
+          return {
+            ...c,
+            lastMessage: `Template: ${data.templateName}`,
+            lastMessageTime: new Date().toISOString(),
+            status: "in_progress" as const,
+            assignedTo: user?.id || null,
+            assignedToName: null // Will be updated by realtime
+          };
+        }
+        return c;
+      }));
+      
+      // Select and navigate to this conversation
+      const updatedConv = {
+        ...existingConv,
+        lastMessage: `Template: ${data.templateName}`,
+        lastMessageTime: new Date().toISOString(),
+        status: "in_progress" as const,
+        assignedTo: user?.id || null
+      };
+      setSelectedConversation(updatedConv);
+      setFilterStatus("mine");
+      return;
+    }
+    
+    // Get lead info if exists
+    const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+    const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+    const phoneSuffix8 = normalizedPhone.slice(-8);
+    
+    const matches = [
+      leadsMapRef.current.byPhone.get(normalizedPhone),
+      leadsMapRef.current.byPhone.get(phoneWithout55),
+      leadsMapRef.current.byPhone.get(phoneWith55),
+      leadsMapRef.current.bySuffix.get(phoneSuffix8)
+    ].filter(Boolean);
+    
+    let leadName: string | null = null;
+    let leadTags: string[] | null = null;
+    
+    for (const m of matches) {
+      if (!m) continue;
+      if (!leadName && m.name) leadName = m.name;
+      if ((!leadTags || leadTags.length === 0) && m.tags && m.tags.length > 0) {
+        leadTags = m.tags;
+      }
+      if (leadName && leadTags && leadTags.length > 0) break;
+    }
+    
+    // Create new conversation
+    const newConv: Conversation = {
+      phone: displayPhone,
+      name: leadName,
+      lastMessage: `Template: ${data.templateName}`,
+      lastMessageTime: new Date().toISOString(),
+      lastInboundTime: null,
+      unreadCount: 0,
+      channelId: data.channelId,
+      status: "in_progress",
+      assignedTo: user?.id || null,
+      assignedToName: null, // Will be updated by realtime
+      sectorId: null,
+      tags: leadTags
+    };
+    
+    // Add to conversations list
+    setAllConversations(prev => [newConv, ...prev]);
+    
+    // Select the new conversation and switch to "Meus" tab
+    setSelectedConversation(newConv);
+    setFilterStatus("mine");
+  };
+
   // Format helpers
   const formatMessageTime = (dateStr: string) => format(new Date(dateStr), "HH:mm");
 
@@ -2979,7 +3073,7 @@ const AtendimentoV2 = () => {
         />
       )}
 
-      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} />
+      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} onTemplateSent={handleManualTemplateSent} />
 
       {selectedConversation && <FollowUpDialog isOpen={showFollowUpDialog} onClose={() => setShowFollowUpDialog(false)} leadId={null} leadName={selectedConversation?.name || selectedConversation?.phone || ""} leadPhone={selectedConversation?.phone || ""} channelId={selectedConversation?.channelId || null} />}
 
