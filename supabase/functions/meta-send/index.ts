@@ -179,24 +179,32 @@ Deno.serve(async (req) => {
       supabase = createClient(supabaseUrl, supabaseServiceKey);
       userId = 'service_role'; // Mark as service role
     } else {
-      // User token access - validate the user
-      // First try with the token as-is (for user JWTs)
+      // User token access - validate the user using getClaims (recommended approach)
       supabase = createClient(
         supabaseUrl,
         supabaseAnonKey,
         { global: { headers: { Authorization: authHeader } } }
       );
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        console.error('Authentication failed:', authError?.message);
-        return new Response(
-          JSON.stringify({ error: 'Invalid or expired token' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      // Try getClaims first (recommended for signing-keys)
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      
+      if (claimsError || !claimsData?.claims) {
+        // Fallback to getUser if getClaims fails (for backwards compatibility)
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) {
+          console.error('Authentication failed:', claimsError?.message || authError?.message);
+          return new Response(
+            JSON.stringify({ error: 'Invalid or expired token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        userId = user.id;
+        console.log('Authenticated user via getUser:', userId);
+      } else {
+        userId = claimsData.claims.sub as string;
+        console.log('Authenticated user via getClaims:', userId);
       }
-      userId = user.id;
-      console.log('Authenticated user:', userId);
     }
 
     const { 
