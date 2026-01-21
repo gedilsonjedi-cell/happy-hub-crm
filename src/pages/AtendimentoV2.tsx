@@ -1265,20 +1265,87 @@ const AtendimentoV2 = () => {
             assignedToName = profile?.display_name || profile?.email || 'Atendente';
           }
           
-          // Atualizar todas as conversas que correspondem
-          setAllConversations(prev => prev.map(c => {
-            const cNormalized = c.phone.replace(/\D/g, '');
-            if (cNormalized === normalizedPhone && c.channelId === assignment.channel_id) {
-              return { 
-                ...c, 
+          // Map DB status to frontend status
+          let mappedStatus: Conversation["status"] = "in_progress";
+          if (assignment.status === "active") mappedStatus = "in_progress";
+          else if (assignment.status === "archived") mappedStatus = "archived";
+          else if (assignment.status === "resolved") mappedStatus = "resolved";
+          else if (assignment.status === "pending") mappedStatus = "pending";
+          else if (assignment.status === "in_progress") mappedStatus = "in_progress";
+          
+          // Check if conversation exists
+          setAllConversations(prev => {
+            const existing = prev.find(c => {
+              const cNormalized = c.phone.replace(/\D/g, '');
+              return cNormalized === normalizedPhone && c.channelId === assignment.channel_id;
+            });
+            
+            if (existing) {
+              // Update existing conversation
+              return prev.map(c => {
+                const cNormalized = c.phone.replace(/\D/g, '');
+                if (cNormalized === normalizedPhone && c.channelId === assignment.channel_id) {
+                  return { 
+                    ...c, 
+                    assignedTo: assignment.assigned_to,
+                    assignedToName: assignedToName,
+                    sectorId: assignment.sector_id || c.sectorId,
+                    status: mappedStatus
+                  };
+                }
+                return c;
+              });
+            } else if (assignment.assigned_to && assignment.channel_id) {
+              // Conversation doesn't exist yet - create it for manual sends
+              // This is crucial for showing conversations in "Meus" when sending templates manually
+              
+              // Get lead info from cache
+              const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+              const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+              const phoneSuffix8 = normalizedPhone.slice(-8);
+              
+              const matches = [
+                leadsMapRef.current.byPhone.get(normalizedPhone),
+                leadsMapRef.current.byPhone.get(phoneWithout55),
+                leadsMapRef.current.byPhone.get(phoneWith55),
+                leadsMapRef.current.bySuffix.get(phoneSuffix8)
+              ].filter(Boolean);
+              
+              let leadName: string | null = null;
+              let leadTags: string[] | null = null;
+              
+              for (const m of matches) {
+                if (!m) continue;
+                if (!leadName && m.name) leadName = m.name;
+                if ((!leadTags || leadTags.length === 0) && m.tags && m.tags.length > 0) {
+                  leadTags = m.tags;
+                }
+                if (leadName && leadTags && leadTags.length > 0) break;
+              }
+              
+              const displayPhone = '+' + normalizedPhone;
+              
+              // Create new conversation
+              const newConv: Conversation = {
+                phone: displayPhone,
+                name: leadName,
+                lastMessage: "Template enviado",
+                lastMessageTime: new Date().toISOString(),
+                lastInboundTime: null,
+                unreadCount: 0,
+                channelId: assignment.channel_id,
+                status: mappedStatus,
                 assignedTo: assignment.assigned_to,
                 assignedToName: assignedToName,
-                sectorId: assignment.sector_id || c.sectorId,
-                status: (assignment.status as Conversation["status"]) || c.status
+                sectorId: assignment.sector_id || null,
+                tags: leadTags
               };
+              
+              return [newConv, ...prev];
             }
-            return c;
-          }));
+            
+            return prev;
+          });
           
           // Atualizar conversa selecionada se for a mesma
           setSelectedConversation(prev => {
@@ -1290,7 +1357,7 @@ const AtendimentoV2 = () => {
                 assignedTo: assignment.assigned_to,
                 assignedToName: assignedToName,
                 sectorId: assignment.sector_id || prev.sectorId,
-                status: (assignment.status as Conversation["status"]) || prev.status
+                status: mappedStatus
               };
             }
             return prev;
