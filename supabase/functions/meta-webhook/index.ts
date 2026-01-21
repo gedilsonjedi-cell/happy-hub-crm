@@ -1103,30 +1103,82 @@ Deno.serve(async (req) => {
             });
           }
 
-          // Check business hours and holidays
-          if (channel.organization_id && channel.access_token && channel.app_name) {
-            const holidayCheck = await isHoliday(channel.organization_id);
+          // Track button clicks for campaign analytics
+          if (channel.organization_id && (messageType === 'button' || messageType === 'interactive')) {
+            let buttonText: string | null = null;
             
-            if (holidayCheck.isHoliday && holidayCheck.awayMessage) {
-              console.log('Sending holiday away message');
+            if (messageType === 'button') {
+              buttonText = msg.button?.text || null;
+            } else if (messageType === 'interactive') {
+              if (msg.interactive?.type === 'button_reply') {
+                buttonText = msg.interactive.button_reply?.title || msg.interactive.button_reply?.id || null;
+              } else if (msg.interactive?.type === 'list_reply') {
+                buttonText = msg.interactive.list_reply?.title || msg.interactive.list_reply?.id || null;
+              }
+            }
+            
+            if (buttonText) {
+              console.log('Button click detected:', { buttonText, phone: normalizedPhone });
+              
+              // Find recent campaign recipients for this phone and update button_clicked
+              const phoneEnd8 = normalizedPhone.slice(-8);
+              const { data: recentRecipients } = await supabase
+                .from('campaign_recipients')
+                .select('id, phone, campaign_id, button_clicked')
+                .order('created_at', { ascending: false })
+                .limit(50);
+              
+              if (recentRecipients) {
+                // Find matching recipient by phone suffix
+                const matchingRecipient = recentRecipients.find(r => {
+                  const rPhone = r.phone.replace(/\D/g, '');
+                  return rPhone.endsWith(phoneEnd8) || normalizedPhone.endsWith(rPhone.slice(-8));
+                });
+                
+                if (matchingRecipient && !matchingRecipient.button_clicked) {
+                  const { error: updateError } = await supabase
+                    .from('campaign_recipients')
+                    .update({
+                      button_clicked: buttonText,
+                      button_clicked_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', matchingRecipient.id);
+                  
+                  if (updateError) {
+                    console.error('Error updating button click:', updateError);
+                  } else {
+                    console.log('Button click recorded for recipient:', matchingRecipient.id, buttonText);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Check business hours and holidays
+        if (channel.organization_id && channel.access_token && channel.app_name) {
+          const holidayCheck = await isHoliday(channel.organization_id);
+          
+          if (holidayCheck.isHoliday && holidayCheck.awayMessage) {
+            console.log('Sending holiday away message');
+            await sendWhatsAppMessage(
+              channel.app_name,
+              channel.access_token,
+              normalizedPhone,
+              holidayCheck.awayMessage
+            );
+          } else if (!holidayCheck.isHoliday) {
+            const businessCheck = await isWithinBusinessHours(channel.organization_id);
+            
+            if (!businessCheck.isOpen && businessCheck.awayMessage) {
+              console.log('Sending outside business hours away message');
               await sendWhatsAppMessage(
                 channel.app_name,
                 channel.access_token,
                 normalizedPhone,
-                holidayCheck.awayMessage
+                businessCheck.awayMessage
               );
-            } else if (!holidayCheck.isHoliday) {
-              const businessCheck = await isWithinBusinessHours(channel.organization_id);
-              
-              if (!businessCheck.isOpen && businessCheck.awayMessage) {
-                console.log('Sending outside business hours away message');
-                await sendWhatsAppMessage(
-                  channel.app_name,
-                  channel.access_token,
-                  normalizedPhone,
-                  businessCheck.awayMessage
-                );
-              }
             }
           }
         }
