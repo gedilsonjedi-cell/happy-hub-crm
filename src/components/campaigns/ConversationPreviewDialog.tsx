@@ -34,6 +34,7 @@ interface Message {
   status: string | null;
   message_type: string;
   media_url: string | null;
+  channel_id: string | null;
 }
 
 interface ConversationPreviewDialogProps {
@@ -42,6 +43,7 @@ interface ConversationPreviewDialogProps {
   phone: string;
   name: string | null;
   channelId?: string | null;
+  organizationId?: string | null;
 }
 
 export function ConversationPreviewDialog({
@@ -50,6 +52,7 @@ export function ConversationPreviewDialog({
   phone,
   name,
   channelId,
+  organizationId,
 }: ConversationPreviewDialogProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -72,40 +75,88 @@ export function ConversationPreviewDialog({
   const fetchMessages = async () => {
     setLoading(true);
     try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .single();
+      // Use provided organizationId or fetch from user profile
+      let orgId = organizationId;
+      
+      if (!orgId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .single();
+        
+        orgId = profile?.organization_id;
+      }
 
-      if (!profile?.organization_id) return;
+      if (!orgId) return;
 
       // Get channels for this organization
       const { data: channels } = await supabase
         .from("channels")
         .select("id")
-        .eq("organization_id", profile.organization_id);
+        .eq("organization_id", orgId);
 
       if (!channels || channels.length === 0) return;
 
       const channelIds = channels.map((c) => c.id);
 
-      // Fetch messages for this phone across all organization channels
+      // Fetch ALL messages for these channels and filter in memory
+      // Because outbound messages have destination in metadata, not sender_phone
       const { data, error } = await supabase
         .from("whatsapp_messages")
-        .select("id, content, direction, created_at, status, message_type, media_url, channel_id")
+        .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
         .in("channel_id", channelIds)
-        .or(`sender_phone.ilike.%${phoneEnd},recipient_phone.ilike.%${phoneEnd}`)
-        .order("created_at", { ascending: true })
-        .limit(50);
+        .order("created_at", { ascending: false })
+        .limit(500);
 
       if (error) throw error;
 
-      setMessages(data || []);
+      // Filter messages that match this phone
+      // For inbound: sender_phone contains the contact's phone
+      // For outbound: metadata.destination contains the contact's phone
+      const filteredMessages = (data || []).filter((msg) => {
+        const msgMetadata = msg.metadata as Record<string, unknown> | null;
+        
+        if (msg.direction === "inbound") {
+          // Inbound: sender_phone is the contact
+          return msg.sender_phone?.replace(/\D/g, "").endsWith(phoneEnd);
+        } else {
+          // Outbound: destination in metadata is the contact
+          const destination = msgMetadata?.destination as string | undefined;
+          if (destination) {
+            return destination.replace(/\D/g, "").endsWith(phoneEnd);
+          }
+          return false;
+        }
+      });
+
+      // Sort by created_at ascending for display
+      filteredMessages.sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      // Map to remove metadata from the display object but keep content
+      const displayMessages = filteredMessages.map((msg) => {
+        const msgMetadata = msg.metadata as Record<string, unknown> | null;
+        const templateContent = msgMetadata?.templateContent as string | undefined;
+        
+        return {
+          id: msg.id,
+          content: templateContent || msg.content,
+          direction: msg.direction,
+          created_at: msg.created_at,
+          status: msg.status,
+          message_type: msg.message_type,
+          media_url: msg.media_url,
+          channel_id: msg.channel_id,
+        };
+      });
+
+      setMessages(displayMessages);
       
       // Store the channel_id from the most recent message
-      if (data && data.length > 0) {
-        const lastMessage = data[data.length - 1];
+      if (displayMessages.length > 0) {
+        const lastMessage = displayMessages[displayMessages.length - 1];
         setFoundChannelId(lastMessage.channel_id);
       }
     } catch (error) {

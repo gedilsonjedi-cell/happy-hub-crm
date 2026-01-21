@@ -106,6 +106,7 @@ interface Campaign {
   max_interval?: number;
   sector_id?: string | null;
   chatbot_enabled?: boolean;
+  organization_id?: string | null;
 }
 
 const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {

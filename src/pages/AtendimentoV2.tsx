@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { 
   MessageSquare, 
   Send, 
@@ -197,9 +198,11 @@ const useNotificationSound = () => {
 
 const AtendimentoV2 = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canSeeSector, canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
   
   // Filter conversations based on user's sector access
   const conversations = allConversations.filter(c => canSeeSector(c.sectorId));
@@ -788,6 +791,65 @@ const AtendimentoV2 = () => {
   useEffect(() => {
     fetchMessagesAndNotes();
   }, [selectedConversation]);
+
+  // Auto-select conversation when phone parameter is present in URL
+  useEffect(() => {
+    if (!phoneToOpen || allConversations.length === 0 || selectedConversation) return;
+    
+    const normalizedPhoneToOpen = phoneToOpen.replace(/\D/g, '');
+    const phoneEnd = normalizedPhoneToOpen.slice(-8);
+    
+    // First, try to find in existing conversations (any status including archived)
+    let matchingConversation = allConversations.find(c => {
+      const conversationPhoneNormalized = c.phone.replace(/\D/g, '');
+      return conversationPhoneNormalized.endsWith(phoneEnd) || 
+             normalizedPhoneToOpen.endsWith(conversationPhoneNormalized.slice(-8));
+    });
+    
+    if (matchingConversation) {
+      // If archived, show archived view
+      if (matchingConversation.status === "archived") {
+        setShowArchived(true);
+      }
+      
+      // Select the conversation
+      setSelectedConversation(matchingConversation);
+      
+      // Find and set the channel
+      const channel = channels.find(ch => ch.id === matchingConversation?.channelId);
+      if (channel) {
+        setSelectedChannel(channel);
+      }
+      
+      // Clear the phone param
+      setPhoneToOpen(null);
+      setSearchParams({}, { replace: true });
+    } else if (channels.length > 0) {
+      // Create a temporary conversation to display messages
+      // This handles the case where there's no existing conversation_assignment
+      const firstChannel = channels[0];
+      
+      const tempConversation: Conversation = {
+        phone: normalizedPhoneToOpen,
+        name: null,
+        lastMessage: "",
+        lastMessageTime: new Date().toISOString(),
+        lastInboundTime: null,
+        unreadCount: 0,
+        channelId: firstChannel.id,
+        status: "in_progress",
+        assignedTo: null,
+        assignedToName: null,
+        sectorId: null,
+        tags: null
+      };
+      
+      setSelectedConversation(tempConversation);
+      setSelectedChannel(firstChannel);
+      setPhoneToOpen(null);
+      setSearchParams({}, { replace: true });
+    }
+  }, [phoneToOpen, allConversations, channels, selectedConversation]);
 
   // Fetch contact tags
   useEffect(() => {
