@@ -291,7 +291,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl bg-card border-border max-h-[95vh] flex flex-col">
+      <DialogContent className="max-w-5xl bg-card border-border max-h-[95vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-3">
             <DialogTitle className="text-xl text-foreground">{campaign.name}</DialogTitle>
@@ -304,7 +304,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 min-h-0" viewportClassName="max-h-[calc(95vh-120px)]">
           <div className="space-y-6">
             {/* Conversion Funnel + Engagement Card */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
