@@ -71,6 +71,7 @@ interface Campaign {
   max_interval?: number;
   team?: string | null;
   chatbot_enabled?: boolean;
+  organization_id?: string | null;
 }
 
 interface Recipient {
@@ -773,6 +774,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
           }}
           phone={previewPhone || ""}
           name={previewName}
+          organizationId={campaign?.organization_id}
         />
       </DialogContent>
     </Dialog>
