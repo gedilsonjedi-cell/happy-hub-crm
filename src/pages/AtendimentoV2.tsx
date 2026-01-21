@@ -264,6 +264,9 @@ const AtendimentoV2 = () => {
   } = useAudioRecording();
 
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
+  
+  // Track conversations with recent new messages for visual highlight
+  const [recentlyUpdatedConversations, setRecentlyUpdatedConversations] = useState<Set<string>>(new Set());
 
   // Fetch quick responses for shortcut detection
   useEffect(() => {
@@ -866,10 +869,42 @@ const AtendimentoV2 = () => {
             
             if (newMsg.direction === "inbound") {
               showNotificationRef.current(newMsg);
+              
+              // Add visual highlight to this conversation
+              setRecentlyUpdatedConversations(prev => {
+                const newSet = new Set(prev);
+                newSet.add(msgConversationKey);
+                return newSet;
+              });
+              
+              // Remove highlight after 5 seconds
+              setTimeout(() => {
+                setRecentlyUpdatedConversations(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(msgConversationKey);
+                  return newSet;
+                });
+              }, 5000);
+              
               if (soundEnabledRef.current) {
                 playNotificationSoundRef.current();
                 toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
                   description: (newMsg.content || "").substring(0, 50) + ((newMsg.content?.length || 0) > 50 ? "..." : ""),
+                  action: {
+                    label: "Ver",
+                    onClick: () => {
+                      // Find and select this conversation
+                      setAllConversations(convs => {
+                        const targetConv = convs.find(c => 
+                          c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                        );
+                        if (targetConv) {
+                          setSelectedConversation(targetConv);
+                        }
+                        return convs;
+                      });
+                    }
+                  }
                 });
               }
             }
@@ -2232,8 +2267,9 @@ const AtendimentoV2 = () => {
                         <div 
                           key={convKey} 
                           className={cn(
-                            "group relative p-3 hover:bg-muted/50 transition-colors cursor-pointer",
-                            isSelected && "bg-primary/5"
+                            "group relative p-3 hover:bg-muted/50 transition-all cursor-pointer",
+                            isSelected && "bg-primary/5",
+                            recentlyUpdatedConversations.has(convKey) && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary"
                           )}
                           onClick={() => {
                             setSelectedConversation(conv);
@@ -2349,8 +2385,9 @@ const AtendimentoV2 = () => {
                       key={conversationKey} 
                       onClick={() => setSelectedConversation(conversation)} 
                       className={cn(
-                        "w-full p-3 text-left transition-colors hover:bg-muted/30",
-                        isSelected && "bg-primary/5"
+                        "w-full p-3 text-left transition-all hover:bg-muted/30",
+                        isSelected && "bg-primary/5",
+                        recentlyUpdatedConversations.has(conversationKey) && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary"
                       )}
                     >
                       <div className="flex items-start gap-3">
