@@ -147,6 +147,39 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
   useEffect(() => {
     if (open && campaign) {
       fetchRecipients();
+      
+      // Set up realtime subscription for live updates
+      const channel = supabase
+        .channel(`campaign-recipients-${campaign.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'campaign_recipients',
+            filter: `campaign_id=eq.${campaign.id}`,
+          },
+          (payload) => {
+            console.log('Realtime update:', payload);
+            
+            if (payload.eventType === 'UPDATE') {
+              setRecipients((prev) =>
+                prev.map((r) =>
+                  r.id === payload.new.id
+                    ? { ...r, ...payload.new as Recipient }
+                    : r
+                )
+              );
+            } else if (payload.eventType === 'INSERT') {
+              setRecipients((prev) => [...prev, payload.new as Recipient]);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     } else {
       setRecipients([]);
       setSearchTerm("");
