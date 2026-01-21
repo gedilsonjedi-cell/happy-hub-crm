@@ -53,6 +53,12 @@ interface ManualSendDialogProps {
   onChannelChange: (channel: Channel) => void;
   initialPhone?: string;
   onPhoneUsed?: () => void;
+  onTemplateSent?: (data: { 
+    phone: string; 
+    channelId: string; 
+    templateName: string;
+    templateContent: string;
+  }) => void;
 }
 
 export const ManualSendDialog = ({ 
@@ -62,7 +68,8 @@ export const ManualSendDialog = ({
   selectedChannel,
   onChannelChange,
   initialPhone = "",
-  onPhoneUsed
+  onPhoneUsed,
+  onTemplateSent
 }: ManualSendDialogProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -223,6 +230,15 @@ export const ManualSendDialog = ({
 
       if (data.success) {
         toast.success(`Template enviado para ${formattedPhone}!`);
+        
+        // Notify parent that template was sent successfully
+        onTemplateSent?.({
+          phone: formattedPhone,
+          channelId: selectedChannel.id,
+          templateName: selectedTemplate.name,
+          templateContent: selectedTemplate.content
+        });
+        
         onClose();
       } else {
         toast.error(data.error || 'Erro ao enviar template');
