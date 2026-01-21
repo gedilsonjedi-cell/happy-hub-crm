@@ -278,6 +278,46 @@ const Disparos = () => {
     }
   }, [user, effectiveOrganizationId, fetchData]);
 
+  // Realtime subscription for campaigns and campaign_recipients updates
+  useEffect(() => {
+    if (!effectiveOrganizationId) return;
+
+    // Subscribe to campaigns changes
+    const campaignsChannel = supabase
+      .channel('campaigns-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'campaigns',
+          filter: `organization_id=eq.${effectiveOrganizationId}`,
+        },
+        (payload) => {
+          console.log('Campaigns realtime update:', payload);
+          
+          if (payload.eventType === 'UPDATE') {
+            setAllCampaigns((prev) =>
+              prev.map((c) =>
+                c.id === (payload.new as Campaign).id
+                  ? { ...c, ...(payload.new as Campaign) }
+                  : c
+              )
+            );
+          } else if (payload.eventType === 'INSERT') {
+            setAllCampaigns((prev) => [payload.new as Campaign, ...prev]);
+          } else if (payload.eventType === 'DELETE') {
+            setAllCampaigns((prev) => prev.filter((c) => c.id !== (payload.old as { id: string }).id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(campaignsChannel);
+    };
+  }, [effectiveOrganizationId]);
+
   // Hook que processa campanhas em loop contínuo no frontend
   // Garante que campanhas NUNCA parem enquanto a página estiver aberta
   const { startProcessing } = useCampaignProcessor({
@@ -294,14 +334,14 @@ const Disparos = () => {
     enabled: true
   });
 
-  // Polling para atualizar dados a cada 5 segundos quando há campanhas rodando
+  // Polling para atualizar dados a cada 5 segundos quando há campanhas rodando (fallback)
   useEffect(() => {
     const hasRunningCampaigns = campaigns.some(c => c.status === "running");
     if (!hasRunningCampaigns) return;
 
     const pollInterval = setInterval(() => {
       fetchData();
-    }, 5000);
+    }, 10000); // Increased to 10s since we have realtime now
 
     return () => clearInterval(pollInterval);
   }, [campaigns, fetchData]);
