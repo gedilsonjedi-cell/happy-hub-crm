@@ -324,10 +324,14 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 flex flex-col min-h-0",
-        noPadding ? "overflow-hidden" : "overflow-auto p-2 sm:p-4 md:p-6"
+        "flex-1 min-h-0",
+        noPadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden p-2 sm:p-4 md:p-6"
       )}>
-        {children}
+        <div className={cn(
+          noPadding ? "h-full flex flex-col" : "min-h-full"
+        )}>
+          {children}
+        </div>
       </main>
     </div>
   );
