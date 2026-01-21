@@ -211,27 +211,41 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
   // Calculate metrics
   const metrics = useMemo(() => {
     const total = recipients.length;
+    const pending = recipients.filter(r => r.status === "pending").length;
     const sent = recipients.filter(r => r.status === "sent" || r.status === "delivered" || r.status === "read").length;
     const delivered = recipients.filter(r => r.status === "delivered" || r.status === "read" || r.delivered_at).length;
     const read = recipients.filter(r => r.status === "read" || r.read_at).length;
     const clicked = recipients.filter(r => r.button_clicked).length;
     const failed = recipients.filter(r => r.status === "failed").length;
     const noWhatsApp = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "no_whatsapp").length;
+    const invalidNumber = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "invalid_number").length;
+    const blocked = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "blocked").length;
+    const templateError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "template_error").length;
+    const apiError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "api_error").length;
+    const processed = sent + failed;
 
     return {
       total,
+      pending,
       sent,
       delivered,
       read,
       clicked,
       failed,
       noWhatsApp,
+      invalidNumber,
+      blocked,
+      templateError,
+      apiError,
+      processed,
+      pendingPercent: total > 0 ? Math.round((pending / total) * 100) : 0,
       sentPercent: total > 0 ? Math.round((sent / total) * 100) : 0,
       deliveredPercent: total > 0 ? Math.round((delivered / total) * 100) : 0,
       readPercent: total > 0 ? Math.round((read / total) * 100) : 0,
       clickedPercent: total > 0 ? Math.round((clicked / total) * 100) : 0,
       failedPercent: total > 0 ? Math.round((failed / total) * 100) : 0,
-      engagementRate: total > 0 ? Math.round((clicked / total) * 100) : 0,
+      engagementRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
+      deliveryRate: sent > 0 ? Math.round((delivered / sent) * 100) : 0,
     };
   }, [recipients]);
 
@@ -355,104 +369,183 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
                 <div className="space-y-3">
                   {/* Total */}
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-20">Total</span>
-                    <div className="flex-1 h-7 bg-primary/80 rounded flex items-center px-2">
+                    <span className="text-sm text-muted-foreground w-24">Total</span>
+                    <div className="flex-1 h-7 bg-primary/80 rounded flex items-center justify-between px-2">
                       <span className="text-xs text-primary-foreground font-medium">100%</span>
+                      <span className="text-xs text-primary-foreground">{metrics.total}</span>
+                    </div>
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  
+                  {/* Processadas (Sent + Failed) */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground w-24">Processadas</span>
+                    <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
+                      {metrics.processed > 0 && (
+                        <div 
+                          className="h-full bg-purple-600 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.processed / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">
+                            {Math.round((metrics.processed / metrics.total) * 100)}%
+                          </span>
+                          <span className="text-xs text-white">{metrics.processed}</span>
+                        </div>
+                      )}
                     </div>
                     <Send className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
-                  {/* Sent */}
+                  {/* Enviadas (successfully sent to Meta) */}
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-20">Envio</span>
+                    <span className="text-sm text-muted-foreground w-24">Enviadas</span>
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
-                      {metrics.sentPercent > 0 && (
+                      {metrics.sent > 0 && (
                         <div 
-                          className="h-full bg-rose-500 flex items-center px-2"
-                          style={{ width: `${Math.max(metrics.failedPercent, 15)}%` }}
+                          className="h-full bg-teal-600 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.sent / metrics.total) * 100, 15)}%` }}
                         >
-                          {metrics.failedPercent >= 10 && (
-                            <span className="text-xs text-white font-medium">{metrics.failedPercent}%</span>
-                          )}
+                          <span className="text-xs text-white font-medium">
+                            {metrics.sentPercent}%
+                          </span>
+                          <span className="text-xs text-white">{metrics.sent}</span>
                         </div>
                       )}
-                      {metrics.noWhatsApp > 0 && (
-                        <div 
-                          className="h-full bg-warning flex items-center px-2"
-                          style={{ width: `${Math.max(Math.round((metrics.noWhatsApp / metrics.total) * 100), 10)}%` }}
-                        >
-                          {Math.round((metrics.noWhatsApp / metrics.total) * 100) >= 10 && (
-                            <span className="text-xs text-white font-medium">{Math.round((metrics.noWhatsApp / metrics.total) * 100)}%</span>
-                          )}
-                        </div>
-                      )}
-                      <div 
-                        className="h-full bg-teal-600 flex items-center px-2"
-                        style={{ width: `${Math.max(metrics.sentPercent - metrics.failedPercent, 20)}%` }}
-                      >
-                        <span className="text-xs text-white font-medium">{metrics.sentPercent - metrics.failedPercent}%</span>
-                      </div>
                     </div>
                     <CheckCircle className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
                   {/* Delivered */}
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-20">Entregue</span>
+                    <span className="text-sm text-muted-foreground w-24">Entregues</span>
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
-                      <div 
-                        className="h-full bg-green-600 flex items-center px-2"
-                        style={{ width: `${Math.max(metrics.deliveredPercent, 10)}%` }}
-                      >
-                        <span className="text-xs text-white font-medium">{metrics.deliveredPercent}%</span>
-                      </div>
+                      {metrics.delivered > 0 && (
+                        <div 
+                          className="h-full bg-green-600 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.delivered / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.deliveredPercent}%</span>
+                          <span className="text-xs text-white">{metrics.delivered}</span>
+                        </div>
+                      )}
                     </div>
                     <CheckCheck className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
                   {/* Read */}
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-20">Lido</span>
+                    <span className="text-sm text-muted-foreground w-24">Lidas</span>
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
-                      <div 
-                        className="h-full bg-violet-700 flex items-center px-2"
-                        style={{ width: `${Math.max(metrics.readPercent, 10)}%` }}
-                      >
-                        <span className="text-xs text-white font-medium">{metrics.readPercent}%</span>
-                      </div>
+                      {metrics.read > 0 && (
+                        <div 
+                          className="h-full bg-violet-700 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.read / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.readPercent}%</span>
+                          <span className="text-xs text-white">{metrics.read}</span>
+                        </div>
+                      )}
                     </div>
                     <Eye className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
                   {/* Interacted */}
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-20">Interagido</span>
+                    <span className="text-sm text-muted-foreground w-24">Engajadas</span>
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
-                      <div 
-                        className="h-full bg-amber-600 flex items-center px-2"
-                        style={{ width: `${Math.max(metrics.clickedPercent, 5)}%` }}
-                      >
-                        <span className="text-xs text-white font-medium">{metrics.clickedPercent}%</span>
-                      </div>
+                      {metrics.clicked > 0 && (
+                        <div 
+                          className="h-full bg-amber-600 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.clicked / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.clickedPercent}%</span>
+                          <span className="text-xs text-white">{metrics.clicked}</span>
+                        </div>
+                      )}
                     </div>
                     <MessageCircle className="w-4 h-4 text-muted-foreground" />
                   </div>
+                  
+                  {/* Failed Section */}
+                  {metrics.failed > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground w-24">Falhas</span>
+                      <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
+                        <div 
+                          className="h-full bg-destructive flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.failed / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.failedPercent}%</span>
+                          <span className="text-xs text-white">{metrics.failed}</span>
+                        </div>
+                      </div>
+                      <XCircle className="w-4 h-4 text-destructive" />
+                    </div>
+                  )}
                 </div>
+                
+                {/* Failure breakdown */}
+                {metrics.failed > 0 && (
+                  <div className="mt-4 pt-3 border-t border-border">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Detalhes das falhas:</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {metrics.noWhatsApp > 0 && (
+                        <div className="flex justify-between bg-warning/20 text-warning px-2 py-1 rounded">
+                          <span>Sem WhatsApp</span>
+                          <span className="font-bold">{metrics.noWhatsApp}</span>
+                        </div>
+                      )}
+                      {metrics.invalidNumber > 0 && (
+                        <div className="flex justify-between bg-orange-500/20 text-orange-400 px-2 py-1 rounded">
+                          <span>Número Inválido</span>
+                          <span className="font-bold">{metrics.invalidNumber}</span>
+                        </div>
+                      )}
+                      {metrics.blocked > 0 && (
+                        <div className="flex justify-between bg-red-500/20 text-red-400 px-2 py-1 rounded">
+                          <span>Bloqueado</span>
+                          <span className="font-bold">{metrics.blocked}</span>
+                        </div>
+                      )}
+                      {metrics.templateError > 0 && (
+                        <div className="flex justify-between bg-pink-500/20 text-pink-400 px-2 py-1 rounded">
+                          <span>Erro de Template</span>
+                          <span className="font-bold">{metrics.templateError}</span>
+                        </div>
+                      )}
+                      {metrics.apiError > 0 && (
+                        <div className="flex justify-between bg-gray-500/20 text-gray-400 px-2 py-1 rounded">
+                          <span>Erro de API</span>
+                          <span className="font-bold">{metrics.apiError}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Engagement Card */}
-              <div className="bg-muted/20 rounded-lg p-4 border border-border flex flex-col items-center justify-center text-center">
-                <Target className="w-10 h-10 text-primary mb-2" />
-                <p className="text-5xl font-bold text-primary">{metrics.engagementRate}%</p>
-                <p className="text-sm font-medium text-foreground mt-1">Engajamento</p>
+              <div className="bg-muted/20 rounded-lg p-4 border border-border flex flex-col text-center">
+                <Target className="w-8 h-8 text-primary mb-2 mx-auto" />
+                <p className="text-4xl font-bold text-primary">{metrics.engagementRate}%</p>
+                <p className="text-sm font-medium text-foreground mt-1">Taxa de Engajamento</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.clicked} pessoas que engajaram com sua campanha
+                  {metrics.clicked} de {metrics.sent} engajaram
                 </p>
+                
+                {/* Delivery Rate */}
+                <div className="mt-4 pt-3 border-t border-border">
+                  <p className="text-2xl font-bold text-green-500">{metrics.deliveryRate}%</p>
+                  <p className="text-xs text-muted-foreground">Taxa de Entrega</p>
+                  <p className="text-xs text-muted-foreground">
+                    {metrics.delivered} de {metrics.sent} entregues
+                  </p>
+                </div>
 
                 {/* Button clicks breakdown */}
                 {buttonClicks.length > 0 && (
-                  <div className="mt-4 w-full">
-                    <p className="text-xs text-muted-foreground mb-2">Cliques por botão:</p>
+                  <div className="mt-4 pt-3 border-t border-border w-full text-left">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Cliques por botão:</p>
                     <div className="space-y-1">
                       {buttonClicks.map((item, idx) => (
                         <div key={idx} className="flex justify-between text-xs">

@@ -104,12 +104,13 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
 
       <div className="space-y-3">
         {runningCampaigns.map((campaign) => {
+          const pending = campaign.total_recipients - campaign.sent_count - campaign.failed_count;
           const progress = campaign.total_recipients > 0
-            ? Math.round((campaign.sent_count / campaign.total_recipients) * 100)
+            ? Math.round(((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100)
             : 0;
           
           const avgInterval = ((campaign.min_interval || 5) + (campaign.max_interval || 120)) / 2;
-          const remainingMessages = campaign.total_recipients - campaign.sent_count;
+          const remainingMessages = pending;
           const estimatedMinutes = Math.ceil((remainingMessages * avgInterval) / 60);
 
           return (
@@ -124,7 +125,7 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {campaign.sent_count} / {campaign.total_recipients}
+                    {campaign.sent_count + campaign.failed_count} / {campaign.total_recipients}
                   </span>
                   <Button
                     variant="ghost"
@@ -141,8 +142,9 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
               <Progress value={progress} className="h-2 bg-muted" />
               
               <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-4">
-                  <span className="text-primary">✓ {campaign.delivered_count} entregues</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-purple-400">✓ {campaign.sent_count} enviadas</span>
+                  <span className="text-green-400">✓ {campaign.delivered_count} entregues</span>
                   {campaign.failed_count > 0 && (
                     <span className="text-destructive">✗ {campaign.failed_count} falhas</span>
                   )}
