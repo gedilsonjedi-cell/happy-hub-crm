@@ -57,6 +57,7 @@ import { useUserSectors } from "@/hooks/useUserSectors";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
+import { CampaignReportDialog } from "@/components/campaigns/CampaignReportDialog";
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
 import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
 import { RecycleFailuresDialog } from "@/components/campaigns/RecycleFailuresDialog";
@@ -138,6 +139,7 @@ const Disparos = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
   const [recyclingCampaign, setRecyclingCampaign] = useState<Campaign | null>(null);
   
@@ -765,7 +767,7 @@ const Disparos = () => {
     
     if (campaign) {
       setSelectedCampaign(campaign);
-      setShowDetailsDialog(true);
+      setShowReportDialog(true);
     }
   };
 
@@ -1570,7 +1572,14 @@ const Disparos = () => {
         )}
       </div>
 
-      {/* Campaign Details Dialog */}
+      {/* Campaign Report Dialog (new detailed view) */}
+      <CampaignReportDialog
+        campaign={selectedCampaign}
+        open={showReportDialog}
+        onOpenChange={setShowReportDialog}
+      />
+
+      {/* Legacy Campaign Details Dialog */}
       <CampaignDetailsDialog
         campaign={selectedCampaign}
         open={showDetailsDialog}

@@ -1187,8 +1187,9 @@ Deno.serve(async (req) => {
       for (const status of statuses) {
         const messageId = status.id;
         const statusValue = status.status;
+        const recipientPhone = status.recipient_id;
 
-        console.log('Processing status update:', { messageId, status: statusValue });
+        console.log('Processing status update:', { messageId, status: statusValue, recipientPhone });
 
         const { data: messageData } = await supabase
           .from('whatsapp_messages')
@@ -1220,6 +1221,89 @@ Deno.serve(async (req) => {
               new_status: statusValue,
               timestamp: new Date().toISOString(),
             });
+          }
+
+          // Update campaign_recipients based on status
+          const metadata = messageData?.metadata as Record<string, unknown> | undefined;
+          const campaignId = metadata?.campaignId as string | undefined;
+          
+          if (campaignId && recipientPhone) {
+            const normalizedPhone = normalizePhone(recipientPhone);
+            const phoneVariants = [
+              normalizedPhone,
+              recipientPhone,
+              normalizedPhone.slice(-11),
+              normalizedPhone.slice(-10),
+              normalizedPhone.slice(-9),
+              normalizedPhone.slice(-8),
+            ];
+            
+            console.log('Looking for campaign recipient:', { campaignId, phoneVariants });
+            
+            // Find recipient by phone suffix matching
+            const { data: recipients } = await supabase
+              .from('campaign_recipients')
+              .select('id, phone, status')
+              .eq('campaign_id', campaignId)
+              .limit(1000);
+            
+            if (recipients) {
+              const recipient = recipients.find(r => {
+                const rPhone = r.phone.replace(/\D/g, '');
+                return phoneVariants.some(v => rPhone.endsWith(v.slice(-8)) || v.endsWith(rPhone.slice(-8)));
+              });
+              
+              if (recipient) {
+                const now = new Date().toISOString();
+                const updateData: Record<string, unknown> = { updated_at: now };
+                
+                // Only update status if it's an improvement (delivered > sent, read > delivered)
+                if (statusValue === 'delivered' && recipient.status !== 'read') {
+                  updateData.status = 'delivered';
+                  updateData.delivered_at = now;
+                  console.log('Updating recipient to delivered:', recipient.id);
+                } else if (statusValue === 'read') {
+                  updateData.status = 'read';
+                  updateData.read_at = now;
+                  // Also set delivered_at if not already set
+                  updateData.delivered_at = now;
+                  console.log('Updating recipient to read:', recipient.id);
+                }
+                
+                if (Object.keys(updateData).length > 1) {
+                  const { error: recipientError } = await supabase
+                    .from('campaign_recipients')
+                    .update(updateData)
+                    .eq('id', recipient.id);
+                  
+                  if (recipientError) {
+                    console.error('Error updating campaign recipient:', recipientError);
+                  } else {
+                    console.log('Campaign recipient updated:', recipient.id, updateData);
+                    
+                    // Update campaign delivered_count if status changed to delivered
+                    if (statusValue === 'delivered' && recipient.status === 'sent') {
+                      try {
+                        const { data: camp } = await supabase
+                          .from('campaigns')
+                          .select('delivered_count')
+                          .eq('id', campaignId)
+                          .single();
+                        
+                        if (camp) {
+                          await supabase
+                            .from('campaigns')
+                            .update({ delivered_count: (camp.delivered_count || 0) + 1 })
+                            .eq('id', campaignId);
+                        }
+                      } catch (err) {
+                        console.error('Error updating delivered count:', err);
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
 
           // Update campaign counters for failed messages

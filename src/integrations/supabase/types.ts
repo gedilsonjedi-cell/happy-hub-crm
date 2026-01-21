@@ -424,6 +424,8 @@ export type Database = {
       }
       campaign_recipients: {
         Row: {
+          button_clicked: string | null
+          button_clicked_at: string | null
           campaign_id: string
           created_at: string
           delivered_at: string | null
@@ -434,12 +436,15 @@ export type Database = {
           name: string | null
           next_retry_at: string | null
           phone: string
+          read_at: string | null
           retry_count: number | null
           sent_at: string | null
           status: string
           updated_at: string
         }
         Insert: {
+          button_clicked?: string | null
+          button_clicked_at?: string | null
           campaign_id: string
           created_at?: string
           delivered_at?: string | null
@@ -450,12 +455,15 @@ export type Database = {
           name?: string | null
           next_retry_at?: string | null
           phone: string
+          read_at?: string | null
           retry_count?: number | null
           sent_at?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
+          button_clicked?: string | null
+          button_clicked_at?: string | null
           campaign_id?: string
           created_at?: string
           delivered_at?: string | null
@@ -466,6 +474,7 @@ export type Database = {
           name?: string | null
           next_retry_at?: string | null
           phone?: string
+          read_at?: string | null
           retry_count?: number | null
           sent_at?: string | null
           status?: string
