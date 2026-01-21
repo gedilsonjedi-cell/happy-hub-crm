@@ -929,6 +929,138 @@ const AtendimentoV2 = () => {
                 return [...prev, newMsg];
               });
             }
+            
+            // For OUTBOUND messages, also update or create conversations
+            // This is important for manual sends to appear in "Meus"
+            if (newMsg.direction === "outbound") {
+              const metadata = newMsg.metadata as { sent_by_human?: boolean } | null;
+              const isSentByHuman = metadata?.sent_by_human === true;
+              
+              setAllConversations(prev => {
+                const existing = prev.find(c => 
+                  c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
+                
+                if (existing) {
+                  // Update existing conversation with new message info
+                  return prev.map(c => 
+                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
+                      ? { 
+                          ...c, 
+                          lastMessage: newMsg.content || c.lastMessage, 
+                          lastMessageTime: newMsg.created_at,
+                        }
+                      : c
+                  ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+                } else if (isSentByHuman) {
+                  // For manual sends to new numbers, create the conversation
+                  // Then fetch assignment to get proper assignedTo
+                  const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
+                  
+                  // Get lead info
+                  const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
+                  const phoneWith55New = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
+                  const phoneSuffix8 = normalizedContactPhone.slice(-8);
+                  
+                  const newMatches = [
+                    leadsMapRef.current.byPhone.get(normalizedContactPhone),
+                    leadsMapRef.current.byPhone.get(phoneWithout55),
+                    leadsMapRef.current.byPhone.get(phoneWith55New),
+                    leadsMapRef.current.bySuffix.get(phoneSuffix8)
+                  ].filter(Boolean);
+                  
+                  let leadNameFromSystem: string | undefined;
+                  let leadTagsFromSystem: string[] | null = null;
+                  
+                  for (const m of newMatches) {
+                    if (!m) continue;
+                    if (!leadNameFromSystem && m.name) leadNameFromSystem = m.name;
+                    if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && m.tags && m.tags.length > 0) {
+                      leadTagsFromSystem = m.tags;
+                    }
+                    if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
+                  }
+                  
+                  // Fetch assignment info asynchronously
+                  supabase
+                    .from('conversation_assignments')
+                    .select('sector_id, assigned_to, status')
+                    .eq('channel_id', newMsg.channel_id)
+                    .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+                    .maybeSingle()
+                    .then(async ({ data: assignment }) => {
+                      let assignedToName: string | null = null;
+                      if (assignment?.assigned_to) {
+                        const { data: profile } = await supabase
+                          .from('profiles')
+                          .select('display_name, email')
+                          .eq('user_id', assignment.assigned_to)
+                          .single();
+                        assignedToName = profile?.display_name || profile?.email || 'Atendente';
+                      }
+                      
+                      setAllConversations(currentPrev => {
+                        // Check if conversation was already added
+                        const alreadyExists = currentPrev.some(c => 
+                          c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                        );
+                        
+                        if (alreadyExists) {
+                          // Update with assignment info from DB
+                          // Map "active" status from DB to "in_progress" for frontend
+                          let mappedStatus: Conversation["status"] | undefined;
+                          if (assignment?.status === "active") mappedStatus = "in_progress";
+                          else if (assignment?.status === "archived") mappedStatus = "archived";
+                          else if (assignment?.status === "resolved") mappedStatus = "resolved";
+                          else if (assignment?.status === "pending") mappedStatus = "pending";
+                          else if (assignment?.status === "in_progress") mappedStatus = "in_progress";
+                          
+                          return currentPrev.map(c => 
+                            c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                              ? { 
+                                  ...c, 
+                                  sectorId: assignment?.sector_id || null, 
+                                  assignedTo: assignment?.assigned_to || null,
+                                  assignedToName: assignedToName,
+                                  status: mappedStatus || c.status
+                                }
+                              : c
+                          );
+                        }
+                        
+                        // Add new conversation with assignment info
+                        // Map "active" status from DB to "in_progress" for frontend
+                        let convStatus: Conversation["status"] = "in_progress";
+                        if (assignment?.status === "archived") convStatus = "archived";
+                        else if (assignment?.status === "resolved") convStatus = "resolved";
+                        else if (assignment?.status === "pending") convStatus = "pending";
+                        
+                        const newConv: Conversation = {
+                          phone: displayPhone,
+                          name: leadNameFromSystem || null,
+                          lastMessage: newMsg.content || "",
+                          lastMessageTime: newMsg.created_at,
+                          lastInboundTime: null,
+                          unreadCount: 0,
+                          channelId: newMsg.channel_id,
+                          status: convStatus,
+                          assignedTo: assignment?.assigned_to || null,
+                          assignedToName: assignedToName,
+                          sectorId: assignment?.sector_id || null,
+                          tags: leadTagsFromSystem || null
+                        };
+                        
+                        return [newConv, ...currentPrev];
+                      });
+                    });
+                  
+                  // Return unchanged for now, async update will add the conversation
+                  return prev;
+                }
+                
+                return prev;
+              });
+            }
 
             if (newMsg.direction === "inbound") {
               setAllConversations(prev => {
