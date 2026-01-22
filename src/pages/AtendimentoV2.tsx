@@ -2398,10 +2398,10 @@ const AtendimentoV2 = () => {
     
     // CRITICAL: Persist conversation assignment to database FIRST
     // This ensures the conversation persists even after page refresh
-    // Use effectiveOrganizationId (not profiles query) for multi-tenant support
+    // Note: organization isolation is handled via channel_id (each channel belongs to one org)
     let assignmentId: string | null = null;
     
-    if (user?.id && effectiveOrganizationId) {
+    if (user?.id) {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
@@ -2410,7 +2410,6 @@ const AtendimentoV2 = () => {
         .upsert({
           channel_id: data.channelId,
           conversation_phone: normalizedPhone,
-          organization_id: effectiveOrganizationId, // Use effective org ID for super admin support
           assigned_to: user.id,
           assigned_at: now,
           status: 'in_progress',
@@ -2429,7 +2428,7 @@ const AtendimentoV2 = () => {
         // Continue anyway - at least try to show in UI
       } else {
         assignmentId = assignmentData?.id || null;
-        console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId, 'org:', effectiveOrganizationId);
+        console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
       }
     }
     
@@ -3587,7 +3586,7 @@ const AtendimentoV2 = () => {
         />
       )}
 
-      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} onTemplateSent={handleManualTemplateSent} organizationId={effectiveOrganizationId || undefined} />
+      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} onTemplateSent={handleManualTemplateSent} />
 
       {selectedConversation && <FollowUpDialog isOpen={showFollowUpDialog} onClose={() => setShowFollowUpDialog(false)} leadId={null} leadName={selectedConversation?.name || selectedConversation?.phone || ""} leadPhone={selectedConversation?.phone || ""} channelId={selectedConversation?.channelId || null} />}
 

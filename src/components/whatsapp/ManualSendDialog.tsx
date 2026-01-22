@@ -59,7 +59,6 @@ interface ManualSendDialogProps {
     templateName: string;
     templateContent: string;
   }) => void;
-  organizationId?: string; // Effective organization ID for multi-tenant support
 }
 
 export const ManualSendDialog = ({ 
@@ -70,8 +69,7 @@ export const ManualSendDialog = ({
   onChannelChange,
   initialPhone = "",
   onPhoneUsed,
-  onTemplateSent,
-  organizationId
+  onTemplateSent
 }: ManualSendDialogProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -218,9 +216,8 @@ export const ManualSendDialog = ({
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
       
-      // Use organizationId prop (effectiveOrganizationId) instead of querying profiles
-      // This ensures super admins use the org they're acting on, not their own org
-      if (userId && organizationId) {
+      // Create conversation assignment BEFORE sending - organization isolation is via channel_id
+      if (userId) {
         const now = new Date().toISOString();
         const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         
@@ -229,7 +226,6 @@ export const ManualSendDialog = ({
           .upsert({
             channel_id: selectedChannel.id,
             conversation_phone: formattedPhone,
-            organization_id: organizationId, // Use effective org ID, not profile org
             assigned_to: userId,
             assigned_at: now,
             status: 'in_progress',
@@ -243,9 +239,8 @@ export const ManualSendDialog = ({
         
         if (assignmentError) {
           console.error('Error creating conversation assignment:', assignmentError);
-          // Don't fail the whole operation, just log it
         } else {
-          console.log('Created conversation assignment BEFORE send:', formattedPhone, 'org:', organizationId);
+          console.log('Created conversation assignment BEFORE send:', formattedPhone);
         }
       }
 
