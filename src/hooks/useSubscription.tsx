@@ -39,7 +39,10 @@ export function useSubscription() {
       return org;
     },
     enabled: !!user?.id,
-    refetchInterval: 60000, // Check every minute
+    staleTime: 5 * 60 * 1000, // Data stays fresh for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchInterval: 5 * 60 * 1000, // Check every 5 minutes instead of 1
+    refetchOnWindowFocus: false,
   });
 
   const getSubscriptionStatus = (): SubscriptionStatus => {

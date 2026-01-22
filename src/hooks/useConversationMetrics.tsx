@@ -44,13 +44,17 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
   const [byAttendant, setByAttendant] = useState<AttendantMetric[]>([]);
   const [bySector, setBySector] = useState<SectorMetric[]>([]);
 
+  // Memoize date range strings to prevent unnecessary re-fetches
+  const startDateStr = dateRange?.start?.toISOString() || null;
+  const endDateStr = dateRange?.end?.toISOString() || null;
+
   const fetchMetrics = useCallback(async () => {
     if (!effectiveOrganizationId) return;
 
     setLoading(true);
     try {
-      const startDate = dateRange?.start?.toISOString() || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const endDate = dateRange?.end?.toISOString() || new Date().toISOString();
+      const startDate = startDateStr || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const endDate = endDateStr || new Date().toISOString();
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -194,7 +198,7 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
     } finally {
       setLoading(false);
     }
-  }, [effectiveOrganizationId, dateRange]);
+  }, [effectiveOrganizationId, startDateStr, endDateStr]);
 
   const calculateMetricsFromMessages = async (todayStart: Date) => {
     try {

@@ -49,7 +49,16 @@ import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 import AtendimentoV2 from "./pages/AtendimentoV2";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30 * 1000, // 30 seconds default stale time
+      gcTime: 5 * 60 * 1000, // 5 minutes cache time
+      refetchOnWindowFocus: false, // Reduce unnecessary refetches
+      retry: 1, // Reduce retries
+    },
+  },
+});
 
 // Component to initialize global notifications
 const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {

@@ -1,23 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
 export type AppRole = "super_admin" | "admin" | "supervisor" | "atendente";
 
-const CACHE_KEY = "user_role_cache";
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
-interface CachedRoleData {
-  role: AppRole | null;
-  organizationId: string | null;
-  userId: string;
-  timestamp: number;
-}
-
 interface UserRoleState {
   role: AppRole | null;
   loading: boolean;
-  syncing: boolean; // New: indicates background sync in progress
+  syncing: boolean;
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isSupervisor: boolean;
@@ -35,203 +26,95 @@ interface UserRoleState {
   organizationId: string | null;
 }
 
-// Helper functions for cache
-const getCachedRole = (userId: string): CachedRoleData | null => {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (!cached) return null;
-    
-    const data: CachedRoleData = JSON.parse(cached);
-    
-    // Check if cache is for the same user and not expired
-    if (data.userId === userId && Date.now() - data.timestamp < CACHE_DURATION) {
-      return data;
-    }
-    
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const setCachedRole = (userId: string, role: AppRole | null, organizationId: string | null) => {
-  try {
-    const data: CachedRoleData = {
-      role,
-      organizationId,
-      userId,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // Ignore storage errors
-  }
-};
-
-const clearCachedRole = () => {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-  } catch {
-    // Ignore storage errors
-  }
-};
-
 export function useUserRole(): UserRoleState {
   const { user } = useAuth();
-  const [role, setRole] = useState<AppRole | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
-  // Try to load from cache immediately
-  useEffect(() => {
-    if (user) {
-      const cached = getCachedRole(user.id);
-      if (cached) {
-        setRole(cached.role);
-        setOrganizationId(cached.organizationId);
-        setLoading(false);
-      }
-    }
-  }, [user?.id]);
-
-  const fetchRole = useCallback(async (isBackgroundSync = false) => {
-    if (!user) {
-      setRole(null);
-      setOrganizationId(null);
-      setLoading(false);
-      clearCachedRole();
-      return;
-    }
-
-    // Check cache first
-    const cached = getCachedRole(user.id);
-    if (cached && !isBackgroundSync) {
-      setRole(cached.role);
-      setOrganizationId(cached.organizationId);
-      setLoading(false);
-    }
-
-    // Set syncing state for background updates
-    if (isBackgroundSync || cached) {
-      setSyncing(true);
-    }
-
-    try {
-      console.log("[useUserRole] Fetching role for user:", user.id, user.email);
+  // Fetch role using React Query with aggressive caching
+  const { data: roleData, isLoading: roleLoading, isFetching: roleFetching } = useQuery({
+    queryKey: ["user-role", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
       
-      // Fetch role
-      const { data: roleData, error: roleError } = await supabase
+      const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      console.log("[useUserRole] Role fetch result:", { roleData, roleError: roleError?.message });
-
-      if (roleError) {
-        console.error("Error fetching user role:", roleError);
-        if (!cached) setRole(null);
-      } else if (roleData) {
-        setRole(roleData.role as AppRole);
-      } else {
-        console.log("[useUserRole] No role found for user");
-        if (!cached) setRole(null);
+      if (error) {
+        console.error("[useUserRole] Error fetching role:", error.message);
+        return null;
       }
+      
+      console.log("[useUserRole] Role fetch result:", { roleData: data });
+      return data?.role as AppRole | null;
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000, // Data stays fresh for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
 
-      // Fetch organization
-      const { data: profileData, error: profileError } = await supabase
+  // Fetch organization using React Query with aggressive caching
+  const { data: organizationId, isLoading: orgLoading, isFetching: orgFetching } = useQuery({
+    queryKey: ["user-organization", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      const { data, error } = await supabase
         .from("profiles")
         .select("organization_id")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      console.log("[useUserRole] Profile fetch result:", { profileData, profileError: profileError?.message });
-
-      if (profileError) {
-        console.error("Error fetching profile:", profileError);
-      } else if (profileData) {
-        setOrganizationId(profileData.organization_id);
-      } else {
-        console.log("[useUserRole] No profile found for user");
+      if (error) {
+        console.error("[useUserRole] Error fetching profile:", error.message);
+        return null;
       }
-
-      // Update cache with fresh data
-      const finalRole = roleData?.role as AppRole | null ?? cached?.role ?? null;
-      const finalOrgId = profileData?.organization_id ?? cached?.organizationId ?? null;
-      console.log("[useUserRole] Final values:", { finalRole, finalOrgId });
-      setCachedRole(user.id, finalRole, finalOrgId);
       
-    } catch (err) {
-      console.error("Error fetching user role:", err);
-      if (!cached) setRole(null);
-    } finally {
-      setLoading(false);
-      setSyncing(false);
-    }
-  }, [user]);
+      console.log("[useUserRole] Profile fetch result:", { profileData: data });
+      return data?.organization_id ?? null;
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000, // Data stays fresh for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
 
-  // Initial fetch
-  useEffect(() => {
-    fetchRole();
-  }, [fetchRole]);
+  const role = roleData ?? null;
+  const loading = roleLoading || orgLoading;
+  const syncing = roleFetching || orgFetching;
 
-  // Listen for realtime changes to user_roles table
-  useEffect(() => {
-    if (!user) return;
+  // Memoize permissions to prevent unnecessary re-renders
+  return useMemo(() => {
+    const isSuperAdmin = role === "super_admin";
+    const isAdmin = role === "admin";
+    const isSupervisor = role === "supervisor";
+    const isAtendente = role === "atendente";
 
-    const channel = supabase
-      .channel('user-role-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'user_roles',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log('Role changed:', payload);
-          // Clear cache and refetch
-          clearCachedRole();
-          fetchRole(true);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    return {
+      role,
+      loading,
+      syncing,
+      organizationId: organizationId ?? null,
+      isSuperAdmin,
+      isAdmin,
+      isSupervisor,
+      isAtendente,
+      canAccessDisparos: isSuperAdmin || isAdmin || isSupervisor,
+      canAccessChatbot: isSuperAdmin || isAdmin || isSupervisor,
+      canAccessTemplates: isSuperAdmin || isAdmin || isSupervisor,
+      canAccessConexoes: isSuperAdmin || isAdmin || isSupervisor,
+      canAccessIntegracoes: isSuperAdmin || isAdmin || isSupervisor,
+      canAccessLeads: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
+      canAccessPipeline: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
+      canAccessUsuarios: isSuperAdmin || isAdmin,
+      canAccessSetores: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
+      canAccessSuperAdmin: isSuperAdmin,
     };
-  }, [user, fetchRole]);
-
-  const isSuperAdmin = role === "super_admin";
-  const isAdmin = role === "admin";
-  const isSupervisor = role === "supervisor";
-  const isAtendente = role === "atendente";
-
-  // Permission mappings based on role
-  return {
-    role,
-    loading,
-    syncing,
-    organizationId,
-    isSuperAdmin,
-    isAdmin,
-    isSupervisor,
-    isAtendente,
-    // Super admin has access to everything including super admin panel
-    // Admin has access to most things except super admin
-    // Supervisor has access to most things except user management
-    // Atendente has access to most things except Chatbot IA, Conexões, Integrações, Disparos
-    canAccessDisparos: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessChatbot: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessTemplates: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessConexoes: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessIntegracoes: isSuperAdmin || isAdmin || isSupervisor,
-    canAccessLeads: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
-    canAccessPipeline: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
-    canAccessUsuarios: isSuperAdmin || isAdmin,
-    canAccessSetores: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
-    canAccessSuperAdmin: isSuperAdmin,
-  };
+  }, [role, loading, syncing, organizationId]);
 }
