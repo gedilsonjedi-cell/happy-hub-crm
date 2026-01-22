@@ -2929,6 +2929,16 @@ const AtendimentoV2 = () => {
                                 </div>
                               )}
                               
+                              {/* Awaiting response indicator for campaign dispatches */}
+                              {conv.status === 'archived' && !conv.lastInboundTime && (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <Clock className="w-3 h-3 text-amber-500" />
+                                  <span className="text-[10px] text-amber-600 font-medium">
+                                    Aguardando resposta
+                                  </span>
+                                </div>
+                              )}
+                              
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
                                   {conv.lastMessage || "Sem mensagens"}
