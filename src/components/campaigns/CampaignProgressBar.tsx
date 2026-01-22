@@ -142,9 +142,15 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
               <Progress value={progress} className="h-2 bg-muted" />
               
               <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-purple-400">✓ {campaign.sent_count} enviadas</span>
                   <span className="text-green-400">✓ {campaign.delivered_count} entregues</span>
+                  {/* Show pending confirmation count - messages sent but no delivery confirmation yet */}
+                  {campaign.sent_count > campaign.delivered_count + campaign.failed_count && (
+                    <span className="text-amber-400">
+                      ⏳ {campaign.sent_count - campaign.delivered_count - (campaign.failed_count > 0 ? 0 : 0)} aguardando
+                    </span>
+                  )}
                   {campaign.failed_count > 0 && (
                     <span className="text-destructive">✗ {campaign.failed_count} falhas</span>
                   )}

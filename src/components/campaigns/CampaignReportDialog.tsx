@@ -99,8 +99,8 @@ interface CampaignReportDialogProps {
 
 // Recipient status display config
 const recipientStatusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
-  pending: { label: "Pendente", className: "bg-muted text-muted-foreground", icon: Clock },
-  sent: { label: "Enviado", className: "bg-purple-500/80 text-white", icon: CheckCircle },
+  pending: { label: "Na fila", className: "bg-muted text-muted-foreground", icon: Clock },
+  sent: { label: "Aguardando Meta", className: "bg-amber-500/80 text-white", icon: Clock },
   delivered: { label: "Entregue", className: "bg-green-500/80 text-white", icon: CheckCheck },
   read: { label: "Lida", className: "bg-violet-600 text-white", icon: Eye },
   failed: { label: "Falha", className: "bg-destructive text-white", icon: XCircle },
@@ -217,8 +217,18 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const metrics = useMemo(() => {
     const total = recipients.length;
     const pending = recipients.filter(r => r.status === "pending").length;
-    const sent = recipients.filter(r => r.status === "sent" || r.status === "delivered" || r.status === "read").length;
+    
+    // "sent" means Meta accepted the message - includes delivered and read
+    const sentToMeta = recipients.filter(r => r.status === "sent" || r.status === "delivered" || r.status === "read").length;
+    
+    // Actually delivered (confirmed by Meta webhook)
     const delivered = recipients.filter(r => r.status === "delivered" || r.status === "read" || r.delivered_at).length;
+    
+    // Waiting for Meta confirmation (sent but not delivered/failed yet)
+    const awaitingConfirmation = recipients.filter(r => 
+      r.status === "sent" && !r.delivered_at && !r.read_at
+    ).length;
+    
     const read = recipients.filter(r => r.status === "read" || r.read_at).length;
     const clicked = recipients.filter(r => r.button_clicked).length;
     const failed = recipients.filter(r => r.status === "failed").length;
@@ -227,12 +237,13 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
     const blocked = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "blocked").length;
     const templateError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "template_error").length;
     const apiError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "api_error").length;
-    const processed = sent + failed;
+    const processed = sentToMeta + failed;
 
     return {
       total,
       pending,
-      sent,
+      sent: sentToMeta,
+      awaitingConfirmation,
       delivered,
       read,
       clicked,
@@ -244,13 +255,14 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       apiError,
       processed,
       pendingPercent: total > 0 ? Math.round((pending / total) * 100) : 0,
-      sentPercent: total > 0 ? Math.round((sent / total) * 100) : 0,
+      sentPercent: total > 0 ? Math.round((sentToMeta / total) * 100) : 0,
+      awaitingPercent: total > 0 ? Math.round((awaitingConfirmation / total) * 100) : 0,
       deliveredPercent: total > 0 ? Math.round((delivered / total) * 100) : 0,
       readPercent: total > 0 ? Math.round((read / total) * 100) : 0,
       clickedPercent: total > 0 ? Math.round((clicked / total) * 100) : 0,
       failedPercent: total > 0 ? Math.round((failed / total) * 100) : 0,
-      engagementRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
-      deliveryRate: sent > 0 ? Math.round((delivered / sent) * 100) : 0,
+      engagementRate: sentToMeta > 0 ? Math.round((clicked / sentToMeta) * 100) : 0,
+      deliveryRate: sentToMeta > 0 ? Math.round((delivered / sentToMeta) * 100) : 0,
     };
   }, [recipients]);
 
@@ -355,8 +367,9 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 Relatório Detalhado
               </Badge>
             </div>
-            {/* Recycle Button - Only show when campaign is completed and has failures */}
-            {(campaign.status === "completed" || campaign.status === "paused") && metrics.failed > 0 && (
+            {/* Recycle Button - Show when campaign is completed and has failures OR awaiting messages */}
+            {(campaign.status === "completed" || campaign.status === "paused") && 
+              (metrics.failed > 0 || metrics.awaitingConfirmation > 0) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -364,7 +377,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 onClick={() => setShowRecycleDialog(true)}
               >
                 <RotateCcw className="w-4 h-4" />
-                Reenviar {metrics.failed} falhas
+                Reenviar {metrics.failed + metrics.awaitingConfirmation} não entregues
               </Button>
             )}
           </div>
@@ -434,6 +447,23 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <CheckCircle className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
+                  {/* Aguardando confirmação da Meta - THE KEY NEW METRIC */}
+                  {metrics.awaitingConfirmation > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-amber-400 w-24 font-medium">⏳ Aguardando</span>
+                      <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-500 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.awaitingConfirmation / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.awaitingPercent}%</span>
+                          <span className="text-xs text-white">{metrics.awaitingConfirmation}</span>
+                        </div>
+                      </div>
+                      <Clock className="w-4 h-4 text-amber-400" />
+                    </div>
+                  )}
+                  
                   {/* Delivered */}
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-muted-foreground w-24">Entregues</span>
@@ -474,7 +504,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.clicked > 0 && (
                         <div 
-                          className="h-full bg-amber-600 flex items-center justify-between px-2"
+                          className="h-full bg-cyan-600 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.clicked / metrics.total) * 100, 15)}%` }}
                         >
                           <span className="text-xs text-white font-medium">{metrics.clickedPercent}%</span>
@@ -617,8 +647,8 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas as situações</SelectItem>
-                    <SelectItem value="pending">Pendente</SelectItem>
-                    <SelectItem value="sent">Enviado</SelectItem>
+                    <SelectItem value="pending">Na fila</SelectItem>
+                    <SelectItem value="sent">Aguardando Meta</SelectItem>
                     <SelectItem value="delivered">Entregue</SelectItem>
                     <SelectItem value="read">Lida</SelectItem>
                     <SelectItem value="failed">Falha</SelectItem>
