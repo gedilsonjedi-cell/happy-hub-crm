@@ -1240,23 +1240,59 @@ Deno.serve(async (req) => {
         const messageId = status.id;
         const statusValue = status.status;
         const recipientPhone = status.recipient_id;
+        
+        // Extract error details if present (for failed messages)
+        const statusErrors = status.errors || [];
+        const firstError = statusErrors[0];
+        const metaErrorCode = firstError?.code;
+        const metaErrorMessage = firstError?.message || firstError?.title;
 
-        console.log('Processing status update:', { messageId, status: statusValue, recipientPhone });
+        console.log('Processing status update:', { messageId, status: statusValue, recipientPhone, errorCode: metaErrorCode });
 
         const { data: messageData } = await supabase
           .from('whatsapp_messages')
-          .select('id, status, metadata')
+          .select('id, status, metadata, error_message')
           .eq('message_id', messageId)
           .single();
 
         const previousStatus = messageData?.status;
+        
+        // Build update object - include error info if status is failed
+        const updateData: Record<string, unknown> = { 
+          status: statusValue,
+          updated_at: new Date().toISOString()
+        };
+        
+        // If failed, store the error message from Meta webhook (more accurate than API response)
+        if (statusValue === 'failed' && metaErrorCode) {
+          // Map of error codes to friendly messages in Portuguese
+          const errorMessages: Record<number, string> = {
+            131049: '(#131049) Limite de MARKETING atingido para este contato. A Meta limita mensagens de marketing por usuário. Use templates UTILITY.',
+            131026: '(#131026) Número sem WhatsApp ativo ou bloqueou mensagens comerciais.',
+            135000: '(#135000) Erro genérico do Meta. Recrie o template ou reconecte o número.',
+            131031: '(#131031) Conta restrita. O WhatsApp restringiu esta conta.',
+            131047: '(#131047) Limite de mensagens atingido. Aguarde.',
+            132001: '(#132001) Template não existe. Sincronize os templates.',
+            10: '(#10) Sem permissão para enviar. Configure no Meta Business.',
+            3: '(#3) Permissão granular ausente.',
+          };
+          
+          const friendlyError = errorMessages[metaErrorCode] || `(#${metaErrorCode}) ${metaErrorMessage || 'Erro desconhecido'}`;
+          updateData.error_message = friendlyError;
+          
+          // Also update metadata with error details
+          const existingMetadata = (messageData?.metadata || {}) as Record<string, unknown>;
+          updateData.metadata = {
+            ...existingMetadata,
+            webhookErrorCode: metaErrorCode,
+            webhookErrorMessage: metaErrorMessage,
+            webhookErrorDetails: firstError?.error_data?.details
+          };
+        }
 
         const { error: updateError } = await supabase
           .from('whatsapp_messages')
-          .update({ 
-            status: statusValue,
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('message_id', messageId);
 
         if (updateError) {
