@@ -5,8 +5,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const META_API_VERSION = 'v18.0';
+// Updated to latest stable Meta API version for better template delivery
+const META_API_VERSION = 'v22.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+
+// Retry configuration for transient errors
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1500;
+const RETRYABLE_ERROR_CODES = [
+  135000, // Generic user error - often transient
+  1,      // Internal error
+  2,      // Service unavailable
+  4,      // Rate limit (but we add exponential backoff)
+  100,    // Invalid parameter (sometimes transient)
+];
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Mime type fallback order for audio retries
 const AUDIO_MIME_FALLBACKS: { mimeType: string; filename: string }[] = [
@@ -506,29 +522,71 @@ Deno.serve(async (req) => {
 
     console.log('Meta API payload:', JSON.stringify(messagePayload));
 
-    const metaResponse = await fetch(
-      `${META_API_BASE}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(messagePayload)
+    // Retry logic for transient errors (especially #135000)
+    let lastError: unknown = null;
+    let lastResponseData: Record<string, unknown> | null = null;
+    let metaResponse: Response | null = null;
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Exponential backoff
+        console.log(`[Meta-Send] Retry attempt ${attempt}/${MAX_RETRIES} after ${delayMs}ms...`);
+        await sleep(delayMs);
       }
-    );
+      
+      try {
+        metaResponse = await fetch(
+          `${META_API_BASE}/${phoneNumberId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(messagePayload)
+          }
+        );
 
-    const responseData = await metaResponse.json();
-    console.log('Meta API response:', metaResponse.status, JSON.stringify(responseData));
+        const responseData = await metaResponse.json();
+        lastResponseData = responseData;
+        console.log(`[Meta-Send] Attempt ${attempt + 1} response:`, metaResponse.status, JSON.stringify(responseData));
 
-    if (!metaResponse.ok || responseData.error) {
-      const errorMessage = responseData.error?.message || 'Erro ao enviar mensagem via Meta API';
-      const errorCode = responseData.error?.code || 'UNKNOWN_ERROR';
-      console.error('Meta API error:', responseData.error);
+        if (metaResponse.ok && !responseData.error) {
+          // Success! Break out of retry loop
+          console.log(`[Meta-Send] Success on attempt ${attempt + 1}`);
+          break;
+        }
+        
+        // Check if this error is retryable
+        const errorCode = responseData.error?.code;
+        if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
+          console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
+          lastError = responseData.error;
+          continue;
+        }
+        
+        // Non-retryable error or max retries reached
+        lastError = responseData.error;
+        break;
+        
+      } catch (fetchError) {
+        console.error(`[Meta-Send] Fetch error on attempt ${attempt + 1}:`, fetchError);
+        lastError = fetchError;
+        if (attempt === MAX_RETRIES) break;
+      }
+    }
+
+    // Check final result
+    if (!metaResponse || !lastResponseData || !metaResponse.ok || lastResponseData.error) {
+      const errorMessage = (lastResponseData?.error as Record<string, string>)?.message || 'Erro ao enviar mensagem via Meta API';
+      const errorCode = (lastResponseData?.error as Record<string, number>)?.code || 'UNKNOWN_ERROR';
+      console.error('[Meta-Send] Final error after all attempts:', lastResponseData?.error || lastError);
       
       // Translate common Meta error codes to user-friendly messages
       let friendlyError = errorMessage;
-      if (errorCode === 131031 || errorMessage.includes('restricted')) {
+      if (errorCode === 135000) {
+        friendlyError = 'Erro genérico do Meta (#135000). Recomendação: recrie o template no Meta Business ou reconecte o número.';
+      } else if (errorCode === 131031 || errorMessage.includes('restricted')) {
         friendlyError = 'Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.';
       } else if (errorCode === 131047) {
         friendlyError = 'Limite de mensagens atingido. Aguarde antes de enviar mais mensagens.';
@@ -538,6 +596,8 @@ Deno.serve(async (req) => {
         friendlyError = 'Número de destino inválido ou não registrado no WhatsApp.';
       } else if (errorCode === 131051) {
         friendlyError = 'Formato de template incorreto ou parâmetros inválidos.';
+      } else if (errorCode === 131049) {
+        friendlyError = 'Limite de marketing atingido para este contato. A Meta limita mensagens de marketing por usuário.';
       }
       
       // Store failed message in database with error
@@ -571,7 +631,8 @@ Deno.serve(async (req) => {
             sent_by_human: userId !== 'service_role',
             campaignId: campaignId || null,
             originalError: errorMessage,
-            errorCode: errorCode
+            errorCode: errorCode,
+            retryAttempts: MAX_RETRIES + 1
           }
         });
       
@@ -579,14 +640,17 @@ Deno.serve(async (req) => {
         JSON.stringify({ 
           success: false, 
           error: friendlyError,
-          details: responseData.error,
-          messageId: failedMessageId
+          details: lastResponseData?.error,
+          messageId: failedMessageId,
+          errorCode: errorCode
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const messageId = responseData.messages?.[0]?.id || `out_${Date.now()}`;
+    
+    // Extract message ID from successful response
+    const messages = (lastResponseData as { messages?: Array<{ id?: string }> }).messages;
+    const messageId = messages?.[0]?.id || `out_${Date.now()}`;
 
     // Message sent successfully - debit balance
     if (channel.organization_id) {
