@@ -26,26 +26,42 @@ export function TagSelector({ selectedTags, onTagsChange, className }: TagSelect
 
   useEffect(() => {
     const fetchTags = async () => {
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
-      const { data } = await supabase
-        .from("lead_tags")
-        .select("id, name, color")
-        .eq("organization_id", profile.organization_id)
-        .order("name");
-
-      if (data) {
-        setTags(data);
+      if (!user) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile?.organization_id) {
+          console.warn("TagSelector: No organization_id found for user");
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("lead_tags")
+          .select("id, name, color")
+          .eq("organization_id", profile.organization_id)
+          .order("name");
+
+        if (error) {
+          console.error("TagSelector: Error fetching tags:", error);
+        }
+
+        if (data) {
+          setTags(data);
+        }
+      } catch (error) {
+        console.error("TagSelector: Unexpected error:", error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchTags();
