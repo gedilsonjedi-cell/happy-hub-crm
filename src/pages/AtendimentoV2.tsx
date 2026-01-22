@@ -1558,6 +1558,23 @@ const AtendimentoV2 = () => {
                 tags: leadTags
               };
               
+              // Check again if conversation was added by another code path (race condition prevention)
+              const alreadyExists = prev.some(c => {
+                const cNorm = c.phone.replace(/\D/g, '');
+                return cNorm === normalizedPhone && c.channelId === assignment.channel_id;
+              });
+              
+              if (alreadyExists) {
+                // Update existing instead of adding duplicate
+                return prev.map(c => {
+                  const cNorm = c.phone.replace(/\D/g, '');
+                  if (cNorm === normalizedPhone && c.channelId === assignment.channel_id) {
+                    return { ...c, ...newConv };
+                  }
+                  return c;
+                });
+              }
+              
               return [newConv, ...prev];
             }
             
@@ -2374,6 +2391,21 @@ const AtendimentoV2 = () => {
         // Continue anyway - at least try to show in UI
       } else {
         console.log('Persisted conversation assignment to database:', normalizedPhone);
+        
+        // Also update local state to archive any other pending conversations for the same phone
+        // This prevents the same number from appearing in both "Novos" and "Meus"
+        const phoneSuffix = normalizedPhone.slice(-8);
+        setAllConversations(prev => prev.map(c => {
+          const cPhone = c.phone.replace(/\D/g, '');
+          // If same phone (by suffix), different channel, pending, and unassigned -> archive locally
+          if (cPhone.endsWith(phoneSuffix) && 
+              c.channelId !== data.channelId && 
+              c.status === 'pending' && 
+              !c.assignedTo) {
+            return { ...c, status: 'archived' as const };
+          }
+          return c;
+        }));
       }
     }
     
@@ -2486,8 +2518,24 @@ const AtendimentoV2 = () => {
       tags: leadTags
     };
     
-    // Add to conversations list
-    setAllConversations(prev => [newConv, ...prev]);
+    // Add or update in conversations list - AVOID DUPLICATES
+    const newConvKey = `${data.channelId}_${normalizedPhone}`;
+    setAllConversations(prev => {
+      // Check if conversation already exists for this channel+phone
+      const existingIdx = prev.findIndex(c => 
+        `${c.channelId}_${c.phone.replace(/\D/g, '')}` === newConvKey
+      );
+      
+      if (existingIdx >= 0) {
+        // Update existing conversation in place
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], ...newConv };
+        return updated;
+      }
+      
+      // Add new conversation at the beginning
+      return [newConv, ...prev];
+    });
     
     // Select the new conversation and switch to "Meus" tab
     setSelectedConversation(newConv);
