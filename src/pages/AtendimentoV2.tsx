@@ -2398,15 +2398,10 @@ const AtendimentoV2 = () => {
     
     // CRITICAL: Persist conversation assignment to database FIRST
     // This ensures the conversation persists even after page refresh
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('organization_id')
-      .eq('user_id', user?.id)
-      .single();
-    
+    // Use effectiveOrganizationId (not profiles query) for multi-tenant support
     let assignmentId: string | null = null;
     
-    if (user?.id && userProfile?.organization_id) {
+    if (user?.id && effectiveOrganizationId) {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
@@ -2415,7 +2410,7 @@ const AtendimentoV2 = () => {
         .upsert({
           channel_id: data.channelId,
           conversation_phone: normalizedPhone,
-          organization_id: userProfile.organization_id,
+          organization_id: effectiveOrganizationId, // Use effective org ID for super admin support
           assigned_to: user.id,
           assigned_at: now,
           status: 'in_progress',
@@ -2434,7 +2429,7 @@ const AtendimentoV2 = () => {
         // Continue anyway - at least try to show in UI
       } else {
         assignmentId = assignmentData?.id || null;
-        console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
+        console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId, 'org:', effectiveOrganizationId);
       }
     }
     
@@ -2507,7 +2502,7 @@ const AtendimentoV2 = () => {
       const { data: leadData } = await supabase
         .from('leads')
         .select('id, name, tags')
-        .eq('organization_id', userProfile?.organization_id || effectiveOrganizationId)
+        .eq('organization_id', effectiveOrganizationId)
         .or(`phone.ilike.%${phoneSuffix8}%`)
         .limit(1)
         .maybeSingle();
@@ -3592,7 +3587,7 @@ const AtendimentoV2 = () => {
         />
       )}
 
-      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} onTemplateSent={handleManualTemplateSent} />
+      <ManualSendDialog isOpen={showManualSendDialog} onClose={() => { setShowManualSendDialog(false); setManualPhoneInput(""); }} channels={channels} selectedChannel={selectedChannel} onChannelChange={setSelectedChannel} initialPhone={manualPhoneInput} onPhoneUsed={() => setManualPhoneInput("")} onTemplateSent={handleManualTemplateSent} organizationId={effectiveOrganizationId || undefined} />
 
       {selectedConversation && <FollowUpDialog isOpen={showFollowUpDialog} onClose={() => setShowFollowUpDialog(false)} leadId={null} leadName={selectedConversation?.name || selectedConversation?.phone || ""} leadPhone={selectedConversation?.phone || ""} channelId={selectedConversation?.channelId || null} />}
 

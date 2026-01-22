@@ -59,6 +59,7 @@ interface ManualSendDialogProps {
     templateName: string;
     templateContent: string;
   }) => void;
+  organizationId?: string; // Effective organization ID for multi-tenant support
 }
 
 export const ManualSendDialog = ({ 
@@ -69,7 +70,8 @@ export const ManualSendDialog = ({
   onChannelChange,
   initialPhone = "",
   onPhoneUsed,
-  onTemplateSent
+  onTemplateSent,
+  organizationId
 }: ManualSendDialogProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -216,40 +218,34 @@ export const ManualSendDialog = ({
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
       
-      if (userId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('organization_id')
-          .eq('user_id', userId)
-          .single();
+      // Use organizationId prop (effectiveOrganizationId) instead of querying profiles
+      // This ensures super admins use the org they're acting on, not their own org
+      if (userId && organizationId) {
+        const now = new Date().toISOString();
+        const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         
-        if (profile?.organization_id) {
-          const now = new Date().toISOString();
-          const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-          
-          const { error: assignmentError } = await supabase
-            .from('conversation_assignments')
-            .upsert({
-              channel_id: selectedChannel.id,
-              conversation_phone: formattedPhone,
-              organization_id: profile.organization_id,
-              assigned_to: userId,
-              assigned_at: now,
-              status: 'in_progress',
-              is_bot_handling: false,
-              bot_paused_until: botPausedUntil,
-              updated_at: now
-            }, {
-              onConflict: 'conversation_phone,channel_id',
-              ignoreDuplicates: false
-            });
-          
-          if (assignmentError) {
-            console.error('Error creating conversation assignment:', assignmentError);
-            // Don't fail the whole operation, just log it
-          } else {
-            console.log('Created conversation assignment BEFORE send:', formattedPhone);
-          }
+        const { error: assignmentError } = await supabase
+          .from('conversation_assignments')
+          .upsert({
+            channel_id: selectedChannel.id,
+            conversation_phone: formattedPhone,
+            organization_id: organizationId, // Use effective org ID, not profile org
+            assigned_to: userId,
+            assigned_at: now,
+            status: 'in_progress',
+            is_bot_handling: false,
+            bot_paused_until: botPausedUntil,
+            updated_at: now
+          }, {
+            onConflict: 'conversation_phone,channel_id',
+            ignoreDuplicates: false
+          });
+        
+        if (assignmentError) {
+          console.error('Error creating conversation assignment:', assignmentError);
+          // Don't fail the whole operation, just log it
+        } else {
+          console.log('Created conversation assignment BEFORE send:', formattedPhone, 'org:', organizationId);
         }
       }
 
