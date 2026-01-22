@@ -22,6 +22,7 @@ import {
   Clock,
   Zap,
   Plug,
+  ShoppingCart,
   Sun,
   Moon
 } from "lucide-react";
@@ -109,6 +110,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Templates", path: "/templates", icon: FileText },
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
         { label: "Higienização", path: "/higienizacao", icon: Zap },
+        { label: "Loja", path: "/loja", icon: ShoppingCart },
       ]
     },
     { label: "Relatórios", path: "/relatorios", icon: BarChart3 },
