@@ -50,10 +50,12 @@ import {
   CheckCheck,
   MessageCircle,
   Target,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { ConversationPreviewDialog } from "./ConversationPreviewDialog";
+import { RecycleFailuresDialog } from "./RecycleFailuresDialog";
 
 interface Campaign {
   id: string;
@@ -92,6 +94,7 @@ interface CampaignReportDialogProps {
   campaign: Campaign | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onRecycleSuccess?: () => void;
 }
 
 // Recipient status display config
@@ -136,7 +139,7 @@ const classificationLabels: Record<string, string> = {
   api_error: "Erro de API",
 };
 
-export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignReportDialogProps) {
+export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSuccess }: CampaignReportDialogProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -144,6 +147,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
   const [classificationFilter, setClassificationFilter] = useState<string>("all");
   const [previewPhone, setPreviewPhone] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
+  const [showRecycleDialog, setShowRecycleDialog] = useState(false);
 
   useEffect(() => {
     if (open && campaign) {
@@ -344,11 +348,25 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl bg-card border-border max-h-[95vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <DialogTitle className="text-xl text-foreground">{campaign.name}</DialogTitle>
-            <Badge variant="outline" className="text-xs">
-              Relatório Detalhado
-            </Badge>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <DialogTitle className="text-xl text-foreground">{campaign.name}</DialogTitle>
+              <Badge variant="outline" className="text-xs">
+                Relatório Detalhado
+              </Badge>
+            </div>
+            {/* Recycle Button - Only show when campaign is completed and has failures */}
+            {(campaign.status === "completed" || campaign.status === "paused") && metrics.failed > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+                onClick={() => setShowRecycleDialog(true)}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reenviar {metrics.failed} falhas
+              </Button>
+            )}
           </div>
           <DialogDescription className="text-muted-foreground">
             Métricas de conversão e lista de destinatários
@@ -775,6 +793,26 @@ export function CampaignReportDialog({ campaign, open, onOpenChange }: CampaignR
           phone={previewPhone || ""}
           name={previewName}
           organizationId={campaign?.organization_id}
+        />
+
+        {/* Recycle Failures Dialog */}
+        <RecycleFailuresDialog
+          campaign={campaign ? {
+            id: campaign.id,
+            name: campaign.name,
+            failed_count: metrics.failed,
+            sector_id: undefined, // Not available in this interface
+            chatbot_enabled: campaign.chatbot_enabled,
+            chatbot_id: undefined,
+            min_interval: campaign.min_interval,
+            max_interval: campaign.max_interval,
+          } : null}
+          open={showRecycleDialog}
+          onOpenChange={setShowRecycleDialog}
+          onSuccess={() => {
+            setShowRecycleDialog(false);
+            onRecycleSuccess?.();
+          }}
         />
       </DialogContent>
     </Dialog>
