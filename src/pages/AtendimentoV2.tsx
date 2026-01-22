@@ -1121,19 +1121,23 @@ const AtendimentoV2 = () => {
             
             if (selectedConversationKey === msgConversationKey) {
               setMessages(prev => {
-                const exists = prev.some(m => 
+                // Enhanced deduplication: check by message_id, id, or optimistic match
+                const existingIndex = prev.findIndex(m => 
                   m.message_id === newMsg.message_id || 
                   m.id === newMsg.id ||
-                  (newMsg.direction === "outbound" && m.direction === "outbound" && m.content === newMsg.content && m.id.startsWith('temp_'))
+                  // Match optimistic template messages by content + direction + recent timestamp
+                  (newMsg.direction === "outbound" && 
+                   m.direction === "outbound" && 
+                   m.content === newMsg.content && 
+                   m.id.startsWith('temp_') &&
+                   Math.abs(new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 10000)
                 );
                 
-                if (exists) {
-                  return prev.map(m => {
-                    if (m.id.startsWith('temp_') && m.direction === "outbound" && m.content === newMsg.content) {
-                      return { ...newMsg };
-                    }
-                    return m;
-                  });
+                if (existingIndex >= 0) {
+                  // Replace optimistic message with real one from database
+                  const updated = [...prev];
+                  updated[existingIndex] = { ...newMsg };
+                  return updated;
                 }
                 
                 return [...prev, newMsg];
@@ -2247,6 +2251,27 @@ const AtendimentoV2 = () => {
     
     setSendingMessage(true);
 
+    // CRITICAL: Create optimistic message BEFORE API call to prevent duplication
+    // The Realtime handler will find this and update it instead of adding a duplicate
+    const tempId = `temp_template_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      channel_id: conversationChannelId,
+      message_id: tempId, // Temporary, will be updated with real messageId
+      sender_phone: conversationChannel?.phone || "",
+      sender_name: null,
+      message_type: "template",
+      content: `Template: ${templateName}`,
+      media_url: null,
+      direction: "outbound",
+      status: "sending", // Show "sending" status while waiting for API
+      created_at: new Date().toISOString(),
+      metadata: { destination: selectedConversation.phone, templateName, templateParams }
+    };
+    
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
@@ -2259,65 +2284,42 @@ const AtendimentoV2 = () => {
       });
 
       if (error) {
-        const failedMessage: Message = {
-          id: `temp_failed_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: `failed_template_${Date.now()}`,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: "template",
-          content: `Template: ${templateName}`,
-          media_url: null,
-          direction: "outbound",
-          status: "failed",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone, templateName, templateParams },
-          error_message: 'Erro de conexão ao enviar template'
-        };
-        setMessages(prev => [...prev, failedMessage]);
+        // Update existing optimistic message to failed
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, status: "failed", error_message: 'Erro de conexão ao enviar template' }
+            : m
+        ));
         toast.error('Erro ao enviar template');
         setSendingMessage(false);
         return;
       }
 
       if (data.success) {
-        const optimisticMessage: Message = {
-          id: `temp_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: data.messageId,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: "template",
-          content: `Template: ${templateName}`,
-          media_url: null,
-          direction: "outbound",
-          status: "sent",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone, templateName, templateParams }
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
+        // Update existing optimistic message with real messageId and success status
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, message_id: data.messageId, status: "sent" }
+            : m
+        ));
         toast.success("Template enviado!");
       } else {
         const errorMsg = data.error || 'Erro ao enviar template';
-        const failedMessage: Message = {
-          id: `temp_failed_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: data.messageId || `failed_template_${Date.now()}`,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: "template",
-          content: `Template: ${templateName}`,
-          media_url: null,
-          direction: "outbound",
-          status: "failed",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone, templateName, templateParams },
-          error_message: errorMsg
-        };
-        setMessages(prev => [...prev, failedMessage]);
+        // Update existing optimistic message to failed
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, message_id: data.messageId || tempId, status: "failed", error_message: errorMsg }
+            : m
+        ));
         toast.error(errorMsg);
       }
     } catch {
+      // Update existing optimistic message to failed
+      setMessages(prev => prev.map(m => 
+        m.id === tempId 
+          ? { ...m, status: "failed", error_message: 'Erro inesperado ao enviar template' }
+          : m
+      ));
       toast.error('Erro ao enviar template');
     }
 
