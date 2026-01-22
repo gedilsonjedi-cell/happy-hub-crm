@@ -373,6 +373,38 @@ Deno.serve(async (req) => {
       pricePerMessage
     });
 
+    // CRITICAL: Create/update conversation assignment BEFORE sending the message
+    // This ensures the conversation persists even if Meta API fails
+    if (userId && userId !== 'service_role') {
+      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+      
+      // Upsert: create if doesn't exist, update if exists
+      // Uses unique constraint on (conversation_phone, channel_id)
+      const { error: assignmentError } = await serviceRoleClient
+        .from('conversation_assignments')
+        .upsert({
+          channel_id: channelId,
+          conversation_phone: cleanDestination,
+          organization_id: channel.organization_id,
+          assigned_to: userId,
+          assigned_at: now,
+          status: 'in_progress',
+          is_bot_handling: false,
+          bot_paused_until: botPausedUntil,
+          updated_at: now
+        }, {
+          onConflict: 'conversation_phone,channel_id',
+          ignoreDuplicates: false
+        });
+      
+      if (assignmentError) {
+        console.error('Error upserting conversation assignment:', assignmentError);
+      } else {
+        console.log('Ensured conversation assignment BEFORE send:', cleanDestination, 'assigned to:', userId);
+      }
+    }
+
     let messagePayload: Record<string, unknown> = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -725,53 +757,8 @@ Deno.serve(async (req) => {
         }
       });
     
-    // When a human sends a message manually, ensure the conversation is assigned to them
-    // This creates or updates the conversation assignment to put it in "Meus" (active, assigned to user)
-    if (userId && userId !== 'service_role') {
-      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const now = new Date().toISOString();
-      
-      // Check if conversation assignment already exists
-      const { data: existingAssignment } = await serviceRoleClient
-        .from('conversation_assignments')
-        .select('id')
-        .eq('channel_id', channelId)
-        .eq('conversation_phone', cleanDestination)
-        .single();
-      
-      if (existingAssignment) {
-        // Update existing assignment - assign to this user and set to in_progress
-        await serviceRoleClient
-          .from('conversation_assignments')
-          .update({ 
-            bot_paused_until: botPausedUntil,
-            is_bot_handling: false,
-            assigned_to: userId,
-            assigned_at: now,
-            status: 'in_progress',
-            updated_at: now
-          })
-          .eq('id', existingAssignment.id);
-        
-        console.log('Updated conversation assignment for manual send:', cleanDestination, 'assigned to:', userId, 'status: in_progress');
-      } else {
-        // Create new assignment - this ensures the conversation appears in "Meus"
-        await serviceRoleClient
-          .from('conversation_assignments')
-          .insert({
-            channel_id: channelId,
-            conversation_phone: cleanDestination,
-            organization_id: channel.organization_id,
-            assigned_to: userId,
-            assigned_at: now,
-            status: 'in_progress',
-            is_bot_handling: false,
-            bot_paused_until: botPausedUntil
-          });
-        
-        console.log('Created new conversation assignment for manual send:', cleanDestination, 'assigned to:', userId, 'status: in_progress');
-      }
-    }
+    // NOTE: Conversation assignment is now created BEFORE the send attempt (line ~375)
+    // This ensures conversations persist even when Meta API fails
 
     return new Response(
       JSON.stringify({ 
