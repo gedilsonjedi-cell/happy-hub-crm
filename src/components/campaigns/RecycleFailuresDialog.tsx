@@ -63,7 +63,7 @@ export function RecycleFailuresDialog({
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(false);
-  const [failedRecipients, setFailedRecipients] = useState<{ phone: string; name: string | null }[]>([]);
+  const [failedRecipients, setFailedRecipients] = useState<{ phone: string; name: string | null; status?: string }[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<ChannelTemplate[]>([]);
@@ -86,12 +86,13 @@ export function RecycleFailuresDialog({
     
     setLoading(true);
     try {
-      // Fetch failed recipients
+      // Fetch failed recipients AND sent but not delivered (awaiting Meta confirmation)
+      // These are messages that Meta accepted but never confirmed delivery
       const { data: recipients } = await supabase
         .from("campaign_recipients")
-        .select("phone, name")
+        .select("phone, name, status, delivered_at")
         .eq("campaign_id", campaign.id)
-        .eq("status", "failed");
+        .or("status.eq.failed,and(status.eq.sent,delivered_at.is.null)");
       
       setFailedRecipients(recipients || []);
 
@@ -279,21 +280,30 @@ export function RecycleFailuresDialog({
         ) : failedRecipients.length === 0 ? (
           <div className="py-8 text-center">
             <AlertTriangle className="w-12 h-12 text-warning mx-auto mb-4" />
-            <p className="text-muted-foreground">Nenhum destinatário com falha para reciclar</p>
+            <p className="text-muted-foreground">Nenhum destinatário para reenviar</p>
+            <p className="text-sm text-muted-foreground mt-2">Todas as mensagens foram entregues com sucesso!</p>
           </div>
         ) : (
           <div className="space-y-4 py-4">
             {/* Summary */}
             <div className="bg-muted/30 rounded-lg p-4 border border-border">
               <div className="flex items-center gap-3 mb-2">
-                <Users className="w-5 h-5 text-destructive" />
+                <Users className="w-5 h-5 text-amber-500" />
                 <span className="font-medium text-foreground">
-                  {failedRecipients.length} destinatários com falha
+                  {failedRecipients.length} destinatários não entregues
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-2">
                 Campanha original: <strong>{campaign?.name}</strong>
               </p>
+              <div className="text-xs text-muted-foreground flex flex-wrap gap-3">
+                <span className="text-destructive">
+                  • {failedRecipients.filter(r => r.status === "failed").length} falhas confirmadas
+                </span>
+                <span className="text-amber-400">
+                  • {failedRecipients.filter(r => r.status === "sent").length} aguardando Meta
+                </span>
+              </div>
             </div>
 
             {/* Campaign Name */}
@@ -356,7 +366,7 @@ export function RecycleFailuresDialog({
             ) : (
               <>
                 <RefreshCw className="w-4 h-4" />
-                Reciclar {failedRecipients.length} falhas
+                Reenviar {failedRecipients.length} não entregues
               </>
             )}
           </Button>
