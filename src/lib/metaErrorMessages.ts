@@ -176,9 +176,10 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
   
   // Additional common errors
   "135000": {
-    title: "Erro genérico",
-    description: "Ocorreu um erro ao processar a mensagem.",
-    suggestion: "Tente novamente. Se persistir, contate o suporte."
+    title: "Erro genérico do Meta",
+    description: "A Meta retornou um erro interno ao processar o template. Este é um problema conhecido da plataforma.",
+    suggestion: "SOLUÇÃO: 1) Recrie o template no Meta Business Manager, ou 2) Remova e adicione novamente o número de telefone nas configurações do WhatsApp Business.",
+    link: "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes"
   },
   "400": {
     title: "Requisição inválida",
