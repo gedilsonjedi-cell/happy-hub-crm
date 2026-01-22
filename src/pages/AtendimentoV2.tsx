@@ -272,12 +272,15 @@ const AtendimentoV2 = () => {
   // Track conversations with recent new messages for visual highlight
   const [recentlyUpdatedConversations, setRecentlyUpdatedConversations] = useState<Set<string>>(new Set());
 
-  // Fetch quick responses for shortcut detection
+  // Fetch quick responses for shortcut detection - memoized to prevent refetches
   useEffect(() => {
+    if (!user || !effectiveOrganizationId) return;
+    
     const fetchQuickResponses = async () => {
       const { data } = await supabase
         .from("quick_responses")
         .select("shortcut, content")
+        .eq("organization_id", effectiveOrganizationId)
         .not("shortcut", "is", null);
       
       if (data) {
@@ -285,10 +288,8 @@ const AtendimentoV2 = () => {
       }
     };
     
-    if (user) {
-      fetchQuickResponses();
-    }
-  }, [user]);
+    fetchQuickResponses();
+  }, [user, effectiveOrganizationId]);
 
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
@@ -897,7 +898,7 @@ const AtendimentoV2 = () => {
   useEffect(() => {
     if (channels.length === 0) return;
 
-    const channelSubscriptions = channels.map(ch => 
+    const channelSubscriptions = channels.map(ch =>
       supabase
         .channel(`atendimento-v2-${ch.id}`)
         .on(

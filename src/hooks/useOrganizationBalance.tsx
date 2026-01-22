@@ -70,6 +70,9 @@ export function useOrganizationBalance(organizationId?: string) {
       return data as OrganizationBalance | null;
     },
     enabled: !!effectiveOrgId,
+    staleTime: 30 * 1000, // Data stays fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false,
   });
 
   // Subscribe to realtime balance updates
@@ -134,6 +137,9 @@ export function useOrganizationBalance(organizationId?: string) {
       return data as BalanceTransaction[];
     },
     enabled: !!effectiveOrgId,
+    staleTime: 60 * 1000, // Data stays fresh for 1 minute
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false,
   });
 
   // Check if has sufficient balance
