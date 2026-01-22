@@ -1618,6 +1618,7 @@ const Disparos = () => {
         campaign={selectedCampaign}
         open={showReportDialog}
         onOpenChange={setShowReportDialog}
+        onRecycleSuccess={fetchData}
       />
 
       {/* Legacy Campaign Details Dialog */}
