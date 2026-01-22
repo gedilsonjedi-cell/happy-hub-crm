@@ -115,6 +115,7 @@ interface ConversationNote {
 }
 
 interface Conversation {
+  id?: string; // ID do conversation_assignment no banco
   phone: string;
   name: string | null;
   lastMessage: string;
@@ -128,6 +129,15 @@ interface Conversation {
   sectorId: string | null;
   tags: string[] | null;
 }
+
+// Helper function to normalize phone numbers consistently
+const normalizePhoneNumber = (phone: string): string => {
+  let normalized = phone.replace(/\D/g, '');
+  if (normalized.length <= 11 && !normalized.startsWith('55')) {
+    normalized = '55' + normalized;
+  }
+  return normalized;
+};
 
 interface Channel {
   id: string;
@@ -204,6 +214,9 @@ const AtendimentoV2 = () => {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canSeeSector, canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  
+  // Ref to track locally created conversations to prevent realtime duplicates
+  const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
   
   // Filter conversations based on user's sector access
@@ -688,6 +701,7 @@ const AtendimentoV2 = () => {
         else if (assignment.status === "pending") mappedStatus = "pending";
 
         return {
+          id: assignment.id, // Include assignment ID for unique identification
           phone: displayPhone,
           name: leadInfo?.name || lastMsgInfo?.senderName || null,
           lastMessage: lastMsgInfo?.content || "",
@@ -1459,6 +1473,7 @@ const AtendimentoV2 = () => {
         },
         async (payload) => {
           const assignment = payload.new as { 
+            id: string;
             conversation_phone: string; 
             channel_id: string | null; 
             assigned_to: string | null;
@@ -1490,20 +1505,51 @@ const AtendimentoV2 = () => {
           else if (assignment.status === "pending") mappedStatus = "pending";
           else if (assignment.status === "in_progress") mappedStatus = "in_progress";
           
-          // Check if conversation exists
+          // Check if this was locally created - skip realtime processing to avoid duplicates
+          const convKey = `${assignment.channel_id}_${normalizePhoneNumber(normalizedPhone)}`;
+          if (locallyCreatedConversationsRef.current.has(convKey)) {
+            console.log('Skipping realtime update for locally created conversation:', convKey);
+            // Still update existing with latest DB info (e.g., ID)
+            setAllConversations(prev => prev.map(c => {
+              const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+              if (cKey === convKey) {
+                return { 
+                  ...c, 
+                  id: assignment.id, // Ensure we have the DB ID
+                  assignedTo: assignment.assigned_to,
+                  assignedToName: assignedToName,
+                  sectorId: assignment.sector_id || c.sectorId,
+                  status: mappedStatus
+                };
+              }
+              return c;
+            }));
+            return;
+          }
+          
+          // Check if conversation exists by ID first, then by phone+channel
           setAllConversations(prev => {
-            const existing = prev.find(c => {
-              const cNormalized = c.phone.replace(/\D/g, '');
-              return cNormalized === normalizedPhone && c.channelId === assignment.channel_id;
-            });
+            // First try to find by ID (most reliable)
+            let existing = assignment.id ? prev.find(c => c.id === assignment.id) : null;
+            
+            // Fallback to phone+channel matching
+            if (!existing) {
+              existing = prev.find(c => {
+                const cNormalized = normalizePhoneNumber(c.phone);
+                const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
+                return cNormalized === assignmentNormalized && c.channelId === assignment.channel_id;
+              });
+            }
             
             if (existing) {
               // Update existing conversation
               return prev.map(c => {
-                const cNormalized = c.phone.replace(/\D/g, '');
-                if (cNormalized === normalizedPhone && c.channelId === assignment.channel_id) {
+                const isMatch = c.id === assignment.id || 
+                  (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && c.channelId === assignment.channel_id);
+                if (isMatch) {
                   return { 
                     ...c, 
+                    id: assignment.id,
                     assignedTo: assignment.assigned_to,
                     assignedToName: assignedToName,
                     sectorId: assignment.sector_id || c.sectorId,
@@ -1540,10 +1586,11 @@ const AtendimentoV2 = () => {
                 if (leadName && leadTags && leadTags.length > 0) break;
               }
               
-              const displayPhone = '+' + normalizedPhone;
+              const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
               
-              // Create new conversation
+              // Create new conversation with ID
               const newConv: Conversation = {
+                id: assignment.id,
                 phone: displayPhone,
                 name: leadName,
                 lastMessage: "Template enviado",
@@ -1557,23 +1604,6 @@ const AtendimentoV2 = () => {
                 sectorId: assignment.sector_id || null,
                 tags: leadTags
               };
-              
-              // Check again if conversation was added by another code path (race condition prevention)
-              const alreadyExists = prev.some(c => {
-                const cNorm = c.phone.replace(/\D/g, '');
-                return cNorm === normalizedPhone && c.channelId === assignment.channel_id;
-              });
-              
-              if (alreadyExists) {
-                // Update existing instead of adding duplicate
-                return prev.map(c => {
-                  const cNorm = c.phone.replace(/\D/g, '');
-                  if (cNorm === normalizedPhone && c.channelId === assignment.channel_id) {
-                    return { ...c, ...newConv };
-                  }
-                  return c;
-                });
-              }
               
               return [newConv, ...prev];
             }
@@ -2354,8 +2384,17 @@ const AtendimentoV2 = () => {
     templateName: string;
     templateContent: string;
   }) => {
-    const normalizedPhone = data.phone.replace(/\D/g, '');
-    const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
+    const normalizedPhone = normalizePhoneNumber(data.phone);
+    const displayPhone = '+' + normalizedPhone;
+    
+    // Mark this conversation as locally created to prevent realtime duplicates
+    const convKey = `${data.channelId}_${normalizedPhone}`;
+    locallyCreatedConversationsRef.current.add(convKey);
+    
+    // Remove from set after 5 seconds to allow future realtime updates
+    setTimeout(() => {
+      locallyCreatedConversationsRef.current.delete(convKey);
+    }, 5000);
     
     // CRITICAL: Persist conversation assignment to database FIRST
     // This ensures the conversation persists even after page refresh
@@ -2365,11 +2404,13 @@ const AtendimentoV2 = () => {
       .eq('user_id', user?.id)
       .single();
     
+    let assignmentId: string | null = null;
+    
     if (user?.id && userProfile?.organization_id) {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      const { error: assignmentError } = await supabase
+      const { data: assignmentData, error: assignmentError } = await supabase
         .from('conversation_assignments')
         .upsert({
           channel_id: data.channelId,
@@ -2384,43 +2425,33 @@ const AtendimentoV2 = () => {
         }, {
           onConflict: 'conversation_phone,channel_id',
           ignoreDuplicates: false
-        });
+        })
+        .select('id')
+        .single();
       
       if (assignmentError) {
         console.error('Error persisting conversation assignment:', assignmentError);
         // Continue anyway - at least try to show in UI
       } else {
-        console.log('Persisted conversation assignment to database:', normalizedPhone);
-        
-        // Also update local state to archive any other pending conversations for the same phone
-        // This prevents the same number from appearing in both "Novos" and "Meus"
-        const phoneSuffix = normalizedPhone.slice(-8);
-        setAllConversations(prev => prev.map(c => {
-          const cPhone = c.phone.replace(/\D/g, '');
-          // If same phone (by suffix), different channel, pending, and unassigned -> archive locally
-          if (cPhone.endsWith(phoneSuffix) && 
-              c.channelId !== data.channelId && 
-              c.status === 'pending' && 
-              !c.assignedTo) {
-            return { ...c, status: 'archived' as const };
-          }
-          return c;
-        }));
+        assignmentId = assignmentData?.id || null;
+        console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
       }
     }
     
     // Check if conversation already exists in local state
-    const existingConv = allConversations.find(c => 
-      c.channelId === data.channelId && 
-      c.phone.replace(/\D/g, '') === normalizedPhone
-    );
+    const existingConv = allConversations.find(c => {
+      const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+      return cKey === convKey;
+    });
     
     if (existingConv) {
       // Update existing conversation and assign to current user
       setAllConversations(prev => prev.map(c => {
-        if (c.channelId === data.channelId && c.phone.replace(/\D/g, '') === normalizedPhone) {
+        const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+        if (cKey === convKey) {
           return {
             ...c,
+            id: assignmentId || c.id,
             lastMessage: `Template: ${data.templateName}`,
             lastMessageTime: new Date().toISOString(),
             status: "in_progress" as const,
@@ -2432,8 +2463,9 @@ const AtendimentoV2 = () => {
       }));
       
       // Select and navigate to this conversation
-      const updatedConv = {
+      const updatedConv: Conversation = {
         ...existingConv,
+        id: assignmentId || existingConv.id,
         lastMessage: `Template: ${data.templateName}`,
         lastMessageTime: new Date().toISOString(),
         status: "in_progress" as const,
@@ -2502,8 +2534,9 @@ const AtendimentoV2 = () => {
         .eq('conversation_phone', normalizedPhone);
     }
     
-    // Create new conversation in local state
+    // Create new conversation in local state with ID
     const newConv: Conversation = {
+      id: assignmentId || undefined,
       phone: displayPhone,
       name: leadName,
       lastMessage: `Template: ${data.templateName}`,
@@ -2518,18 +2551,22 @@ const AtendimentoV2 = () => {
       tags: leadTags
     };
     
-    // Add or update in conversations list - AVOID DUPLICATES
-    const newConvKey = `${data.channelId}_${normalizedPhone}`;
+    // Add or update in conversations list - AVOID DUPLICATES using normalized key
     setAllConversations(prev => {
-      // Check if conversation already exists for this channel+phone
-      const existingIdx = prev.findIndex(c => 
-        `${c.channelId}_${c.phone.replace(/\D/g, '')}` === newConvKey
-      );
+      // Check if conversation already exists for this channel+phone using normalized comparison
+      const existingIdx = prev.findIndex(c => {
+        const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+        return cKey === convKey;
+      });
       
       if (existingIdx >= 0) {
         // Update existing conversation in place
         const updated = [...prev];
-        updated[existingIdx] = { ...updated[existingIdx], ...newConv };
+        updated[existingIdx] = { 
+          ...updated[existingIdx], 
+          ...newConv,
+          id: assignmentId || updated[existingIdx].id // Preserve ID if we have one
+        };
         return updated;
       }
       
