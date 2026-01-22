@@ -29,8 +29,6 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
-import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -62,24 +60,8 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
   const { isImpersonating, setSelectedOrganization } = useSuperAdmin();
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const unreadCount = useUnreadMessagesCount();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { currentBalance } = useOrganizationBalance();
   const { theme, setTheme } = useTheme();
-  const [organizationName, setOrganizationName] = useState<string>("");
   const [userProfile, setUserProfile] = useState<{ display_name: string | null; email: string | null } | null>(null);
-
-  useEffect(() => {
-    const fetchOrganization = async () => {
-      if (!effectiveOrganizationId) return;
-      const { data } = await supabase
-        .from("organizations")
-        .select("name")
-        .eq("id", effectiveOrganizationId)
-        .single();
-      if (data) setOrganizationName(data.name);
-    };
-    fetchOrganization();
-  }, [effectiveOrganizationId]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -188,16 +170,6 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
           {/* Online Status Toggle */}
           <OnlineStatusToggle />
 
-          {/* Balance */}
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-8 gap-1.5 bg-primary/10 border-primary/30 text-primary hover:bg-primary/20"
-            onClick={() => navigate("/saldo")}
-          >
-            <Wallet className="w-4 h-4" />
-            <span className="font-semibold">R$ {currentBalance?.toFixed(2) || '0,00'}</span>
-          </Button>
 
           {/* User Menu */}
           <DropdownMenu>

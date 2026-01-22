@@ -129,27 +129,9 @@ Deno.serve(async (req) => {
 
     const pricePerMessage = pricing?.price_per_message ?? 0.008;
 
-    // Check organization balance before sending (skip for SuperAdmin)
-    if (channel.organization_id && !isSuperAdmin) {
-      const { data: hasBalance } = await serviceRoleClient.rpc(
-        'check_organization_balance',
-        {
-          _organization_id: channel.organization_id,
-          _amount: pricePerMessage
-        }
-      );
-
-      if (!hasBalance) {
-        console.log('Insufficient balance for organization:', channel.organization_id);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Saldo insuficiente para enviar mensagens. Por favor, recarregue seus créditos.',
-            code: 'INSUFFICIENT_BALANCE'
-          }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // Balance check disabled - messages are now free
+    // Note: Balance system still exists for subscriptions and store purchases
+    if (channel.organization_id) {
 
       // Check if destination is blacklisted
       const { data: isBlacklisted } = await serviceRoleClient.rpc(
@@ -332,19 +314,9 @@ Deno.serve(async (req) => {
 
     const messageId = responseData.messageId || responseData.zapiMessageId || `zapi_out_${Date.now()}`;
 
-    // Message sent successfully - debit balance
-    if (channel.organization_id) {
-      await serviceRoleClient.rpc(
-        'debit_organization_balance',
-        {
-          _organization_id: channel.organization_id,
-          _amount: pricePerMessage,
-          _description: `Mensagem WhatsApp (Z-API) enviada para ${cleanDestination}`,
-          _reference_type: 'message',
-          _reference_id: messageId
-        }
-      );
-    }
+    // Balance debit disabled - messages are now free
+    // Note: Balance system still exists for subscriptions and store purchases
+    console.log('Message sent successfully (no charge):', messageId);
 
     // Store outbound message in database
     await serviceRoleClient
