@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
-import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
+
 import { OnlineStatusToggle } from "@/components/header/OnlineStatusToggle";
 import {
   Tooltip,
@@ -96,8 +96,6 @@ export function Header() {
         {/* Online/Offline Status Toggle */}
         <OnlineStatusToggle />
 
-        {/* Balance Indicator - Real-time */}
-        <BalanceIndicator />
 
         {/* User Profile Link */}
         {user && (

@@ -308,33 +308,11 @@ Deno.serve(async (req) => {
 
     const pricePerMessage = pricing?.price_per_message ?? 0.008;
 
-    // Check organization balance before sending (skip for SuperAdmin)
-    if (channel.organization_id && !isSuperAdmin) {
-      const { data: hasBalance, error: balanceCheckError } = await serviceRoleClient.rpc(
-        'check_organization_balance',
-        {
-          _organization_id: channel.organization_id,
-          _amount: pricePerMessage
-        }
-      );
+    // Balance check disabled - messages are now free
+    // Note: Balance system still exists for subscriptions and store purchases
 
-      if (balanceCheckError) {
-        console.error('Error checking balance:', balanceCheckError);
-      }
-
-      if (!hasBalance) {
-        console.log('Insufficient balance for organization:', channel.organization_id);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Saldo insuficiente para enviar mensagens. Por favor, recarregue seus créditos.',
-            code: 'INSUFFICIENT_BALANCE'
-          }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Check if destination is blacklisted
+    // Check if destination is blacklisted (keep this check)
+    if (channel.organization_id) {
       const { data: isBlacklisted, error: blacklistError } = await serviceRoleClient.rpc(
         'is_phone_blacklisted',
         {
@@ -696,25 +674,9 @@ Deno.serve(async (req) => {
     const messages = (lastResponseData as { messages?: Array<{ id?: string }> }).messages;
     const messageId = messages?.[0]?.id || `out_${Date.now()}`;
 
-    // Message sent successfully - debit balance
-    if (channel.organization_id) {
-      const { data: debitSuccess, error: debitError } = await serviceRoleClient.rpc(
-        'debit_organization_balance',
-        {
-          _organization_id: channel.organization_id,
-          _amount: pricePerMessage,
-          _description: `Mensagem WhatsApp enviada para ${cleanDestination}`,
-          _reference_type: 'message',
-          _reference_id: messageId
-        }
-      );
-
-      if (debitError) {
-        console.error('Error debiting balance:', debitError);
-      } else {
-        console.log('Balance debited successfully:', debitSuccess);
-      }
-    }
+    // Balance debit disabled - messages are now free
+    // Note: Balance system still exists for subscriptions and store purchases
+    console.log('Message sent successfully (no charge):', messageId);
 
     // Determine content and message type for storage
     let storedContent = message || '';

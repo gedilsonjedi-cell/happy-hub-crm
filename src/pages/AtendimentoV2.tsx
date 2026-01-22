@@ -70,7 +70,7 @@ import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
 import { ChannelHistoryDialog } from "@/components/whatsapp/ChannelHistoryDialog";
-import { BalanceIndicator } from "@/components/balance/BalanceIndicator";
+
 import { AddToPortfolioDialog } from "@/components/whatsapp/AddToPortfolioDialog";
 import { AssignTagsFromChatDialog } from "@/components/whatsapp/AssignTagsFromChatDialog";
 import { FollowUpDialog } from "@/components/whatsapp/FollowUpDialog";
