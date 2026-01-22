@@ -211,6 +211,48 @@ export const ManualSendDialog = ({
       // Always add 55 prefix since we show it as fixed
       const formattedPhone = "55" + phoneNumber;
 
+      // CRITICAL: Create/update conversation assignment in database BEFORE calling meta-send
+      // This ensures the conversation persists even if the API call fails
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .single();
+        
+        if (profile?.organization_id) {
+          const now = new Date().toISOString();
+          const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          
+          const { error: assignmentError } = await supabase
+            .from('conversation_assignments')
+            .upsert({
+              channel_id: selectedChannel.id,
+              conversation_phone: formattedPhone,
+              organization_id: profile.organization_id,
+              assigned_to: userId,
+              assigned_at: now,
+              status: 'in_progress',
+              is_bot_handling: false,
+              bot_paused_until: botPausedUntil,
+              updated_at: now
+            }, {
+              onConflict: 'conversation_phone,channel_id',
+              ignoreDuplicates: false
+            });
+          
+          if (assignmentError) {
+            console.error('Error creating conversation assignment:', assignmentError);
+            // Don't fail the whole operation, just log it
+          } else {
+            console.log('Created conversation assignment BEFORE send:', formattedPhone);
+          }
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
           channelId: selectedChannel.id,
@@ -224,25 +266,33 @@ export const ManualSendDialog = ({
       if (error) {
         console.error('Send template error:', error);
         toast.error('Erro ao enviar template');
-        setSending(false);
-        return;
-      }
-
-      if (data.success) {
-        toast.success(`Template enviado para ${formattedPhone}!`);
-        
-        // Notify parent that template was sent successfully
+        // Still notify parent so the conversation appears in "Meus"
         onTemplateSent?.({
           phone: formattedPhone,
           channelId: selectedChannel.id,
           templateName: selectedTemplate.name,
           templateContent: selectedTemplate.content
         });
-        
         onClose();
+        setSending(false);
+        return;
+      }
+
+      if (data.success) {
+        toast.success(`Template enviado para ${formattedPhone}!`);
       } else {
         toast.error(data.error || 'Erro ao enviar template');
       }
+      
+      // Always notify parent so the conversation appears in "Meus" regardless of success/failure
+      onTemplateSent?.({
+        phone: formattedPhone,
+        channelId: selectedChannel.id,
+        templateName: selectedTemplate.name,
+        templateContent: selectedTemplate.content
+      });
+      
+      onClose();
     } catch (err) {
       console.error('Send template error:', err);
       toast.error('Erro ao enviar template');
