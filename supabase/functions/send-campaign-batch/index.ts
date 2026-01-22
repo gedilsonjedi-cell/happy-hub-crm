@@ -398,31 +398,38 @@ Deno.serve(async (req) => {
             }).eq('id', recipient.recipientId);
           }
 
-          // Handle chatbot
-          if (campaign.chatbot_enabled && campaign.chatbot_id) {
-            const { data: existing } = await supabase
-              .from('conversation_assignments')
-              .select('id')
-              .eq('conversation_phone', formattedPhone)
-              .eq('channel_id', channel.id)
-              .single();
+          // CRITICAL: Create/update conversation assignment for EVERY campaign dispatch
+          // Campaigns: status = 'archived' until customer replies
+          // This ensures conversations don't disappear and appear in "Arquivados"
+          const { data: existing } = await supabase
+            .from('conversation_assignments')
+            .select('id')
+            .eq('conversation_phone', formattedPhone)
+            .eq('channel_id', channel.id)
+            .single();
 
-            if (existing) {
-              await supabase.from('conversation_assignments').update({
-                campaign_chatbot_id: campaign.chatbot_id,
-                is_bot_handling: true,
-                updated_at: new Date().toISOString()
-              }).eq('id', existing.id);
-            } else {
-              await supabase.from('conversation_assignments').insert({
-                conversation_phone: formattedPhone,
-                channel_id: channel.id,
-                campaign_chatbot_id: campaign.chatbot_id,
-                is_bot_handling: true,
-                status: 'pending'
-              });
-            }
+          if (existing) {
+            // Update existing assignment
+            await supabase.from('conversation_assignments').update({
+              campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
+              is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
+              status: 'archived', // Campaign dispatches go to archived until customer replies
+              sector_id: campaign.sector_id || null, // Inherit sector from campaign
+              updated_at: new Date().toISOString()
+            }).eq('id', existing.id);
+          } else {
+            // Create NEW assignment with archived status
+            await supabase.from('conversation_assignments').insert({
+              conversation_phone: formattedPhone,
+              channel_id: channel.id,
+              organization_id: campaign.organization_id,
+              campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
+              is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
+              status: 'archived', // Campaign dispatches start as archived
+              sector_id: campaign.sector_id || null // Inherit sector from campaign
+            });
           }
+          console.log(`[Batch] Assignment created/updated for ${formattedPhone} with status: archived, sector: ${campaign.sector_id || 'none'}`);
         } else {
           // NO RETRY - Mark as failed immediately
           const errorCode = extractMetaErrorCode(result.error || '');
