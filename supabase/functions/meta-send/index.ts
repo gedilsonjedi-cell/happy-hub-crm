@@ -584,20 +584,32 @@ Deno.serve(async (req) => {
       
       // Translate common Meta error codes to user-friendly messages
       let friendlyError = errorMessage;
-      if (errorCode === 135000) {
-        friendlyError = 'Erro genérico do Meta (#135000). Recomendação: recrie o template no Meta Business ou reconecte o número.';
-      } else if (errorCode === 131031 || errorMessage.includes('restricted')) {
-        friendlyError = 'Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.';
-      } else if (errorCode === 131047) {
-        friendlyError = 'Limite de mensagens atingido. Aguarde antes de enviar mais mensagens.';
-      } else if (errorCode === 131053) {
-        friendlyError = 'Mídia inválida ou não suportada pelo WhatsApp.';
-      } else if (errorCode === 130472) {
-        friendlyError = 'Número de destino inválido ou não registrado no WhatsApp.';
-      } else if (errorCode === 131051) {
-        friendlyError = 'Formato de template incorreto ou parâmetros inválidos.';
-      } else if (errorCode === 131049) {
-        friendlyError = 'Limite de marketing atingido para este contato. A Meta limita mensagens de marketing por usuário.';
+      const numericErrorCode = typeof errorCode === 'number' ? errorCode : parseInt(String(errorCode), 10);
+      
+      // Map of error codes to friendly messages
+      const errorMessages: Record<number, string> = {
+        135000: '(#135000) Erro genérico do Meta. SOLUÇÃO: Recrie o template no Meta Business ou reconecte o número.',
+        131049: '(#131049) Limite de MARKETING atingido para este contato. A Meta limita mensagens de marketing POR USUÁRIO. Use templates UTILITY ou aguarde o contato responder.',
+        131026: '(#131026) Número sem WhatsApp ou bloqueado. Verifique se o número está correto e tem WhatsApp ativo.',
+        131031: '(#131031) Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.',
+        131047: '(#131047) Limite de mensagens atingido. Aguarde antes de enviar mais mensagens.',
+        131053: '(#131053) Mídia inválida ou não suportada pelo WhatsApp.',
+        131051: '(#131051) Formato de template incorreto ou parâmetros inválidos.',
+        131000: '(#131000) Erro interno do servidor Meta. Tente novamente.',
+        130472: '(#130472) Número de destino inválido ou não registrado no WhatsApp.',
+        132001: '(#132001) Template não existe ou idioma não disponível. Sincronize os templates.',
+        10: '(#10) Sem permissão para enviar mensagens. Configure permissões no Meta Business Suite.',
+        3: '(#3) Permissão granular ausente. Configure no Meta Developer Console.',
+      };
+      
+      if (numericErrorCode && errorMessages[numericErrorCode]) {
+        friendlyError = errorMessages[numericErrorCode];
+      } else if (errorMessage.includes('restricted')) {
+        friendlyError = '(#131031) Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.';
+      } else if (errorMessage.includes('healthy ecosystem')) {
+        friendlyError = '(#131049) Limite de MARKETING atingido para este contato. Use templates UTILITY.';
+      } else if (errorMessage.includes('permission')) {
+        friendlyError = 'Erro de permissão. Verifique as configurações no Meta Business Suite.';
       }
       
       // Store failed message in database with error

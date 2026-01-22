@@ -39,9 +39,9 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     suggestion: "Verifique o formato dos parâmetros (texto, número, data, etc.)."
   },
   "131026": {
-    title: "Mensagem não entregue",
-    description: "O destinatário pode ter bloqueado ou a conta não existe.",
-    suggestion: "Verifique se o número está correto e ativo no WhatsApp."
+    title: "Número sem WhatsApp ou bloqueado",
+    description: "O número não tem WhatsApp ativo, bloqueou sua conta, ou não está disponível para receber mensagens.",
+    suggestion: "AÇÕES: 1) Verifique se o número está correto e formatado (55 + DDD + 9 + número), 2) O contato pode ter bloqueado mensagens comerciais, 3) O número pode ter sido desativado. Considere remover da lista de contatos."
   },
   "131031": {
     title: "Conta restrita ou desabilitada",
@@ -69,9 +69,9 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     suggestion: "Revise o conteúdo e evite envios em massa sem contexto."
   },
   "131049": {
-    title: "Template de marketing recusado",
-    description: "A Meta recusou enviar este modelo (Marketing) para manter o engajamento saudável do ecossistema.",
-    suggestion: "Tente novamente mais tarde ou utilize um modelo do tipo Utilidade.",
+    title: "Limite de marketing atingido",
+    description: "A Meta limitou mensagens de MARKETING para este contato específico. Este é o erro mais comum e é uma restrição POR USUÁRIO imposta pela Meta.",
+    suggestion: "SOLUÇÕES: 1) Use templates do tipo UTILITY ao invés de MARKETING, 2) Aguarde o contato responder para abrir janela de conversa, 3) Reduza a frequência de disparos de marketing para este número. NÃO é problema do seu sistema - é uma limitação da Meta para proteger usuários.",
     link: "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-message-templates#per-user-marketing-template-message-limits"
   },
   "131051": {
@@ -101,15 +101,25 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
   },
   
   // Permission errors
+  "10": {
+    title: "Sem permissão na conta",
+    description: "Seu aplicativo não tem permissão para enviar mensagens em nome desta conta do WhatsApp Business.",
+    suggestion: "SOLUÇÃO: Acesse Meta Business Suite > Configurações > Usuários > Parceiros e adicione permissões completas de WhatsApp ao seu aplicativo."
+  },
+  "3": {
+    title: "Permissão granular ausente",
+    description: "O aplicativo não tem permissão granular da API para fazer esta chamada.",
+    suggestion: "SOLUÇÃO: No Meta Developer Console, vá em seu app > WhatsApp > Configurações da API e ative todas as permissões necessárias."
+  },
   "132000": {
     title: "Erro de permissão",
     description: "O app não tem permissão para enviar mensagens.",
     suggestion: "Verifique as permissões do app no Meta Business Manager."
   },
   "132001": {
-    title: "Conta não verificada",
-    description: "A conta de negócios não está verificada.",
-    suggestion: "Complete a verificação da conta no Meta Business Manager."
+    title: "Template não existe",
+    description: "O template solicitado não existe na conta ou o idioma especificado não está disponível.",
+    suggestion: "SOLUÇÃO: 1) Verifique o nome exato do template no Meta Business Manager, 2) Confirme que o template está aprovado, 3) Sincronize os templates na página de Templates do sistema."
   },
   "132005": {
     title: "Usuário não aceita mensagens",
