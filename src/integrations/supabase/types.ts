@@ -2864,6 +2864,7 @@ export type Database = {
         Args: { _organization_id: string }
         Returns: boolean
       }
+      force_sync_all_campaign_counts: { Args: never; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
       get_campaign_sector_for_phone: {
         Args: { _organization_id: string; _phone: string }
