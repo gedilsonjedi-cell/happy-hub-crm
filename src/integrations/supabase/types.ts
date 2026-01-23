@@ -2915,6 +2915,15 @@ export type Database = {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
       }
+      sync_all_failed_recipients: { Args: never; Returns: number }
+      sync_failed_recipients_from_messages: {
+        Args: never
+        Returns: {
+          campaign_id: string
+          campaign_name: string
+          updated_count: number
+        }[]
+      }
       update_session_activity: { Args: never; Returns: boolean }
       user_can_access_campaign: {
         Args: { campaign_sector_id: string }
