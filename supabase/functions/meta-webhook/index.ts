@@ -1345,12 +1345,22 @@ Deno.serve(async (req) => {
                 const now = new Date().toISOString();
                 const updateData: Record<string, unknown> = { updated_at: now };
                 
+                // Handle failed status - update recipient to failed with error details
+                if (statusValue === 'failed') {
+                  // Only update if not already failed (avoid duplicate processing)
+                  if (recipient.status !== 'failed') {
+                    updateData.status = 'failed';
+                    updateData.error_message = metaErrorMessage || 'Falha reportada pelo Meta';
+                    updateData.last_error_code = metaErrorCode ? String(metaErrorCode) : 'WEBHOOK_FAILED';
+                    console.log('Updating recipient to FAILED:', recipient.id, { errorCode: metaErrorCode, errorMessage: metaErrorMessage });
+                  }
+                }
                 // Only update status if it's an improvement (delivered > sent, read > delivered)
-                if (statusValue === 'delivered' && recipient.status !== 'read') {
+                else if (statusValue === 'delivered' && recipient.status !== 'read' && recipient.status !== 'failed') {
                   updateData.status = 'delivered';
                   updateData.delivered_at = now;
                   console.log('Updating recipient to delivered:', recipient.id);
-                } else if (statusValue === 'read') {
+                } else if (statusValue === 'read' && recipient.status !== 'failed') {
                   updateData.status = 'read';
                   updateData.read_at = now;
                   // Also set delivered_at if not already set
