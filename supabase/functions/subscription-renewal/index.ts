@@ -201,9 +201,10 @@ Deno.serve(async (req) => {
         const newPaidUntil = new Date();
         newPaidUntil.setDate(newPaidUntil.getDate() + 30);
 
-        // Build update object
+        // Build update object - update BOTH fields for consistency
         const updateData: Record<string, unknown> = {
           subscription_paid_until: newPaidUntil.toISOString(),
+          subscription_ends_at: newPaidUntil.toISOString(),
           subscription_status: "active",
           updated_at: new Date().toISOString(),
         };

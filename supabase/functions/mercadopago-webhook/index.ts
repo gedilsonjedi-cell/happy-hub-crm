@@ -161,12 +161,14 @@ serve(async (req) => {
           const subscriptionEnd = new Date();
           subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
 
+          // Update BOTH subscription_paid_until AND subscription_ends_at for consistency
           const { error: updateError } = await supabase
             .from("organizations")
             .update({
               subscription_status: "active",
               subscription_started_at: new Date().toISOString(),
               subscription_ends_at: subscriptionEnd.toISOString(),
+              subscription_paid_until: subscriptionEnd.toISOString(),
               plan: "pro",
             })
             .eq("id", pixPayment.organization_id);
