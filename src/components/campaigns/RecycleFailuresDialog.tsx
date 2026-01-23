@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Users, MessageSquare } from "lucide-react";
+import { RefreshCw, AlertTriangle, Users, MessageSquare, Phone } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +52,7 @@ interface MessageTemplate {
 interface Channel {
   id: string;
   name: string;
+  phone: string;
 }
 
 export function RecycleFailuresDialog({
@@ -70,6 +71,7 @@ export function RecycleFailuresDialog({
   const [originalChannel, setOriginalChannel] = useState<string | null>(null);
   const [originalTemplate, setOriginalTemplate] = useState<string | null>(null);
   
+  const [selectedChannel, setSelectedChannel] = useState<string>("same");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("same");
   const [newCampaignName, setNewCampaignName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -81,13 +83,22 @@ export function RecycleFailuresDialog({
     }
   }, [open, campaign]);
 
+  // Reset template selection when channel changes
+  useEffect(() => {
+    if (selectedChannel !== "same") {
+      // When changing to a different channel, reset template to first available
+      setSelectedTemplate("");
+    } else {
+      setSelectedTemplate("same");
+    }
+  }, [selectedChannel]);
+
   const fetchData = async () => {
     if (!campaign || !effectiveOrganizationId) return;
     
     setLoading(true);
     try {
       // Fetch failed recipients AND sent but not delivered (awaiting Meta confirmation)
-      // These are messages that Meta accepted but never confirmed delivery
       const { data: recipients } = await supabase
         .from("campaign_recipients")
         .select("phone, name, status, delivered_at")
@@ -121,7 +132,7 @@ export function RecycleFailuresDialog({
       // Fetch channels
       const { data: channelsData } = await supabase
         .from("channels")
-        .select("id, name")
+        .select("id, name, phone")
         .eq("organization_id", effectiveOrganizationId)
         .eq("connected", true)
         .neq("provider", "zapi");
@@ -137,6 +148,8 @@ export function RecycleFailuresDialog({
 
       // Set default campaign name
       setNewCampaignName(`${campaign.name} - Reciclagem`);
+      setSelectedChannel("same");
+      setSelectedTemplate("same");
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -144,14 +157,20 @@ export function RecycleFailuresDialog({
     }
   };
 
-  // Get templates available for the original channel
+  // Get the effective channel (selected or original)
+  const effectiveChannelId = selectedChannel === "same" ? originalChannel : selectedChannel;
+
+  // Get templates available for the effective channel
   const availableTemplates = templates.filter(t => {
-    if (!originalChannel) return true;
-    return channelTemplates.some(ct => ct.channel_id === originalChannel && ct.template_id === t.id);
+    if (!effectiveChannelId) return true;
+    return channelTemplates.some(ct => ct.channel_id === effectiveChannelId && ct.template_id === t.id);
   });
 
+  // Get original channel name
+  const originalChannelName = channels.find(c => c.id === originalChannel)?.name || "Canal original";
+
   const handleRecycle = async () => {
-    if (!campaign || !user || !effectiveOrganizationId || !originalChannel) {
+    if (!campaign || !user || !effectiveOrganizationId || !effectiveChannelId) {
       toast.error("Dados incompletos para criar nova campanha");
       return;
     }
@@ -172,6 +191,16 @@ export function RecycleFailuresDialog({
 
     if (!templateToUse) {
       toast.error("Selecione um template");
+      return;
+    }
+
+    // Validate template is approved for the selected channel
+    const isTemplateValid = channelTemplates.some(
+      ct => ct.channel_id === effectiveChannelId && ct.template_id === templateToUse
+    );
+    
+    if (!isTemplateValid && selectedChannel !== "same") {
+      toast.error("Template não aprovado para o canal selecionado");
       return;
     }
 
@@ -209,7 +238,7 @@ export function RecycleFailuresDialog({
         .from("campaign_channels")
         .insert({
           campaign_id: newCampaign.id,
-          channel_id: originalChannel,
+          channel_id: effectiveChannelId,
           template_id: templateToUse,
           order_index: 0,
         });
@@ -317,6 +346,34 @@ export function RecycleFailuresDialog({
               />
             </div>
 
+            {/* Channel Selection */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Phone className="w-4 h-4" />
+                Canal para envio
+              </Label>
+              <Select value={selectedChannel} onValueChange={setSelectedChannel}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Selecione o canal" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border z-50">
+                  <SelectItem value="same">
+                    Mesmo canal ({originalChannelName})
+                  </SelectItem>
+                  {channels
+                    .filter(c => c.id !== originalChannel)
+                    .map(channel => (
+                      <SelectItem key={channel.id} value={channel.id}>
+                        {channel.name} ({channel.phone})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Você pode usar o mesmo canal ou escolher outro conectado.
+              </p>
+            </div>
+
             {/* Template Selection */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -327,10 +384,12 @@ export function RecycleFailuresDialog({
                 <SelectTrigger className="bg-background border-border">
                   <SelectValue placeholder="Selecione o template" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="same">
-                    Mesmo template ({originalTemplateName})
-                  </SelectItem>
+                <SelectContent className="bg-card border-border z-50">
+                  {selectedChannel === "same" && (
+                    <SelectItem value="same">
+                      Mesmo template ({originalTemplateName})
+                    </SelectItem>
+                  )}
                   {availableTemplates.map(template => (
                     <SelectItem key={template.id} value={template.id}>
                       {template.name}
@@ -339,7 +398,10 @@ export function RecycleFailuresDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Você pode usar o mesmo template ou escolher outro aprovado no mesmo canal.
+                {selectedChannel === "same" 
+                  ? "Você pode usar o mesmo template ou escolher outro aprovado no mesmo canal."
+                  : "Selecione um template aprovado para o canal escolhido."
+                }
               </p>
             </div>
           </div>
@@ -355,7 +417,7 @@ export function RecycleFailuresDialog({
           </Button>
           <Button
             onClick={handleRecycle}
-            disabled={isCreating || loading || failedRecipients.length === 0}
+            disabled={isCreating || loading || failedRecipients.length === 0 || (!selectedTemplate && selectedChannel !== "same")}
             className="gap-2"
           >
             {isCreating ? (
