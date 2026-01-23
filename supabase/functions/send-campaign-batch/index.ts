@@ -461,39 +461,46 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update campaign progress
-    const newSentCount = campaign.sent_count + sentThisBatch;
-    const newDeliveredCount = campaign.delivered_count + deliveredThisBatch;
-    const newFailedCount = campaign.failed_count + failedThisBatch;
-    
     // Check if there are remaining pending recipients
+    // NOTE: Counters (sent_count, delivered_count, failed_count) are updated automatically
+    // by the sync_campaign_counts trigger when campaign_recipients status changes
     const { count: remainingPending } = await supabase
       .from('campaign_recipients')
       .select('*', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
       .eq('status', 'pending');
 
-    const isComplete = newSentCount >= campaign.total_recipients || (remainingPending || 0) === 0;
+    // Get current counts from trigger-updated values
+    const { data: updatedCampaign } = await supabase
+      .from('campaigns')
+      .select('sent_count, delivered_count, failed_count, total_recipients')
+      .eq('id', campaignId)
+      .single();
 
+    const currentSent = updatedCampaign?.sent_count || 0;
+    const currentDelivered = updatedCampaign?.delivered_count || 0;
+    const currentFailed = updatedCampaign?.failed_count || 0;
+    const totalRecipients = updatedCampaign?.total_recipients || campaign.total_recipients;
+
+    const isComplete = (remainingPending || 0) === 0;
+
+    // Only update status and completed_at - counters are managed by trigger
     await supabase.from('campaigns').update({
-      sent_count: newSentCount,
-      delivered_count: newDeliveredCount,
-      failed_count: newFailedCount,
       status: isComplete ? 'completed' : 'running',
       completed_at: isComplete ? new Date().toISOString() : null
     }).eq('id', campaignId);
 
-    console.log(`[Batch] Campaign ${campaignId}: ${newSentCount}/${campaign.total_recipients} | Pending: ${remainingPending || 0}`);
+    console.log(`[Batch] Campaign ${campaignId}: ${currentSent}/${totalRecipients} sent, ${currentDelivered} delivered, ${currentFailed} failed | Pending: ${remainingPending || 0}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         done: isComplete,
         status: isComplete ? 'completed' : 'running',
-        sent: newSentCount,
-        delivered: newDeliveredCount,
-        failed: newFailedCount,
-        total: campaign.total_recipients,
+        sent: currentSent,
+        delivered: currentDelivered,
+        failed: currentFailed,
+        total: totalRecipients,
         batchProcessed: sentThisBatch
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

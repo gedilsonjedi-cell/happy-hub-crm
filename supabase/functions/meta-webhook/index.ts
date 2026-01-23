@@ -1368,62 +1368,18 @@ Deno.serve(async (req) => {
                     console.error('Error updating campaign recipient:', recipientError);
                   } else {
                     console.log('Campaign recipient updated:', recipient.id, updateData);
-                    
-                    // Update campaign delivered_count if status changed to delivered
-                    if (statusValue === 'delivered' && recipient.status === 'sent') {
-                      try {
-                        const { data: camp } = await supabase
-                          .from('campaigns')
-                          .select('delivered_count')
-                          .eq('id', campaignId)
-                          .single();
-                        
-                        if (camp) {
-                          await supabase
-                            .from('campaigns')
-                            .update({ delivered_count: (camp.delivered_count || 0) + 1 })
-                            .eq('id', campaignId);
-                        }
-                      } catch (err) {
-                        console.error('Error updating delivered count:', err);
-                      }
-                    }
+                    // NOTE: Campaign counters (sent_count, delivered_count, failed_count) are 
+                    // automatically updated by the sync_campaign_counts trigger when 
+                    // campaign_recipients status changes - no manual update needed here
                   }
                 }
               }
             }
           }
 
-          // Update campaign counters for failed messages
-          if (statusValue === 'failed' && previousStatus !== 'failed' && messageData?.metadata) {
-            const metadata = messageData.metadata as Record<string, unknown>;
-            const campaignId = metadata?.campaignId as string | undefined;
-            
-            if (campaignId) {
-              console.log('Updating campaign counters for failed message, campaignId:', campaignId);
-              
-              const { data: campaign } = await supabase
-                .from('campaigns')
-                .select('delivered_count, failed_count')
-                .eq('id', campaignId)
-                .single();
-              
-              if (campaign) {
-                const newDeliveredCount = Math.max(0, (campaign.delivered_count || 0) - 1);
-                const newFailedCount = (campaign.failed_count || 0) + 1;
-                
-                await supabase
-                  .from('campaigns')
-                  .update({ 
-                    delivered_count: newDeliveredCount,
-                    failed_count: newFailedCount
-                  })
-                  .eq('id', campaignId);
-                
-                console.log('Campaign counters updated:', { delivered: newDeliveredCount, failed: newFailedCount });
-              }
-            }
-          }
+          // NOTE: Campaign counters for failed messages are automatically updated by
+          // the sync_campaign_counts trigger when campaign_recipients.status changes to 'failed'
+          // No manual counter update needed here
         }
       }
 
