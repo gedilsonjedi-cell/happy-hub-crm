@@ -104,14 +104,16 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
 
       <div className="space-y-3">
         {runningCampaigns.map((campaign) => {
-          const pending = campaign.total_recipients - campaign.sent_count - campaign.failed_count;
+          // Progress based on final results (delivered + failed) vs total
+          const processedCount = campaign.delivered_count + campaign.failed_count;
           const progress = campaign.total_recipients > 0
-            ? Math.round(((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100)
+            ? Math.round((processedCount / campaign.total_recipients) * 100)
             : 0;
           
+          // Estimate remaining time based on pending recipients
+          const pendingCount = campaign.total_recipients - campaign.sent_count;
           const avgInterval = ((campaign.min_interval || 5) + (campaign.max_interval || 120)) / 2;
-          const remainingMessages = pending;
-          const estimatedMinutes = Math.ceil((remainingMessages * avgInterval) / 60);
+          const estimatedMinutes = Math.ceil((pendingCount * avgInterval) / 60);
 
           return (
             <div 
@@ -125,7 +127,7 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {campaign.sent_count + campaign.failed_count} / {campaign.total_recipients}
+                    {processedCount} / {campaign.total_recipients}
                   </span>
                   <Button
                     variant="ghost"
@@ -143,14 +145,8 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
               
               <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-purple-400">✓ {campaign.sent_count} enviadas</span>
+                  <span className="text-purple-400">📤 {campaign.sent_count} enviadas</span>
                   <span className="text-green-400">✓ {campaign.delivered_count} entregues</span>
-                  {/* Show pending confirmation count - messages sent but no delivery confirmation yet */}
-                  {campaign.sent_count > campaign.delivered_count + campaign.failed_count && (
-                    <span className="text-amber-400">
-                      ⏳ {campaign.sent_count - campaign.delivered_count - (campaign.failed_count > 0 ? 0 : 0)} aguardando
-                    </span>
-                  )}
                   {campaign.failed_count > 0 && (
                     <span className="text-destructive">✗ {campaign.failed_count} falhas</span>
                   )}
