@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
 import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
+import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
@@ -66,18 +67,10 @@ const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Pages that are allowed even when subscription is expired
-const ALLOWED_PAGES_WHEN_EXPIRED = ["/loja", "/saldo", "/perfil", "/auth", "/reset-password", "/minha-assinatura", "/indique-ganhe", "/landing"];
-
-// Component to check subscription and redirect if expired
+// Component to check subscription and BLOCK screen if expired
 const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const { needsPayment, isLoading } = useSubscription();
-
-  // Allow access to certain pages even when expired
-  const isAllowedPage = ALLOWED_PAGES_WHEN_EXPIRED.some(page => 
-    location.pathname === page || location.pathname.startsWith(page + "/")
-  );
 
   // Super admin routes are always allowed
   const isSuperAdminRoute = location.pathname.startsWith("/super-admin");
@@ -86,9 +79,9 @@ const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
   }
 
-  // Redirect to store if subscription expired and not on allowed page
-  if (needsPayment && !isAllowedPage && !isSuperAdminRoute) {
-    return <Navigate to="/loja" replace />;
+  // Show fullscreen block if subscription expired (except for super admin)
+  if (needsPayment && !isSuperAdminRoute) {
+    return <SubscriptionBlockScreen />;
   }
 
   return <>{children}</>;

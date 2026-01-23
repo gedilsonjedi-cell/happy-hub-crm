@@ -260,8 +260,10 @@ export default function SuperAdmin() {
       const now = new Date();
       setOrganizations((data || []).map((org) => {
         let daysUntilExpiry: number | undefined;
-        if (org.subscription_ends_at) {
-          const expiryDate = new Date(org.subscription_ends_at);
+        // Use subscription_paid_until if available, otherwise fallback to subscription_ends_at
+        const expiryDateStr = org.subscription_paid_until || org.subscription_ends_at;
+        if (expiryDateStr) {
+          const expiryDate = new Date(expiryDateStr);
           daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         }
         return {
