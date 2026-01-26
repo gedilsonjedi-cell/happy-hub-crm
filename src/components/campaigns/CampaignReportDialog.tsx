@@ -88,6 +88,8 @@ interface Recipient {
   read_at: string | null;
   button_clicked: string | null;
   button_clicked_at: string | null;
+  retry_count: number | null;
+  next_retry_at: string | null;
 }
 
 interface CampaignReportDialogProps {
@@ -104,6 +106,7 @@ const recipientStatusConfig: Record<string, { label: string; className: string; 
   delivered: { label: "Entregue", className: "bg-green-500/80 text-white", icon: CheckCheck },
   read: { label: "Lida", className: "bg-violet-600 text-white", icon: Eye },
   failed: { label: "Falha", className: "bg-destructive text-white", icon: XCircle },
+  waiting_retry: { label: "Aguardando Retry", className: "bg-orange-500/80 text-white", icon: Clock },
   no_whatsapp: { label: "Sem WhatsApp", className: "bg-warning text-white", icon: PhoneOff },
 };
 
@@ -200,12 +203,12 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
     try {
       const { data, error } = await supabase
         .from("campaign_recipients")
-        .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at")
+        .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at")
         .eq("campaign_id", campaign.id)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
-      setRecipients(data || []);
+      setRecipients((data || []) as Recipient[]);
     } catch (error) {
       console.error("Error fetching recipients:", error);
     } finally {
@@ -217,6 +220,9 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const metrics = useMemo(() => {
     const total = recipients.length;
     const pending = recipients.filter(r => r.status === "pending").length;
+    
+    // NEW: Waiting for retry (scheduled to retry later)
+    const waitingRetry = recipients.filter(r => r.status === "waiting_retry").length;
     
     // "sent" means Meta accepted the message - includes delivered and read
     const sentToMeta = recipients.filter(r => r.status === "sent" || r.status === "delivered" || r.status === "read").length;
@@ -237,11 +243,12 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
     const blocked = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "blocked").length;
     const templateError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "template_error").length;
     const apiError = recipients.filter(r => classifyError(r.error_message, r.last_error_code) === "api_error").length;
-    const processed = sentToMeta + failed;
+    const processed = sentToMeta + failed + waitingRetry;
 
     return {
       total,
       pending,
+      waitingRetry,
       sent: sentToMeta,
       awaitingConfirmation,
       delivered,
@@ -255,6 +262,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       apiError,
       processed,
       pendingPercent: total > 0 ? Math.round((pending / total) * 100) : 0,
+      waitingRetryPercent: total > 0 ? Math.round((waitingRetry / total) * 100) : 0,
       sentPercent: total > 0 ? Math.round((sentToMeta / total) * 100) : 0,
       awaitingPercent: total > 0 ? Math.round((awaitingConfirmation / total) * 100) : 0,
       deliveredPercent: total > 0 ? Math.round((delivered / total) * 100) : 0,
@@ -349,9 +357,22 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const getRecipientDisplayStatus = (recipient: Recipient) => {
     const classification = classifyError(recipient.error_message, recipient.last_error_code);
     if (classification === "no_whatsapp") return recipientStatusConfig.no_whatsapp;
+    if (recipient.status === "waiting_retry") return recipientStatusConfig.waiting_retry;
     if (recipient.read_at) return recipientStatusConfig.read;
     if (recipient.delivered_at) return recipientStatusConfig.delivered;
     return recipientStatusConfig[recipient.status] || recipientStatusConfig.pending;
+  };
+  
+  // Format next retry time for display
+  const formatNextRetry = (nextRetryAt: string | null) => {
+    if (!nextRetryAt) return "";
+    const retryDate = new Date(nextRetryAt);
+    const now = new Date();
+    const hoursUntil = Math.round((retryDate.getTime() - now.getTime()) / 3600000);
+    if (hoursUntil <= 0) return "Em breve";
+    if (hoursUntil < 24) return `Em ${hoursUntil}h`;
+    const days = Math.round(hoursUntil / 24);
+    return `Em ${days}d`;
   };
 
   if (!campaign) return null;
@@ -515,6 +536,23 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <MessageCircle className="w-4 h-4 text-muted-foreground" />
                   </div>
                   
+                  {/* Waiting Retry Section - NEW */}
+                  {metrics.waitingRetry > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-orange-400 w-24 font-medium">⏳ Retry Agend.</span>
+                      <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
+                        <div 
+                          className="h-full bg-orange-500 flex items-center justify-between px-2"
+                          style={{ width: `${Math.max((metrics.waitingRetry / metrics.total) * 100, 15)}%` }}
+                        >
+                          <span className="text-xs text-white font-medium">{metrics.waitingRetryPercent}%</span>
+                          <span className="text-xs text-white">{metrics.waitingRetry}</span>
+                        </div>
+                      </div>
+                      <Clock className="w-4 h-4 text-orange-400" />
+                    </div>
+                  )}
+                  
                   {/* Failed Section */}
                   {metrics.failed > 0 && (
                     <div className="flex items-center gap-3">
@@ -649,6 +687,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <SelectItem value="all">Todas as situações</SelectItem>
                     <SelectItem value="pending">Na fila</SelectItem>
                     <SelectItem value="sent">Aguardando Meta</SelectItem>
+                    <SelectItem value="waiting_retry">Aguardando Retry</SelectItem>
                     <SelectItem value="delivered">Entregue</SelectItem>
                     <SelectItem value="read">Lida</SelectItem>
                     <SelectItem value="failed">Falha</SelectItem>

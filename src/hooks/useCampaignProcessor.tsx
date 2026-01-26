@@ -77,9 +77,10 @@ export function useCampaignProcessor({
         let waitTime: number;
         
         if (data.status === 'waiting_retry') {
-          // When waiting for retries, poll every 30 seconds to check if any retry is ready
-          waitTime = 30000;
-          console.log(`[Processor] ${campaign.name}: ${data.pendingRetries} retries pending, polling every 30s`);
+          // When waiting for retries, poll every 60 seconds to check if any retry is ready
+          // Retries are scheduled 12-48 hours ahead, so no need to poll too frequently
+          waitTime = 60000;
+          console.log(`[Processor] ${campaign.name}: ${data.pendingRetries || 0} retries pending, polling every 60s`);
         } else {
           // Normal interval for sending
           const minInterval = campaign.min_interval || 5;
@@ -97,7 +98,8 @@ export function useCampaignProcessor({
             .eq('id', campaign.id)
             .single()
             .then(({ data: updatedCampaign }) => {
-              if (updatedCampaign && updatedCampaign.status === 'running') {
+              // Continue processing if running OR if there are pending retries
+              if (updatedCampaign && (updatedCampaign.status === 'running' || data.pendingRetries > 0)) {
                 processNextBatch(updatedCampaign as Campaign);
               }
             });
@@ -105,7 +107,7 @@ export function useCampaignProcessor({
         
         timeoutsRef.current.set(campaign.id, timeout);
       } else {
-        console.log(`[Processor] ${campaign.name} completed!`);
+        console.log(`[Processor] ${campaign.name} completed! (${data.pendingRetries || 0} retries scheduled)`);
         processingRef.current.delete(campaign.id);
         onUpdate();
       }
