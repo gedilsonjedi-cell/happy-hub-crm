@@ -26,8 +26,28 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
-// RETRY SYSTEM DISABLED - Each recipient receives exactly ONE message
-// No automatic retries to prevent duplicate message delivery
+// RETRY SYSTEM for temporary Meta errors
+// Errors like #131049 (marketing limit) are temporary and can be retried after a delay
+
+// Configuration for retryable errors
+// Each error code has maxRetries and delayHours array (exponential backoff)
+const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {
+  '131049': { maxRetries: 3, delayHours: [12, 24, 48] },  // Marketing limit - wait longer
+  '135000': { maxRetries: 2, delayHours: [1, 2] },        // Generic error - quick retry
+  '131000': { maxRetries: 2, delayHours: [0.5, 1] },      // Internal Meta error
+  '130472': { maxRetries: 2, delayHours: [1, 3] },        // Rate limit
+};
+
+// Errors that are permanent and should NOT be retried
+const PERMANENT_ERRORS = [
+  '131026', // Not on WhatsApp
+  '131042', // Payment issue
+  '131021', // Invalid number
+  '131047', // Blocked
+  '132001', // Template error
+  '132000', // Template not found
+  '100',    // Invalid parameter
+];
 
 function getFirstName(fullName: string | undefined): string {
   if (!fullName) return '';
@@ -109,6 +129,28 @@ function extractMetaErrorCode(errorMessage: string): string | null {
   return match ? match[1] : null;
 }
 
+// Check if an error is retryable
+function isRetryableError(errorCode: string | null): boolean {
+  if (!errorCode) return false;
+  return !!RETRYABLE_ERRORS[errorCode] && !PERMANENT_ERRORS.includes(errorCode);
+}
+
+// Get retry configuration for an error
+function getRetryConfig(errorCode: string): { maxRetries: number; delayHours: number[] } | null {
+  return RETRYABLE_ERRORS[errorCode] || null;
+}
+
+// Calculate next retry time based on retry count
+function calculateNextRetryTime(errorCode: string, retryCount: number): Date | null {
+  const config = getRetryConfig(errorCode);
+  if (!config) return null;
+  
+  if (retryCount >= config.maxRetries) return null;
+  
+  const delayHours = config.delayHours[retryCount] || config.delayHours[config.delayHours.length - 1];
+  return new Date(Date.now() + delayHours * 3600 * 1000);
+}
+
 // Processa UM lote de mensagens e retorna imediatamente
 // O frontend chama repetidamente até terminar
 Deno.serve(async (req) => {
@@ -121,7 +163,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { campaignId, batchSize = 1 } = await req.json();
+    const { campaignId, batchSize = 1, processRetries = false } = await req.json();
 
     if (!campaignId) {
       return new Response(
@@ -144,36 +186,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check status
-    if (campaign.status !== 'running') {
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          status: campaign.status,
-          done: true,
-          message: `Campaign is ${campaign.status}` 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check if completed
-    if (campaign.sent_count >= campaign.total_recipients) {
-      await supabase.from('campaigns').update({
-        status: 'completed',
-        completed_at: new Date().toISOString()
-      }).eq('id', campaignId);
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          done: true, 
-          status: 'completed',
-          sent: campaign.sent_count,
-          total: campaign.total_recipients
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Check status - allow running or completed (for retry processing)
+    if (campaign.status !== 'running' && !(processRetries && campaign.status === 'completed')) {
+      // Check if there are pending retries
+      const { count: pendingRetries } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'waiting_retry')
+        .lte('next_retry_at', new Date().toISOString());
+      
+      if (pendingRetries && pendingRetries > 0) {
+        // There are retries ready to process
+        console.log(`[Batch] Campaign ${campaign.name} has ${pendingRetries} retries ready`);
+      } else {
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            status: campaign.status,
+            done: true,
+            message: `Campaign is ${campaign.status}`,
+            pendingRetries: 0
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Get channels and templates
@@ -221,25 +258,37 @@ Deno.serve(async (req) => {
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
-    // Get ONLY pending recipients (never sent before) - NO RETRIES
-    // CRITICAL: We explicitly check for 'pending' status to ensure we never send to:
-    // - Recipients with status 'sent' (already delivered successfully)
-    // - Recipients with status 'delivered' (confirmed delivery)
-    // - Recipients with status 'failed' (already attempted, no retry)
+    // First, check for recipients ready for retry (waiting_retry with next_retry_at <= now)
+    const { data: retryRecipients } = await supabase
+      .from('campaign_recipients')
+      .select('id, phone, name, status, retry_count, last_error_code')
+      .eq('campaign_id', campaignId)
+      .eq('status', 'waiting_retry')
+      .lte('next_retry_at', new Date().toISOString())
+      .order('next_retry_at', { ascending: true })
+      .limit(batchSize);
+
+    // Then get pending recipients (new sends)
     const { data: pendingRecipients } = await supabase
       .from('campaign_recipients')
       .select('id, phone, name, status')
       .eq('campaign_id', campaignId)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(batchSize);
+      .limit(batchSize - (retryRecipients?.length || 0));
+    
+    // Combine retry and pending recipients, prioritizing retries
+    const allRecipients = [
+      ...(retryRecipients || []).map(r => ({ ...r, isRetry: true })),
+      ...(pendingRecipients || []).map(r => ({ ...r, isRetry: false, retry_count: 0 }))
+    ];
     
     // SAFETY CHECK: Log phone numbers we're about to process for debugging
-    const phonesToProcess = (pendingRecipients || []).map(r => r.phone);
-    console.log(`[Batch] Processing phones: ${phonesToProcess.join(', ')}`);
+    const phonesToProcess = allRecipients.map(r => r.phone);
+    console.log(`[Batch] Processing phones (${retryRecipients?.length || 0} retries, ${pendingRecipients?.length || 0} pending): ${phonesToProcess.join(', ')}`);
     
     // DOUBLE CHECK: Verify no recipients in this batch have already been sent
-    let filteredRecipients = pendingRecipients || [];
+    let filteredRecipients = allRecipients;
     if (phonesToProcess.length > 0) {
       const { data: alreadySent } = await supabase
         .from('campaign_recipients')
@@ -257,7 +306,7 @@ Deno.serve(async (req) => {
 
     // If no recipients in campaign_recipients, try to get from leads table (legacy support)
     let leads: Recipient[] = [];
-    if (filteredRecipients.length === 0) {
+    if (filteredRecipients.length === 0 && (retryRecipients?.length || 0) === 0) {
       const { data: legacyLeads } = await supabase
         .from('leads')
         .select('phone, name, email, city, state, document, notes')
@@ -269,17 +318,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build recipients to send - NO RETRY logic, just pending recipients
+    // Build recipients to send
     const recipientsToSend = filteredRecipients.length > 0 
       ? filteredRecipients.map(r => ({ 
           phone: r.phone, 
           name: r.name || undefined, 
-          recipientId: r.id
+          recipientId: r.id,
+          isRetry: r.isRetry,
+          retryCount: r.retry_count || 0
         }))
-      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null }));
+      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null, isRetry: false, retryCount: 0 }));
 
     if (recipientsToSend.length === 0) {
-      // No pending recipients - campaign is done
+      // No pending or retry recipients - check if there are waiting retries for later
+      const { count: futureRetries } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'waiting_retry')
+        .gt('next_retry_at', new Date().toISOString());
+
+      const hasFutureRetries = (futureRetries || 0) > 0;
+
       // Count actual results
       const { count: totalSent } = await supabase
         .from('campaign_recipients')
@@ -293,25 +353,34 @@ Deno.serve(async (req) => {
         .eq('campaign_id', campaignId)
         .eq('status', 'failed');
 
-      // Update campaign with accurate counts and mark as completed
+      const { count: totalWaitingRetry } = await supabase
+        .from('campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'waiting_retry');
+
+      // Update campaign status
+      const newStatus = hasFutureRetries ? 'running' : 'completed';
       await supabase.from('campaigns').update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
+        status: newStatus,
+        completed_at: hasFutureRetries ? null : new Date().toISOString(),
         sent_count: campaign.total_recipients,
         delivered_count: totalSent || 0,
         failed_count: totalFailed || 0
       }).eq('id', campaignId);
 
-      console.log(`[Batch] Campaign ${campaignId} completed: ${totalSent} delivered, ${totalFailed} failed`);
+      console.log(`[Batch] Campaign ${campaignId} ${hasFutureRetries ? 'waiting for retries' : 'completed'}: ${totalSent} delivered, ${totalFailed} failed, ${totalWaitingRetry} waiting retry`);
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          done: true, 
-          status: 'completed',
+          done: !hasFutureRetries, 
+          status: hasFutureRetries ? 'waiting_retry' : 'completed',
           delivered: totalSent || 0,
           failed: totalFailed || 0,
-          total: campaign.total_recipients
+          waitingRetry: totalWaitingRetry || 0,
+          total: campaign.total_recipients,
+          pendingRetries: futureRetries || 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -320,6 +389,7 @@ Deno.serve(async (req) => {
     let sentThisBatch = 0;
     let deliveredThisBatch = 0;
     let failedThisBatch = 0;
+    let scheduledRetryThisBatch = 0;
 
     // Process each recipient in the batch
     for (const recipient of recipientsToSend) {
@@ -387,14 +457,17 @@ Deno.serve(async (req) => {
 
         if (result.success) {
           deliveredThisBatch++;
-          sentThisBatch++;
-          console.log(`[Batch] ✓ Sent to ${formattedPhone}`);
+          if (!recipient.isRetry) sentThisBatch++;
+          console.log(`[Batch] ✓ ${recipient.isRetry ? 'RETRY' : 'Sent'} to ${formattedPhone}`);
 
           // Update recipient status if we have the ID
           if (recipient.recipientId) {
             await supabase.from('campaign_recipients').update({
               status: 'sent',
-              sent_at: new Date().toISOString()
+              sent_at: new Date().toISOString(),
+              error_message: null,
+              last_error_code: null,
+              next_retry_at: null
             }).eq('id', recipient.recipientId);
           }
 
@@ -431,23 +504,60 @@ Deno.serve(async (req) => {
           }
           console.log(`[Batch] Assignment created/updated for ${formattedPhone} with status: archived, sector: ${campaign.sector_id || 'none'}`);
         } else {
-          // NO RETRY - Mark as failed immediately
+          // Check if error is retryable
           const errorCode = extractMetaErrorCode(result.error || '');
-          failedThisBatch++;
-          sentThisBatch++;
-          console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error}`);
           
-          if (recipient.recipientId) {
-            await supabase.from('campaign_recipients').update({
-              status: 'failed',
-              error_message: result.error || 'Erro desconhecido',
-              last_error_code: errorCode || 'UNKNOWN'
-            }).eq('id', recipient.recipientId);
+          if (isRetryableError(errorCode) && recipient.recipientId) {
+            const currentRetryCount = recipient.retryCount || 0;
+            const config = getRetryConfig(errorCode!);
+            
+            if (config && currentRetryCount < config.maxRetries) {
+              // Schedule retry
+              const nextRetryAt = calculateNextRetryTime(errorCode!, currentRetryCount);
+              
+              await supabase.from('campaign_recipients').update({
+                status: 'waiting_retry',
+                retry_count: currentRetryCount + 1,
+                next_retry_at: nextRetryAt?.toISOString(),
+                error_message: result.error || 'Erro temporário - retry agendado',
+                last_error_code: errorCode
+              }).eq('id', recipient.recipientId);
+              
+              scheduledRetryThisBatch++;
+              if (!recipient.isRetry) sentThisBatch++;
+              
+              const hoursUntilRetry = nextRetryAt ? Math.round((nextRetryAt.getTime() - Date.now()) / 3600000) : 0;
+              console.log(`[Batch] ⏳ Scheduled retry #${currentRetryCount + 1} for ${formattedPhone} in ${hoursUntilRetry}h (error ${errorCode})`);
+            } else {
+              // Max retries reached
+              await supabase.from('campaign_recipients').update({
+                status: 'failed',
+                error_message: `Falha após ${currentRetryCount} tentativas: ${result.error}`,
+                last_error_code: errorCode || 'MAX_RETRIES'
+              }).eq('id', recipient.recipientId);
+              
+              failedThisBatch++;
+              if (!recipient.isRetry) sentThisBatch++;
+              console.log(`[Batch] ✗ Max retries reached for ${formattedPhone}`);
+            }
+          } else {
+            // Permanent failure - Mark as failed immediately
+            failedThisBatch++;
+            if (!recipient.isRetry) sentThisBatch++;
+            console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error} (code: ${errorCode})`);
+            
+            if (recipient.recipientId) {
+              await supabase.from('campaign_recipients').update({
+                status: 'failed',
+                error_message: result.error || 'Erro desconhecido',
+                last_error_code: errorCode || 'UNKNOWN'
+              }).eq('id', recipient.recipientId);
+            }
           }
         }
       } catch (error) {
         failedThisBatch++;
-        sentThisBatch++;
+        if (!recipient.isRetry) sentThisBatch++;
         console.error(`[Batch] Error sending to ${formattedPhone}:`, error);
         
         // Update recipient status if we have the ID
@@ -461,14 +571,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Check if there are remaining pending recipients
-    // NOTE: Counters (sent_count, delivered_count, failed_count) are updated automatically
-    // by the sync_campaign_counts trigger when campaign_recipients status changes
+    // Check if there are remaining pending or retry recipients
     const { count: remainingPending } = await supabase
       .from('campaign_recipients')
       .select('*', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
       .eq('status', 'pending');
+
+    const { count: waitingRetryNow } = await supabase
+      .from('campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'waiting_retry')
+      .lte('next_retry_at', new Date().toISOString());
+
+    const { count: waitingRetryLater } = await supabase
+      .from('campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'waiting_retry')
+      .gt('next_retry_at', new Date().toISOString());
 
     // Get current counts from trigger-updated values
     const { data: updatedCampaign } = await supabase
@@ -482,26 +604,39 @@ Deno.serve(async (req) => {
     const currentFailed = updatedCampaign?.failed_count || 0;
     const totalRecipients = updatedCampaign?.total_recipients || campaign.total_recipients;
 
-    const isComplete = (remainingPending || 0) === 0;
+    const noPendingOrReadyRetries = (remainingPending || 0) === 0 && (waitingRetryNow || 0) === 0;
+    const hasFutureRetries = (waitingRetryLater || 0) > 0;
+    const isComplete = noPendingOrReadyRetries && !hasFutureRetries;
 
-    // Only update status and completed_at - counters are managed by trigger
+    // Determine campaign status
+    let newStatus = 'running';
+    if (isComplete) {
+      newStatus = 'completed';
+    } else if (noPendingOrReadyRetries && hasFutureRetries) {
+      // All pending done, waiting for scheduled retries
+      newStatus = 'running'; // Keep running to continue processing
+    }
+
+    // Update campaign status
     await supabase.from('campaigns').update({
-      status: isComplete ? 'completed' : 'running',
+      status: newStatus,
       completed_at: isComplete ? new Date().toISOString() : null
     }).eq('id', campaignId);
 
-    console.log(`[Batch] Campaign ${campaignId}: ${currentSent}/${totalRecipients} sent, ${currentDelivered} delivered, ${currentFailed} failed | Pending: ${remainingPending || 0}`);
+    console.log(`[Batch] Campaign ${campaignId}: ${currentSent}/${totalRecipients} sent, ${currentDelivered} delivered, ${currentFailed} failed, ${scheduledRetryThisBatch} scheduled retries | Pending: ${remainingPending || 0}, Waiting retry: ${(waitingRetryNow || 0) + (waitingRetryLater || 0)}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         done: isComplete,
-        status: isComplete ? 'completed' : 'running',
+        status: isComplete ? 'completed' : (hasFutureRetries && noPendingOrReadyRetries ? 'waiting_retry' : 'running'),
         sent: currentSent,
         delivered: currentDelivered,
         failed: currentFailed,
         total: totalRecipients,
-        batchProcessed: sentThisBatch
+        batchProcessed: sentThisBatch,
+        scheduledRetries: scheduledRetryThisBatch,
+        pendingRetries: (waitingRetryNow || 0) + (waitingRetryLater || 0)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

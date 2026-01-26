@@ -7,6 +7,7 @@ const corsHeaders = {
 
 // This function runs continuously as a cron job (every 30 seconds)
 // It processes ALL running campaigns independently
+// NEW: Also processes scheduled retries for completed campaigns
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -54,24 +55,53 @@ Deno.serve(async (req) => {
     }
 
     // Get all running campaigns
-    const { data: campaigns, error: campError } = await supabase
+    const { data: runningCampaigns, error: campError } = await supabase
       .from('campaigns')
       .select('id, name, min_interval, max_interval, sent_count, total_recipients, updated_at')
       .eq('status', 'running')
 
     if (campError) {
-      console.error('[Processor] Error fetching campaigns:', campError)
-      return new Response(JSON.stringify({ error: 'Error fetching campaigns' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      console.error('[Processor] Error fetching running campaigns:', campError)
     }
 
-    if (!campaigns || campaigns.length === 0) {
-      console.log('[Processor] No running campaigns found')
+    // NEW: Check for campaigns with pending retries (even if "completed")
+    // This allows us to continue processing retries after initial send is done
+    const { data: campaignsWithRetries, error: retryError } = await supabase
+      .from('campaign_recipients')
+      .select('campaign_id')
+      .eq('status', 'waiting_retry')
+      .lte('next_retry_at', now)
+      .limit(100)
+
+    // Get unique campaign IDs with ready retries
+    const retryCAmpignIds = [...new Set((campaignsWithRetries || []).map(r => r.campaign_id))];
+    
+    // Fetch details for campaigns with retries that aren't already running
+    let retriableCampaigns: any[] = [];
+    if (retryCAmpignIds.length > 0) {
+      const runningIds = (runningCampaigns || []).map(c => c.id);
+      const onlyRetryIds = retryCAmpignIds.filter(id => !runningIds.includes(id));
+      
+      if (onlyRetryIds.length > 0) {
+        const { data: retryCamps } = await supabase
+          .from('campaigns')
+          .select('id, name, min_interval, max_interval, sent_count, total_recipients, updated_at')
+          .in('id', onlyRetryIds)
+          .in('status', ['completed', 'paused']) // Process retries for completed/paused campaigns too
+        
+        retriableCampaigns = retryCamps || [];
+        console.log(`[Processor] Found ${retriableCampaigns.length} campaign(s) with ready retries`)
+      }
+    }
+
+    // Combine all campaigns to process
+    const allCampaigns = [...(runningCampaigns || []), ...retriableCampaigns];
+
+    if (allCampaigns.length === 0) {
+      console.log('[Processor] No campaigns to process')
       return new Response(JSON.stringify({ 
         success: true, 
-        message: 'No running campaigns',
+        message: 'No campaigns to process',
         processed: 0,
         scheduledStarted: scheduledCampaigns?.length || 0
       }), {
@@ -79,35 +109,39 @@ Deno.serve(async (req) => {
       })
     }
 
-    console.log(`[Processor] Found ${campaigns.length} running campaign(s)`)
+    console.log(`[Processor] Processing ${allCampaigns.length} campaign(s) (${runningCampaigns?.length || 0} running, ${retriableCampaigns.length} with retries)`)
 
     const results: any[] = []
 
     // Process each campaign
-    for (const campaign of campaigns) {
+    for (const campaign of allCampaigns) {
       const lastUpdate = new Date(campaign.updated_at).getTime()
-      const now = Date.now()
+      const nowMs = Date.now()
       const minWait = (campaign.min_interval || 5) * 1000
       
-      // Check if enough time has passed since last update
-      if (now - lastUpdate < minWait) {
-        console.log(`[Processor] ${campaign.name}: waiting (${Math.round((now - lastUpdate) / 1000)}s < ${campaign.min_interval}s)`)
+      // For retry campaigns, process immediately
+      const isRetryOnly = retriableCampaigns.some(c => c.id === campaign.id);
+      
+      // Check if enough time has passed since last update (skip for retry-only)
+      if (!isRetryOnly && nowMs - lastUpdate < minWait) {
+        console.log(`[Processor] ${campaign.name}: waiting (${Math.round((nowMs - lastUpdate) / 1000)}s < ${campaign.min_interval}s)`)
         results.push({ 
           campaign: campaign.name, 
           status: 'waiting',
-          waitedSeconds: Math.round((now - lastUpdate) / 1000)
+          waitedSeconds: Math.round((nowMs - lastUpdate) / 1000)
         })
         continue
       }
 
-      console.log(`[Processor] Processing ${campaign.name}...`)
+      console.log(`[Processor] Processing ${campaign.name}${isRetryOnly ? ' (retries only)' : ''}...`)
 
       try {
         // Use supabase.functions.invoke which handles auth properly
         const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
           body: {
             campaignId: campaign.id,
-            batchSize: 1
+            batchSize: 1,
+            processRetries: isRetryOnly
           }
         })
 
@@ -125,7 +159,8 @@ Deno.serve(async (req) => {
 
         results.push({
           campaign: campaign.name,
-          status: result?.done ? 'completed' : 'sent',
+          status: result?.done ? 'completed' : (result?.status || 'sent'),
+          pendingRetries: result?.pendingRetries || 0,
           ...result
         })
       } catch (err) {
@@ -143,7 +178,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      processed: campaigns.length,
+      processed: allCampaigns.length,
       results,
       elapsedMs: elapsed
     }), {
