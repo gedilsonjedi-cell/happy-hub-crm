@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, Eye, RefreshCw } from "lucide-react";
+import { Play, Eye, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
@@ -24,12 +24,22 @@ interface CampaignProgressBarProps {
   onViewDetails: (campaignId: string) => void;
 }
 
+// Simple debounce function
+function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return ((...args: unknown[]) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delay);
+  }) as T;
+}
+
 export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps) {
   const [runningCampaigns, setRunningCampaigns] = useState<RunningCampaign[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const previousDataRef = useRef<string>("");
 
-  const fetchRunningCampaigns = async () => {
+  const fetchRunningCampaigns = useCallback(async () => {
     if (!effectiveOrganizationId) return;
     
     const { data, error } = await supabase
@@ -40,16 +50,28 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       .order("started_at", { ascending: false });
 
     if (!error && data) {
-      setRunningCampaigns(data);
+      // Only update state if data actually changed (prevents flickering)
+      const newDataString = JSON.stringify(data);
+      if (newDataString !== previousDataRef.current) {
+        previousDataRef.current = newDataString;
+        setRunningCampaigns(data);
+      }
     }
-  };
+  }, [effectiveOrganizationId]);
+
+  // Debounced version for realtime updates (1 second delay)
+  const debouncedFetch = useMemo(
+    () => debounce(fetchRunningCampaigns, 1000),
+    [fetchRunningCampaigns]
+  );
 
   useEffect(() => {
     if (!effectiveOrganizationId) return;
     
+    // Initial fetch
     fetchRunningCampaigns();
 
-    // Set up realtime subscription
+    // Set up realtime subscription with debounced updates
     const channel = supabase
       .channel("running-campaigns")
       .on(
@@ -60,21 +82,21 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
           table: "campaigns",
           filter: "status=eq.running",
         },
-        (payload) => {
-          console.log("Campaign update:", payload);
-          fetchRunningCampaigns();
+        () => {
+          // Use debounced fetch to prevent flickering from rapid updates
+          debouncedFetch();
         }
       )
       .subscribe();
 
-    // Poll every 5 seconds for updates (fallback)
-    const pollInterval = setInterval(fetchRunningCampaigns, 5000);
+    // Poll every 10 seconds as fallback (increased from 5 to reduce load)
+    const pollInterval = setInterval(fetchRunningCampaigns, 10000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, [effectiveOrganizationId]);
+  }, [effectiveOrganizationId, fetchRunningCampaigns, debouncedFetch]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
