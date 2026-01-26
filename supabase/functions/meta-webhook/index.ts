@@ -1329,9 +1329,10 @@ Deno.serve(async (req) => {
             console.log('Looking for campaign recipient:', { campaignId, phoneVariants });
             
             // Find recipient by phone suffix matching
+            // Include updated_at to detect duplicate webhooks
             const { data: recipients } = await supabase
               .from('campaign_recipients')
-              .select('id, phone, status')
+              .select('id, phone, status, updated_at')
               .eq('campaign_id', campaignId)
               .limit(1000);
             
@@ -1342,45 +1343,58 @@ Deno.serve(async (req) => {
               });
               
               if (recipient) {
-                const now = new Date().toISOString();
-                const updateData: Record<string, unknown> = { updated_at: now };
+                // ANTI-DUPLICATE: Check if recipient was updated very recently (within 2 seconds)
+                // This prevents race conditions from Meta sending multiple webhooks for the same event
+                const lastUpdateTime = recipient.updated_at ? new Date(recipient.updated_at).getTime() : 0;
+                const timeSinceUpdate = Date.now() - lastUpdateTime;
                 
-                // Handle failed status - update recipient to failed with error details
-                if (statusValue === 'failed') {
-                  // Only update if not already failed (avoid duplicate processing)
-                  if (recipient.status !== 'failed') {
-                    updateData.status = 'failed';
-                    updateData.error_message = metaErrorMessage || 'Falha reportada pelo Meta';
-                    updateData.last_error_code = metaErrorCode ? String(metaErrorCode) : 'WEBHOOK_FAILED';
-                    console.log('Updating recipient to FAILED:', recipient.id, { errorCode: metaErrorCode, errorMessage: metaErrorMessage });
-                  }
-                }
-                // Only update status if it's an improvement (delivered > sent, read > delivered)
-                else if (statusValue === 'delivered' && recipient.status !== 'read' && recipient.status !== 'failed') {
-                  updateData.status = 'delivered';
-                  updateData.delivered_at = now;
-                  console.log('Updating recipient to delivered:', recipient.id);
-                } else if (statusValue === 'read' && recipient.status !== 'failed') {
-                  updateData.status = 'read';
-                  updateData.read_at = now;
-                  // Also set delivered_at if not already set
-                  updateData.delivered_at = now;
-                  console.log('Updating recipient to read:', recipient.id);
-                }
-                
-                if (Object.keys(updateData).length > 1) {
-                  const { error: recipientError } = await supabase
-                    .from('campaign_recipients')
-                    .update(updateData)
-                    .eq('id', recipient.id);
+                if (timeSinceUpdate < 2000 && recipient.status === statusValue) {
+                  console.log('Ignoring duplicate webhook for recipient:', recipient.id, { 
+                    status: statusValue, 
+                    timeSinceUpdate: `${timeSinceUpdate}ms` 
+                  });
+                  // Skip this update - it's a duplicate
+                } else {
+                  const now = new Date().toISOString();
+                  const updateData: Record<string, unknown> = { updated_at: now };
                   
-                  if (recipientError) {
-                    console.error('Error updating campaign recipient:', recipientError);
-                  } else {
-                    console.log('Campaign recipient updated:', recipient.id, updateData);
-                    // NOTE: Campaign counters (sent_count, delivered_count, failed_count) are 
-                    // automatically updated by the sync_campaign_counts trigger when 
-                    // campaign_recipients status changes - no manual update needed here
+                  // Handle failed status - update recipient to failed with error details
+                  if (statusValue === 'failed') {
+                    // Only update if not already failed (avoid duplicate processing)
+                    if (recipient.status !== 'failed') {
+                      updateData.status = 'failed';
+                      updateData.error_message = metaErrorMessage || 'Falha reportada pelo Meta';
+                      updateData.last_error_code = metaErrorCode ? String(metaErrorCode) : 'WEBHOOK_FAILED';
+                      console.log('Updating recipient to FAILED:', recipient.id, { errorCode: metaErrorCode, errorMessage: metaErrorMessage });
+                    }
+                  }
+                  // Only update status if it's an improvement (delivered > sent, read > delivered)
+                  else if (statusValue === 'delivered' && recipient.status !== 'read' && recipient.status !== 'failed') {
+                    updateData.status = 'delivered';
+                    updateData.delivered_at = now;
+                    console.log('Updating recipient to delivered:', recipient.id);
+                  } else if (statusValue === 'read' && recipient.status !== 'failed') {
+                    updateData.status = 'read';
+                    updateData.read_at = now;
+                    // Also set delivered_at if not already set
+                    updateData.delivered_at = now;
+                    console.log('Updating recipient to read:', recipient.id);
+                  }
+                  
+                  if (Object.keys(updateData).length > 1) {
+                    const { error: recipientError } = await supabase
+                      .from('campaign_recipients')
+                      .update(updateData)
+                      .eq('id', recipient.id);
+                    
+                    if (recipientError) {
+                      console.error('Error updating campaign recipient:', recipientError);
+                    } else {
+                      console.log('Campaign recipient updated:', recipient.id, updateData);
+                      // NOTE: Campaign counters (sent_count, delivered_count, failed_count) are 
+                      // automatically updated by the sync_campaign_counts trigger when 
+                      // campaign_recipients status changes - no manual update needed here
+                    }
                   }
                 }
               }
