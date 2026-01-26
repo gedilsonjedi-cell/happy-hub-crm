@@ -1,183 +1,250 @@
 
-# Plano de Melhoria do Sistema de Campanhas
+# Plano de Correção: Estabilidade dos Contadores de Campanha
 
-## Diagnóstico do Problema
+## Diagnóstico Completo
 
-Após análise completa do código e dados, identifiquei as seguintes diferenças entre nosso sistema e soluções profissionais como o Helena.app:
+### Problema Identificado
+Os contadores de campanha (enviadas, entregues, falhas) flutuam inconsistentemente porque:
 
-### Problema Principal: Erro #131049 Tratado como Falha Permanente
+1. **Webhooks Duplicados da Meta**: A Meta envia múltiplos webhooks para o mesmo evento. Nos logs, vemos o mesmo recipient sendo atualizado DUAS VEZES em 17ms:
+   ```
+   18:52:12.172Z - Campaign recipient updated: f14d214d... status: "failed"
+   18:52:12.155Z - Campaign recipient updated: f14d214d... status: "failed"
+   ```
 
-O erro `#131049` (limite de marketing por usuário) ocorre quando a Meta bloqueia temporariamente mensagens de marketing para um contato específico. No entanto:
+2. **Race Condition no Trigger**: O trigger `sync_campaign_counts` executa um `COUNT(*)` completo a cada atualização. Quando múltiplas atualizações ocorrem em paralelo:
+   - Update 1 começa contagem (vê status X)
+   - Update 2 muda status para Y
+   - Update 1 termina contagem (valores desatualizados)
+   - Update 2 começa contagem (valores corretos)
+   - Resultado: números "pulam" entre valores
 
-- **Nosso sistema**: Marca como `failed` permanentemente e nunca retenta
-- **Sistemas profissionais**: Aguardam 12-24 horas e tentam novamente automaticamente
+3. **Dupla Atualização de Status**: O `send-campaign-batch` atualiza recipient para `sent`, depois o webhook atualiza para `failed`, cada um disparando o trigger.
 
-**Dados reais das suas campanhas:**
-- ~3.400 falhas por erro 131049 nos últimos 7 dias
-- Taxa de entrega média: 5-10% (deveria ser 40-60% com retry adequado)
-
-### Por que o Helena.app funciona melhor?
-
-Segundo a documentação do WhatsApp, o erro 131049 é **temporário**. A recomendação oficial é:
-1. Primeira tentativa: aguardar 12 horas
-2. Segunda tentativa: aguardar 24 horas  
-3. Terceira tentativa: aguardar 48 horas
+### Evidência nos Logs de Console
+```javascript
+18:50:39.091 - sent_count: 1, failed_count: 6
+18:50:39.188 - sent_count: 0, failed_count: 7  // 97ms depois, sent_count foi de 1 para 0!
+```
 
 ---
 
 ## Solução Proposta
 
-### Fase 1: Sistema de Retry Inteligente
+### Fase 1: Proteção contra Webhooks Duplicados (meta-webhook)
 
-**Modificar `send-campaign-batch`** para agendar retries ao invés de marcar como falha definitiva:
+**Objetivo**: Ignorar webhooks duplicados para o mesmo recipient
 
-```text
-┌─────────────────┐     ┌──────────────┐     ┌───────────────┐
-│ Envio inicial   │ ──► │ Erro #131049 │ ──► │ Agendar retry │
-│ (status=sent)   │     │ detectado    │     │ em 12 horas   │
-└─────────────────┘     └──────────────┘     └───────────────┘
-                                                     │
-                                                     ▼
-                                            ┌───────────────┐
-                                            │ retry_count=1 │
-                                            │ next_retry_at │
-                                            │ = now + 12h   │
-                                            └───────────────┘
-```
-
-### Fase 2: Processador de Retries
-
-**Criar/modificar `campaign-processor`** para buscar mensagens prontas para retry:
-
-- Verifica `next_retry_at <= NOW()` 
-- Processa até 3 tentativas (retry_count < 3)
-- Incrementa delay: 12h → 24h → 48h
-- Após 3 tentativas: marca como `failed` definitivo
-
-### Fase 3: Identificação de Erros Retentáveis
-
-| Código | Descrição | Ação |
-|--------|-----------|------|
-| 131049 | Limite de marketing | Retry em 12-48h |
-| 135000 | Erro genérico | Retry em 1h |
-| 131000 | Erro interno Meta | Retry em 30min |
-| 131026 | Sem WhatsApp | Falha permanente |
-| 131042 | Problema pagamento | Falha permanente |
-
-### Fase 4: Status Intermediário "Aguardando Retry"
-
-Adicionar visualização na UI para mostrar mensagens aguardando próxima tentativa, separadas das falhas definitivas.
-
----
-
-## Implementação Técnica
-
-### 1. Atualizar `send-campaign-batch/index.ts`
-
+**Implementação**:
 ```typescript
-// Erros que podem ser retentados
-const RETRYABLE_ERRORS = {
-  '131049': { maxRetries: 3, delayHours: [12, 24, 48] },
-  '135000': { maxRetries: 2, delayHours: [1, 2] },
-  '131000': { maxRetries: 2, delayHours: [0.5, 1] },
-};
-
-// Quando receber erro retentável:
-if (RETRYABLE_ERRORS[errorCode]) {
-  const config = RETRYABLE_ERRORS[errorCode];
-  const currentRetry = recipient.retry_count || 0;
-  
-  if (currentRetry < config.maxRetries) {
-    const delayHours = config.delayHours[currentRetry];
-    await supabase.from('campaign_recipients').update({
-      status: 'waiting_retry',
-      retry_count: currentRetry + 1,
-      next_retry_at: new Date(Date.now() + delayHours * 3600000),
-      last_error_code: errorCode
-    }).eq('id', recipientId);
-  } else {
-    // Max retries reached - mark as failed
-    await supabase.from('campaign_recipients').update({
-      status: 'failed'
-    }).eq('id', recipientId);
+// Antes de atualizar, verificar se já foi processado recentemente
+if (statusValue === 'failed') {
+  // Só atualizar se status atual for diferente de 'failed'
+  if (recipient.status !== 'failed') {
+    updateData.status = 'failed';
+    // ...
   }
 }
 ```
 
-### 2. Atualizar `campaign-processor/index.ts`
+**Problema atual**: A verificação `recipient.status !== 'failed'` existe, MAS os dois webhooks chegam tão rápido que ambos passam pela verificação antes de qualquer update ser commitado.
 
-Adicionar lógica para processar retries:
-
+**Solução**: Adicionar timestamp de última atualização e ignorar updates muito próximos:
 ```typescript
-// Buscar recipients prontos para retry
-const { data: readyForRetry } = await supabase
-  .from('campaign_recipients')
-  .select('*, campaigns!inner(status)')
-  .eq('status', 'waiting_retry')
-  .lte('next_retry_at', new Date().toISOString())
-  .eq('campaigns.status', 'completed') // Pode retentar mesmo após campanha "completa"
-  .limit(10);
-
-for (const recipient of readyForRetry) {
-  // Re-enviar mensagem
-  // Atualizar status baseado no resultado
+// Ignorar se foi atualizado há menos de 2 segundos
+const lastUpdate = new Date(recipient.updated_at).getTime();
+const now = Date.now();
+if (now - lastUpdate < 2000 && recipient.status === statusValue) {
+  console.log('Ignoring duplicate webhook for recipient:', recipient.id);
+  continue;
 }
 ```
 
-### 3. Adicionar Novo Status na Campanha
+---
 
-- Campanha em `completed` pode ter recipients em `waiting_retry`
-- Novo badge "Aguardando Retry" na UI
-- Contadores separados: falhas definitivas vs aguardando retry
+### Fase 2: Trigger com Debounce/Lock (sync_campaign_counts)
 
-### 4. Modificar `useCampaignProcessor.tsx`
+**Problema**: O trigger atual executa COUNT(*) a cada UPDATE, causando race conditions.
 
-Continuar polling mesmo para campanhas "completed" que tenham retries pendentes.
+**Solução 1 - Simples (Recomendada)**: Usar `SKIP LOCKED` e operações atômicas
 
-### 5. Atualizar UI do Relatório
+```sql
+CREATE OR REPLACE FUNCTION public.sync_campaign_counts()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_campaign_id uuid;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    v_campaign_id := OLD.campaign_id;
+  ELSE
+    v_campaign_id := NEW.campaign_id;
+  END IF;
+  
+  -- Usar UPDATE com subqueries para operação atômica
+  UPDATE public.campaigns
+  SET 
+    sent_count = (
+      SELECT COUNT(*) FROM public.campaign_recipients 
+      WHERE campaign_id = v_campaign_id 
+      AND status IN ('sent', 'delivered', 'read')
+    ),
+    delivered_count = (
+      SELECT COUNT(*) FROM public.campaign_recipients 
+      WHERE campaign_id = v_campaign_id 
+      AND (status IN ('delivered', 'read') OR delivered_at IS NOT NULL)
+    ),
+    failed_count = (
+      SELECT COUNT(*) FROM public.campaign_recipients 
+      WHERE campaign_id = v_campaign_id 
+      AND status = 'failed'
+    ),
+    updated_at = now()
+  WHERE id = v_campaign_id;
+  
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
 
-No `CampaignReportDialog`, mostrar:
-- Enviadas ✓
-- Entregues ✓
-- Falhas definitivas ✗
-- **Aguardando retry** ⏳ (NOVO)
+**Solução 2 - Incremental (Mais Performática)**: Usar incremento/decremento ao invés de COUNT(*) completo
+
+```sql
+CREATE OR REPLACE FUNCTION public.sync_campaign_counts()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_campaign_id uuid;
+  v_old_status text;
+  v_new_status text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    v_campaign_id := OLD.campaign_id;
+    v_old_status := OLD.status;
+    v_new_status := NULL;
+  ELSIF TG_OP = 'INSERT' THEN
+    v_campaign_id := NEW.campaign_id;
+    v_old_status := NULL;
+    v_new_status := NEW.status;
+  ELSE -- UPDATE
+    v_campaign_id := NEW.campaign_id;
+    v_old_status := OLD.status;
+    v_new_status := NEW.status;
+  END IF;
+  
+  -- Se status não mudou, não fazer nada
+  IF v_old_status = v_new_status THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  
+  -- Decrementar contador antigo
+  IF v_old_status IN ('sent', 'delivered', 'read') THEN
+    UPDATE campaigns SET sent_count = GREATEST(0, sent_count - 1) WHERE id = v_campaign_id;
+  END IF;
+  IF v_old_status IN ('delivered', 'read') THEN
+    UPDATE campaigns SET delivered_count = GREATEST(0, delivered_count - 1) WHERE id = v_campaign_id;
+  END IF;
+  IF v_old_status = 'failed' THEN
+    UPDATE campaigns SET failed_count = GREATEST(0, failed_count - 1) WHERE id = v_campaign_id;
+  END IF;
+  
+  -- Incrementar contador novo
+  IF v_new_status IN ('sent', 'delivered', 'read') THEN
+    UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = v_campaign_id;
+  END IF;
+  IF v_new_status IN ('delivered', 'read') THEN
+    UPDATE campaigns SET delivered_count = delivered_count + 1 WHERE id = v_campaign_id;
+  END IF;
+  IF v_new_status = 'failed' THEN
+    UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = v_campaign_id;
+  END IF;
+  
+  UPDATE campaigns SET updated_at = now() WHERE id = v_campaign_id;
+  
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
+
+### Fase 3: Proteção no Frontend (CampaignProgressBar)
+
+**Problema**: O frontend atualiza a cada evento realtime, mostrando estados intermediários.
+
+**Solução**: Adicionar debounce no realtime subscription
+
+```typescript
+// Debounce realtime updates para evitar flickering
+const debouncedFetch = useMemo(() => 
+  debounce(fetchRunningCampaigns, 1000), // 1 segundo
+  [fetchRunningCampaigns]
+);
+
+// No subscription
+.on("postgres_changes", {...}, (payload) => {
+  debouncedFetch(); // Não atualizar imediatamente
+})
+```
+
+**Adicional**: Só atualizar se os valores realmente mudaram:
+```typescript
+if (!error && data) {
+  // Só atualizar state se dados realmente mudaram
+  const hasChanges = JSON.stringify(data) !== JSON.stringify(runningCampaigns);
+  if (hasChanges) {
+    setRunningCampaigns(data);
+  }
+}
+```
+
+---
+
+### Fase 4: Proteção no meta-webhook
+
+**Adicionar lock por recipient** para evitar updates paralelos:
+
+```typescript
+// Usar um advisory lock baseado no recipient ID
+const lockKey = recipient.id.replace(/-/g, '').slice(0, 16);
+const { data: lockResult } = await supabase.rpc('try_advisory_lock', { key: lockKey });
+
+if (!lockResult) {
+  console.log('Another process is updating this recipient, skipping');
+  continue;
+}
+
+try {
+  // Fazer update
+} finally {
+  await supabase.rpc('release_advisory_lock', { key: lockKey });
+}
+```
 
 ---
 
 ## Arquivos a Modificar
 
-1. `supabase/functions/send-campaign-batch/index.ts` - Lógica de retry
-2. `supabase/functions/campaign-processor/index.ts` - Processar retries
-3. `src/hooks/useCampaignProcessor.tsx` - Suporte a waiting_retry
-4. `src/components/campaigns/CampaignReportDialog.tsx` - Mostrar status retry
-5. `src/pages/Disparos.tsx` - Badge de aguardando retry
+| Arquivo | Mudança | Prioridade |
+|---------|---------|------------|
+| `supabase/migrations/[new].sql` | Trigger incremental | Alta |
+| `supabase/functions/meta-webhook/index.ts` | Proteção contra duplicados | Alta |
+| `src/components/campaigns/CampaignProgressBar.tsx` | Debounce de updates | Média |
+| `src/hooks/useCampaignProcessor.tsx` | Debounce de UI | Média |
 
 ---
 
-## Resultado Esperado
+## Resumo Técnico
 
-Com essa implementação:
-- **Taxa de entrega esperada**: 40-60% (vs atual 5-10%)
-- **Mensagens #131049**: ~70% entregues em até 48h
-- **Experiência do usuário**: Sem necessidade de reciclar manualmente
-- **Paridade com Helena.app**: Sistema de retry automático similar
+### Causa Raiz
+1. Meta envia webhooks duplicados (milissegundos de diferença)
+2. Trigger executa COUNT(*) completo a cada update
+3. Race conditions entre updates paralelos
 
----
+### Solução
+1. **Backend**: Trigger incremental + proteção contra duplicados
+2. **Frontend**: Debounce em updates realtime
+3. **Webhook**: Verificação de timestamp para ignorar duplicados
 
-## Riscos e Mitigações
-
-| Risco | Mitigação |
-|-------|-----------|
-| Reenvio duplicado | Lock por recipient_id + campanha |
-| Sobrecarga do sistema | Processar retries em batches pequenos |
-| Campanha antiga retentando | Limite de 7 dias para retries |
-| Custo adicional | Mensagens retentadas são gratuitas (mesmo envelope) |
-
----
-
-## Cronograma Sugerido
-
-1. **Fase 1** (Core): Implementar lógica de retry - ~2 horas
-2. **Fase 2** (Processor): Atualizar processador - ~1 hora
-3. **Fase 3** (UI): Atualizar interface - ~1 hora
-4. **Fase 4** (Teste): Testar com campanha real - ~30 min
+### Resultado Esperado
+- Contadores estáveis e precisos
+- Sem flickering na UI
+- Performance melhorada (incremento vs COUNT(*))
