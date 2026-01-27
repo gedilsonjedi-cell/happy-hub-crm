@@ -35,6 +35,14 @@ export const DocumentUpload = ({ userId, agentId, documents, onDocumentsChange }
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Sanitize filename to remove special characters that cause storage errors
+  const sanitizeFileName = (fileName: string): string => {
+    // Normalize and remove diacritics/accents
+    const normalized = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Replace special chars with underscore, keep alphanumeric, dots, hyphens
+    return normalized.replace(/[^a-zA-Z0-9.\-_]/g, '_').replace(/_+/g, '_');
+  };
+
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
@@ -46,7 +54,9 @@ export const DocumentUpload = ({ userId, agentId, documents, onDocumentsChange }
           continue;
         }
 
-        const filePath = `${userId}/${Date.now()}_${file.name}`;
+        // Sanitize filename for storage path
+        const sanitizedName = sanitizeFileName(file.name);
+        const filePath = `${userId}/${Date.now()}_${sanitizedName}`;
         
         const { error: uploadError } = await supabase.storage
           .from('knowledge-docs')
