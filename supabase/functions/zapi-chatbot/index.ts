@@ -338,23 +338,14 @@ ${collectedInfoDisplay}
 
 ### REGRA ABSOLUTA - PROIBIDO REPETIR PERGUNTAS
 🚫 VOCÊ ESTÁ PROIBIDO de perguntar novamente sobre qualquer item marcado com ✅ acima.
-🚫 Se "idade" já está coletada, NUNCA mais pergunte "qual sua idade".
-🚫 Se "tempo_empresa" já está coletado, NUNCA mais pergunte sobre tempo de empresa.
-🚫 Se "salario" já está coletado, NUNCA mais pergunte sobre salário.
 
-### O QUE FAZER AGORA
-1. OLHE a lista de ✅ acima para ver o que já foi coletado
-2. IDENTIFIQUE a PRÓXIMA pergunta do guia que AINDA NÃO foi respondida
-3. Faça APENAS essa próxima pergunta
-4. Se TODAS as perguntas do guia já foram respondidas, faça o encerramento e transfira
+### TRANSFERÊNCIA IMEDIATA
+⚡ QUANDO O CLIENTE CONFIRMAR QUE DESEJA SEGUIR (dizendo "sim", "quero", "pode ser", etc) APÓS VOCÊ APRESENTAR O PERFIL DELE:
+1. Responda: "Ótimo! Vou transferir você para um de nossos especialistas que irá finalizar sua análise. Aguarde um momento."
+2. OBRIGATÓRIO: Adicione [TRANSFERIR_PARA_ATENDENTE] no final da sua resposta
 
-### RASTREAMENTO - ADICIONE SEMPRE AO FINAL
+### RASTREAMENTO
 Ao final de CADA resposta, adicione: [INFO_COLETADA:campo=valor]
-Campos padrão: idade, tempo_empresa, salario, restricoes, tipo_conta, empresa_2anos, objetivo
-
-### TRANSFERÊNCIA
-- APENAS quando você completar TODO o roteiro do guia e tiver coletado todas as informações necessárias
-- Adicione a tag [TRANSFERIR_PARA_ATENDENTE] no FINAL da sua resposta
 ` : ''}
 ${memorySummary ? `## MEMÓRIA DE CONVERSAS ANTERIORES
 ${memorySummary}
