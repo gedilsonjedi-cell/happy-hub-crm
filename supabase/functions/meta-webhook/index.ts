@@ -1231,6 +1231,46 @@ Deno.serve(async (req) => {
           } catch (error) {
             console.error('Error handling lead/assignment:', error);
           }
+
+          // Check chatbot config and invoke chatbot if enabled
+          const { data: chatbotConfig } = await supabase
+            .from('chatbot_config')
+            .select('*')
+            .eq('channel_id', channel.id)
+            .eq('is_enabled', true)
+            .single();
+
+          if (chatbotConfig) {
+            console.log('Chatbot enabled for this channel, invoking whatsapp-chatbot...');
+            
+            try {
+              const chatbotResponse = await fetch(
+                `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-chatbot`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                  },
+                  body: JSON.stringify({
+                    channelId: channel.id,
+                    senderPhone: normalizedPhone,
+                    senderName: senderName,
+                    messageContent: content,
+                    messageId: messageId,
+                    organizationId: channel.organization_id,
+                  }),
+                }
+              );
+
+              const chatbotResult = await chatbotResponse.json();
+              console.log('Chatbot response:', chatbotResult);
+            } catch (chatbotError) {
+              console.error('Error calling chatbot:', chatbotError);
+            }
+          } else {
+            console.log('No chatbot config for this channel or chatbot disabled');
+          }
         }
       }
 
