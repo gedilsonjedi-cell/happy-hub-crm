@@ -217,10 +217,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
 
   // Detect the best separator for the CSV content
   const detectSeparator = (content: string): string => {
-    const lines = content.split(/\r?\n/).filter(line => line.trim()).slice(0, 5);
+    const lines = content.split(/\r?\n/).filter(line => line.trim()).slice(0, 10);
     if (lines.length === 0) return ",";
     
-    // Count separators outside quotes in first few lines
+    // Count separators outside quotes in a line
     const countSeparators = (line: string, sep: string): number => {
       let count = 0;
       let inQuotes = false;
@@ -231,33 +231,64 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       return count;
     };
     
-    const separators = [";", ",", "\t"];
-    const scores: Record<string, number> = { ";": 0, ",": 0, "\t": 0 };
+    const separators = [";", ",", "\t", "|"];
     
-    for (const line of lines) {
-      for (const sep of separators) {
-        const count = countSeparators(line, sep);
-        if (count > 0) scores[sep] += count;
-      }
-    }
+    // For each separator, calculate consistency score across lines
+    // A good separator should produce the same column count on each line
+    const evaluateSeparator = (sep: string): { score: number; avgCount: number } => {
+      const counts = lines.map(line => countSeparators(line, sep));
+      if (counts.every(c => c === 0)) return { score: 0, avgCount: 0 };
+      
+      const avgCount = counts.reduce((a, b) => a + b, 0) / counts.length;
+      
+      // Calculate variance - lower is better (more consistent)
+      const variance = counts.reduce((sum, c) => sum + Math.pow(c - avgCount, 2), 0) / counts.length;
+      
+      // Score: higher avgCount is better, lower variance is better
+      const consistencyScore = avgCount > 0 ? avgCount / (1 + variance) : 0;
+      
+      return { score: consistencyScore, avgCount };
+    };
     
-    // Check consistency - a good separator should have similar counts across lines
     let bestSep = ",";
     let bestScore = 0;
     
     for (const sep of separators) {
-      if (scores[sep] > bestScore) {
-        bestScore = scores[sep];
+      const { score, avgCount } = evaluateSeparator(sep);
+      
+      // Need at least 1 separator on average to be considered
+      if (avgCount >= 1 && score > bestScore) {
+        bestScore = score;
         bestSep = sep;
       }
     }
     
-    // Special case: if semicolon has any matches, prefer it (common in BR Excel exports)
-    if (scores[";"] > 0) {
-      return ";";
-    }
+    console.log(`[ImportLeads] Separator scores:`, separators.map(sep => ({
+      sep: sep === "\t" ? "TAB" : sep,
+      ...evaluateSeparator(sep)
+    })));
     
     return bestSep;
+  };
+
+  // Clean content: remove BOM and normalize encoding issues
+  const cleanContent = (content: string): string => {
+    // Remove BOM (Byte Order Mark) if present
+    let cleaned = content.replace(/^\uFEFF/, '');
+    
+    // Normalize line endings
+    cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Fix common encoding issues (Windows-1252 to UTF-8)
+    cleaned = cleaned
+      .replace(/\u0093/g, '"')  // Left double quote
+      .replace(/\u0094/g, '"')  // Right double quote
+      .replace(/\u0091/g, "'")  // Left single quote
+      .replace(/\u0092/g, "'")  // Right single quote
+      .replace(/\u0096/g, '-')  // En dash
+      .replace(/\u0097/g, '-'); // Em dash
+    
+    return cleaned;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -271,8 +302,11 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const lines = content.split(/\r?\n/).filter(line => line.trim());
+      const rawContent = event.target?.result as string;
+      
+      // Clean content: remove BOM, fix encoding issues
+      const content = cleanContent(rawContent);
+      const lines = content.split('\n').filter(line => line.trim());
       
       if (lines.length === 0) {
         toast.error("Arquivo vazio");
@@ -281,7 +315,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
 
       // Detect separator intelligently
       const separator = detectSeparator(content);
-      console.log(`[ImportLeads] Detected separator: "${separator === "\t" ? "TAB" : separator}"`);
+      console.log(`[ImportLeads] Detected separator: "${separator === "\t" ? "TAB" : separator}", lines: ${lines.length}`);
 
       // Parse all rows respecting quoted fields
       const allRows = lines.map(line => parseCSVLine(line, separator));
