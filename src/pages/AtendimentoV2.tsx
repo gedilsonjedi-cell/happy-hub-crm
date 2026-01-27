@@ -81,6 +81,7 @@ import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
 import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
 import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
+import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
@@ -243,6 +244,7 @@ const AtendimentoV2 = () => {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("new");
   const [showArchived, setShowArchived] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [filterByAttendant, setFilterByAttendant] = useState<string | null>(null);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -2744,7 +2746,11 @@ const AtendimentoV2 = () => {
         if (filterStatus === "new") matchesFilter = !conv.assignedTo;
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
-        return matchesFilter && conv.status !== "archived";
+        
+        // Apply attendant filter (only for admins/supervisors)
+        const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+        
+        return matchesFilter && matchesAttendant && conv.status !== "archived";
       })
     : visibleConversations.filter(conv => {
         const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -2754,7 +2760,10 @@ const AtendimentoV2 = () => {
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
-        return matchesSearch && matchesFilter;
+        // Apply attendant filter (only for admins/supervisors)
+        const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+        
+        return matchesSearch && matchesFilter && matchesAttendant;
       });
 
   const visibleArchivedConversations = canSeeOthers 
@@ -2767,15 +2776,19 @@ const AtendimentoV2 = () => {
     : [];
     
   const filteredArchived = hasGlobalResults
-    ? archivedFromGlobalSearch.sort((a, b) => {
-        const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-        const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-        return timeB - timeA;
-      })
+    ? archivedFromGlobalSearch
+        .filter(conv => !filterByAttendant || conv.assignedTo === filterByAttendant)
+        .sort((a, b) => {
+          const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+          const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          return timeB - timeA;
+        })
     : visibleArchivedConversations
-        .filter(conv =>
-          !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        .filter(conv => {
+          const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
+          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          return matchesSearch && matchesAttendant;
+        })
         .sort((a, b) => {
           const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
           const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
@@ -2987,6 +3000,20 @@ const AtendimentoV2 = () => {
                   <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
                 )}
               </div>
+              
+              {/* Attendant filter for admins/supervisors */}
+              {canSeeOthers && (
+                <AttendantFilter 
+                  value={filterByAttendant} 
+                  onChange={(v) => {
+                    setFilterByAttendant(v);
+                    // Auto-switch to "Outros" when filtering by specific attendant
+                    if (v && v !== user?.id) {
+                      setFilterStatus("others");
+                    }
+                  }} 
+                />
+              )}
             </div>
           </div>
 
