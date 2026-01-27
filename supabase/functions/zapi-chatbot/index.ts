@@ -373,51 +373,53 @@ Deno.serve(async (req) => {
       if (LOVABLE_API_KEY) {
         try {
           // Get conversation history - fetch all messages for this contact
-          // Inbound: sender_phone is the customer
-          // Outbound: metadata->destination is the customer (without +)
           const customerPhoneClean = senderPhone.replace(/\D/g, '');
           const customerPhoneSuffix = customerPhoneClean.slice(-8); // Last 8 digits for matching
           
-          console.log('[v4] Fetching history for customer:', customerPhoneClean, 'suffix:', customerPhoneSuffix);
+          console.log('[v5] Fetching history for customer:', customerPhoneClean, 'suffix:', customerPhoneSuffix);
           
-          const { data: history, error: historyError } = await supabase
+          // Use two queries to get both inbound and outbound messages
+          const { data: inboundHistory, error: inboundError } = await supabase
             .from('whatsapp_messages')
             .select('content, direction, created_at, sender_phone, metadata')
             .eq('channel_id', channelId)
+            .eq('direction', 'inbound')
+            .like('sender_phone', `%${customerPhoneSuffix}`)
             .order('created_at', { ascending: true })
-            .limit(100);
+            .limit(50);
           
-          if (historyError) {
-            console.error('[v4] Error fetching history:', historyError);
-          }
+          const { data: outboundHistory, error: outboundError } = await supabase
+            .from('whatsapp_messages')
+            .select('content, direction, created_at, sender_phone, metadata')
+            .eq('channel_id', channelId)
+            .eq('direction', 'outbound')
+            .order('created_at', { ascending: true })
+            .limit(50);
           
-          console.log('[v4] Total messages fetched from DB:', history?.length || 0);
+          if (inboundError) console.error('[v5] Error fetching inbound:', inboundError);
+          if (outboundError) console.error('[v5] Error fetching outbound:', outboundError);
           
-          // Filter to only messages for THIS conversation
-          const conversationHistory = (history || []).filter(msg => {
-            if (msg.direction === 'inbound') {
-              // Inbound: sender_phone is the customer phone
-              const msgPhone = (msg.sender_phone || '').replace(/\D/g, '');
-              const matches = msgPhone === customerPhoneClean || 
-                             msgPhone.endsWith(customerPhoneSuffix) ||
-                             customerPhoneClean.endsWith(msgPhone.slice(-8));
-              return matches;
-            } else {
-              // Outbound: destination in metadata is the customer phone
-              const destination = ((msg.metadata as any)?.destination || '').replace(/\D/g, '');
-              const matches = destination === customerPhoneClean || 
-                             destination.endsWith(customerPhoneSuffix) ||
-                             customerPhoneClean.endsWith(destination.slice(-8));
-              return matches;
-            }
+          console.log('[v5] Inbound messages found:', inboundHistory?.length || 0);
+          console.log('[v5] Outbound messages found before filter:', outboundHistory?.length || 0);
+          
+          // Filter outbound messages to only those sent to this customer
+          const filteredOutbound = (outboundHistory || []).filter(msg => {
+            const destination = ((msg.metadata as any)?.destination || '').replace(/\D/g, '');
+            return destination.endsWith(customerPhoneSuffix) || customerPhoneClean.endsWith(destination.slice(-8));
           });
           
-          console.log('[v4] Conversation history found:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
+          console.log('[v5] Outbound messages after filter:', filteredOutbound.length);
           
-          // Log first few messages for debugging
+          // Merge and sort by created_at
+          const conversationHistory = [...(inboundHistory || []), ...filteredOutbound]
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          
+          console.log('[v5] Total conversation history:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
+          
+          // Log messages for debugging
           if (conversationHistory.length > 0) {
-            console.log('[v4] First message:', conversationHistory[0]?.content?.substring(0, 50));
-            console.log('[v4] Last message:', conversationHistory[conversationHistory.length - 1]?.content?.substring(0, 50));
+            console.log('[v5] First message:', conversationHistory[0]?.content?.substring(0, 50));
+            console.log('[v5] Last message:', conversationHistory[conversationHistory.length - 1]?.content?.substring(0, 50));
           }
 
           // Fetch conversation memory (persisted context from previous sessions)
@@ -509,7 +511,27 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
 ## Diretrizes
 - Mantenha respostas curtas (máximo 2-3 frases) e objetivas
 - Se não souber responder, ofereça transferir para um atendente humano
-- Não invente informações que não foram fornecidas acima`;
+- Não invente informações que não foram fornecidas acima
+
+## CORREÇÕES DO CLIENTE
+- O cliente pode digitar errado e depois CORRIGIR. Fique atento a mensagens como:
+  - "desculpe, digitei errado"
+  - "quis dizer X"
+  - "errei, na verdade são Y"
+  - "me enganei"
+  - Qualquer menção a erro de digitação
+- Quando o cliente corrigir uma informação, você DEVE:
+  1. ACEITAR a correção sem questionar
+  2. ATUALIZAR a informação na sua memória (use a tag [INFO_COLETADA:campo=NOVO_VALOR] com o valor CORRIGIDO)
+  3. Continuar o atendimento com a informação corrigida
+  4. NÃO repetir a pergunta - considere a informação como coletada
+
+## INTERPRETAÇÃO DE CRITÉRIOS MÍNIMOS
+- Quando um critério diz "mínimo de X" (ex: "mínimo 3 meses"), significa:
+  - X ou mais: QUALIFICA (ex: 3 meses ou mais QUALIFICA)
+  - Menos que X: NÃO QUALIFICA (ex: menos de 3 meses NÃO qualifica)
+- Exemplo: Se o mínimo é 3 meses e o cliente diz "3 meses", ele QUALIFICA
+- Exemplo: Se o mínimo é 3 meses e o cliente diz "2 meses", ele NÃO qualifica`;
           }
 
           const messages = [
