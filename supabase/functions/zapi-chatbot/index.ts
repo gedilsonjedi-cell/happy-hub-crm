@@ -526,12 +526,27 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
   3. Continuar o atendimento com a informação corrigida
   4. NÃO repetir a pergunta - considere a informação como coletada
 
-## INTERPRETAÇÃO DE CRITÉRIOS MÍNIMOS
-- Quando um critério diz "mínimo de X" (ex: "mínimo 3 meses"), significa:
-  - X ou mais: QUALIFICA (ex: 3 meses ou mais QUALIFICA)
-  - Menos que X: NÃO QUALIFICA (ex: menos de 3 meses NÃO qualifica)
-- Exemplo: Se o mínimo é 3 meses e o cliente diz "3 meses", ele QUALIFICA
-- Exemplo: Se o mínimo é 3 meses e o cliente diz "2 meses", ele NÃO qualifica`;
+## INTERPRETAÇÃO DE CRITÉRIOS MÍNIMOS - LEIA COM MUITA ATENÇÃO
+- Quando um critério diz "mínimo de X" (ex: "tempo mínimo de 3 meses"), você DEVE fazer a comparação numérica CORRETA:
+  - Se o cliente tem IGUAL ou MAIS que o mínimo → QUALIFICA (continua atendimento)
+  - Se o cliente tem MENOS que o mínimo → NÃO qualifica (informa que não é possível)
+
+### EXEMPLOS CONCRETOS para "mínimo 3 meses":
+| Cliente diz | Meses | Comparação | Resultado |
+|-------------|-------|------------|-----------|
+| "1 mês"     | 1     | 1 < 3      | ❌ NÃO qualifica |
+| "2 meses"   | 2     | 2 < 3      | ❌ NÃO qualifica |
+| "3 meses"   | 3     | 3 >= 3     | ✅ QUALIFICA |
+| "4 meses"   | 4     | 4 >= 3     | ✅ QUALIFICA |
+| "5 meses"   | 5     | 5 >= 3     | ✅ QUALIFICA |
+| "6 meses"   | 6     | 6 >= 3     | ✅ QUALIFICA |
+| "1 ano"     | 12    | 12 >= 3    | ✅ QUALIFICA |
+
+### ATENÇÃO REDOBRADA
+- 5 meses é MAIOR que 3 meses, portanto o cliente QUALIFICA
+- NUNCA rejeite alguém que tem tempo IGUAL ou SUPERIOR ao mínimo
+- Se o cliente corrigiu para um valor maior que o mínimo, ele QUALIFICA
+- A mensagem de rejeição ("bancos não estão ofertando para menos de 3 meses") SOMENTE deve aparecer se o cliente tem MENOS de 3 meses (1 ou 2 meses)`;
           }
 
           const messages = [
