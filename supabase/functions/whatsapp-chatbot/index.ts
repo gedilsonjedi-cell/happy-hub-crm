@@ -40,8 +40,7 @@ interface AIAgent {
   service_guide: string | null;
 }
 
-// Version marker for deploy verification: v2.0.0 - 2026-01-27
-// Removed all duplicate checks since meta-webhook handles deduplication
+// Version marker for deploy verification: v6.0.0 - 2026-01-27 - Fixed repeated questions
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -56,10 +55,10 @@ Deno.serve(async (req) => {
       messageContent,
       messageId,
       organizationId,
-      campaignChatbotId // Optional: chatbot ID from campaign
+      campaignChatbotId
     } = await req.json();
 
-    console.log('[v2] Chatbot processing message:', { channelId, senderPhone, messageContent: messageContent?.substring(0, 50), messageId });
+    console.log('[v6] Chatbot processing message:', { channelId, senderPhone, messageContent: messageContent?.substring(0, 50), messageId });
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -113,8 +112,7 @@ Deno.serve(async (req) => {
       assignment = newAssignment;
     }
 
-    // Determine which agent to use: 
-    // Priority: 1) campaignChatbotId param, 2) assignment.campaign_chatbot_id, 3) channel config agent_id, 4) default AI
+    // Determine which agent to use
     let agentToUse: AIAgent | null = null;
     const agentIdToUse = campaignChatbotId || assignment?.campaign_chatbot_id || chatbotConfig.agent_id;
 
@@ -128,10 +126,7 @@ Deno.serve(async (req) => {
 
       if (agent) {
         agentToUse = agent;
-        const source = campaignChatbotId ? 'from param' : 
-                       assignment?.campaign_chatbot_id ? 'from campaign assignment' : 
-                       'from channel config';
-        console.log('Using AI agent:', agent.name, `(${source})`);
+        console.log('Using AI agent:', agent.name);
       }
     }
 
@@ -144,11 +139,11 @@ Deno.serve(async (req) => {
       );
     }
     
-    // Check if bot is paused (human sent a message recently)
+    // Check if bot is paused
     if (assignment?.bot_paused_until) {
       const pausedUntil = new Date(assignment.bot_paused_until);
       if (pausedUntil > new Date()) {
-        console.log('Bot is paused until:', pausedUntil.toISOString(), '- human is handling');
+        console.log('Bot is paused until:', pausedUntil.toISOString());
         return new Response(
           JSON.stringify({ handled: false, reason: 'Bot paused - human handling' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -159,10 +154,8 @@ Deno.serve(async (req) => {
     // Find or create lead
     let leadId = assignment?.lead_id;
     if (!leadId) {
-      // Normalize phone for search - remove all non-digits
       const normalizedSenderPhone = senderPhone.replace(/\D/g, '');
       
-      // Search for lead using parameterized query (safer than string interpolation)
       const phoneSearchPatterns = [
         normalizedSenderPhone,
         `+${normalizedSenderPhone}`,
@@ -178,7 +171,6 @@ Deno.serve(async (req) => {
       if (existingLead) {
         leadId = existingLead.id;
         
-        // Move lead to "Pré-Atendimento" stage if it has no stage
         const { data: leadData } = await supabase
           .from('leads')
           .select('stage_id')
@@ -186,7 +178,6 @@ Deno.serve(async (req) => {
           .single();
         
         if (leadData && !leadData.stage_id) {
-          // Find "Pré-Atendimento" stage
           const { data: preAtendimentoStage } = await supabase
             .from('pipeline_stages')
             .select('id')
@@ -199,12 +190,9 @@ Deno.serve(async (req) => {
               .from('leads')
               .update({ stage_id: preAtendimentoStage.id })
               .eq('id', leadId);
-            
-            console.log('Lead moved to Pré-Atendimento stage');
           }
         }
       } else {
-        // Get channel owner to assign as lead owner
         const { data: channel } = await supabase
           .from('channels')
           .select('user_id, organization_id')
@@ -212,7 +200,6 @@ Deno.serve(async (req) => {
           .single();
 
         if (channel) {
-          // Find "Pré-Atendimento" stage for new leads
           const { data: preAtendimentoStage } = await supabase
             .from('pipeline_stages')
             .select('id')
@@ -237,12 +224,10 @@ Deno.serve(async (req) => {
 
           if (newLead) {
             leadId = newLead.id;
-            console.log('New lead created in Pré-Atendimento stage');
           }
         }
       }
 
-      // Update assignment with lead_id
       if (leadId && assignment) {
         await supabase
           .from('conversation_assignments')
@@ -260,33 +245,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update lead stage if qualified
     if (shouldQualify && leadId && chatbotConfig.qualified_stage_id) {
       await supabase
         .from('leads')
         .update({ stage_id: chatbotConfig.qualified_stage_id })
         .eq('id', leadId);
-      
-      console.log('Lead qualified and moved to stage:', chatbotConfig.qualified_stage_id);
     }
 
-    // NOVA LÓGICA: Bot SEMPRE responde primeiro com IA, só transfere quando IA indicar
     let responseMessage = '';
     let shouldTransfer = false;
 
-    // Generate AI response (ALWAYS, regardless of attendant availability)
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (LOVABLE_API_KEY) {
       try {
-        // Get conversation history - fetch all messages for this contact
         const customerPhoneClean = senderPhone.replace(/\D/g, '');
-        const customerPhoneSuffix = customerPhoneClean.slice(-8); // Last 8 digits for matching
+        const customerPhoneSuffix = customerPhoneClean.slice(-8);
         
-        console.log('[v5] Fetching history for customer:', customerPhoneClean, 'suffix:', customerPhoneSuffix);
+        console.log('[v6] Fetching history for customer suffix:', customerPhoneSuffix);
         
-        // Use two queries to get both inbound and outbound messages
-        const { data: inboundHistory, error: inboundError } = await supabase
+        // Fetch inbound and outbound messages separately then merge
+        const { data: inboundHistory } = await supabase
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
@@ -295,7 +274,7 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: true })
           .limit(50);
         
-        const { data: outboundHistory, error: outboundError } = await supabase
+        const { data: outboundHistory } = await supabase
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
@@ -303,33 +282,19 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: true })
           .limit(50);
         
-        if (inboundError) console.error('[v5] Error fetching inbound:', inboundError);
-        if (outboundError) console.error('[v5] Error fetching outbound:', outboundError);
-        
-        console.log('[v5] Inbound messages found:', inboundHistory?.length || 0);
-        console.log('[v5] Outbound messages found before filter:', outboundHistory?.length || 0);
-        
-        // Filter outbound messages to only those sent to this customer
+        // Filter outbound to only those sent to this customer
         const filteredOutbound = (outboundHistory || []).filter(msg => {
           const destination = ((msg.metadata as any)?.destination || '').replace(/\D/g, '');
           return destination.endsWith(customerPhoneSuffix) || customerPhoneClean.endsWith(destination.slice(-8));
         });
         
-        console.log('[v5] Outbound messages after filter:', filteredOutbound.length);
-        
-        // Merge and sort by created_at
+        // Merge and sort
         const conversationHistory = [...(inboundHistory || []), ...filteredOutbound]
           .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         
-        console.log('[v5] Total conversation history:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
-        
-        // Log messages for debugging
-        if (conversationHistory.length > 0) {
-          console.log('[v5] First message:', conversationHistory[0]?.content?.substring(0, 50));
-          console.log('[v5] Last message:', conversationHistory[conversationHistory.length - 1]?.content?.substring(0, 50));
-        }
+        console.log('[v6] Total conversation history:', conversationHistory.length);
 
-        // Fetch conversation memory (persisted context from previous sessions)
+        // Fetch conversation memory
         const { data: existingMemory } = await supabase
           .from('conversation_memory')
           .select('*')
@@ -339,31 +304,23 @@ Deno.serve(async (req) => {
           .single();
         
         const memorySummary = existingMemory?.memory_summary || '';
-        const collectedInfo = existingMemory?.collected_info || {};
+        const collectedInfo: Record<string, any> = existingMemory?.collected_info || {};
         
-        if (existingMemory) {
-          console.log('[v3] Found conversation memory:', memorySummary);
-        }
+        console.log('[v6] Collected info from memory:', JSON.stringify(collectedInfo));
 
-        // Determine if this is the first message (no previous bot messages)
         const hasPreviousBotMessages = conversationHistory.some(msg => msg.direction === 'outbound');
+        const hasServiceGuide = agentToUse?.service_guide_enabled && agentToUse?.service_guide;
 
-        // Parse collected info to provide structured progress tracking
-        const collectedInfoStr = Object.keys(collectedInfo).length > 0 
-          ? Object.entries(collectedInfo).map(([key, value]) => `- ${key}: ${value}`).join('\n')
-          : 'Nenhuma informação coletada ainda';
+        // Build collected info display with explicit "DO NOT ASK" markers
+        const collectedInfoDisplay = Object.keys(collectedInfo).length > 0 
+          ? Object.entries(collectedInfo).map(([key, value]) => `✅ ${key.toUpperCase()}: ${value} (JÁ COLETADO - NÃO PERGUNTE!)`).join('\n')
+          : '(Nenhuma informação coletada ainda - comece pelo início do guia)';
 
-        // Build system prompt based on agent configuration
         let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
 Seja cordial, objetivo e útil. Mantenha respostas curtas (máximo 2-3 frases).
-Se o cliente perguntar sobre preços, produtos ou quiser falar com um humano, informe que irá transferir para um atendente.
-Não invente informações sobre produtos ou preços específicos.
 
 ## IMPORTANTE - Regras de Saudação
-${hasPreviousBotMessages ? '- Esta conversa já está em andamento. NÃO se apresente novamente. NÃO diga "olá" ou "oi" novamente. Continue a conversa de forma natural, respondendo diretamente à pergunta/mensagem do cliente.' : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente.'}`;
-
-        // Check if agent has service guide - this changes transfer behavior
-        const hasServiceGuide = agentToUse?.service_guide_enabled && agentToUse?.service_guide;
+${hasPreviousBotMessages ? '- Esta conversa já está em andamento. NÃO se apresente novamente.' : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente.'}`;
 
         if (agentToUse) {
           systemPrompt = `Você é ${agentToUse.name}, um assistente virtual de atendimento ao cliente via WhatsApp.
@@ -377,95 +334,53 @@ ${agentToUse.faq ? `## FAQ\n${agentToUse.faq}\n` : ''}
 ${hasServiceGuide ? `## GUIA DE ATENDIMENTO - SIGA ESTE ROTEIRO OBRIGATORIAMENTE
 ${agentToUse.service_guide}
 
-### INFORMAÇÕES JÁ COLETADAS DO CLIENTE
-${collectedInfoStr}
+### ⚠️ INFORMAÇÕES JÁ COLETADAS - NÃO PERGUNTE NOVAMENTE ⚠️
+${collectedInfoDisplay}
 
-### INSTRUÇÕES CRÍTICAS DO GUIA
-- Você DEVE seguir o roteiro acima de forma estruturada durante TODO o atendimento
-- ANALISE as "INFORMAÇÕES JÁ COLETADAS" acima para saber o que já foi perguntado/respondido
-- NÃO REPITA perguntas cujas respostas já foram coletadas - prossiga para a PRÓXIMA etapa do guia
-- Se uma informação já foi coletada, RECONHEÇA brevemente e AVANCE para a próxima pergunta
-- Conduza a conversa passo a passo conforme descrito no guia
-- Se o cliente responder algo fora do contexto, redirecione educadamente para a próxima pergunta pendente
-- Quando TODAS as informações do guia forem coletadas, faça o ENCERRAMENTO conforme descrito no guia
-- SOMENTE ao final do guia, após coletar TODAS as informações E fazer o encerramento, transfira para um atendente
+### REGRA ABSOLUTA - PROIBIDO REPETIR PERGUNTAS
+🚫 VOCÊ ESTÁ PROIBIDO de perguntar novamente sobre qualquer item marcado com ✅ acima.
+🚫 Se "idade" já está coletada, NUNCA mais pergunte "qual sua idade".
+🚫 Se "tempo_empresa" já está coletado, NUNCA mais pergunte sobre tempo de empresa.
+🚫 Se "salario" já está coletado, NUNCA mais pergunte sobre salário.
 
-### RASTREAMENTO DE PROGRESSO
-Ao final de CADA resposta, adicione uma linha especial (invisível ao cliente) no formato:
-[INFO_COLETADA:campo=valor]
+### O QUE FAZER AGORA
+1. OLHE a lista de ✅ acima para ver o que já foi coletado
+2. IDENTIFIQUE a PRÓXIMA pergunta do guia que AINDA NÃO foi respondida
+3. Faça APENAS essa próxima pergunta
+4. Se TODAS as perguntas do guia já foram respondidas, faça o encerramento e transfira
 
-Exemplos:
-- Se o cliente disse que tem 30 anos: [INFO_COLETADA:idade=30 anos]
-- Se o cliente disse que ganha R$7.500: [INFO_COLETADA:salario=R$7.500,00]
-- Se o cliente confirmou que a empresa tem mais de 2 anos: [INFO_COLETADA:empresa_2anos=sim]
-- Se o cliente disse que não tem restrições: [INFO_COLETADA:restricoes=nao]
-
-IMPORTANTE: Use EXATAMENTE os mesmos nomes de campo para cada informação. Não repita campos já coletados.
+### RASTREAMENTO - ADICIONE SEMPRE AO FINAL
+Ao final de CADA resposta, adicione: [INFO_COLETADA:campo=valor]
+Campos padrão: idade, tempo_empresa, salario, restricoes, tipo_conta, empresa_2anos, objetivo
 
 ### TRANSFERÊNCIA
 - APENAS quando você completar TODO o roteiro do guia e tiver coletado todas as informações necessárias
-- APENAS quando você adicionar a tag especial [TRANSFERIR_PARA_ATENDENTE] no FINAL da sua resposta
-- Essa tag é invisível para o cliente, ela serve apenas como sinal para o sistema
-- Se ainda não completou o guia, NÃO use essa tag
+- Adicione a tag [TRANSFERIR_PARA_ATENDENTE] no FINAL da sua resposta
 ` : `## TRANSFERÊNCIA IMEDIATA
 - Como não há guia de atendimento, você pode transferir a qualquer momento se necessário
-- Se o cliente quiser falar com um humano ou você não souber responder, adicione [TRANSFERIR_PARA_ATENDENTE] no final da resposta
+- Adicione [TRANSFERIR_PARA_ATENDENTE] no final da resposta para transferir
 `}
 ${memorySummary ? `## MEMÓRIA DE CONVERSAS ANTERIORES
-O cliente já conversou com você anteriormente. Aqui está o resumo do que você sabe sobre ele:
 ${memorySummary}
-
-Use essas informações para personalizar o atendimento. Faça referência ao que já foi conversado quando relevante.
-Se você já coletou informações do guia em sessões anteriores, leve em conta e continue de onde parou.
 ` : ''}
 ## IMPORTANTE - Regras de Saudação e Continuidade
-${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andamento ou o cliente já conversou antes. NÃO se apresente novamente. 
-- NÃO diga "olá", "oi", "bom dia", "boa tarde" ou qualquer saudação novamente.
-- NÃO repita seu nome ou quem você é.
-- Continue a conversa de forma natural, respondendo DIRETAMENTE à pergunta/mensagem do cliente.
-- Mantenha o contexto da conversa anterior.
-- Se o cliente está retornando depois de um tempo, faça referência ao que já foi conversado.` : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente uma única vez.'}
+${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andamento. NÃO se apresente novamente. 
+- NÃO diga "olá", "oi", "bom dia", "boa tarde" ou qualquer saudação.
+- Continue a conversa respondendo DIRETAMENTE à pergunta do cliente.` : '- Esta é a primeira interação com este cliente. Você pode se apresentar brevemente.'}
 
 ## Diretrizes
 - Mantenha respostas curtas (máximo 2-3 frases) e objetivas
-- Se não souber responder, continue tentando ajudar dentro do escopo do guia
-- Não invente informações que não foram fornecidas acima
-- LEMBRE-SE: A tag [TRANSFERIR_PARA_ATENDENTE] só deve aparecer quando você COMPLETOU o atendimento conforme o guia
+- Não invente informações
 
 ## CORREÇÕES DO CLIENTE
-- O cliente pode digitar errado e depois CORRIGIR. Fique atento a mensagens como:
-  - "desculpe, digitei errado"
-  - "quis dizer X"
-  - "errei, na verdade são Y"
-  - "me enganei"
-  - Qualquer menção a erro de digitação
-- Quando o cliente corrigir uma informação, você DEVE:
-  1. ACEITAR a correção sem questionar
-  2. ATUALIZAR a informação na sua memória (use a tag [INFO_COLETADA:campo=NOVO_VALOR] com o valor CORRIGIDO)
-  3. Continuar o atendimento com a informação corrigida
-  4. NÃO repetir a pergunta - considere a informação como coletada
+- O cliente pode digitar errado e depois CORRIGIR
+- Quando o cliente corrigir uma informação, ACEITE e continue
 
-## INTERPRETAÇÃO DE CRITÉRIOS MÍNIMOS - LEIA COM MUITA ATENÇÃO
-- Quando um critério diz "mínimo de X" (ex: "tempo mínimo de 3 meses"), você DEVE fazer a comparação numérica CORRETA:
-  - Se o cliente tem IGUAL ou MAIS que o mínimo → QUALIFICA (continua atendimento)
-  - Se o cliente tem MENOS que o mínimo → NÃO qualifica (informa que não é possível)
-
-### EXEMPLOS CONCRETOS para "mínimo 3 meses":
-| Cliente diz | Meses | Comparação | Resultado |
-|-------------|-------|------------|-----------|
-| "1 mês"     | 1     | 1 < 3      | ❌ NÃO qualifica |
-| "2 meses"   | 2     | 2 < 3      | ❌ NÃO qualifica |
-| "3 meses"   | 3     | 3 >= 3     | ✅ QUALIFICA |
-| "4 meses"   | 4     | 4 >= 3     | ✅ QUALIFICA |
-| "5 meses"   | 5     | 5 >= 3     | ✅ QUALIFICA |
-| "6 meses"   | 6     | 6 >= 3     | ✅ QUALIFICA |
-| "1 ano"     | 12    | 12 >= 3    | ✅ QUALIFICA |
-
-### ATENÇÃO REDOBRADA
-- 5 meses é MAIOR que 3 meses, portanto o cliente QUALIFICA
-- NUNCA rejeite alguém que tem tempo IGUAL ou SUPERIOR ao mínimo
-- Se o cliente corrigiu para um valor maior que o mínimo, ele QUALIFICA
-- A mensagem de rejeição ("bancos não estão ofertando para menos de 3 meses") SOMENTE deve aparecer se o cliente tem MENOS de 3 meses (1 ou 2 meses)`;
+## INTERPRETAÇÃO DE CRITÉRIOS MÍNIMOS
+- Quando um critério diz "mínimo de X", você DEVE fazer a comparação CORRETA:
+  - Se cliente tem IGUAL ou MAIS que o mínimo → QUALIFICA
+  - Se cliente tem MENOS que o mínimo → NÃO qualifica
+- Exemplo: mínimo 3 meses → 5 meses QUALIFICA (5 > 3)`;
         }
 
         const messages = [
@@ -477,7 +392,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           { role: 'user', content: messageContent }
         ];
 
-        console.log('[v3] Sending', messages.length, 'messages to AI, hasServiceGuide:', hasServiceGuide);
+        console.log('[v6] Sending', messages.length, 'messages to AI');
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -487,7 +402,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash',
             messages,
-            max_tokens: 300, // Increased for more detailed responses
+            max_tokens: 300,
           }),
         });
 
@@ -502,7 +417,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
             const field = match[1].trim().toLowerCase().replace(/\s+/g, '_');
             const value = match[2].trim();
             newCollectedInfo[field] = value;
-            console.log('[v3] Info collected:', field, '=', value);
+            console.log('[v6] Info collected:', field, '=', value);
           }
           
           // Remove info tags from visible message
@@ -511,18 +426,16 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           // Check if AI indicates transfer is ready
           if (aiMessage.includes('[TRANSFERIR_PARA_ATENDENTE]')) {
             shouldTransfer = true;
-            // Remove the tag from the visible message
             aiMessage = aiMessage.replace(/\[TRANSFERIR_PARA_ATENDENTE\]/g, '').trim();
-            console.log('[v3] AI indicated transfer is ready after completing service guide');
+            console.log('[v6] AI indicated transfer is ready');
           }
           
-          // Update collectedInfo in memory for later save
           Object.assign(collectedInfo, newCollectedInfo);
           
           responseMessage = aiMessage;
-          console.log('[v3] AI response generated, shouldTransfer:', shouldTransfer, 'totalInfoCollected:', Object.keys(collectedInfo).length);
+          console.log('[v6] AI response generated, collected:', Object.keys(collectedInfo).length, 'items');
           
-          // If transfer was triggered, now assign to attendant
+          // Handle transfer
           if (shouldTransfer) {
             const { data: availableAttendants } = await supabase
               .from('attendant_availability')
@@ -535,7 +448,6 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
             if (availableAttendants && availableAttendants.length > 0) {
               const attendant = availableAttendants[0];
               
-              // Assign to attendant
               await supabase
                 .from('conversation_assignments')
                 .update({
@@ -546,7 +458,6 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
                 })
                 .eq('id', assignment?.id);
 
-              // Update attendant stats
               await supabase
                 .from('attendant_availability')
                 .update({
@@ -555,7 +466,6 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
                 })
                 .eq('id', attendant.id);
 
-              // Move lead to "Qualificação" stage when transferred to human attendant
               if (leadId) {
                 const { data: channelData } = await supabase
                   .from('channels')
@@ -577,97 +487,45 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
                       .from('leads')
                       .update({ stage_id: qualificacaoStage.id })
                       .eq('id', leadId);
-                    
-                    console.log('[v3] Lead moved to Qualificação stage after transfer');
                   }
                 }
               }
 
-              // Add transfer message to the response
               responseMessage = `${responseMessage}\n\n${chatbotConfig.transfer_message}`;
-              console.log('[v3] Conversation transferred to attendant:', attendant.user_id);
             } else {
-              // No attendant available, add away message
               responseMessage = `${responseMessage}\n\n${chatbotConfig.away_message}`;
-              console.log('[v3] Transfer requested but no attendants available');
             }
           }
           
-          // Update conversation memory after successful response
+          // Update conversation memory
           try {
-            const memoryMessages = [
-              { role: 'system', content: `Você é um assistente que extrai informações importantes de conversas para criar um resumo de memória.
-Analise a conversa e extraia:
-1. Objetivo/interesse do cliente (ex: emagrecimento, ganho de massa)
-2. Preferências declaradas (ex: online, presencial)
-3. Informações pessoais relevantes mencionadas
-4. Estágio atual do atendimento/guia (ex: coletando informações, apresentando planos)
-5. Informações já coletadas do guia de atendimento
-6. Qualquer outra informação útil para continuar o atendimento no futuro
-
-Responda APENAS com um resumo conciso em formato de bullet points, máximo 7 itens.
-Se não houver informações relevantes novas, responda apenas: "Sem novas informações"` },
-              ...conversationHistory.slice(-10).map(msg => ({
-                role: msg.direction === 'inbound' ? 'user' : 'assistant',
-                content: msg.content || ''
-              })),
-              { role: 'user', content: messageContent },
-              { role: 'assistant', content: responseMessage }
-            ];
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
             
-            const memoryResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'google/gemini-2.5-flash-lite',
-                messages: memoryMessages,
-                max_tokens: 200,
-              }),
-            });
+            await supabase
+              .from('conversation_memory')
+              .upsert({
+                channel_id: channelId,
+                contact_phone: customerPhoneClean,
+                organization_id: organizationId,
+                memory_summary: memorySummary || 'Conversa iniciada',
+                collected_info: collectedInfo,
+                last_interaction_at: new Date().toISOString(),
+                expires_at: expiresAt,
+                updated_at: new Date().toISOString()
+              }, {
+                onConflict: 'channel_id,contact_phone'
+              });
             
-            if (memoryResponse.ok) {
-              const memoryData = await memoryResponse.json();
-              const newMemorySummary = memoryData.choices?.[0]?.message?.content || '';
-              
-              if (newMemorySummary && !newMemorySummary.includes('Sem novas informações')) {
-                // Combine with existing memory if present
-                const combinedMemory = memorySummary 
-                  ? `${memorySummary}\n\n--- Atualização recente ---\n${newMemorySummary}`
-                  : newMemorySummary;
-                
-                // Upsert conversation memory
-                const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-                
-                await supabase
-                  .from('conversation_memory')
-                  .upsert({
-                    channel_id: channelId,
-                    contact_phone: customerPhoneClean,
-                    organization_id: organizationId,
-                    memory_summary: combinedMemory.slice(0, 2000), // Limit size
-                    collected_info: collectedInfo,
-                    last_interaction_at: new Date().toISOString(),
-                    expires_at: expiresAt,
-                    updated_at: new Date().toISOString()
-                  }, {
-                    onConflict: 'channel_id,contact_phone'
-                  });
-                
-                console.log('[v3] Conversation memory updated');
-              }
-            }
+            console.log('[v6] Memory updated with collected info:', Object.keys(collectedInfo));
           } catch (memoryError) {
-            console.error('[v3] Error updating memory:', memoryError);
+            console.error('[v6] Error updating memory:', memoryError);
           }
         } else {
-          console.error('[v3] AI API error:', aiResponse.status);
+          console.error('[v6] AI API error:', aiResponse.status);
           responseMessage = chatbotConfig.away_message;
         }
       } catch (aiError) {
-        console.error('[v3] AI error:', aiError);
+        console.error('[v6] AI error:', aiError);
         responseMessage = chatbotConfig.away_message;
       }
     } else {
@@ -684,8 +542,6 @@ Se não houver informações relevantes novas, responda apenas: "Sem novas infor
 
       if (channel?.access_token) {
         const cleanDestination = senderPhone.replace(/\D/g, '');
-        
-        // Use Meta Cloud API - app_name stores the phone_number_id
         const phoneNumberId = channel.app_name || channel.phone.replace(/\D/g, '');
         
         const metaPayload = {
@@ -696,7 +552,7 @@ Se não houver informações relevantes novas, responda apenas: "Sem novas infor
           text: { body: responseMessage }
         };
         
-        console.log('[v3] Sending message via Meta API to:', cleanDestination);
+        console.log('[v6] Sending message via Meta API');
         
         const metaResponse = await fetch(
           `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
@@ -711,17 +567,16 @@ Se não houver informações relevantes novas, responda apenas: "Sem novas infor
         );
 
         const metaData = await metaResponse.json();
-        console.log('[v3] Meta API response:', JSON.stringify(metaData));
+        console.log('[v6] Meta API response:', JSON.stringify(metaData));
 
-        // Store bot message
-        const messageId = metaData.messages?.[0]?.id || `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const msgId = metaData.messages?.[0]?.id || `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         await supabase
           .from('whatsapp_messages')
           .insert({
             channel_id: channelId,
             organization_id: organizationId,
-            message_id: messageId,
+            message_id: msgId,
             sender_phone: channel.phone,
             message_type: 'text',
             content: responseMessage,
@@ -734,10 +589,6 @@ Se não houver informações relevantes novas, responda apenas: "Sem novas infor
               meta_response: metaData
             }
           });
-        
-        if (!metaData.messages?.[0]?.id) {
-          console.error('[v3] Meta send failed:', metaData.error);
-        }
       }
     }
 
