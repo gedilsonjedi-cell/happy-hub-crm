@@ -325,6 +325,11 @@ Deno.serve(async (req) => {
         // Determine if this is the first message (no previous bot messages)
         const hasPreviousBotMessages = conversationHistory.some(msg => msg.direction === 'outbound');
 
+        // Parse collected info to provide structured progress tracking
+        const collectedInfoStr = Object.keys(collectedInfo).length > 0 
+          ? Object.entries(collectedInfo).map(([key, value]) => `- ${key}: ${value}`).join('\n')
+          : 'Nenhuma informação coletada ainda';
+
         // Build system prompt based on agent configuration
         let systemPrompt = `Você é um assistente virtual de atendimento ao cliente via WhatsApp. 
 Seja cordial, objetivo e útil. Mantenha respostas curtas (máximo 2-3 frases).
@@ -349,14 +354,30 @@ ${agentToUse.faq ? `## FAQ\n${agentToUse.faq}\n` : ''}
 ${hasServiceGuide ? `## GUIA DE ATENDIMENTO - SIGA ESTE ROTEIRO OBRIGATORIAMENTE
 ${agentToUse.service_guide}
 
+### INFORMAÇÕES JÁ COLETADAS DO CLIENTE
+${collectedInfoStr}
+
 ### INSTRUÇÕES CRÍTICAS DO GUIA
 - Você DEVE seguir o roteiro acima de forma estruturada durante TODO o atendimento
-- NÃO transfira para um atendente humano até completar TODAS as etapas do guia
+- ANALISE as "INFORMAÇÕES JÁ COLETADAS" acima para saber o que já foi perguntado/respondido
+- NÃO REPITA perguntas cujas respostas já foram coletadas - prossiga para a PRÓXIMA etapa do guia
+- Se uma informação já foi coletada, RECONHEÇA brevemente e AVANCE para a próxima pergunta
 - Conduza a conversa passo a passo conforme descrito no guia
-- Se o cliente fizer perguntas fora do script, responda brevemente e volte ao roteiro
-- Adapte a linguagem ao seu estilo de comunicação, mas mantenha a estrutura do roteiro
-- Seu objetivo é completar TODAS as etapas do guia para um atendimento de qualidade
-- SOMENTE ao final do guia, após coletar todas as informações necessárias, você pode transferir para um atendente
+- Se o cliente responder algo fora do contexto, redirecione educadamente para a próxima pergunta pendente
+- Quando TODAS as informações do guia forem coletadas, faça o ENCERRAMENTO conforme descrito no guia
+- SOMENTE ao final do guia, após coletar TODAS as informações E fazer o encerramento, transfira para um atendente
+
+### RASTREAMENTO DE PROGRESSO
+Ao final de CADA resposta, adicione uma linha especial (invisível ao cliente) no formato:
+[INFO_COLETADA:campo=valor]
+
+Exemplos:
+- Se o cliente disse que tem 30 anos: [INFO_COLETADA:idade=30 anos]
+- Se o cliente disse que ganha R$7.500: [INFO_COLETADA:salario=R$7.500,00]
+- Se o cliente confirmou que a empresa tem mais de 2 anos: [INFO_COLETADA:empresa_2anos=sim]
+- Se o cliente disse que não tem restrições: [INFO_COLETADA:restricoes=nao]
+
+IMPORTANTE: Use EXATAMENTE os mesmos nomes de campo para cada informação. Não repita campos já coletados.
 
 ### TRANSFERÊNCIA
 - APENAS quando você completar TODO o roteiro do guia e tiver coletado todas as informações necessárias
@@ -416,6 +437,19 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           const aiData = await aiResponse.json();
           let aiMessage = aiData.choices?.[0]?.message?.content || chatbotConfig.away_message;
           
+          // Extract collected info from AI response
+          const infoMatches = aiMessage.matchAll(/\[INFO_COLETADA:([^=]+)=([^\]]+)\]/g);
+          const newCollectedInfo = { ...collectedInfo };
+          for (const match of infoMatches) {
+            const field = match[1].trim().toLowerCase().replace(/\s+/g, '_');
+            const value = match[2].trim();
+            newCollectedInfo[field] = value;
+            console.log('[v3] Info collected:', field, '=', value);
+          }
+          
+          // Remove info tags from visible message
+          aiMessage = aiMessage.replace(/\[INFO_COLETADA:[^\]]+\]/g, '').trim();
+          
           // Check if AI indicates transfer is ready
           if (aiMessage.includes('[TRANSFERIR_PARA_ATENDENTE]')) {
             shouldTransfer = true;
@@ -424,8 +458,11 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
             console.log('[v3] AI indicated transfer is ready after completing service guide');
           }
           
+          // Update collectedInfo in memory for later save
+          Object.assign(collectedInfo, newCollectedInfo);
+          
           responseMessage = aiMessage;
-          console.log('[v3] AI response generated, shouldTransfer:', shouldTransfer);
+          console.log('[v3] AI response generated, shouldTransfer:', shouldTransfer, 'totalInfoCollected:', Object.keys(collectedInfo).length);
           
           // If transfer was triggered, now assign to attendant
           if (shouldTransfer) {
