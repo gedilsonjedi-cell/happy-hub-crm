@@ -40,27 +40,8 @@ interface AIAgent {
   service_guide: string | null;
 }
 
-// Cache for processed message IDs to prevent duplicates
-const processedMessages = new Map<string, number>();
-const MESSAGE_CACHE_TTL = 60000; // 1 minute TTL
-
-function isMessageProcessed(messageId: string): boolean {
-  const now = Date.now();
-  
-  // Clean old entries
-  for (const [key, timestamp] of processedMessages.entries()) {
-    if (now - timestamp > MESSAGE_CACHE_TTL) {
-      processedMessages.delete(key);
-    }
-  }
-  
-  if (processedMessages.has(messageId)) {
-    return true;
-  }
-  
-  processedMessages.set(messageId, now);
-  return false;
-}
+// Version marker for deploy verification: v2.0.0 - 2026-01-27
+// Removed all duplicate checks since meta-webhook handles deduplication
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -78,24 +59,12 @@ Deno.serve(async (req) => {
       campaignChatbotId // Optional: chatbot ID from campaign
     } = await req.json();
 
-    console.log('Chatbot processing message:', { channelId, senderPhone, messageContent, messageId, campaignChatbotId });
-
-    // Check for duplicate message processing
-    if (messageId && isMessageProcessed(messageId)) {
-      console.log('Message already processed, skipping:', messageId);
-      return new Response(
-        JSON.stringify({ handled: false, reason: 'Duplicate message' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log('[v2] Chatbot processing message:', { channelId, senderPhone, messageContent: messageContent?.substring(0, 50), messageId });
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
-    // Note: Database check removed - meta-webhook already stores the message before calling chatbot
-    // The in-memory cache above handles duplicate calls within the same function instance
 
     // Get chatbot config for this channel
     const { data: config } = await supabase
