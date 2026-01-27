@@ -583,15 +583,15 @@ Se não houver informações relevantes novas, responda apenas: "Sem novas infor
     if (responseMessage) {
       const { data: channel } = await supabase
         .from('channels')
-        .select('access_token, phone, provider')
+        .select('access_token, phone, provider, app_name')
         .eq('id', channelId)
         .single();
 
       if (channel?.access_token) {
         const cleanDestination = senderPhone.replace(/\D/g, '');
         
-        // Use Meta Cloud API
-        const phoneNumberId = channel.phone.replace(/\D/g, ''); // In Meta integration, phone stores phone_number_id
+        // Use Meta Cloud API - app_name stores the phone_number_id
+        const phoneNumberId = channel.app_name || channel.phone.replace(/\D/g, '');
         
         const metaPayload = {
           messaging_product: 'whatsapp',
