@@ -376,28 +376,49 @@ Deno.serve(async (req) => {
           // Inbound: sender_phone is the customer
           // Outbound: metadata->destination is the customer (without +)
           const customerPhoneClean = senderPhone.replace(/\D/g, '');
+          const customerPhoneSuffix = customerPhoneClean.slice(-8); // Last 8 digits for matching
           
-          const { data: history } = await supabase
+          console.log('[v4] Fetching history for customer:', customerPhoneClean, 'suffix:', customerPhoneSuffix);
+          
+          const { data: history, error: historyError } = await supabase
             .from('whatsapp_messages')
             .select('content, direction, created_at, sender_phone, metadata')
             .eq('channel_id', channelId)
             .order('created_at', { ascending: true })
-            .limit(50);
+            .limit(100);
+          
+          if (historyError) {
+            console.error('[v4] Error fetching history:', historyError);
+          }
+          
+          console.log('[v4] Total messages fetched from DB:', history?.length || 0);
           
           // Filter to only messages for THIS conversation
           const conversationHistory = (history || []).filter(msg => {
             if (msg.direction === 'inbound') {
-              // Inbound: check if sender matches customer
+              // Inbound: sender_phone is the customer phone
               const msgPhone = (msg.sender_phone || '').replace(/\D/g, '');
-              return msgPhone === customerPhoneClean || msgPhone.endsWith(customerPhoneClean.slice(-9));
+              const matches = msgPhone === customerPhoneClean || 
+                             msgPhone.endsWith(customerPhoneSuffix) ||
+                             customerPhoneClean.endsWith(msgPhone.slice(-8));
+              return matches;
             } else {
-              // Outbound: check if destination matches customer
+              // Outbound: destination in metadata is the customer phone
               const destination = ((msg.metadata as any)?.destination || '').replace(/\D/g, '');
-              return destination === customerPhoneClean || destination.endsWith(customerPhoneClean.slice(-9));
+              const matches = destination === customerPhoneClean || 
+                             destination.endsWith(customerPhoneSuffix) ||
+                             customerPhoneClean.endsWith(destination.slice(-8));
+              return matches;
             }
           });
           
-          console.log('Conversation history found:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
+          console.log('[v4] Conversation history found:', conversationHistory.length, 'messages for phone:', customerPhoneClean);
+          
+          // Log first few messages for debugging
+          if (conversationHistory.length > 0) {
+            console.log('[v4] First message:', conversationHistory[0]?.content?.substring(0, 50));
+            console.log('[v4] Last message:', conversationHistory[conversationHistory.length - 1]?.content?.substring(0, 50));
+          }
 
           // Fetch conversation memory (persisted context from previous sessions)
           const { data: existingMemory } = await supabase
