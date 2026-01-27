@@ -30,6 +30,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { DocumentUpload } from "@/components/chatbot/DocumentUpload";
 import { AgentPreview } from "@/components/chatbot/AgentPreview";
@@ -121,6 +122,7 @@ const defaultConfig: AgentConfig = {
 
 export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFormProps) {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [activeTab, setActiveTab] = useState("perfil");
   const [isLoading, setIsLoading] = useState(!!agentId);
   const [isSaving, setIsSaving] = useState(false);
@@ -193,6 +195,10 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
 
   const handleSave = async () => {
     if (!user) return;
+    if (!effectiveOrganizationId) {
+      toast.error("Organização não encontrada");
+      return;
+    }
     if (!config.name.trim()) {
       toast.error("Nome do agente é obrigatório");
       return;
@@ -202,6 +208,7 @@ export function ChatbotEditorForm({ agentId, onBack, onSaved }: ChatbotEditorFor
     try {
       const agentData = {
         user_id: user.id,
+        organization_id: effectiveOrganizationId,
         name: config.name,
         nickname: config.nickname,
         sign_conversations: config.sign_conversations,
