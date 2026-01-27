@@ -769,8 +769,10 @@ export type Database = {
           auto_qualify_enabled: boolean | null
           auto_reply_when_unavailable: boolean | null
           away_message: string | null
+          bot_type: string | null
           channel_id: string | null
           created_at: string
+          flow_bot_id: string | null
           id: string
           initial_stage_id: string | null
           is_enabled: boolean | null
@@ -787,8 +789,10 @@ export type Database = {
           auto_qualify_enabled?: boolean | null
           auto_reply_when_unavailable?: boolean | null
           away_message?: string | null
+          bot_type?: string | null
           channel_id?: string | null
           created_at?: string
+          flow_bot_id?: string | null
           id?: string
           initial_stage_id?: string | null
           is_enabled?: boolean | null
@@ -805,8 +809,10 @@ export type Database = {
           auto_qualify_enabled?: boolean | null
           auto_reply_when_unavailable?: boolean | null
           away_message?: string | null
+          bot_type?: string | null
           channel_id?: string | null
           created_at?: string
+          flow_bot_id?: string | null
           id?: string
           initial_stage_id?: string | null
           is_enabled?: boolean | null
@@ -831,6 +837,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
             referencedColumns: ["id"]
           },
           {
@@ -1250,6 +1263,207 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: []
+      }
+      flow_bots: {
+        Row: {
+          ai_fallback_enabled: boolean | null
+          ai_fallback_message: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string | null
+          transfer_message: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_fallback_enabled?: boolean | null
+          ai_fallback_message?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          organization_id?: string | null
+          transfer_message?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_fallback_enabled?: boolean | null
+          ai_fallback_message?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          organization_id?: string | null
+          transfer_message?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_bots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flow_edges: {
+        Row: {
+          created_at: string
+          flow_bot_id: string
+          id: string
+          label: string | null
+          source_handle: string | null
+          source_node_id: string
+          target_node_id: string
+        }
+        Insert: {
+          created_at?: string
+          flow_bot_id: string
+          id?: string
+          label?: string | null
+          source_handle?: string | null
+          source_node_id: string
+          target_node_id: string
+        }
+        Update: {
+          created_at?: string
+          flow_bot_id?: string
+          id?: string
+          label?: string | null
+          source_handle?: string | null
+          source_node_id?: string
+          target_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_edges_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_edges_source_node_id_fkey"
+            columns: ["source_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_edges_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flow_nodes: {
+        Row: {
+          created_at: string
+          data: Json
+          flow_bot_id: string
+          id: string
+          node_type: string
+          position_x: number
+          position_y: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json
+          flow_bot_id: string
+          id?: string
+          node_type: string
+          position_x?: number
+          position_y?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          flow_bot_id?: string
+          id?: string
+          node_type?: string
+          position_x?: number
+          position_y?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_nodes_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flow_sessions: {
+        Row: {
+          channel_id: string | null
+          collected_data: Json | null
+          contact_phone: string
+          created_at: string
+          current_node_id: string | null
+          flow_bot_id: string
+          id: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          collected_data?: Json | null
+          contact_phone: string
+          created_at?: string
+          current_node_id?: string | null
+          flow_bot_id: string
+          id?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          collected_data?: Json | null
+          contact_phone?: string
+          created_at?: string
+          current_node_id?: string | null
+          flow_bot_id?: string
+          id?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_sessions_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_sessions_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_up_instances: {
         Row: {
