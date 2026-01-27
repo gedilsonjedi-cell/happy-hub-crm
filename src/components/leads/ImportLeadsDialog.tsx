@@ -181,6 +181,85 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       .replace(/[^a-z0-9]/g, "");
   };
 
+  // Parse CSV line respecting quoted fields (handles commas inside quotes)
+  const parseCSVLine = (line: string, separator: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote inside quoted field
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === separator && !inQuotes) {
+        // End of field
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add last field
+    result.push(current.trim());
+    
+    return result;
+  };
+
+  // Detect the best separator for the CSV content
+  const detectSeparator = (content: string): string => {
+    const lines = content.split(/\r?\n/).filter(line => line.trim()).slice(0, 5);
+    if (lines.length === 0) return ",";
+    
+    // Count separators outside quotes in first few lines
+    const countSeparators = (line: string, sep: string): number => {
+      let count = 0;
+      let inQuotes = false;
+      for (const char of line) {
+        if (char === '"') inQuotes = !inQuotes;
+        else if (char === sep && !inQuotes) count++;
+      }
+      return count;
+    };
+    
+    const separators = [";", ",", "\t"];
+    const scores: Record<string, number> = { ";": 0, ",": 0, "\t": 0 };
+    
+    for (const line of lines) {
+      for (const sep of separators) {
+        const count = countSeparators(line, sep);
+        if (count > 0) scores[sep] += count;
+      }
+    }
+    
+    // Check consistency - a good separator should have similar counts across lines
+    let bestSep = ",";
+    let bestScore = 0;
+    
+    for (const sep of separators) {
+      if (scores[sep] > bestScore) {
+        bestScore = scores[sep];
+        bestSep = sep;
+      }
+    }
+    
+    // Special case: if semicolon has any matches, prefer it (common in BR Excel exports)
+    if (scores[";"] > 0) {
+      return ";";
+    }
+    
+    return bestSep;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -200,16 +279,12 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         return;
       }
 
-      // Detect separator
-      const firstLine = lines[0];
-      let separator = ",";
-      if (firstLine.includes(";")) separator = ";";
-      else if (firstLine.includes("\t")) separator = "\t";
+      // Detect separator intelligently
+      const separator = detectSeparator(content);
+      console.log(`[ImportLeads] Detected separator: "${separator === "\t" ? "TAB" : separator}"`);
 
-      const allRows = lines.map(line => {
-        const values = line.split(separator).map(v => v.trim().replace(/^"|"$/g, ""));
-        return values;
-      });
+      // Parse all rows respecting quoted fields
+      const allRows = lines.map(line => parseCSVLine(line, separator));
 
       // Detect if first row is header
       const firstRow = allRows[0];
