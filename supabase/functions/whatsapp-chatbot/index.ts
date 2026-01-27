@@ -94,22 +94,8 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Check if this message was already processed (database check for persistence)
-    if (messageId) {
-      const { data: existingMessage } = await supabase
-        .from('whatsapp_messages')
-        .select('id')
-        .eq('message_id', messageId)
-        .single();
-      
-      if (existingMessage) {
-        console.log('Message already exists in database, skipping:', messageId);
-        return new Response(
-          JSON.stringify({ handled: false, reason: 'Message already processed' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
+    // Note: Database check removed - meta-webhook already stores the message before calling chatbot
+    // The in-memory cache above handles duplicate calls within the same function instance
 
     // Get chatbot config for this channel
     const { data: config } = await supabase
