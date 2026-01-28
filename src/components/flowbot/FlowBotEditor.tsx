@@ -9,7 +9,8 @@ import {
   Zap,
   Trash2,
   Loader2,
-  Sparkles
+  Sparkles,
+  Wand2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,6 +53,7 @@ import { ButtonsNode } from "./nodes/ButtonsNode";
 import { CollectDataNode } from "./nodes/CollectDataNode";
 import { ActionNode } from "./nodes/ActionNode";
 import { EdgeRenderer } from "./EdgeRenderer";
+import { sampleFlows } from "./sampleFlows";
 
 interface FlowBotEditorProps {
   flowBotId?: string;
@@ -397,6 +405,25 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
 
+  const handleGenerateSampleFlow = (flowId: string) => {
+    const sampleFlow = sampleFlows.find(f => f.id === flowId);
+    if (!sampleFlow) return;
+
+    const generated = sampleFlow.generate();
+    
+    setName(generated.name);
+    setDescription(generated.description);
+    setNodes(generated.nodes);
+    setEdges(generated.edges.map((e, i) => ({
+      id: `edge_${Date.now()}_${i}`,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle
+    })));
+    
+    toast.success(`Fluxo "${generated.name}" gerado com sucesso!`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-7rem)]">
@@ -423,6 +450,30 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
           />
         </div>
         <div className="flex items-center gap-2">
+          {/* Generate Sample Flow Button */}
+          {!flowBotId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Wand2 className="w-4 h-4" />
+                  Gerar Modelo
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {sampleFlows.map(flow => (
+                  <DropdownMenuItem
+                    key={flow.id}
+                    onClick={() => handleGenerateSampleFlow(flow.id)}
+                    className="flex flex-col items-start"
+                  >
+                    <span className="font-medium">{flow.name}</span>
+                    <span className="text-xs text-muted-foreground">{flow.description}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          
           <div className="flex items-center gap-2 mr-4">
             <Sparkles className="w-4 h-4 text-primary" />
             <Label className="text-sm">IA Fallback</Label>
