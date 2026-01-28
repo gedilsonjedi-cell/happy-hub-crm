@@ -21,7 +21,8 @@ import {
   Pencil,
   MessageSquare,
   Bot,
-  Zap
+  Zap,
+  Workflow
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Channel {
   id: string;
@@ -116,10 +118,12 @@ const Conexoes = () => {
   // Chatbot linking state
   const [showChatbotDialog, setShowChatbotDialog] = useState<Channel | null>(null);
   const [chatbotAgents, setChatbotAgents] = useState<{ id: string; name: string; nickname: string | null }[]>([]);
+  const [flowBots, setFlowBots] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [selectedChatbotAgent, setSelectedChatbotAgent] = useState<string>("");
+  const [botType, setBotType] = useState<"ai" | "flow">("ai");
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(true);
   const [isSavingChatbot, setIsSavingChatbot] = useState(false);
-  const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; is_enabled: boolean } | null>(null);
+  const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; flow_bot_id: string | null; bot_type: string | null; is_enabled: boolean } | null>(null);
   
   // Connection type selection
   const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | null>(null);
@@ -335,31 +339,51 @@ const Conexoes = () => {
   const handleOpenChatbotDialog = async (channel: Channel) => {
     setShowChatbotDialog(channel);
     setSelectedChatbotAgent("");
+    setBotType("ai");
     setIsChatbotEnabled(true);
     setChannelChatbotConfig(null);
     
     try {
-      // Fetch active agents for the channel's organization
-      const { data: agents, error: agentsError } = await supabase
-        .from("ai_agents")
-        .select("id, name, nickname")
-        .eq("is_active", true)
-        .eq("organization_id", channel.organization_id);
+      // Fetch active agents AND flow bots for the channel's organization
+      const [agentsRes, flowBotsRes] = await Promise.all([
+        supabase
+          .from("ai_agents")
+          .select("id, name, nickname")
+          .eq("is_active", true)
+          .eq("organization_id", channel.organization_id),
+        supabase
+          .from("flow_bots")
+          .select("id, name, description")
+          .eq("is_active", true)
+          .eq("organization_id", channel.organization_id),
+      ]);
       
-      if (agentsError) throw agentsError;
-      console.log("Agents loaded for org:", channel.organization_id, agents);
-      setChatbotAgents(agents || []);
+      if (agentsRes.error) throw agentsRes.error;
+      if (flowBotsRes.error) throw flowBotsRes.error;
+      
+      console.log("Agents loaded for org:", channel.organization_id, agentsRes.data);
+      console.log("Flow bots loaded for org:", channel.organization_id, flowBotsRes.data);
+      
+      setChatbotAgents(agentsRes.data || []);
+      setFlowBots(flowBotsRes.data || []);
       
       // Fetch existing config for this channel
       const { data: config } = await supabase
         .from("chatbot_config")
-        .select("agent_id, is_enabled")
+        .select("agent_id, flow_bot_id, bot_type, is_enabled")
         .eq("channel_id", channel.id)
         .maybeSingle();
       
       if (config) {
         setChannelChatbotConfig(config);
-        setSelectedChatbotAgent(config.agent_id || "");
+        // Set the bot type and selected bot based on config
+        if (config.bot_type === "flow" && config.flow_bot_id) {
+          setBotType("flow");
+          setSelectedChatbotAgent(config.flow_bot_id);
+        } else if (config.agent_id) {
+          setBotType("ai");
+          setSelectedChatbotAgent(config.agent_id);
+        }
         setIsChatbotEnabled(config.is_enabled ?? true);
       }
     } catch (error) {
@@ -379,6 +403,15 @@ const Conexoes = () => {
     try {
       const channel = showChatbotDialog;
       
+      // Prepare config data based on bot type
+      const configData = {
+        bot_type: botType,
+        agent_id: botType === "ai" ? selectedChatbotAgent : null,
+        flow_bot_id: botType === "flow" ? selectedChatbotAgent : null,
+        is_enabled: isChatbotEnabled,
+        updated_at: new Date().toISOString(),
+      };
+      
       // Check if config exists
       const { data: existing } = await supabase
         .from("chatbot_config")
@@ -390,24 +423,19 @@ const Conexoes = () => {
         // Update existing config
         await supabase
           .from("chatbot_config")
-          .update({
-            agent_id: selectedChatbotAgent,
-            is_enabled: isChatbotEnabled,
-            updated_at: new Date().toISOString(),
-          })
+          .update(configData)
           .eq("id", existing.id);
       } else {
         // Create new config
         await supabase.from("chatbot_config").insert({
           channel_id: channel.id,
-          agent_id: selectedChatbotAgent,
           user_id: channel.user_id,
           organization_id: channel.organization_id,
-          is_enabled: isChatbotEnabled,
+          ...configData,
         });
       }
 
-      toast.success("Chatbot vinculado com sucesso!");
+      toast.success(botType === "flow" ? "Fluxo vinculado com sucesso!" : "Chatbot vinculado com sucesso!");
       setShowChatbotDialog(null);
     } catch (error) {
       console.error("Erro ao vincular chatbot:", error);
@@ -2474,32 +2502,78 @@ const Conexoes = () => {
                 </div>
               </div>
 
-              {/* Agent Selection */}
+              {/* Bot Type Selection */}
               <div className="space-y-2">
-                <Label className="text-foreground">Chatbot</Label>
+                <Label className="text-foreground">Tipo de Bot</Label>
+                <Tabs 
+                  value={botType} 
+                  onValueChange={(v) => {
+                    setBotType(v as "ai" | "flow");
+                    setSelectedChatbotAgent("");
+                  }} 
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="ai" className="flex items-center gap-2">
+                      <Bot className="w-4 h-4" />
+                      Bot com IA
+                    </TabsTrigger>
+                    <TabsTrigger value="flow" className="flex items-center gap-2">
+                      <Workflow className="w-4 h-4" />
+                      Fluxo
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {/* Bot Selection */}
+              <div className="space-y-2">
+                <Label className="text-foreground">{botType === "ai" ? "Chatbot IA" : "Fluxo"}</Label>
                 <Select value={selectedChatbotAgent} onValueChange={setSelectedChatbotAgent}>
                   <SelectTrigger className="bg-muted/30 border-border">
-                    <SelectValue placeholder="Selecione um chatbot" />
+                    <SelectValue placeholder={botType === "ai" ? "Selecione um chatbot" : "Selecione um fluxo"} />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border z-[100]">
-                    {chatbotAgents.length === 0 ? (
-                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                        Nenhum chatbot ativo
-                      </div>
+                    {botType === "ai" ? (
+                      chatbotAgents.length === 0 ? (
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                          Nenhum chatbot ativo
+                        </div>
+                      ) : (
+                        chatbotAgents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            <div className="flex items-center gap-2">
+                              <Bot className="w-4 h-4" />
+                              <span>{agent.name}</span>
+                              {agent.nickname && (
+                                <span className="text-muted-foreground text-xs">
+                                  @{agent.nickname}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      )
                     ) : (
-                      chatbotAgents.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.id}>
-                          <div className="flex items-center gap-2">
-                            <Bot className="w-4 h-4" />
-                            <span>{agent.name}</span>
-                            {agent.nickname && (
-                              <span className="text-muted-foreground text-xs">
-                                @{agent.nickname}
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))
+                      flowBots.length === 0 ? (
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                          Nenhum fluxo ativo
+                        </div>
+                      ) : (
+                        flowBots.map((flow) => (
+                          <SelectItem key={flow.id} value={flow.id}>
+                            <div className="flex items-center gap-2">
+                              <Workflow className="w-4 h-4" />
+                              <span>{flow.name}</span>
+                              {flow.description && (
+                                <span className="text-muted-foreground text-xs truncate max-w-[150px]">
+                                  {flow.description}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      )
                     )}
                   </SelectContent>
                 </Select>
@@ -2517,10 +2591,10 @@ const Conexoes = () => {
               </div>
 
               {/* Current Config Info */}
-              {channelChatbotConfig?.agent_id && (
+              {(channelChatbotConfig?.agent_id || channelChatbotConfig?.flow_bot_id) && (
                 <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                   <p className="text-sm text-emerald-400">
-                    Este canal já possui um chatbot vinculado. Você pode atualizar ou remover.
+                    Este canal já possui um {channelChatbotConfig?.bot_type === "flow" ? "fluxo" : "chatbot"} vinculado. Você pode atualizar ou remover.
                   </p>
                 </div>
               )}
@@ -2528,7 +2602,7 @@ const Conexoes = () => {
               {/* Actions */}
               <div className="flex justify-between gap-3 pt-2">
                 <div>
-                  {channelChatbotConfig?.agent_id && (
+                  {(channelChatbotConfig?.agent_id || channelChatbotConfig?.flow_bot_id) && (
                     <Button 
                       variant="outline" 
                       className="text-destructive border-destructive/30 hover:bg-destructive/10"
