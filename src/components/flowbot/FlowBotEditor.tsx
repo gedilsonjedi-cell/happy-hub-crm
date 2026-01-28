@@ -8,8 +8,6 @@ import {
   FormInput, 
   Zap,
   Trash2,
-  GripVertical,
-  Settings,
   Loader2,
   Sparkles
 } from "lucide-react";
@@ -17,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -35,16 +32,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { 
-  FlowBot, 
-  FlowNode, 
-  FlowEdge, 
   CanvasNode, 
   NodeType,
   MessageNodeData,
   ButtonsNodeData,
   CollectDataNodeData,
   ActionNodeData,
-  ButtonOption,
   ActionType
 } from "./types";
 import { StartNode } from "./nodes/StartNode";
@@ -52,11 +45,19 @@ import { MessageNode } from "./nodes/MessageNode";
 import { ButtonsNode } from "./nodes/ButtonsNode";
 import { CollectDataNode } from "./nodes/CollectDataNode";
 import { ActionNode } from "./nodes/ActionNode";
+import { EdgeRenderer } from "./EdgeRenderer";
 
 interface FlowBotEditorProps {
   flowBotId?: string;
   onBack: () => void;
   onSaved: () => void;
+}
+
+interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
 }
 
 const nodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: string }[] = [
@@ -82,13 +83,17 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
   
   // Canvas state
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
-  const [edges, setEdges] = useState<{ id: string; source: string; target: string; sourceHandle?: string }[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   
   // Dragging state
   const [draggedNodeType, setDraggedNodeType] = useState<NodeType | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  
+  // Connection state
+  const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string; handle?: string } | null>(null);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (flowBotId) {
@@ -310,6 +315,9 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
   };
 
   const handleNodeClick = (nodeId: string) => {
+    // Don't open editor if we're connecting
+    if (connectingFrom) return;
+    
     const node = nodes.find(n => n.id === nodeId);
     if (node && node.type !== "start") {
       setSelectedNodeId(nodeId);
@@ -324,10 +332,67 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
     setSelectedNodeId(null);
   };
 
+  const handleDeleteEdge = (edgeId: string) => {
+    setEdges(prev => prev.filter(e => e.id !== edgeId));
+  };
+
   const updateNodeData = (nodeId: string, data: any) => {
     setNodes(prev => prev.map(n => 
       n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
     ));
+  };
+
+  // Connection handlers
+  const handleStartConnect = (nodeId: string, handle?: string) => {
+    setConnectingFrom({ nodeId, handle });
+  };
+
+  const handleEndConnect = (targetNodeId: string) => {
+    if (!connectingFrom) return;
+    
+    // Don't allow self-connections
+    if (connectingFrom.nodeId === targetNodeId) {
+      setConnectingFrom(null);
+      setMousePosition(null);
+      return;
+    }
+    
+    // Check if edge already exists
+    const edgeExists = edges.some(
+      e => e.source === connectingFrom.nodeId && 
+           e.target === targetNodeId &&
+           e.sourceHandle === connectingFrom.handle
+    );
+    
+    if (!edgeExists) {
+      const newEdge: Edge = {
+        id: `edge_${Date.now()}`,
+        source: connectingFrom.nodeId,
+        target: targetNodeId,
+        sourceHandle: connectingFrom.handle
+      };
+      setEdges(prev => [...prev, newEdge]);
+    }
+    
+    setConnectingFrom(null);
+    setMousePosition(null);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (!connectingFrom || !canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    setMousePosition({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  const handleCanvasMouseUp = () => {
+    if (connectingFrom) {
+      setConnectingFrom(null);
+      setMousePosition(null);
+    }
   };
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -414,38 +479,98 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
               </div>
             )}
           </div>
+          
+          <Separator className="my-4" />
+          
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>💡 Arraste blocos para o canvas</p>
+            <p>🔗 Clique nos pontos para conectar</p>
+            <p>❌ Clique na linha para deletar</p>
+          </div>
         </div>
 
         {/* Canvas */}
         <div 
           ref={canvasRef}
-          className="flex-1 bg-muted/10 relative overflow-auto"
+          className={cn(
+            "flex-1 bg-muted/10 relative overflow-auto",
+            connectingFrom && "cursor-crosshair"
+          )}
           onDragOver={e => e.preventDefault()}
           onDrop={handleCanvasDrop}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleCanvasMouseUp}
           style={{ 
             backgroundImage: 'radial-gradient(circle, hsl(var(--muted)) 1px, transparent 1px)',
             backgroundSize: '20px 20px'
           }}
         >
+          {/* Edge renderer */}
+          <EdgeRenderer 
+            edges={edges}
+            nodes={nodes}
+            connectingFrom={connectingFrom}
+            mousePosition={mousePosition}
+            onDeleteEdge={handleDeleteEdge}
+          />
+          
           {nodes.map(node => (
             <div
               key={node.id}
-              className="absolute cursor-pointer"
-              style={{ left: node.position.x, top: node.position.y }}
+              className="absolute"
+              style={{ left: node.position.x, top: node.position.y, zIndex: 1 }}
               onClick={() => handleNodeClick(node.id)}
             >
-              {node.type === "start" && <StartNode selected={selectedNodeId === node.id} />}
-              {node.type === "message" && <MessageNode data={node.data as MessageNodeData} selected={selectedNodeId === node.id} />}
-              {node.type === "buttons" && <ButtonsNode data={node.data as ButtonsNodeData} selected={selectedNodeId === node.id} />}
-              {node.type === "collect_data" && <CollectDataNode data={node.data as CollectDataNodeData} selected={selectedNodeId === node.id} />}
-              {node.type === "action" && <ActionNode data={node.data as ActionNodeData} selected={selectedNodeId === node.id} />}
+              {node.type === "start" && (
+                <StartNode 
+                  selected={selectedNodeId === node.id} 
+                  isConnecting={!!connectingFrom}
+                  onStartConnect={() => handleStartConnect(node.id)}
+                />
+              )}
+              {node.type === "message" && (
+                <MessageNode 
+                  data={node.data as MessageNodeData} 
+                  selected={selectedNodeId === node.id}
+                  isConnecting={!!connectingFrom}
+                  onStartConnect={() => handleStartConnect(node.id)}
+                  onEndConnect={() => handleEndConnect(node.id)}
+                />
+              )}
+              {node.type === "buttons" && (
+                <ButtonsNode 
+                  data={node.data as ButtonsNodeData} 
+                  selected={selectedNodeId === node.id}
+                  isConnecting={!!connectingFrom}
+                  onStartConnect={(handleId) => handleStartConnect(node.id, handleId)}
+                  onEndConnect={() => handleEndConnect(node.id)}
+                />
+              )}
+              {node.type === "collect_data" && (
+                <CollectDataNode 
+                  data={node.data as CollectDataNodeData} 
+                  selected={selectedNodeId === node.id}
+                  isConnecting={!!connectingFrom}
+                  onStartConnect={() => handleStartConnect(node.id)}
+                  onEndConnect={() => handleEndConnect(node.id)}
+                />
+              )}
+              {node.type === "action" && (
+                <ActionNode 
+                  data={node.data as ActionNodeData} 
+                  selected={selectedNodeId === node.id}
+                  isConnecting={!!connectingFrom}
+                  onEndConnect={() => handleEndConnect(node.id)}
+                />
+              )}
             </div>
           ))}
           
           {nodes.length === 1 && nodes[0].type === "start" && (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-muted-foreground">
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-muted-foreground pointer-events-none">
               <p className="text-lg font-medium">Arraste os blocos para criar seu fluxo</p>
-              <p className="text-sm">Clique nos blocos para configurá-los</p>
+              <p className="text-sm">Clique nos pontos para conectar os blocos</p>
             </div>
           )}
         </div>
