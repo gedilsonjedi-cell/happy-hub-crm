@@ -10,7 +10,10 @@ import {
   Trash2,
   Loader2,
   Sparkles,
-  Wand2
+  Wand2,
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +105,12 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
   // Connection state
   const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string; handle?: string } | null>(null);
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Pan and Zoom state
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (flowBotId) {
@@ -401,6 +410,48 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
       setConnectingFrom(null);
       setMousePosition(null);
     }
+    setIsPanning(false);
+  };
+
+  // Pan and Zoom handlers
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(prev => Math.min(2, Math.max(0.25, prev + delta)));
+    } else {
+      // Pan with scroll
+      setPanOffset(prev => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY
+      }));
+    }
+  }, []);
+
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    // Only start panning if clicking on canvas background (not on nodes)
+    if (e.target === canvasRef.current || (e.target as HTMLElement).classList.contains('canvas-content')) {
+      if (e.button === 0 && !connectingFrom) { // Left click and not connecting
+        setIsPanning(true);
+        setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      }
+    }
+  };
+
+  const handleCanvasPanMove = (e: React.MouseEvent) => {
+    if (isPanning) {
+      setPanOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      });
+    }
+  };
+
+  const handleZoomIn = () => setZoom(prev => Math.min(2, prev + 0.25));
+  const handleZoomOut = () => setZoom(prev => Math.max(0.25, prev - 0.25));
+  const handleResetView = () => {
+    setZoom(1);
+    setPanOffset({ x: 0, y: 0 });
   };
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -537,6 +588,8 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
             <p>💡 Arraste blocos para o canvas</p>
             <p>🔗 Clique nos pontos para conectar</p>
             <p>❌ Clique na linha para deletar</p>
+            <p>🖱️ Scroll para mover o canvas</p>
+            <p>🔍 Ctrl+Scroll para zoom</p>
           </div>
         </div>
 
@@ -544,86 +597,141 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
         <div 
           ref={canvasRef}
           className={cn(
-            "flex-1 bg-muted/10 relative overflow-auto",
-            connectingFrom && "cursor-crosshair"
+            "flex-1 bg-muted/10 relative overflow-hidden",
+            connectingFrom && "cursor-crosshair",
+            isPanning && "cursor-grabbing",
+            !connectingFrom && !isPanning && "cursor-grab"
           )}
           onDragOver={e => e.preventDefault()}
           onDrop={handleCanvasDrop}
-          onMouseMove={handleCanvasMouseMove}
+          onMouseMove={(e) => {
+            handleCanvasMouseMove(e);
+            handleCanvasPanMove(e);
+          }}
+          onMouseDown={handleCanvasMouseDown}
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseUp}
+          onWheel={handleWheel}
           style={{ 
             backgroundImage: 'radial-gradient(circle, hsl(var(--muted)) 1px, transparent 1px)',
-            backgroundSize: '20px 20px'
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+            backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
           }}
         >
-          {/* Edge renderer */}
-          <EdgeRenderer 
-            edges={edges}
-            nodes={nodes}
-            connectingFrom={connectingFrom}
-            mousePosition={mousePosition}
-            onDeleteEdge={handleDeleteEdge}
-          />
-          
-          {nodes.map(node => (
-            <div
-              key={node.id}
-              className="absolute"
-              style={{ left: node.position.x, top: node.position.y, zIndex: 1 }}
-              onClick={() => handleNodeClick(node.id)}
+          {/* Zoom Controls */}
+          <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-background/90 backdrop-blur-sm border border-border rounded-lg p-1 z-50">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleZoomOut}
+              title="Diminuir zoom"
             >
-              {node.type === "start" && (
-                <StartNode 
-                  selected={selectedNodeId === node.id} 
-                  isConnecting={!!connectingFrom}
-                  onStartConnect={() => handleStartConnect(node.id)}
-                />
-              )}
-              {node.type === "message" && (
-                <MessageNode 
-                  data={node.data as MessageNodeData} 
-                  selected={selectedNodeId === node.id}
-                  isConnecting={!!connectingFrom}
-                  onStartConnect={() => handleStartConnect(node.id)}
-                  onEndConnect={() => handleEndConnect(node.id)}
-                />
-              )}
-              {node.type === "buttons" && (
-                <ButtonsNode 
-                  data={node.data as ButtonsNodeData} 
-                  selected={selectedNodeId === node.id}
-                  isConnecting={!!connectingFrom}
-                  onStartConnect={(handleId) => handleStartConnect(node.id, handleId)}
-                  onEndConnect={() => handleEndConnect(node.id)}
-                />
-              )}
-              {node.type === "collect_data" && (
-                <CollectDataNode 
-                  data={node.data as CollectDataNodeData} 
-                  selected={selectedNodeId === node.id}
-                  isConnecting={!!connectingFrom}
-                  onStartConnect={() => handleStartConnect(node.id)}
-                  onEndConnect={() => handleEndConnect(node.id)}
-                />
-              )}
-              {node.type === "action" && (
-                <ActionNode 
-                  data={node.data as ActionNodeData} 
-                  selected={selectedNodeId === node.id}
-                  isConnecting={!!connectingFrom}
-                  onEndConnect={() => handleEndConnect(node.id)}
-                />
-              )}
-            </div>
-          ))}
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="text-xs w-12 text-center font-medium">{Math.round(zoom * 100)}%</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleZoomIn}
+              title="Aumentar zoom"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleResetView}
+              title="Resetar visualização"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          </div>
           
-          {nodes.length === 1 && nodes[0].type === "start" && (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-muted-foreground pointer-events-none">
-              <p className="text-lg font-medium">Arraste os blocos para criar seu fluxo</p>
-              <p className="text-sm">Clique nos pontos para conectar os blocos</p>
-            </div>
-          )}
+          {/* Canvas Content with transform */}
+          <div 
+            className="canvas-content absolute"
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              width: '4000px',
+              height: '4000px'
+            }}
+          >
+            {/* Edge renderer */}
+            <EdgeRenderer 
+              edges={edges}
+              nodes={nodes}
+              connectingFrom={connectingFrom}
+              mousePosition={mousePosition ? {
+                x: (mousePosition.x - panOffset.x) / zoom,
+                y: (mousePosition.y - panOffset.y) / zoom
+              } : null}
+              onDeleteEdge={handleDeleteEdge}
+            />
+          
+            {nodes.map(node => (
+              <div
+                key={node.id}
+                className="absolute"
+                style={{ left: node.position.x, top: node.position.y, zIndex: 1 }}
+                onClick={() => handleNodeClick(node.id)}
+              >
+                {node.type === "start" && (
+                  <StartNode 
+                    selected={selectedNodeId === node.id} 
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={() => handleStartConnect(node.id)}
+                  />
+                )}
+                {node.type === "message" && (
+                  <MessageNode 
+                    data={node.data as MessageNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={() => handleStartConnect(node.id)}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
+                {node.type === "buttons" && (
+                  <ButtonsNode 
+                    data={node.data as ButtonsNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={(handleId) => handleStartConnect(node.id, handleId)}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
+                {node.type === "collect_data" && (
+                  <CollectDataNode 
+                    data={node.data as CollectDataNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={() => handleStartConnect(node.id)}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
+                {node.type === "action" && (
+                  <ActionNode 
+                    data={node.data as ActionNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
+              </div>
+            ))}
+          
+            {nodes.length === 1 && nodes[0].type === "start" && (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-muted-foreground pointer-events-none">
+                <p className="text-lg font-medium">Arraste os blocos para criar seu fluxo</p>
+                <p className="text-sm">Clique nos pontos para conectar os blocos</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
