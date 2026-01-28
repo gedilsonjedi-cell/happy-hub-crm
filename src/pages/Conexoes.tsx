@@ -339,13 +339,15 @@ const Conexoes = () => {
     setChannelChatbotConfig(null);
     
     try {
-      // Fetch active agents
+      // Fetch active agents for the channel's organization
       const { data: agents, error: agentsError } = await supabase
         .from("ai_agents")
         .select("id, name, nickname")
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .eq("organization_id", channel.organization_id);
       
       if (agentsError) throw agentsError;
+      console.log("Agents loaded for org:", channel.organization_id, agents);
       setChatbotAgents(agents || []);
       
       // Fetch existing config for this channel
