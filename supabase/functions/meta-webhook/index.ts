@@ -1232,41 +1232,129 @@ Deno.serve(async (req) => {
             console.error('Error handling lead/assignment:', error);
           }
 
-          // Check chatbot config and invoke chatbot if enabled
+          // Check chatbot config and invoke appropriate bot (AI or Flow)
           const { data: chatbotConfig } = await supabase
             .from('chatbot_config')
-            .select('*')
+            .select('*, bot_type, agent_id, flow_bot_id')
             .eq('channel_id', channel.id)
             .eq('is_enabled', true)
             .single();
 
           if (chatbotConfig) {
-            console.log('Chatbot enabled for this channel, invoking whatsapp-chatbot...');
+            const botType = chatbotConfig.bot_type || 'ai';
             
-            try {
-              const chatbotResponse = await fetch(
-                `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-chatbot`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                  },
-                  body: JSON.stringify({
-                    channelId: channel.id,
-                    senderPhone: normalizedPhone,
-                    senderName: senderName,
-                    messageContent: content,
-                    messageId: messageId,
-                    organizationId: channel.organization_id,
-                  }),
-                }
-              );
+            if (botType === 'flow' && chatbotConfig.flow_bot_id) {
+              // Use Flow Bot processor
+              console.log('Flow Bot enabled for this channel, invoking flow-bot-processor...');
+              
+              try {
+                const flowBotResponse = await fetch(
+                  `${Deno.env.get('SUPABASE_URL')}/functions/v1/flow-bot-processor`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                    },
+                    body: JSON.stringify({
+                      flow_bot_id: chatbotConfig.flow_bot_id,
+                      channel_id: channel.id,
+                      contact_phone: normalizedPhone,
+                      message_text: content,
+                      organization_id: channel.organization_id,
+                    }),
+                  }
+                );
 
-              const chatbotResult = await chatbotResponse.json();
-              console.log('Chatbot response:', chatbotResult);
-            } catch (chatbotError) {
-              console.error('Error calling chatbot:', chatbotError);
+                const flowBotResult = await flowBotResponse.json();
+                console.log('Flow bot response:', flowBotResult);
+                
+                // Send response message(s) if flow bot returned any
+                if (flowBotResult.message && channel.access_token && channel.app_name) {
+                  // Build full message with buttons if present
+                  let fullMessage = flowBotResult.message;
+                  if (flowBotResult.buttons && flowBotResult.buttons.length > 0) {
+                    const buttonOptions = flowBotResult.buttons.map((btn: { label: string }, idx: number) => `${idx + 1}. ${btn.label}`).join('\n');
+                    fullMessage += `\n\n${buttonOptions}`;
+                  }
+                  
+                  // Send the message via WhatsApp
+                  await sendWhatsAppMessage(
+                    channel.app_name,
+                    channel.access_token,
+                    normalizedPhone,
+                    fullMessage
+                  );
+                  
+                  // Save bot response to whatsapp_messages table
+                  const botMessageId = `flow_bot_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                  await supabase.from('whatsapp_messages').insert({
+                    channel_id: channel.id,
+                    message_id: botMessageId,
+                    sender_phone: channel.phone,
+                    sender_name: 'Flow Bot',
+                    message_type: 'text',
+                    content: fullMessage,
+                    direction: 'outbound',
+                    status: 'sent',
+                    organization_id: channel.organization_id,
+                    metadata: {
+                      provider: 'meta',
+                      flow_bot: true,
+                      flow_response_type: flowBotResult.response_type,
+                      destination: normalizedPhone
+                    }
+                  });
+                  
+                  console.log('Flow bot message saved to database');
+                }
+                
+                // Handle transfer action
+                if (flowBotResult.transfer) {
+                  console.log('Flow bot requested transfer to attendant');
+                  // Update conversation to remove bot handling
+                  await supabase
+                    .from('conversation_assignments')
+                    .update({ 
+                      is_bot_handling: false, 
+                      status: 'pending',
+                      updated_at: new Date().toISOString() 
+                    })
+                    .eq('channel_id', channel.id)
+                    .like('conversation_phone', `%${normalizedPhone.slice(-8)}`);
+                }
+              } catch (flowBotError) {
+                console.error('Error calling flow bot:', flowBotError);
+              }
+            } else {
+              // Use AI Chatbot
+              console.log('AI Chatbot enabled for this channel, invoking whatsapp-chatbot...');
+              
+              try {
+                const chatbotResponse = await fetch(
+                  `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-chatbot`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                    },
+                    body: JSON.stringify({
+                      channelId: channel.id,
+                      senderPhone: normalizedPhone,
+                      senderName: senderName,
+                      messageContent: content,
+                      messageId: messageId,
+                      organizationId: channel.organization_id,
+                    }),
+                  }
+                );
+
+                const chatbotResult = await chatbotResponse.json();
+                console.log('Chatbot response:', chatbotResult);
+              } catch (chatbotError) {
+                console.error('Error calling chatbot:', chatbotError);
+              }
             }
           } else {
             console.log('No chatbot config for this channel or chatbot disabled');
