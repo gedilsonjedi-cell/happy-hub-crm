@@ -92,3 +92,9 @@ verify_jwt = false
 
 [functions.normalize-lead-phones]
 verify_jwt = false
+
+[functions.flow-bot-follow-up]
+verify_jwt = false
+
+[functions.flow-bot-processor]
+verify_jwt = false

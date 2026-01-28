@@ -1415,7 +1415,11 @@ export type Database = {
           created_at: string
           current_node_id: string | null
           flow_bot_id: string
+          follow_up_count: number | null
           id: string
+          last_activity_at: string | null
+          last_follow_up_at: string | null
+          next_follow_up_at: string | null
           status: string | null
           updated_at: string
         }
@@ -1426,7 +1430,11 @@ export type Database = {
           created_at?: string
           current_node_id?: string | null
           flow_bot_id: string
+          follow_up_count?: number | null
           id?: string
+          last_activity_at?: string | null
+          last_follow_up_at?: string | null
+          next_follow_up_at?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -1437,7 +1445,11 @@ export type Database = {
           created_at?: string
           current_node_id?: string | null
           flow_bot_id?: string
+          follow_up_count?: number | null
           id?: string
+          last_activity_at?: string | null
+          last_follow_up_at?: string | null
+          next_follow_up_at?: string | null
           status?: string | null
           updated_at?: string
         }
