@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bot, Loader2, Check, X, Smartphone } from "lucide-react";
+import { Bot, Loader2, Check, X, Smartphone, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -36,6 +37,14 @@ interface Agent {
   nickname: string;
 }
 
+interface FlowBot {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+type BotType = "ai" | "flow";
+
 interface ChatbotChannelAssignmentProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,8 +58,10 @@ export function ChatbotChannelAssignment({
 }: ChatbotChannelAssignmentProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [flowBots, setFlowBots] = useState<FlowBot[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [selectedBot, setSelectedBot] = useState<string>("");
+  const [botType, setBotType] = useState<BotType>("ai");
   const [isEnabled, setIsEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -64,16 +75,19 @@ export function ChatbotChannelAssignment({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [channelsRes, agentsRes] = await Promise.all([
+      const [channelsRes, agentsRes, flowBotsRes] = await Promise.all([
         supabase.from("channels").select("id, name, phone, user_id, organization_id").eq("connected", true),
         supabase.from("ai_agents").select("id, name, nickname").eq("is_active", true),
+        supabase.from("flow_bots").select("id, name, description").eq("is_active", true),
       ]);
 
       if (channelsRes.error) throw channelsRes.error;
       if (agentsRes.error) throw agentsRes.error;
+      if (flowBotsRes.error) throw flowBotsRes.error;
 
       setChannels(channelsRes.data || []);
       setAgents(agentsRes.data || []);
+      setFlowBots(flowBotsRes.data || []);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast.error("Erro ao carregar dados");
@@ -98,8 +112,13 @@ export function ChatbotChannelAssignment({
     }
   };
 
+  const handleBotTypeChange = (value: string) => {
+    setBotType(value as BotType);
+    setSelectedBot(""); // Reset selection when changing type
+  };
+
   const handleSave = async () => {
-    if (selectedChannels.length === 0 || !selectedAgent) {
+    if (selectedChannels.length === 0 || !selectedBot) {
       toast.error("Selecione pelo menos um canal e um chatbot");
       return;
     }
@@ -118,24 +137,27 @@ export function ChatbotChannelAssignment({
           .eq("channel_id", channelId)
           .maybeSingle();
 
+        const configData = {
+          bot_type: botType,
+          agent_id: botType === "ai" ? selectedBot : null,
+          flow_bot_id: botType === "flow" ? selectedBot : null,
+          is_enabled: isEnabled,
+          updated_at: new Date().toISOString(),
+        };
+
         if (existing) {
           // Update existing config
           await supabase
             .from("chatbot_config")
-            .update({
-              agent_id: selectedAgent,
-              is_enabled: isEnabled,
-              updated_at: new Date().toISOString(),
-            })
+            .update(configData)
             .eq("id", existing.id);
         } else {
           // Create new config
           await supabase.from("chatbot_config").insert({
             channel_id: channelId,
-            agent_id: selectedAgent,
             user_id: channel.user_id,
             organization_id: channel.organization_id,
-            is_enabled: isEnabled,
+            ...configData,
           });
         }
       }
@@ -157,12 +179,15 @@ export function ChatbotChannelAssignment({
 
   const resetForm = () => {
     setSelectedChannels([]);
-    setSelectedAgent("");
+    setSelectedBot("");
+    setBotType("ai");
     setIsEnabled(true);
   };
 
   const allSelected = channels.length > 0 && selectedChannels.length === channels.length;
   const someSelected = selectedChannels.length > 0 && selectedChannels.length < channels.length;
+
+  const currentBotList = botType === "ai" ? agents : flowBots;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -231,18 +256,34 @@ export function ChatbotChannelAssignment({
               )}
             </div>
 
+            <div className="space-y-3">
+              <Label>Tipo de Bot</Label>
+              <Tabs value={botType} onValueChange={handleBotTypeChange} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="ai" className="flex items-center gap-2">
+                    <Bot className="w-4 h-4" />
+                    Bot com IA
+                  </TabsTrigger>
+                  <TabsTrigger value="flow" className="flex items-center gap-2">
+                    <Workflow className="w-4 h-4" />
+                    Fluxo
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
             <div className="space-y-2">
-              <Label>Chatbot</Label>
-              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+              <Label>{botType === "ai" ? "Chatbot IA" : "Fluxo"}</Label>
+              <Select value={selectedBot} onValueChange={setSelectedBot}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione um chatbot" />
+                  <SelectValue placeholder={botType === "ai" ? "Selecione um chatbot" : "Selecione um fluxo"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents.length === 0 ? (
+                  {currentBotList.length === 0 ? (
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                      Nenhum chatbot ativo
+                      {botType === "ai" ? "Nenhum chatbot ativo" : "Nenhum fluxo ativo"}
                     </div>
-                  ) : (
+                  ) : botType === "ai" ? (
                     agents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
                         <div className="flex items-center gap-2">
@@ -251,6 +292,20 @@ export function ChatbotChannelAssignment({
                           {agent.nickname && (
                             <span className="text-muted-foreground text-xs">
                               @{agent.nickname}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    flowBots.map((flow) => (
+                      <SelectItem key={flow.id} value={flow.id}>
+                        <div className="flex items-center gap-2">
+                          <Workflow className="w-4 h-4" />
+                          <span>{flow.name}</span>
+                          {flow.description && (
+                            <span className="text-muted-foreground text-xs truncate max-w-[150px]">
+                              {flow.description}
                             </span>
                           )}
                         </div>
@@ -278,7 +333,7 @@ export function ChatbotChannelAssignment({
             <X className="w-4 h-4 mr-2" />
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={isSaving || selectedChannels.length === 0 || !selectedAgent}>
+          <Button onClick={handleSave} disabled={isSaving || selectedChannels.length === 0 || !selectedBot}>
             {isSaving ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
