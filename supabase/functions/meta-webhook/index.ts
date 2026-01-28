@@ -1269,13 +1269,34 @@ Deno.serve(async (req) => {
                 const flowBotResult = await flowBotResponse.json();
                 console.log('Flow bot response:', flowBotResult);
                 
-                // Send response message(s) if flow bot returned any
-                if (flowBotResult.message && channel.access_token && channel.app_name) {
+                // NEW: Handle multiple messages from flow bot
+                const messagesToSend = flowBotResult.messages || [];
+                
+                // Also handle legacy single-message format for backwards compatibility
+                if (!messagesToSend.length && flowBotResult.message) {
+                  messagesToSend.push({
+                    message: flowBotResult.message,
+                    buttons: flowBotResult.buttons || []
+                  });
+                }
+                
+                console.log(`Flow bot returned ${messagesToSend.length} message(s) to send`);
+                
+                // Send all messages in sequence
+                for (let i = 0; i < messagesToSend.length; i++) {
+                  const msg = messagesToSend[i];
+                  if (!msg.message || !channel.access_token || !channel.app_name) continue;
+                  
                   // Build full message with buttons if present
-                  let fullMessage = flowBotResult.message;
-                  if (flowBotResult.buttons && flowBotResult.buttons.length > 0) {
-                    const buttonOptions = flowBotResult.buttons.map((btn: { label: string }, idx: number) => `${idx + 1}. ${btn.label}`).join('\n');
+                  let fullMessage = msg.message;
+                  if (msg.buttons && msg.buttons.length > 0) {
+                    const buttonOptions = msg.buttons.map((btn: { label: string }, idx: number) => `${idx + 1}. ${btn.label}`).join('\n');
                     fullMessage += `\n\n${buttonOptions}`;
+                  }
+                  
+                  // Add small delay between messages (except first)
+                  if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 800));
                   }
                   
                   // Send the message via WhatsApp
@@ -1287,7 +1308,7 @@ Deno.serve(async (req) => {
                   );
                   
                   // Save bot response to whatsapp_messages table
-                  const botMessageId = `flow_bot_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                  const botMessageId = `flow_bot_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 9)}`;
                   await supabase.from('whatsapp_messages').insert({
                     channel_id: channel.id,
                     message_id: botMessageId,
@@ -1302,11 +1323,12 @@ Deno.serve(async (req) => {
                       provider: 'meta',
                       flow_bot: true,
                       flow_response_type: flowBotResult.response_type,
+                      message_index: i,
                       destination: normalizedPhone
                     }
                   });
                   
-                  console.log('Flow bot message saved to database');
+                  console.log(`Flow bot message ${i + 1}/${messagesToSend.length} saved to database`);
                 }
                 
                 // Handle transfer action

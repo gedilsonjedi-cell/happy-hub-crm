@@ -36,6 +36,11 @@ interface FlowSession {
   status: string;
 }
 
+interface FlowMessage {
+  message: string;
+  buttons?: { label: string; value: string }[];
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -49,6 +54,8 @@ serve(async (req) => {
       message_text,
       organization_id
     } = await req.json();
+
+    console.log('Flow Bot Processor called:', { flow_bot_id, channel_id, contact_phone, message_text });
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -84,6 +91,8 @@ serve(async (req) => {
     const nodes: FlowNode[] = nodesRes.data || [];
     const edges: FlowEdge[] = edgesRes.data || [];
 
+    console.log(`Loaded ${nodes.length} nodes and ${edges.length} edges`);
+
     // Get or create session
     let { data: session } = await supabase
       .from('flow_sessions')
@@ -94,7 +103,10 @@ serve(async (req) => {
       .eq('status', 'active')
       .maybeSingle();
 
+    // --- NEW SESSION: Start the flow ---
     if (!session) {
+      console.log('Creating new flow session...');
+      
       // Find start node
       const startNode = nodes.find(n => n.node_type === 'start');
       if (!startNode) {
@@ -104,7 +116,7 @@ serve(async (req) => {
         });
       }
 
-      // Create new session
+      // Create new session starting at start node
       const { data: newSession, error: sessionError } = await supabase
         .from('flow_sessions')
         .insert({
@@ -128,50 +140,77 @@ serve(async (req) => {
 
       session = newSession;
 
-      // Send initial flow - find next node after start
-      const nextEdge = edges.find(e => e.source_node_id === startNode.id);
-      if (nextEdge) {
-        const nextNode = nodes.find(n => n.id === nextEdge.target_node_id);
-        if (nextNode) {
-          const response = await processNode(nextNode, session, supabase);
-          
-          // Update session to next node
-          await supabase
-            .from('flow_sessions')
-            .update({ current_node_id: nextNode.id })
-            .eq('id', session.id);
+      // Walk through the flow starting from start node, collecting all messages until we hit an interactive node
+      const { messages, finalNodeId, collectedData } = await walkFlowUntilInteractive(
+        startNode.id,
+        nodes,
+        edges,
+        session.collected_data,
+        flowBot
+      );
 
-          return new Response(JSON.stringify(response), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-      }
+      // Update session with final node position
+      await supabase
+        .from('flow_sessions')
+        .update({ 
+          current_node_id: finalNodeId,
+          collected_data: collectedData
+        })
+        .eq('id', session.id);
+
+      console.log(`New session: sending ${messages.length} message(s), stopping at node ${finalNodeId}`);
+
+      // Return all collected messages
+      return new Response(JSON.stringify({
+        response_type: 'messages',
+        messages: messages
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    // Process user input based on current node
+    // --- EXISTING SESSION: Process user input ---
+    console.log('Processing existing session:', session.id, 'current node:', session.current_node_id);
+
     const currentNode = nodes.find(n => n.id === session.current_node_id);
     
     if (!currentNode) {
+      console.error('Current node not found:', session.current_node_id);
       return new Response(JSON.stringify({ error: 'Current node not found' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
+    console.log('Current node type:', currentNode.node_type, 'data:', currentNode.data);
+
     // Handle input based on current node type
     let nextNodeId: string | null = null;
     let collectedData = { ...session.collected_data };
 
     if (currentNode.node_type === 'buttons') {
-      // Check if user clicked a button
+      // Check if user clicked a button (by number, label, or value)
       const buttons = currentNode.data.buttons || [];
-      const selectedButton = buttons.find(
-        b => b.label.toLowerCase() === message_text.toLowerCase() ||
-             b.value.toLowerCase() === message_text.toLowerCase()
-      );
+      let selectedButton = null;
+
+      // First, check if user typed a number (1, 2, 3...)
+      const numberInput = parseInt(message_text.trim());
+      if (!isNaN(numberInput) && numberInput >= 1 && numberInput <= buttons.length) {
+        selectedButton = buttons[numberInput - 1];
+        console.log('User selected button by number:', numberInput, '->', selectedButton);
+      } else {
+        // Check by label or value
+        selectedButton = buttons.find(
+          b => b.label.toLowerCase().includes(message_text.toLowerCase()) ||
+               b.value.toLowerCase() === message_text.toLowerCase() ||
+               message_text.toLowerCase().includes(b.value.toLowerCase())
+        );
+      }
 
       if (selectedButton) {
-        // Find edge for this button
+        console.log('Button matched:', selectedButton);
+        
+        // Find edge for this button using source_handle
         const buttonEdge = edges.find(
           e => e.source_node_id === currentNode.id && 
                (e.source_handle === selectedButton.id || e.source_handle === selectedButton.value)
@@ -179,10 +218,12 @@ serve(async (req) => {
         
         if (buttonEdge) {
           nextNodeId = buttonEdge.target_node_id;
+          console.log('Found button edge to:', nextNodeId);
         } else {
-          // Fall back to default edge
+          // Fall back to default edge (no source_handle)
           const defaultEdge = edges.find(e => e.source_node_id === currentNode.id && !e.source_handle);
           nextNodeId = defaultEdge?.target_node_id || null;
+          console.log('Using default edge to:', nextNodeId);
         }
       } else if (flowBot.ai_fallback_enabled) {
         // User sent something unexpected - use AI fallback
@@ -194,19 +235,22 @@ serve(async (req) => {
         );
         
         return new Response(JSON.stringify({
-          response_type: 'ai_fallback',
-          message: aiResponse,
-          buttons: buttons.map(b => b.label),
-          original_question: currentNode.data.message
+          response_type: 'messages',
+          messages: [{
+            message: aiResponse,
+            buttons: buttons.map(b => ({ label: b.label, value: b.value }))
+          }]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } else {
-        // No AI fallback - just repeat the question
+        // No AI fallback - just repeat the question with buttons
         return new Response(JSON.stringify({
-          response_type: 'repeat',
-          message: currentNode.data.message,
-          buttons: buttons.map(b => b.label)
+          response_type: 'messages',
+          messages: [{
+            message: currentNode.data.message || 'Por favor, escolha uma opção:',
+            buttons: buttons.map(b => ({ label: b.label, value: b.value }))
+          }]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -220,6 +264,7 @@ serve(async (req) => {
       
       if (isValid) {
         collectedData[variableName] = message_text;
+        console.log('Collected data:', variableName, '=', message_text);
         
         // Find next node
         const nextEdge = edges.find(e => e.source_node_id === currentNode.id);
@@ -235,18 +280,18 @@ serve(async (req) => {
         );
         
         return new Response(JSON.stringify({
-          response_type: 'ai_fallback',
-          message: aiResponse,
-          original_question: currentNode.data.message
+          response_type: 'messages',
+          messages: [{ message: aiResponse }]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } else {
         // No AI - use validation message
         return new Response(JSON.stringify({
-          response_type: 'validation_error',
-          message: currentNode.data.validation_message || 'Por favor, informe um valor válido.',
-          original_question: currentNode.data.message
+          response_type: 'messages',
+          messages: [{ 
+            message: currentNode.data.validation_message || 'Por favor, informe um valor válido.'
+          }]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -257,26 +302,53 @@ serve(async (req) => {
       nextNodeId = nextEdge?.target_node_id || null;
     }
 
-    // Move to next node
+    // Move to next node and continue walking
     if (nextNodeId) {
-      const nextNode = nodes.find(n => n.id === nextNodeId);
-      
-      if (nextNode) {
-        // Update session
+      const { messages, finalNodeId, collectedData: finalData, transfer, flowComplete } = await walkFlowUntilInteractive(
+        nextNodeId,
+        nodes,
+        edges,
+        collectedData,
+        flowBot
+      );
+
+      // Update session
+      if (flowComplete) {
         await supabase
           .from('flow_sessions')
           .update({ 
-            current_node_id: nextNodeId,
-            collected_data: collectedData
+            status: 'completed',
+            collected_data: finalData
           })
           .eq('id', session.id);
-
-        // Process next node
-        const response = await processNode(nextNode, { ...session, collected_data: collectedData }, supabase);
-        return new Response(JSON.stringify(response), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+      } else if (transfer) {
+        await supabase
+          .from('flow_sessions')
+          .update({ 
+            status: 'transferred',
+            collected_data: finalData
+          })
+          .eq('id', session.id);
+      } else {
+        await supabase
+          .from('flow_sessions')
+          .update({ 
+            current_node_id: finalNodeId,
+            collected_data: finalData
+          })
+          .eq('id', session.id);
       }
+
+      console.log(`Advanced session: sending ${messages.length} message(s), final node ${finalNodeId}`);
+
+      return new Response(JSON.stringify({
+        response_type: 'messages',
+        messages: messages,
+        transfer: transfer,
+        collected_data: finalData
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     // No next node - flow complete
@@ -302,116 +374,186 @@ serve(async (req) => {
   }
 });
 
-async function processNode(node: FlowNode, session: FlowSession, supabase: any) {
-  const message = replaceVariables(node.data.message || '', session.collected_data);
-  
-  switch (node.node_type) {
-    case 'message':
-      return {
-        response_type: 'message',
-        message: message
-      };
-    
-    case 'buttons':
-      return {
-        response_type: 'buttons',
-        message: message,
-        buttons: (node.data.buttons || []).map(b => ({
-          label: replaceVariables(b.label, session.collected_data),
-          value: b.value
-        }))
-      };
-    
-    case 'collect_data':
-      return {
-        response_type: 'collect_data',
-        message: message,
-        variable_name: node.data.variable_name,
-        variable_type: node.data.variable_type
-      };
-    
-    case 'action':
-      return await processAction(node, session, supabase);
-    
-    default:
-      return { response_type: 'unknown' };
-  }
-}
+/**
+ * Walk through the flow from a starting node until we hit an interactive node
+ * (buttons, collect_data) or end the flow (action node).
+ * Returns all messages collected along the way.
+ */
+async function walkFlowUntilInteractive(
+  startNodeId: string,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  initialData: Record<string, string>,
+  flowBot: { ai_fallback_message?: string }
+): Promise<{
+  messages: FlowMessage[];
+  finalNodeId: string;
+  collectedData: Record<string, string>;
+  transfer?: boolean;
+  flowComplete?: boolean;
+}> {
+  const messages: FlowMessage[] = [];
+  let currentNodeId = startNodeId;
+  let collectedData = { ...initialData };
+  let transfer = false;
+  let flowComplete = false;
+  let iterations = 0;
+  const MAX_ITERATIONS = 20; // Prevent infinite loops
 
-async function processAction(node: FlowNode, session: FlowSession, supabase: any) {
-  const actionType = node.data.action_type;
-  
-  switch (actionType) {
-    case 'transfer':
-      // Mark session as transferred
-      await supabase
-        .from('flow_sessions')
-        .update({ status: 'transferred' })
-        .eq('id', session.id);
-      
-      return {
-        response_type: 'transfer',
-        message: replaceVariables(node.data.transfer_message || 'Transferindo para atendente...', session.collected_data),
-        transfer: true,
-        collected_data: session.collected_data
-      };
+  while (iterations < MAX_ITERATIONS) {
+    iterations++;
     
-    case 'webhook':
-      if (node.data.webhook_url) {
-        try {
-          await fetch(node.data.webhook_url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: session.id,
-              collected_data: session.collected_data,
-              timestamp: new Date().toISOString()
-            })
-          });
-        } catch (err) {
-          console.error('Webhook error:', err);
+    const currentNode = nodes.find(n => n.id === currentNodeId);
+    if (!currentNode) {
+      console.log('Node not found, ending walk');
+      break;
+    }
+
+    console.log(`Walking node [${iterations}]: ${currentNode.node_type} - ${currentNode.data.label}`);
+
+    switch (currentNode.node_type) {
+      case 'start':
+        // Start node: just move to next
+        const startEdge = edges.find(e => e.source_node_id === currentNodeId);
+        if (startEdge) {
+          currentNodeId = startEdge.target_node_id;
+        } else {
+          // No next node
+          flowComplete = true;
+          return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
         }
-      }
-      return {
-        response_type: 'webhook_sent',
-        collected_data: session.collected_data
-      };
-    
-    case 'end':
-      await supabase
-        .from('flow_sessions')
-        .update({ status: 'completed' })
-        .eq('id', session.id);
-      
-      return {
-        response_type: 'flow_complete',
-        collected_data: session.collected_data
-      };
-    
-    default:
-      return { response_type: 'unknown_action' };
+        break;
+
+      case 'message':
+        // Message node: collect message and continue to next
+        if (currentNode.data.message) {
+          messages.push({
+            message: replaceVariables(currentNode.data.message, collectedData)
+          });
+        }
+        
+        const messageEdge = edges.find(e => e.source_node_id === currentNodeId);
+        if (messageEdge) {
+          currentNodeId = messageEdge.target_node_id;
+        } else {
+          // No next node, stop here
+          return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+        }
+        break;
+
+      case 'buttons':
+        // Buttons node: add message with buttons and STOP (wait for user input)
+        if (currentNode.data.message) {
+          const buttons = (currentNode.data.buttons || []).map(b => ({
+            label: replaceVariables(b.label, collectedData),
+            value: b.value
+          }));
+          
+          messages.push({
+            message: replaceVariables(currentNode.data.message, collectedData),
+            buttons: buttons
+          });
+        }
+        // Stop here and wait for user to choose
+        return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+
+      case 'collect_data':
+        // Collect data node: add message and STOP (wait for user input)
+        if (currentNode.data.message) {
+          messages.push({
+            message: replaceVariables(currentNode.data.message, collectedData)
+          });
+        }
+        // Stop here and wait for user input
+        return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+
+      case 'action':
+        // Action node: process action and potentially end flow
+        const actionType = currentNode.data.action_type;
+        
+        if (actionType === 'transfer') {
+          if (currentNode.data.transfer_message) {
+            messages.push({
+              message: replaceVariables(currentNode.data.transfer_message, collectedData)
+            });
+          }
+          transfer = true;
+          flowComplete = true;
+          return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+        } else if (actionType === 'end') {
+          flowComplete = true;
+          return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+        } else if (actionType === 'webhook') {
+          // Fire webhook but continue (don't wait for response)
+          if (currentNode.data.webhook_url) {
+            try {
+              fetch(currentNode.data.webhook_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  collected_data: collectedData,
+                  timestamp: new Date().toISOString()
+                })
+              }).catch(err => console.error('Webhook error:', err));
+            } catch (err) {
+              console.error('Webhook error:', err);
+            }
+          }
+          // Continue to next node
+          const webhookEdge = edges.find(e => e.source_node_id === currentNodeId);
+          if (webhookEdge) {
+            currentNodeId = webhookEdge.target_node_id;
+          } else {
+            flowComplete = true;
+            return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+          }
+        } else {
+          // Unknown action, try to continue
+          const actionEdge = edges.find(e => e.source_node_id === currentNodeId);
+          if (actionEdge) {
+            currentNodeId = actionEdge.target_node_id;
+          } else {
+            flowComplete = true;
+            return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+          }
+        }
+        break;
+
+      default:
+        // Unknown node type, try to continue
+        const defaultEdge = edges.find(e => e.source_node_id === currentNodeId);
+        if (defaultEdge) {
+          currentNodeId = defaultEdge.target_node_id;
+        } else {
+          return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
+        }
+    }
   }
+
+  console.log('Max iterations reached');
+  return { messages, finalNodeId: currentNodeId, collectedData, transfer, flowComplete };
 }
 
 function replaceVariables(text: string, data: Record<string, string>): string {
   let result = text;
   for (const [key, value] of Object.entries(data)) {
-    result = result.replace(new RegExp(`{{${key}}}`, 'gi'), value);
-    result = result.replace(new RegExp(`{${key}}`, 'gi'), value);
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), value);
+    result = result.replace(new RegExp(`\\{${key}\\}`, 'gi'), value);
   }
   return result;
 }
 
 function validateInput(input: string, type: string): boolean {
+  const trimmed = input.trim();
   switch (type) {
     case 'number':
-      return !isNaN(Number(input.replace(/[^\d.,]/g, '')));
+      return !isNaN(Number(trimmed.replace(/[^\d.,]/g, '')));
     case 'email':
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
     case 'phone':
-      return /^[\d\s()+-]{8,}$/.test(input);
+      return /^[\d\s()+-]{8,}$/.test(trimmed);
     default:
-      return input.trim().length > 0;
+      return trimmed.length > 0;
   }
 }
 
@@ -419,17 +561,18 @@ async function getAiFallbackResponse(
   userMessage: string,
   originalQuestion: string,
   expectedOptions: string[],
-  fallbackPrefix: string,
+  fallbackPrefix: string | undefined,
   extraContext?: string
 ): Promise<string> {
   const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  const prefix = fallbackPrefix || 'Desculpe, não entendi.';
   
   if (!lovableApiKey) {
     // No API key - return simple fallback
     if (expectedOptions.length > 0) {
-      return `${fallbackPrefix}\n\nPor favor, escolha uma das opções:\n${expectedOptions.map(o => `• ${o}`).join('\n')}`;
+      return `${prefix}\n\nPor favor, escolha uma das opções:\n${expectedOptions.map((o, i) => `${i + 1}. ${o}`).join('\n')}`;
     }
-    return `${fallbackPrefix}\n\n${originalQuestion}`;
+    return `${prefix}\n\n${originalQuestion}`;
   }
 
   try {
@@ -448,13 +591,13 @@ async function getAiFallbackResponse(
 
 CONTEXTO:
 - A pergunta original era: "${originalQuestion}"
-${expectedOptions.length > 0 ? `- As opções esperadas eram: ${expectedOptions.join(', ')}` : ''}
+${expectedOptions.length > 0 ? `- As opções esperadas eram: ${expectedOptions.map((o, i) => `${i + 1}. ${o}`).join(', ')}` : ''}
 ${extraContext ? `- Contexto adicional: ${extraContext}` : ''}
 
 TAREFA:
 1. Responda brevemente à dúvida/comentário do usuário se fizer sentido
 2. Gentilmente redirecione para a pergunta original
-3. Se houver opções, reapresente-as
+3. Se houver opções, reapresente-as numeradas (1, 2, 3...)
 
 Seja breve, amigável e natural. Máximo 2-3 frases.`
           },
@@ -470,7 +613,7 @@ Seja breve, amigável e natural. Máximo 2-3 frases.`
 
     if (response.ok) {
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || fallbackPrefix;
+      return data.choices?.[0]?.message?.content || prefix;
     }
   } catch (error) {
     console.error('AI fallback error:', error);
@@ -478,7 +621,7 @@ Seja breve, amigável e natural. Máximo 2-3 frases.`
 
   // Fallback if AI fails
   if (expectedOptions.length > 0) {
-    return `${fallbackPrefix}\n\nPor favor, escolha uma das opções:\n${expectedOptions.map(o => `• ${o}`).join('\n')}`;
+    return `${prefix}\n\nPor favor, escolha uma das opções:\n${expectedOptions.map((o, i) => `${i + 1}. ${o}`).join('\n')}`;
   }
-  return `${fallbackPrefix}\n\n${originalQuestion}`;
+  return `${prefix}\n\n${originalQuestion}`;
 }
