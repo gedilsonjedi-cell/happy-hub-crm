@@ -1059,10 +1059,10 @@ Deno.serve(async (req) => {
         const contact = value.contacts?.find((c: { wa_id: string }) => c.wa_id === senderPhone);
         const senderName = contact?.profile?.name || null;
 
-        // Store message with normalized phone
+        // Store message with normalized phone - using upsert to handle duplicates
         const { error: insertError } = await supabase
           .from('whatsapp_messages')
-          .insert({
+          .upsert({
             channel_id: channel.id,
             organization_id: channel.organization_id,
             message_id: messageId,
@@ -1080,6 +1080,9 @@ Deno.serve(async (req) => {
               provider: 'meta',
               original_phone: senderPhone
             }
+          }, { 
+            onConflict: 'message_id',
+            ignoreDuplicates: true 
           });
 
         if (insertError) {
@@ -1307,9 +1310,9 @@ Deno.serve(async (req) => {
                     fullMessage
                   );
                   
-                  // Save bot response to whatsapp_messages table
-                  const botMessageId = `flow_bot_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 9)}`;
-                  await supabase.from('whatsapp_messages').insert({
+                  // Save bot response to whatsapp_messages table - use unique ID with phone and timestamp
+                  const botMessageId = `flow_bot_${normalizedPhone}_${Date.now()}_${i}`;
+                  await supabase.from('whatsapp_messages').upsert({
                     channel_id: channel.id,
                     message_id: botMessageId,
                     sender_phone: channel.phone,
@@ -1326,6 +1329,9 @@ Deno.serve(async (req) => {
                       message_index: i,
                       destination: normalizedPhone
                     }
+                  }, { 
+                    onConflict: 'message_id',
+                    ignoreDuplicates: true 
                   });
                   
                   console.log(`Flow bot message ${i + 1}/${messagesToSend.length} saved to database`);
