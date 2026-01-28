@@ -75,19 +75,39 @@ export function ChatbotChannelAssignment({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [channelsRes, agentsRes, flowBotsRes] = await Promise.all([
-        supabase.from("channels").select("id, name, phone, user_id, organization_id").eq("connected", true),
-        supabase.from("ai_agents").select("id, name, nickname").eq("is_active", true),
-        supabase.from("flow_bots").select("id, name, description").eq("is_active", true),
+      // First fetch channels
+      const { data: channelsData, error: channelsError } = await supabase
+        .from("channels")
+        .select("id, name, phone, user_id, organization_id")
+        .eq("connected", true);
+
+      if (channelsError) throw channelsError;
+      
+      // Get unique organization IDs from channels
+      const orgIds = [...new Set(channelsData?.map(c => c.organization_id).filter(Boolean))];
+      
+      // Fetch agents and flow bots for those organizations
+      const [agentsRes, flowBotsRes] = await Promise.all([
+        supabase
+          .from("ai_agents")
+          .select("id, name, nickname")
+          .eq("is_active", true)
+          .in("organization_id", orgIds),
+        supabase
+          .from("flow_bots")
+          .select("id, name, description")
+          .eq("is_active", true)
+          .in("organization_id", orgIds),
       ]);
 
-      if (channelsRes.error) throw channelsRes.error;
       if (agentsRes.error) throw agentsRes.error;
       if (flowBotsRes.error) throw flowBotsRes.error;
 
-      setChannels(channelsRes.data || []);
+      setChannels(channelsData || []);
       setAgents(agentsRes.data || []);
       setFlowBots(flowBotsRes.data || []);
+      
+      console.log("Loaded flow bots for orgs:", orgIds, flowBotsRes.data);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast.error("Erro ao carregar dados");
