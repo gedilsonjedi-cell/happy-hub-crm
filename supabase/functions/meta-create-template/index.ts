@@ -235,13 +235,27 @@ Deno.serve(async (req) => {
       console.error('Meta API error:', metaResult);
       const errorMessage = metaResult.error?.message || 'Erro ao criar template na Meta';
       const errorCode = metaResult.error?.code;
+      const errorSubcode = metaResult.error?.error_subcode;
+      const errorUserTitle = metaResult.error?.error_user_title;
+      const errorUserMsg = metaResult.error?.error_user_msg;
       
-      // Handle specific error codes
-      let userMessage = errorMessage;
+      // Handle specific error codes - prefer user-friendly messages from Meta when available
+      let userMessage = errorUserMsg || errorUserTitle || errorMessage;
+      
       if (errorCode === 100) {
-        userMessage = 'Nome de template já existe ou é inválido. Use apenas letras minúsculas, números e underscores.';
+        if (errorSubcode === 3835016) {
+          // Account blocked from creating templates
+          userMessage = errorUserMsg || 'Esta conta do WhatsApp Business está bloqueada para criar novos templates. Verifique as restrições da conta no Meta Business Suite.';
+        } else if (errorSubcode === 2388109) {
+          // Template name already exists
+          userMessage = 'Um template com este nome já existe. Use um nome diferente.';
+        } else if (!errorUserMsg) {
+          userMessage = 'Nome de template já existe ou é inválido. Use apenas letras minúsculas, números e underscores.';
+        }
       } else if (errorCode === 190) {
         userMessage = 'Token de acesso expirado ou inválido. Reconecte o canal.';
+      } else if (errorCode === 131026) {
+        userMessage = 'A conta atingiu o limite de templates. Delete alguns templates antigos antes de criar novos.';
       }
 
       return new Response(JSON.stringify({ 
