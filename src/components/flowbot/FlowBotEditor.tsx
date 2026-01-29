@@ -298,20 +298,31 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
     if (!draggedNodeType || !canvasRef.current) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Adjust for pan offset and zoom
+    const x = (e.clientX - rect.left - panOffset.x) / zoom;
+    const y = (e.clientY - rect.top - panOffset.y) / zoom;
     
+    const nodeId = `node_${Date.now()}`;
     const newNode: CanvasNode = {
-      id: `node_${Date.now()}`,
+      id: nodeId,
       type: draggedNodeType,
       position: { x, y },
       data: getDefaultNodeData(draggedNodeType)
     };
     
-    setNodes(prev => [...prev, newNode]);
+    // Add node first, then update selection and open editor
+    setNodes(prev => {
+      const updatedNodes = [...prev, newNode];
+      console.log("Node added:", nodeId, "Total nodes:", updatedNodes.length);
+      return updatedNodes;
+    });
     setDraggedNodeType(null);
-    setSelectedNodeId(newNode.id);
-    setShowNodeEditor(true);
+    
+    // Use setTimeout to ensure state is updated before selecting
+    setTimeout(() => {
+      setSelectedNodeId(nodeId);
+      setShowNodeEditor(true);
+    }, 0);
   };
 
   const getDefaultNodeData = (type: NodeType) => {
@@ -736,7 +747,14 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
       </div>
 
       {/* Node Editor Sheet */}
-      <Sheet open={showNodeEditor} onOpenChange={setShowNodeEditor}>
+      <Sheet 
+        open={showNodeEditor} 
+        onOpenChange={(open) => {
+          setShowNodeEditor(open);
+          // Don't clear selectedNodeId when closing - just close the sheet
+          // The node should remain in the canvas
+        }}
+      >
         <SheetContent className="w-[400px] sm:w-[540px]">
           <SheetHeader>
             <SheetTitle>Configurar Bloco</SheetTitle>
