@@ -290,6 +290,12 @@ const AtendimentoV2 = () => {
   
   // Track conversations with recent new messages for visual highlight
   const [recentlyUpdatedConversations, setRecentlyUpdatedConversations] = useState<Set<string>>(new Set());
+  
+  // Track chatbot config for selected channel to show bot type indicator
+  const [channelBotConfig, setChannelBotConfig] = useState<{
+    bot_type: 'ai' | 'flow' | null;
+    is_enabled: boolean;
+  } | null>(null);
 
   // Fetch quick responses for shortcut detection - memoized to prevent refetches
   useEffect(() => {
@@ -1042,6 +1048,33 @@ const AtendimentoV2 = () => {
 
     fetchContactTags();
   }, [selectedConversation?.phone]);
+
+  // Fetch bot config for the selected conversation's channel
+  useEffect(() => {
+    const fetchBotConfig = async () => {
+      if (!selectedConversation?.channelId) {
+        setChannelBotConfig(null);
+        return;
+      }
+      
+      const { data } = await supabase
+        .from("chatbot_config")
+        .select("bot_type, is_enabled")
+        .eq("channel_id", selectedConversation.channelId)
+        .maybeSingle();
+      
+      if (data) {
+        setChannelBotConfig({
+          bot_type: data.bot_type as 'ai' | 'flow' | null,
+          is_enabled: data.is_enabled ?? false
+        });
+      } else {
+        setChannelBotConfig(null);
+      }
+    };
+    
+    fetchBotConfig();
+  }, [selectedConversation?.channelId]);
 
   // Refs for realtime updates
   const selectedConversationRef = useRef<Conversation | null>(null);
@@ -3310,6 +3343,17 @@ const AtendimentoV2 = () => {
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span className="text-xs font-medium text-primary truncate">{selectedConversationChannel.name}</span>
                     <span className="text-xs text-muted-foreground hidden sm:inline">({selectedConversationChannel.phone})</span>
+                    {channelBotConfig?.is_enabled && (
+                      <Badge variant="secondary" className="ml-auto text-[10px] h-5 gap-1">
+                        {channelBotConfig.bot_type === 'flow' ? (
+                          <><GitBranch className="w-3 h-3" /> Fluxo</>
+                        ) : channelBotConfig.bot_type === 'ai' ? (
+                          <><Bot className="w-3 h-3" /> IA Bot</>
+                        ) : (
+                          <><Bot className="w-3 h-3" /> Bot</>
+                        )}
+                      </Badge>
+                    )}
                   </div>
                 )}
                 
@@ -3351,8 +3395,8 @@ const AtendimentoV2 = () => {
                         </Button>
                       }
                     />
-                    <Button variant={showSalesAssistant ? "default" : "outline"} size="sm" onClick={() => setShowSalesAssistant(!showSalesAssistant)} className="gap-1 h-8 px-2">
-                      <Sparkles className="w-3 h-3" /><span className="hidden sm:inline">IA</span>
+                    <Button variant={showSalesAssistant ? "default" : "outline"} size="sm" onClick={() => setShowSalesAssistant(!showSalesAssistant)} className="gap-1 h-8 px-2" title="Assistente de vendas IA">
+                      <Sparkles className="w-3 h-3" /><span className="hidden sm:inline">Assistente</span>
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
