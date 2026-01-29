@@ -107,8 +107,26 @@ serve(async (req) => {
     if (!session) {
       console.log('Creating new flow session...');
       
-      // Find start node
-      const startNode = nodes.find(n => n.node_type === 'start');
+      // Find the CORRECT start node - the one that has edges going OUT
+      // This prevents selecting orphan start nodes that were duplicated
+      const startNodes = nodes.filter(n => n.node_type === 'start');
+      let startNode = null;
+      
+      for (const sn of startNodes) {
+        const hasOutgoingEdge = edges.some(e => e.source_node_id === sn.id);
+        if (hasOutgoingEdge) {
+          startNode = sn;
+          console.log('Found valid start node with edges:', sn.id);
+          break;
+        }
+      }
+      
+      // Fallback to first start node if none have edges (shouldn't happen in valid flows)
+      if (!startNode && startNodes.length > 0) {
+        startNode = startNodes[0];
+        console.warn('No start node with edges found, using first start node:', startNode.id);
+      }
+      
       if (!startNode) {
         return new Response(JSON.stringify({ error: 'No start node' }), {
           status: 400,
@@ -172,12 +190,58 @@ serve(async (req) => {
     // --- EXISTING SESSION: Process user input ---
     console.log('Processing existing session:', session.id, 'current node:', session.current_node_id);
 
-    const currentNode = nodes.find(n => n.id === session.current_node_id);
+    let currentNode = nodes.find(n => n.id === session.current_node_id);
     
-    if (!currentNode) {
-      console.error('Current node not found:', session.current_node_id);
-      return new Response(JSON.stringify({ error: 'Current node not found' }), {
-        status: 400,
+    // Check if the current node is invalid (not found or a start node with no edges)
+    const isStuckOnStart = currentNode?.node_type === 'start' && 
+      !edges.some(e => e.source_node_id === currentNode!.id);
+    
+    if (!currentNode || isStuckOnStart) {
+      console.log('Session stuck on invalid/orphan node, resetting to valid start...');
+      
+      // Find the correct start node (with edges)
+      const startNodes = nodes.filter(n => n.node_type === 'start');
+      let validStartNode = null;
+      for (const sn of startNodes) {
+        if (edges.some(e => e.source_node_id === sn.id)) {
+          validStartNode = sn;
+          break;
+        }
+      }
+      
+      if (!validStartNode) {
+        console.error('No valid start node found');
+        return new Response(JSON.stringify({ error: 'No valid start node' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Reset session and walk from valid start
+      const { messages, finalNodeId, collectedData: newData } = await walkFlowUntilInteractive(
+        validStartNode.id,
+        nodes,
+        edges,
+        {},
+        flowBot
+      );
+      
+      // Update session with corrected node
+      await supabase
+        .from('flow_sessions')
+        .update({ 
+          current_node_id: finalNodeId,
+          collected_data: newData,
+          status: 'active'
+        })
+        .eq('id', session.id);
+      
+      console.log(`Session reset: sending ${messages.length} message(s), stopping at node ${finalNodeId}`);
+      
+      return new Response(JSON.stringify({
+        response_type: 'messages',
+        messages: messages
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
