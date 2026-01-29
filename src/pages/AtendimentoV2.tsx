@@ -1063,6 +1063,7 @@ const AtendimentoV2 = () => {
         .eq("channel_id", selectedConversation.channelId)
         .maybeSingle();
       
+      console.log("[BotConfig] Channel:", selectedConversation.channelId, "Data:", data);
       if (data) {
         setChannelBotConfig({
           bot_type: data.bot_type as 'ai' | 'flow' | null,
