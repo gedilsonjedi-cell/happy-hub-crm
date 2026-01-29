@@ -9,6 +9,7 @@ import {
   Zap,
   Trash2,
   Copy,
+  Check,
   Loader2,
   Sparkles,
   Wand2,
@@ -783,11 +784,12 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
         open={showNodeEditor} 
         onOpenChange={(open) => {
           setShowNodeEditor(open);
-          // Don't clear selectedNodeId when closing - just close the sheet
-          // The node should remain in the canvas
+          // Node data is saved in real-time via updateNodeData
+          // Just close the sheet, node remains on canvas
         }}
+        modal={false}
       >
-        <SheetContent className="w-[400px] sm:w-[540px]">
+        <SheetContent className="w-[400px] sm:w-[540px]" onInteractOutside={(e) => e.preventDefault()}>
           <SheetHeader>
             <SheetTitle>Configurar Bloco</SheetTitle>
           </SheetHeader>
@@ -975,6 +977,18 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
                 )}
 
                 <Separator />
+
+                {/* Confirm button - primary action */}
+                <Button 
+                  className="w-full gap-2"
+                  onClick={() => {
+                    setShowNodeEditor(false);
+                    toast.success("Bloco salvo!");
+                  }}
+                >
+                  <Check className="w-4 h-4" />
+                  Confirmar
+                </Button>
                 
                 <div className="flex gap-2">
                   <Button 
