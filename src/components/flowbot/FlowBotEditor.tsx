@@ -8,6 +8,7 @@ import {
   FormInput, 
   Zap,
   Trash2,
+  Copy,
   Loader2,
   Sparkles,
   Wand2,
@@ -358,6 +359,37 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
     setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId));
     setShowNodeEditor(false);
     setSelectedNodeId(null);
+  };
+
+  const handleDuplicateNode = (nodeId: string) => {
+    const nodeToDuplicate = nodes.find(n => n.id === nodeId);
+    if (!nodeToDuplicate || nodeToDuplicate.type === "start") return;
+
+    const newNodeId = `node_${Date.now()}`;
+    const newNode: CanvasNode = {
+      ...nodeToDuplicate,
+      id: newNodeId,
+      position: {
+        x: nodeToDuplicate.position.x + 50,
+        y: nodeToDuplicate.position.y + 50
+      },
+      data: {
+        ...nodeToDuplicate.data,
+        label: `${(nodeToDuplicate.data as any).label || ""} (cópia)`
+      }
+    };
+
+    // For buttons node, generate new button IDs
+    if (newNode.type === "buttons" && (newNode.data as ButtonsNodeData).buttons) {
+      (newNode.data as ButtonsNodeData).buttons = (newNode.data as ButtonsNodeData).buttons.map(btn => ({
+        ...btn,
+        id: `btn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      }));
+    }
+
+    setNodes(prev => [...prev, newNode]);
+    setSelectedNodeId(newNodeId);
+    toast.success("Bloco duplicado!");
   };
 
   const handleDeleteEdge = (edgeId: string) => {
@@ -944,14 +976,24 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
 
                 <Separator />
                 
-                <Button 
-                  variant="destructive" 
-                  className="w-full gap-2"
-                  onClick={() => handleDeleteNode(selectedNode.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Excluir Bloco
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 gap-2"
+                    onClick={() => handleDuplicateNode(selectedNode.id)}
+                  >
+                    <Copy className="w-4 h-4" />
+                    Duplicar
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1 gap-2"
+                    onClick={() => handleDeleteNode(selectedNode.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Excluir
+                  </Button>
+                </div>
               </div>
             </ScrollArea>
           )}
