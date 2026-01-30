@@ -2269,6 +2269,35 @@ const Conexoes = () => {
                 </div>
               </div>
 
+              {showChannelConfig.access_token && (
+                <div className="space-y-2">
+                  <Label className="text-foreground text-sm">Access Token (Token Permanente)</Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-muted/50 px-3 py-2.5 rounded border border-border font-mono overflow-x-auto max-w-[320px] truncate">
+                      {showAccessToken 
+                        ? showChannelConfig.access_token 
+                        : '••••••••••••••••••••••••••••••••••••••••'}
+                    </code>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowAccessToken(!showAccessToken)} 
+                      className="gap-1.5"
+                    >
+                      {showAccessToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => copyToClipboard(showChannelConfig.access_token || '', "Access Token")} 
+                      className="gap-1.5"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label className="text-foreground text-sm">Webhook Fields (selecione todos)</Label>
                 <div className="flex flex-wrap gap-2">
