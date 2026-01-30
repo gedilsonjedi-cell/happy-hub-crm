@@ -298,12 +298,27 @@ const Disparos = () => {
           console.log('Campaigns realtime update:', payload);
           
           if (payload.eventType === 'UPDATE') {
+            const newCampaign = payload.new as Campaign;
             setAllCampaigns((prev) =>
-              prev.map((c) =>
-                c.id === (payload.new as Campaign).id
-                  ? { ...c, ...(payload.new as Campaign) }
-                  : c
-              )
+              prev.map((c) => {
+                if (c.id !== newCampaign.id) return c;
+                
+                // IMPORTANT: Prevent counter regression during active campaigns
+                // This can happen when Realtime captures an intermediate state before
+                // the sync_campaign_counts trigger completes
+                if (c.status === 'running' || newCampaign.status === 'running') {
+                  return {
+                    ...c,
+                    ...newCampaign,
+                    // Only update counters if they increased (never regress)
+                    sent_count: Math.max(c.sent_count, newCampaign.sent_count),
+                    delivered_count: Math.max(c.delivered_count, newCampaign.delivered_count),
+                    failed_count: Math.max(c.failed_count, newCampaign.failed_count),
+                  };
+                }
+                
+                return { ...c, ...newCampaign };
+              })
             );
           } else if (payload.eventType === 'INSERT') {
             setAllCampaigns((prev) => [payload.new as Campaign, ...prev]);
