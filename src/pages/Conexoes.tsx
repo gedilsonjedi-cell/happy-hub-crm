@@ -1507,7 +1507,10 @@ const Conexoes = () => {
                       </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="gap-2 cursor-pointer"
-                        onClick={() => setShowChannelConfig(channel)}
+                        onClick={() => {
+                          setShowAccessToken(false);
+                          setShowChannelConfig(channel);
+                        }}
                       >
                         <Webhook className="w-4 h-4" />
                         Ver Configuração
