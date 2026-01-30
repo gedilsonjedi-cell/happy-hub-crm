@@ -54,7 +54,25 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       const newDataString = JSON.stringify(data);
       if (newDataString !== previousDataRef.current) {
         previousDataRef.current = newDataString;
-        setRunningCampaigns(data);
+        
+        // Merge with previous data to prevent counter regression
+        // This can happen when data is fetched during trigger execution
+        setRunningCampaigns((prev) => {
+          if (prev.length === 0) return data;
+          
+          return data.map((newCamp: RunningCampaign) => {
+            const oldCamp = prev.find(c => c.id === newCamp.id);
+            if (!oldCamp) return newCamp;
+            
+            // IMPORTANT: Never let counters decrease during running campaigns
+            return {
+              ...newCamp,
+              sent_count: Math.max(oldCamp.sent_count, newCamp.sent_count),
+              delivered_count: Math.max(oldCamp.delivered_count, newCamp.delivered_count),
+              failed_count: Math.max(oldCamp.failed_count, newCamp.failed_count),
+            };
+          });
+        });
       }
     }
   }, [effectiveOrganizationId]);
