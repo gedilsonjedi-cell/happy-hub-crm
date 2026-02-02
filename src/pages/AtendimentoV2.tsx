@@ -82,6 +82,7 @@ import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDial
 import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
 import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
+import { SectorFilter } from "@/components/whatsapp/SectorFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
 import {
   DropdownMenu,
@@ -245,6 +246,7 @@ const AtendimentoV2 = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [filterByAttendant, setFilterByAttendant] = useState<string | null>(null);
+  const [filterBySector, setFilterBySector] = useState<string | null>(null);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -2784,7 +2786,11 @@ const AtendimentoV2 = () => {
         // Apply attendant filter (only for admins/supervisors)
         const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
         
-        return matchesFilter && matchesAttendant && conv.status !== "archived";
+        // Apply sector filter
+        const matchesSector = !filterBySector || 
+          (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+        
+        return matchesFilter && matchesAttendant && matchesSector && conv.status !== "archived";
       })
     : visibleConversations.filter(conv => {
         const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -2797,7 +2803,11 @@ const AtendimentoV2 = () => {
         // Apply attendant filter (only for admins/supervisors)
         const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
         
-        return matchesSearch && matchesFilter && matchesAttendant;
+        // Apply sector filter
+        const matchesSector = !filterBySector || 
+          (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+        
+        return matchesSearch && matchesFilter && matchesAttendant && matchesSector;
       });
 
   const visibleArchivedConversations = canSeeOthers 
@@ -2811,7 +2821,12 @@ const AtendimentoV2 = () => {
     
   const filteredArchived = hasGlobalResults
     ? archivedFromGlobalSearch
-        .filter(conv => !filterByAttendant || conv.assignedTo === filterByAttendant)
+        .filter(conv => {
+          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          const matchesSector = !filterBySector || 
+            (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+          return matchesAttendant && matchesSector;
+        })
         .sort((a, b) => {
           const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
           const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
@@ -2821,7 +2836,9 @@ const AtendimentoV2 = () => {
         .filter(conv => {
           const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
           const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
-          return matchesSearch && matchesAttendant;
+          const matchesSector = !filterBySector || 
+            (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+          return matchesSearch && matchesAttendant && matchesSector;
         })
         .sort((a, b) => {
           const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
@@ -3035,18 +3052,24 @@ const AtendimentoV2 = () => {
                 )}
               </div>
               
-              {/* Attendant filter for admins/supervisors */}
+              {/* Filters for admins/supervisors */}
               {canSeeOthers && (
-                <AttendantFilter 
-                  value={filterByAttendant} 
-                  onChange={(v) => {
-                    setFilterByAttendant(v);
-                    // Auto-switch to "Outros" when filtering by specific attendant
-                    if (v && v !== user?.id) {
-                      setFilterStatus("others");
-                    }
-                  }} 
-                />
+                <div className="flex gap-2">
+                  <AttendantFilter 
+                    value={filterByAttendant} 
+                    onChange={(v) => {
+                      setFilterByAttendant(v);
+                      // Auto-switch to "Outros" when filtering by specific attendant
+                      if (v && v !== user?.id) {
+                        setFilterStatus("others");
+                      }
+                    }} 
+                  />
+                  <SectorFilter 
+                    value={filterBySector} 
+                    onChange={setFilterBySector}
+                  />
+                </div>
               )}
             </div>
           </div>
