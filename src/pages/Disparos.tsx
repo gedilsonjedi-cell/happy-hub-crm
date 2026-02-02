@@ -166,7 +166,7 @@ const Disparos = () => {
     scheduledTime: "",
     unifiedTemplate: "",
     minInterval: "5",
-    maxInterval: "120"
+    maxInterval: "90"
   });
 
   // Memoized fetchData callback
@@ -1011,10 +1011,6 @@ const Disparos = () => {
                         <SelectItem value="45">45 segundos</SelectItem>
                         <SelectItem value="60">1 minuto</SelectItem>
                         <SelectItem value="90">1 min 30 seg</SelectItem>
-                        <SelectItem value="120">2 minutos</SelectItem>
-                        <SelectItem value="180">3 minutos</SelectItem>
-                        <SelectItem value="240">4 minutos</SelectItem>
-                        <SelectItem value="300">5 minutos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1047,10 +1043,6 @@ const Disparos = () => {
                         <SelectItem value="45">45 segundos</SelectItem>
                         <SelectItem value="60">1 minuto</SelectItem>
                         <SelectItem value="90">1 min 30 seg</SelectItem>
-                        <SelectItem value="120">2 minutos</SelectItem>
-                        <SelectItem value="180">3 minutos</SelectItem>
-                        <SelectItem value="240">4 minutos</SelectItem>
-                        <SelectItem value="300">5 minutos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
