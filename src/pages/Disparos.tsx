@@ -165,6 +165,7 @@ const Disparos = () => {
     scheduledDate: "",
     scheduledTime: "",
     unifiedTemplate: "",
+    cadenceType: "standard" as "standard" | "warmup",
     minInterval: "5",
     maxInterval: "90"
   });
@@ -740,8 +741,9 @@ const Disparos = () => {
       scheduledDate: "",
       scheduledTime: "",
       unifiedTemplate: "",
+      cadenceType: "standard",
       minInterval: "5",
-      maxInterval: "120"
+      maxInterval: "90"
     });
   };
 
@@ -975,86 +977,79 @@ const Disparos = () => {
               <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
                 <div className="flex items-center gap-2">
                   <Shuffle className="w-5 h-5 text-primary" />
-                  <Label className="text-foreground font-medium">Cadência Aleatória</Label>
+                  <Label className="text-foreground font-medium">Cadência de Disparo</Label>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Os disparos serão realizados com intervalos aleatórios entre o mínimo e máximo definidos, 
-                  evitando padrões detectáveis.
+                  Escolha o tipo de cadência para os disparos. A cadência de aquecimento é mais lenta e recomendada para números novos.
                 </p>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Timer className="w-4 h-4" />
-                      Intervalo mínimo
-                    </Label>
-                    <Select 
-                      value={formData.minInterval} 
-                      onValueChange={(value) => {
-                        const newMin = parseInt(value);
-                        const currentMax = parseInt(formData.maxInterval);
-                        if (newMin > currentMax) {
-                          setFormData({ ...formData, minInterval: value, maxInterval: value });
-                        } else {
-                          setFormData({ ...formData, minInterval: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="bg-card border-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        <SelectItem value="5">5 segundos</SelectItem>
-                        <SelectItem value="10">10 segundos</SelectItem>
-                        <SelectItem value="15">15 segundos</SelectItem>
-                        <SelectItem value="30">30 segundos</SelectItem>
-                        <SelectItem value="45">45 segundos</SelectItem>
-                        <SelectItem value="60">1 minuto</SelectItem>
-                        <SelectItem value="90">1 min 30 seg</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div 
+                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      formData.cadenceType === "standard" 
+                        ? "border-primary bg-primary/10" 
+                        : "border-border bg-card hover:border-primary/50"
+                    }`}
+                    onClick={() => setFormData({ 
+                      ...formData, 
+                      cadenceType: "standard",
+                      minInterval: "5",
+                      maxInterval: "90"
+                    })}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        formData.cadenceType === "standard" ? "border-primary" : "border-muted-foreground"
+                      }`}>
+                        {formData.cadenceType === "standard" && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground">Padrão</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Intervalos de <strong>5 seg</strong> a <strong>1 min 30 seg</strong>
+                    </p>
+                    <p className="text-xs text-primary mt-1">Recomendado para números já aquecidos</p>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Timer className="w-4 h-4" />
-                      Intervalo máximo
-                    </Label>
-                    <Select 
-                      value={formData.maxInterval} 
-                      onValueChange={(value) => {
-                        const newMax = parseInt(value);
-                        const currentMin = parseInt(formData.minInterval);
-                        if (newMax < currentMin) {
-                          setFormData({ ...formData, maxInterval: value, minInterval: value });
-                        } else {
-                          setFormData({ ...formData, maxInterval: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="bg-card border-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        <SelectItem value="5">5 segundos</SelectItem>
-                        <SelectItem value="10">10 segundos</SelectItem>
-                        <SelectItem value="15">15 segundos</SelectItem>
-                        <SelectItem value="30">30 segundos</SelectItem>
-                        <SelectItem value="45">45 segundos</SelectItem>
-                        <SelectItem value="60">1 minuto</SelectItem>
-                        <SelectItem value="90">1 min 30 seg</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div 
+                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      formData.cadenceType === "warmup" 
+                        ? "border-primary bg-primary/10" 
+                        : "border-border bg-card hover:border-primary/50"
+                    }`}
+                    onClick={() => setFormData({ 
+                      ...formData, 
+                      cadenceType: "warmup",
+                      minInterval: "180",
+                      maxInterval: "300"
+                    })}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        formData.cadenceType === "warmup" ? "border-primary" : "border-muted-foreground"
+                      }`}>
+                        {formData.cadenceType === "warmup" && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground">Aquecimento</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Intervalos de <strong>3 min</strong> a <strong>5 min</strong>
+                    </p>
+                    <p className="text-xs text-amber-500 mt-1">Para números novos ou pouco usados</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
-                  <Shuffle className="w-4 h-4 text-primary" />
+                  <Timer className="w-4 h-4 text-primary" />
                   <p className="text-xs text-primary">
-                    Exemplo: disparos entre {formData.minInterval}s e {formData.maxInterval}s → 
-                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s, 
-                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s, 
-                    {" "}{Math.floor(Math.random() * (parseInt(formData.maxInterval) - parseInt(formData.minInterval)) + parseInt(formData.minInterval))}s...
+                    {formData.cadenceType === "standard" 
+                      ? "Disparos rápidos com intervalos entre 5 segundos e 1 minuto e 30 segundos"
+                      : "Disparos lentos com intervalos entre 3 e 5 minutos para aquecer o número"
+                    }
                   </p>
                 </div>
 
