@@ -242,14 +242,16 @@ export function LeadDetailsDialog({
     enabled: open && !!user,
   });
 
-  // Fetch available tags
+  // Fetch available tags - include user.id in queryKey to prevent cache leakage between accounts
   const { data: availableTags } = useQuery({
-    queryKey: ["lead-tags"],
+    queryKey: ["lead-tags", user?.id],
     queryFn: async () => {
+      if (!user?.id) return [];
+      
       const { data: profile } = await supabase
         .from("profiles")
         .select("organization_id")
-        .eq("user_id", user?.id)
+        .eq("user_id", user.id)
         .single();
 
       if (!profile?.organization_id) return [];
@@ -263,7 +265,8 @@ export function LeadDetailsDialog({
       if (error) throw error;
       return data as LeadTag[];
     },
-    enabled: open && !!user,
+    enabled: open && !!user?.id,
+    staleTime: 30000, // 30 seconds - refetch to ensure fresh data
   });
 
   // Fetch campaign dispatch history for this phone
