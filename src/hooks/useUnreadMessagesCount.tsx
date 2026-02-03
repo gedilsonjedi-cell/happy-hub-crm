@@ -1,25 +1,67 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
-import { useUserRole } from "@/hooks/useUserRole";
-import { useUserSectors } from "@/hooks/useUserSectors";
 
 export function useUnreadMessagesCount() {
   const [count, setCount] = useState(0);
-  const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { role } = useUserRole();
-  const { sectorIds, canSeeSector, loading: sectorsLoading } = useUserSectors();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [sectorIds, setSectorIds] = useState<string[]>([]);
+  const [isReady, setIsReady] = useState(false);
   const lastFetchRef = useRef<number>(0);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch user data directly to avoid hook context issues
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchUserData = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!mounted || !user) {
+          setIsReady(true);
+          return;
+        }
+        
+        setUserId(user.id);
+        
+        // Fetch role and organization in parallel
+        const [roleResult, profileResult, sectorsResult] = await Promise.all([
+          supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+          supabase.from("profiles").select("organization_id").eq("user_id", user.id).maybeSingle(),
+          supabase.from("user_sectors").select("sector_id").eq("user_id", user.id)
+        ]);
+        
+        if (!mounted) return;
+        
+        setRole(roleResult.data?.role || null);
+        setOrganizationId(profileResult.data?.organization_id || null);
+        setSectorIds(sectorsResult.data?.map(s => s.sector_id) || []);
+        setIsReady(true);
+      } catch (err) {
+        console.error("Error fetching user data for unread count:", err);
+        if (mounted) setIsReady(true);
+      }
+    };
+    
+    fetchUserData();
+    
+    return () => { mounted = false; };
+  }, []);
 
   // Check if user is admin/supervisor (can see all)
   const isAdminOrSupervisor = role === "super_admin" || role === "admin" || role === "supervisor";
 
+  // Check if user can see a sector
+  const canSeeSector = useCallback((sectorId: string | null) => {
+    if (isAdminOrSupervisor) return true;
+    if (!sectorId) return sectorIds.length === 0;
+    return sectorIds.includes(sectorId);
+  }, [isAdminOrSupervisor, sectorIds]);
+
   // Debounced fetch to prevent multiple rapid calls
   const fetchUnreadCount = useCallback(async () => {
-    if (!user || !effectiveOrganizationId || sectorsLoading) {
+    if (!userId || !organizationId || !isReady) {
       setCount(0);
       return;
     }
@@ -36,7 +78,7 @@ export function useUnreadMessagesCount() {
       const { data: channels } = await supabase
         .from("channels")
         .select("id")
-        .eq("organization_id", effectiveOrganizationId);
+        .eq("organization_id", organizationId);
 
       if (!channels || channels.length === 0) {
         setCount(0);
@@ -45,17 +87,12 @@ export function useUnreadMessagesCount() {
 
       const channelIds = channels.map(c => c.id);
 
-      // For admins/supervisors: count all pending conversations they can see
-      // For attendants: only count conversations in their sectors that are pending
-      
       // Fetch conversation_assignments to get sector-filtered unread count
-      let query = supabase
+      const { data: assignments, error: assignmentsError } = await supabase
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, sector_id, status, assigned_to")
         .in("channel_id", channelIds)
-        .eq("status", "pending"); // Only count PENDING conversations (waiting in queue)
-
-      const { data: assignments, error: assignmentsError } = await query;
+        .eq("status", "pending");
 
       if (assignmentsError || !assignments) {
         setCount(0);
@@ -85,7 +122,7 @@ export function useUnreadMessagesCount() {
       console.error("Error fetching unread count:", err);
       setCount(0);
     }
-  }, [user, effectiveOrganizationId, sectorsLoading, isAdminOrSupervisor, canSeeSector, sectorIds]);
+  }, [userId, organizationId, isReady, isAdminOrSupervisor, canSeeSector]);
 
   // Debounced version for realtime updates
   const debouncedFetch = useCallback(() => {
@@ -98,7 +135,7 @@ export function useUnreadMessagesCount() {
   }, [fetchUnreadCount]);
 
   useEffect(() => {
-    if (!user || !effectiveOrganizationId || sectorsLoading) {
+    if (!userId || !organizationId || !isReady) {
       setCount(0);
       return;
     }
@@ -144,7 +181,7 @@ export function useUnreadMessagesCount() {
       }
       supabase.removeChannel(channel);
     };
-  }, [user, effectiveOrganizationId, sectorsLoading, fetchUnreadCount, debouncedFetch]);
+  }, [userId, organizationId, isReady, fetchUnreadCount, debouncedFetch]);
 
   return count;
 }
