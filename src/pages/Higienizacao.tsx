@@ -872,8 +872,8 @@ export default function Higienizacao() {
       return;
     }
     
-    // Refresh tags and select the new one
-    queryClient.invalidateQueries({ queryKey: ["lead-tags"] });
+    // Refresh tags and select the new one - scope invalidation to org
+    queryClient.invalidateQueries({ queryKey: ["lead-tags", profile?.organization_id] });
     setSelectedTagsForSave((prev) => [...prev, newTagName.trim()]);
     setShowCreateTag(false);
     setNewTagName("");
