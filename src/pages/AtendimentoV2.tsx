@@ -2821,7 +2821,8 @@ const AtendimentoV2 = () => {
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
         // Apply attendant filter (only for admins/supervisors)
-        const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
+        const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter
         const matchesSector = !filterBySector || 
@@ -2842,7 +2843,8 @@ const AtendimentoV2 = () => {
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
         // Apply attendant filter (only for admins/supervisors)
-        const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
+        const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter
         const matchesSector = !filterBySector || 
