@@ -156,6 +156,13 @@ const Usuarios = () => {
   const [newEmail, setNewEmail] = useState("");
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
+  // Reset password dialog states
+  const [isResetPasswordDialogOpen, setIsResetPasswordDialogOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserWithRole | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+
   // Fetch organizations for super admin filter
   const fetchOrganizations = async () => {
     if (!isSuperAdmin) return;
@@ -478,19 +485,57 @@ const Usuarios = () => {
     }
   };
 
-  // Send password reset email
-  const handleSendPasswordReset = async (email: string) => {
+  // Open reset password dialog
+  const openResetPasswordDialog = (userToReset: UserWithRole) => {
+    setResetPasswordUser(userToReset);
+    setNewPassword("");
+    setConfirmPassword("");
+    setIsResetPasswordDialogOpen(true);
+  };
+
+  // Reset password directly via edge function
+  const handleResetPassword = async () => {
+    if (!resetPasswordUser) return;
+
+    if (!newPassword.trim()) {
+      toast.error("Digite a nova senha");
+      return;
+    }
+
+    if (newPassword.trim().length < 6) {
+      toast.error("Senha deve ter pelo menos 6 caracteres");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("As senhas não conferem");
+      return;
+    }
+
+    setIsResettingPassword(true);
+
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const { data, error } = await supabase.functions.invoke("create-user-role", {
+        body: {
+          action: "update_user",
+          user_id: resetPasswordUser.id,
+          password: newPassword.trim(),
+        },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      toast.success(`Email de redefinição de senha enviado para ${email}`);
+      toast.success("Senha redefinida com sucesso!");
+      setIsResetPasswordDialogOpen(false);
+      setResetPasswordUser(null);
+      setNewPassword("");
+      setConfirmPassword("");
     } catch (error: any) {
-      console.error("Error sending password reset:", error);
-      toast.error(error.message || "Erro ao enviar email de redefinição");
+      console.error("Error resetting password:", error);
+      toast.error(error.message || "Erro ao redefinir senha");
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -887,7 +932,7 @@ const Usuarios = () => {
                                   <Building2 className="w-4 h-4 mr-2" />
                                   Gerenciar Departamentos
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleSendPasswordReset(u.email)}>
+                                <DropdownMenuItem onClick={() => openResetPasswordDialog(u)}>
                                   <KeyRound className="w-4 h-4 mr-2" />
                                   Redefinir Senha
                                 </DropdownMenuItem>
@@ -1276,6 +1321,71 @@ const Usuarios = () => {
                   <>
                     <Mail className="w-4 h-4 mr-2" />
                     Atualizar Email
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reset Password Dialog */}
+        <Dialog open={isResetPasswordDialogOpen} onOpenChange={setIsResetPasswordDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Redefinir Senha</DialogTitle>
+              <DialogDescription>
+                Defina uma nova senha para {resetPasswordUser?.display_name || resetPasswordUser?.email}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">Nova Senha</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  placeholder="Digite a nova senha"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="Confirme a nova senha"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsResetPasswordDialogOpen(false);
+                  setResetPasswordUser(null);
+                  setNewPassword("");
+                  setConfirmPassword("");
+                }}
+                disabled={isResettingPassword}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleResetPassword} 
+                disabled={isResettingPassword || !newPassword.trim() || !confirmPassword.trim()}
+              >
+                {isResettingPassword ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
+                    Redefinindo...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4 mr-2" />
+                    Redefinir Senha
                   </>
                 )}
               </Button>
