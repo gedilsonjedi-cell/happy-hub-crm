@@ -142,8 +142,9 @@ export function LeadDetailsDialog({
   }, [open, phone, name]);
 
   // Fetch lead by phone - prioritize leads with tags and real names
+  // CRITICAL: Include user.id in queryKey to prevent cross-organization cache pollution
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
-    queryKey: ["lead-by-phone", normalizedPhone, open],
+    queryKey: ["lead-by-phone", normalizedPhone, user?.id, open],
     queryFn: async () => {
       if (!open) return null;
       
@@ -218,9 +219,9 @@ export function LeadDetailsDialog({
     gcTime: 0, // Don't cache
   });
 
-  // Fetch custom field definitions
+  // Fetch custom field definitions - include user.id to prevent cache leakage
   const { data: customFields } = useQuery({
-    queryKey: ["custom-field-definitions"],
+    queryKey: ["custom-field-definitions", user?.id],
     queryFn: async () => {
       const { data: profile } = await supabase
         .from("profiles")
@@ -269,9 +270,9 @@ export function LeadDetailsDialog({
     staleTime: 30000, // 30 seconds - refetch to ensure fresh data
   });
 
-  // Fetch campaign dispatch history for this phone
+  // Fetch campaign dispatch history for this phone - include user.id to prevent cache leakage
   const { data: campaignHistory } = useQuery({
-    queryKey: ["campaign-history", normalizedPhone],
+    queryKey: ["campaign-history", normalizedPhone, user?.id],
     queryFn: async () => {
       const { data: profile } = await supabase
         .from("profiles")
