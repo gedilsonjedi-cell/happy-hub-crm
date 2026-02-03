@@ -66,6 +66,7 @@ import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
+import { QuickResponsesAutocomplete } from "@/components/whatsapp/QuickResponsesAutocomplete";
 import { TemplateSelector } from "@/components/whatsapp/TemplateSelector";
 import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { SalesAssistant } from "@/components/whatsapp/SalesAssistant";
@@ -249,6 +250,7 @@ const AtendimentoV2 = () => {
   const [filterBySector, setFilterBySector] = useState<string | null>(null);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
+  const [showQuickResponsesAutocomplete, setShowQuickResponsesAutocomplete] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showManualSendDialog, setShowManualSendDialog] = useState(false);
   const [manualPhoneInput, setManualPhoneInput] = useState("");
@@ -3610,19 +3612,58 @@ const AtendimentoV2 = () => {
                       </Button>
                     </div>
                   ) : (
-                    <>
+                    <div className="relative flex-1 flex items-end gap-2">
+                      {/* Quick Responses Autocomplete */}
+                      <QuickResponsesAutocomplete
+                        isOpen={showQuickResponsesAutocomplete}
+                        onClose={() => setShowQuickResponsesAutocomplete(false)}
+                        onSelectResponse={(content) => {
+                          setNewMessage(content);
+                          setShowQuickResponsesAutocomplete(false);
+                        }}
+                        searchTerm={newMessage}
+                      />
+                      
                       <Textarea
-                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Mensagem... (Ctrl+V para colar imagem)"}
-                        className={cn("min-h-[44px] max-h-32 resize-none bg-muted/30 text-sm", (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed")}
+                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Digite / para respostas rápidas..."}
+                        className={cn("min-h-[44px] max-h-32 resize-none bg-muted/30 text-sm flex-1", (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed")}
                         value={newMessage}
-                        onChange={(e) => !isWindowExpired && isMyConversation && setNewMessage(e.target.value)}
+                        onChange={(e) => {
+                          if (isWindowExpired || !isMyConversation) return;
+                          const value = e.target.value;
+                          setNewMessage(value);
+                          
+                          // Show autocomplete when typing "/" at start or after space
+                          if (value.startsWith("/") || value.includes(" /")) {
+                            setShowQuickResponsesAutocomplete(true);
+                          } else {
+                            setShowQuickResponsesAutocomplete(false);
+                          }
+                        }}
                         disabled={isWindowExpired || !isMyConversation}
                         onPaste={handlePaste}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation) {
+                          // If autocomplete is open, let it handle navigation keys
+                          if (showQuickResponsesAutocomplete) {
+                            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                              // Let the autocomplete component handle these keys
+                              return;
+                            }
+                          }
+                          
+                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation && !showQuickResponsesAutocomplete) {
                             e.preventDefault();
                             handleSendMessage();
                           }
+                          
+                          // Close autocomplete on Escape
+                          if (e.key === "Escape" && showQuickResponsesAutocomplete) {
+                            setShowQuickResponsesAutocomplete(false);
+                          }
+                        }}
+                        onBlur={() => {
+                          // Delay closing to allow click on autocomplete items
+                          setTimeout(() => setShowQuickResponsesAutocomplete(false), 200);
                         }}
                       />
                       {isWindowExpired ? (
@@ -3636,7 +3677,7 @@ const AtendimentoV2 = () => {
                           {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
                         </Button>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
