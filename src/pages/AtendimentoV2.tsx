@@ -2833,7 +2833,11 @@ const AtendimentoV2 = () => {
         const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
         
         let matchesFilter = false;
-        if (filterStatus === "new") matchesFilter = !conv.assignedTo;
+        if (filterStatus === "new") {
+          // "Novos" only shows conversations that are pending AND have no assignee
+          // Conversations already in progress (even without assignee) should NOT appear here
+          matchesFilter = !conv.assignedTo && conv.status === "pending";
+        }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
@@ -2883,8 +2887,8 @@ const AtendimentoV2 = () => {
           return timeB - timeA;
         });
 
-  // Counts
-  const newCount = visibleConversations.filter(c => !c.assignedTo).length;
+  // Counts - "Novos" only counts pending conversations without assignee
+  const newCount = visibleConversations.filter(c => !c.assignedTo && c.status === "pending").length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
 
