@@ -88,32 +88,27 @@ export function useUnreadMessagesCount() {
       const channelIds = channels.map(c => c.id);
 
       // Fetch conversation_assignments to get sector-filtered unread count
+      // Include both 'pending' AND 'in_progress' without assignee (conversations waiting for an attendant)
       const { data: assignments, error: assignmentsError } = await supabase
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, sector_id, status, assigned_to")
         .in("channel_id", channelIds)
-        .eq("status", "pending");
+        .in("status", ["pending", "in_progress"]);
 
       if (assignmentsError || !assignments) {
         setCount(0);
         return;
       }
 
-      // Filter assignments based on sector access
-      let filteredAssignments = assignments;
+      // Filter assignments based on sector access - only count UNASSIGNED conversations
+      let filteredAssignments = assignments.filter(a => !a.assigned_to);
 
       if (!isAdminOrSupervisor) {
-        // Attendants: filter by sector + only unassigned conversations
-        filteredAssignments = assignments.filter(a => {
-          // Must be unassigned (pending in queue)
-          if (a.assigned_to) return false;
-          
-          // Must be in a sector the attendant can see
-          return canSeeSector(a.sector_id);
-        });
+        // Attendants: filter by sector
+        filteredAssignments = filteredAssignments.filter(a => canSeeSector(a.sector_id));
       } else {
-        // Admins/Supervisors: filter only by sector (can see assigned too)
-        filteredAssignments = assignments.filter(a => canSeeSector(a.sector_id));
+        // Admins/Supervisors: filter only by sector
+        filteredAssignments = filteredAssignments.filter(a => canSeeSector(a.sector_id));
       }
 
       // Count unique conversations

@@ -2816,7 +2816,7 @@ const AtendimentoV2 = () => {
     ? globalSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
-        if (filterStatus === "new") matchesFilter = !conv.assignedTo;
+        if (filterStatus === "new") matchesFilter = !conv.assignedTo && conv.status !== "archived";
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
@@ -2834,9 +2834,9 @@ const AtendimentoV2 = () => {
         
         let matchesFilter = false;
         if (filterStatus === "new") {
-          // "Novos" only shows conversations that are pending AND have no assignee
-          // Conversations already in progress (even without assignee) should NOT appear here
-          matchesFilter = !conv.assignedTo && conv.status === "pending";
+          // "Novos" shows ALL conversations without assignee (pending or in_progress)
+          // This ensures conversations that went to in_progress without an attendant are not lost
+          matchesFilter = !conv.assignedTo && conv.status !== "archived";
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
@@ -2887,8 +2887,8 @@ const AtendimentoV2 = () => {
           return timeB - timeA;
         });
 
-  // Counts - "Novos" only counts pending conversations without assignee
-  const newCount = visibleConversations.filter(c => !c.assignedTo && c.status === "pending").length;
+  // Counts - "Novos" counts ALL conversations without assignee (excluding archived)
+  const newCount = visibleConversations.filter(c => !c.assignedTo && c.status !== "archived").length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
 
