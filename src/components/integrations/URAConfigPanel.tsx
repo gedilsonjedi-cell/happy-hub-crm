@@ -306,8 +306,8 @@ export function URAConfigPanel() {
               <p className="text-sm">Conecte um canal do WhatsApp para configurar a URA</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[500px]">
-              <div className="space-y-4">
+            <ScrollArea className="h-[calc(100vh-450px)] min-h-[300px] max-h-[600px] pr-4">
+              <div className="space-y-4 pb-2">
                 {channels.map((channel) => {
                   const config = uraConfigs.get(channel.id);
                   const isEnabled = config?.is_enabled ?? false;
