@@ -35,8 +35,10 @@ import {
   ArrowRight,
   CheckCheck,
   AlertCircle,
-  Info
+  Info,
+  Phone
 } from "lucide-react";
+import { URAConfigPanel } from "@/components/integrations/URAConfigPanel";
 
 interface WebhookData {
   id: string;
@@ -258,10 +260,14 @@ const Integracoes = () => {
         </div>
 
         <Tabs defaultValue="webhooks" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
             <TabsTrigger value="webhooks" className="gap-2">
               <Webhook className="h-4 w-4" />
               Webhooks
+            </TabsTrigger>
+            <TabsTrigger value="ura" className="gap-2">
+              <Phone className="h-4 w-4" />
+              URA
             </TabsTrigger>
             <TabsTrigger value="automations" className="gap-2">
               <Zap className="h-4 w-4" />
@@ -477,6 +483,10 @@ const Integracoes = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="ura" className="space-y-4">
+            <URAConfigPanel />
           </TabsContent>
 
           <TabsContent value="automations" className="space-y-4">
