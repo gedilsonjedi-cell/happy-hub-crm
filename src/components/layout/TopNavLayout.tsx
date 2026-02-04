@@ -119,6 +119,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
       icon: Settings,
       submenu: [
         { label: "Conexões", path: "/conexoes", icon: Plug },
+        { label: "Integrações", path: "/integracoes", icon: Zap },
         { label: "Horários", path: "/personalizacao/horarios", icon: Clock },
         { label: "Tags", path: "/personalizacao/tags", icon: Tag },
         { label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", icon: MessageSquare },
