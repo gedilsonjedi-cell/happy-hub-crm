@@ -492,10 +492,10 @@ Deno.serve(async (req) => {
             }).eq('id', existing.id);
           } else {
             // Create NEW assignment with archived status
+            // NOTE: conversation_assignments does NOT have organization_id column
             await supabase.from('conversation_assignments').insert({
               conversation_phone: formattedPhone,
               channel_id: channel.id,
-              organization_id: campaign.organization_id,
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
               status: 'archived', // Campaign dispatches start as archived
