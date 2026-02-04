@@ -27,17 +27,13 @@ interface Channel {
   id: string;
   name: string;
   phone: string;
+  waba_id: string | null;
 }
 
 interface Template {
   id: string;
   name: string;
   status: string;
-}
-
-interface ChannelTemplate {
-  template_id: string;
-  template: Template;
 }
 
 interface URAConfig {
@@ -64,22 +60,44 @@ export function URAConfigPanel() {
     
     setIsLoading(true);
     
-    // Fetch channels
+    // Fetch channels with waba_id
     const { data: channelsData } = await supabase
       .from("channels")
-      .select("id, name, phone")
+      .select("id, name, phone, waba_id")
       .eq("organization_id", orgId)
       .eq("connected", true)
       .order("name");
     
-    // Fetch channel templates with their template details
+    // Get unique waba_ids from channels
+    const wabaIds = [...new Set((channelsData || []).map(c => c.waba_id).filter(Boolean))];
+    
+    // Find all channel IDs that share these waba_ids (to get all templates for each waba)
+    const { data: allChannelsWithSameWaba } = await supabase
+      .from("channels")
+      .select("id, waba_id")
+      .in("waba_id", wabaIds);
+    
+    // Create a map of waba_id to channel_ids
+    const wabaToChannels = new Map<string, string[]>();
+    (allChannelsWithSameWaba || []).forEach((c: any) => {
+      if (c.waba_id) {
+        const existing = wabaToChannels.get(c.waba_id) || [];
+        existing.push(c.id);
+        wabaToChannels.set(c.waba_id, existing);
+      }
+    });
+    
+    // Get all channel IDs from all WABAs
+    const allChannelIds = [...new Set((allChannelsWithSameWaba || []).map(c => c.id))];
+    
+    // Fetch channel templates with their template details for ALL channels in the same WABAs
     const { data: channelTemplatesData } = await supabase
       .from("channel_templates")
       .select(`
         channel_id,
         template:message_templates(id, name, status)
       `)
-      .in("channel_id", (channelsData || []).map(c => c.id));
+      .in("channel_id", allChannelIds.length > 0 ? allChannelIds : ['none']);
     
     // Fetch existing URA configs
     const { data: configsData } = await supabase
@@ -89,13 +107,28 @@ export function URAConfigPanel() {
     
     setChannels(channelsData || []);
     
-    // Group templates by channel
-    const templatesMap = new Map<string, Template[]>();
+    // Group templates by waba_id first, then map to channels
+    const wabaTemplates = new Map<string, Template[]>();
     (channelTemplatesData || []).forEach((ct: any) => {
       if (ct.template && ct.template.status === "APPROVED") {
-        const existing = templatesMap.get(ct.channel_id) || [];
-        existing.push(ct.template);
-        templatesMap.set(ct.channel_id, existing);
+        // Find which waba_id this channel belongs to
+        const channel = allChannelsWithSameWaba?.find(c => c.id === ct.channel_id);
+        if (channel?.waba_id) {
+          const existing = wabaTemplates.get(channel.waba_id) || [];
+          // Avoid duplicates
+          if (!existing.some(t => t.id === ct.template.id)) {
+            existing.push(ct.template);
+          }
+          wabaTemplates.set(channel.waba_id, existing);
+        }
+      }
+    });
+    
+    // Now map templates to each channel based on their waba_id
+    const templatesMap = new Map<string, Template[]>();
+    (channelsData || []).forEach((channel) => {
+      if (channel.waba_id) {
+        templatesMap.set(channel.id, wabaTemplates.get(channel.waba_id) || []);
       }
     });
     setChannelTemplates(templatesMap);
