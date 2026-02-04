@@ -258,12 +258,15 @@ Deno.serve(async (req) => {
         userMessage = 'A conta atingiu o limite de templates. Delete alguns templates antigos antes de criar novos.';
       }
 
+      // Return 200 with success: false so frontend can read the detailed error message
+      // (Supabase SDK treats non-2xx as generic error and hides the body)
       return new Response(JSON.stringify({ 
+        success: false,
         error: 'Erro Meta API',
         message: userMessage,
         details: metaResult.error
       }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
