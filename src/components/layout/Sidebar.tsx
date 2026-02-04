@@ -55,7 +55,6 @@ const menuItems = [
   { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: null },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
-  { icon: Zap, label: "Integrações", path: "/integracoes", permission: "canAccessIntegracoes" },
 ];
 
 const crmSubmenu = [
@@ -81,6 +80,7 @@ const personalizacaoSubmenu = [
   { icon: Tag, label: "Tags", path: "/personalizacao/tags", permission: null },
   { icon: FileText, label: "Campos de Contato", path: "/personalizacao/campos", permission: null },
   { icon: Zap, label: "Respostas Rápidas", path: "/personalizacao/respostas-rapidas", permission: null },
+  { icon: Link2, label: "Integrações", path: "/integracoes", permission: "canAccessIntegracoes" },
 ];
 
 const bottomMenuItems = [
