@@ -359,12 +359,12 @@ Deno.serve(async (req) => {
       
       // Upsert: create if doesn't exist, update if exists
       // Uses unique constraint on (conversation_phone, channel_id)
+      // NOTE: conversation_assignments does NOT have organization_id column
       const { error: assignmentError } = await serviceRoleClient
         .from('conversation_assignments')
         .upsert({
           channel_id: channelId,
           conversation_phone: cleanDestination,
-          organization_id: channel.organization_id,
           assigned_to: userId,
           assigned_at: now,
           status: 'in_progress',
