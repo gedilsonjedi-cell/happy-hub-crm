@@ -35,6 +35,11 @@ interface Template {
   status: string;
 }
 
+interface ChannelTemplate {
+  template_id: string;
+  template: Template;
+}
+
 interface URAConfig {
   id: string;
   channel_id: string;
@@ -46,7 +51,7 @@ interface URAConfig {
 export function URAConfigPanel() {
   const effectiveOrganizationId = useEffectiveOrganizationId();
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [channelTemplates, setChannelTemplates] = useState<Map<string, Template[]>>(new Map());
   const [uraConfigs, setUraConfigs] = useState<Map<string, URAConfig>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -67,13 +72,14 @@ export function URAConfigPanel() {
       .eq("connected", true)
       .order("name");
     
-    // Fetch approved templates
-    const { data: templatesData } = await supabase
-      .from("message_templates")
-      .select("id, name, status")
-      .eq("organization_id", orgId)
-      .eq("status", "APPROVED")
-      .order("name");
+    // Fetch channel templates with their template details
+    const { data: channelTemplatesData } = await supabase
+      .from("channel_templates")
+      .select(`
+        channel_id,
+        template:message_templates(id, name, status)
+      `)
+      .in("channel_id", (channelsData || []).map(c => c.id));
     
     // Fetch existing URA configs
     const { data: configsData } = await supabase
@@ -82,7 +88,17 @@ export function URAConfigPanel() {
       .eq("organization_id", orgId);
     
     setChannels(channelsData || []);
-    setTemplates(templatesData || []);
+    
+    // Group templates by channel
+    const templatesMap = new Map<string, Template[]>();
+    (channelTemplatesData || []).forEach((ct: any) => {
+      if (ct.template && ct.template.status === "APPROVED") {
+        const existing = templatesMap.get(ct.channel_id) || [];
+        existing.push(ct.template);
+        templatesMap.set(ct.channel_id, existing);
+      }
+    });
+    setChannelTemplates(templatesMap);
     
     const configsMap = new Map<string, URAConfig>();
     (configsData || []).forEach((config: URAConfig) => {
@@ -265,6 +281,7 @@ export function URAConfigPanel() {
                   const createLead = config?.create_lead_if_not_exists ?? true;
                   const webhookUrl = getWebhookUrl(channel.id);
                   const isSaving = saving === channel.id;
+                  const templatesForChannel = channelTemplates.get(channel.id) || [];
                   
                   return (
                     <div
@@ -333,11 +350,17 @@ export function URAConfigPanel() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Nenhum template</SelectItem>
-                              {templates.map((template) => (
-                                <SelectItem key={template.id} value={template.id}>
-                                  {template.name}
+                              {templatesForChannel.length === 0 ? (
+                                <SelectItem value="_empty" disabled>
+                                  Nenhum template aprovado neste canal
                                 </SelectItem>
-                              ))}
+                              ) : (
+                                templatesForChannel.map((template) => (
+                                  <SelectItem key={template.id} value={template.id}>
+                                    {template.name}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
