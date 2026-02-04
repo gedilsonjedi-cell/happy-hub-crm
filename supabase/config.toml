@@ -98,3 +98,9 @@ verify_jwt = false
 
 [functions.flow-bot-processor]
 verify_jwt = false
+
+[functions.ura-webhook]
+verify_jwt = false
+
+[functions.webhook-dispatcher]
+verify_jwt = false

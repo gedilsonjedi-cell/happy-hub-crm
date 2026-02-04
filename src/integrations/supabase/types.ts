@@ -2822,6 +2822,102 @@ export type Database = {
         }
         Relationships: []
       }
+      ura_config: {
+        Row: {
+          channel_id: string
+          create_lead_if_not_exists: boolean | null
+          created_at: string | null
+          id: string
+          is_enabled: boolean | null
+          organization_id: string
+          template_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          channel_id: string
+          create_lead_if_not_exists?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          organization_id: string
+          template_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          channel_id?: string
+          create_lead_if_not_exists?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          organization_id?: string
+          template_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ura_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_config_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ura_webhook_logs: {
+        Row: {
+          caller_phone: string
+          channel_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          lead_created: boolean | null
+          metadata: Json | null
+          template_sent: boolean | null
+        }
+        Insert: {
+          caller_phone: string
+          channel_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean | null
+          metadata?: Json | null
+          template_sent?: boolean | null
+        }
+        Update: {
+          caller_phone?: string
+          channel_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean | null
+          metadata?: Json | null
+          template_sent?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ura_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
