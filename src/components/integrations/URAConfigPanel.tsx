@@ -110,7 +110,8 @@ export function URAConfigPanel() {
     // Group templates by waba_id first, then map to channels
     const wabaTemplates = new Map<string, Template[]>();
     (channelTemplatesData || []).forEach((ct: any) => {
-      if (ct.template && ct.template.status === "APPROVED") {
+      // Check for both lowercase and uppercase status (DB stores lowercase)
+      if (ct.template && (ct.template.status === "approved" || ct.template.status === "APPROVED")) {
         // Find which waba_id this channel belongs to
         const channel = allChannelsWithSameWaba?.find(c => c.id === ct.channel_id);
         if (channel?.waba_id) {
