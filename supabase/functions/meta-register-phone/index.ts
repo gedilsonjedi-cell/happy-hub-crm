@@ -78,8 +78,8 @@ serve(async (req) => {
       );
     }
 
-    // If forceReregister or status is PENDING, try to DEREGISTER first
-    if (forceReregister || initialStatus.status === 'PENDING') {
+    // If forceReregister or status is PENDING/DISCONNECTED, try to DEREGISTER first
+    if (forceReregister || initialStatus.status === 'PENDING' || initialStatus.status === 'DISCONNECTED') {
       console.log(`[meta-register-phone] Attempting DEREGISTER first for stuck PENDING number...`);
       
       const deregisterUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/deregister`;
@@ -139,7 +139,16 @@ serve(async (req) => {
           code: errorCode,
           message: 'PIN de verificação inválido.',
           requiresPin: true,
-          suggestion: 'Insira o PIN de 6 dígitos definido no Meta Business Suite.'
+          suggestion: 'Insira o PIN de 6 dígitos que foi definido na verificação de dois fatores do número no Meta Business Suite.'
+        };
+      }
+      else if (errorCode === 133005) {
+        // Two step verification PIN Mismatch
+        registerError = {
+          code: errorCode,
+          message: 'PIN de verificação de dois fatores incorreto.',
+          requiresPin: true,
+          suggestion: 'O número possui verificação de dois fatores ativa. Acesse business.facebook.com > WhatsApp Manager > Configurações do telefone para obter ou redefinir o PIN de 6 dígitos.'
         };
       }
       else if (errorCode === 131000) {
@@ -234,17 +243,19 @@ serve(async (req) => {
     }
 
     // If still PENDING
-    if (finalStatus.status === 'PENDING') {
+    if (finalStatus.status === 'PENDING' || finalStatus.status === 'DISCONNECTED') {
       return new Response(
         JSON.stringify({ 
           success: false,
           pending: true,
           status: finalStatus,
-          message: 'Número continua pendente. Isso geralmente significa que o número precisa de verificação no Meta.',
-          suggestion: 'O número pode precisar de verificação de dois fatores (2FA) ou migração de provedor. Acesse: business.facebook.com > WhatsApp Manager > Configurações do telefone > Complete a verificação.',
+          message: finalStatus.status === 'DISCONNECTED' 
+            ? 'Número está desconectado na Meta. Isso requer verificação de dois fatores (PIN).'
+            : 'Número continua pendente. Isso geralmente significa que o número precisa de verificação no Meta.',
+          suggestion: 'O número precisa de verificação de dois fatores (2FA). Acesse: business.facebook.com > WhatsApp Manager > Configurações do telefone > Insira o PIN de 6 dígitos correto ao reconectar.',
           actions: [
-            'Verifique se há SMS/chamada de verificação pendente',
-            'Confirme a verificação de dois fatores no Meta',
+            'Obtenha o PIN de 6 dígitos da verificação de dois fatores no Meta Business Suite',
+            'Insira o PIN correto no campo "PIN de verificação" ao clicar em "Forçar Reconexão"',
             'Se migrou de outro provedor, aguarde até 24h'
           ]
         }),
