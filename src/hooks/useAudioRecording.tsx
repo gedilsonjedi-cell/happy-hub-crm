@@ -1,4 +1,4 @@
- import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+ import { useState, useRef, useCallback, useMemo } from "react";
 
 interface UseAudioRecordingReturn {
   isRecording: boolean;
@@ -11,13 +11,17 @@ interface UseAudioRecordingReturn {
    isNativeOgg: boolean;
 }
 
- // We'll use opus-media-recorder polyfill to always record in OGG/Opus
- // This eliminates the need for post-recording conversion
+ // Check if native OGG recording is supported by the browser
+ const checkNativeOggSupport = (): boolean => {
+   if (typeof MediaRecorder === 'undefined') return false;
+   return MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') || 
+          MediaRecorder.isTypeSupported('audio/ogg');
+ };
 
 export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-   const [needsConversion, setNeedsConversion] = useState(false); 
+   const [needsConversion, setNeedsConversion] = useState(true); 
    const [recordingFormat, setRecordingFormat] = useState('ogg');
    const [isNativeOgg, setIsNativeOgg] = useState(true);
   
@@ -25,14 +29,9 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-   const opusRecorderRef = useRef<any>(null);
 
    // Check if native OGG recording is supported
-   const nativeOggSupported = useMemo(() => {
-     if (typeof MediaRecorder === 'undefined') return false;
-     return MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') || 
-            MediaRecorder.isTypeSupported('audio/ogg');
-   }, []);
+   const nativeOggSupported = useMemo(() => checkNativeOggSupport(), []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -47,9 +46,8 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       streamRef.current = stream;
       
        let mediaRecorder: MediaRecorder;
-       let usingPolyfill = false;
        
-       // Priority 1: Try native OGG/Opus recording
+       // Priority 1: Native OGG/Opus recording (Firefox, some browsers)
        if (nativeOggSupported) {
          const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') 
            ? 'audio/ogg;codecs=opus' 
@@ -63,35 +61,19 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
          setNeedsConversion(false);
          setRecordingFormat('ogg');
        } else {
-         // Priority 2: Try opus-media-recorder polyfill
-         try {
-           const OpusMediaRecorder = (await import('opus-media-recorder')).default;
-           const workerOptions = {
-             OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@0.8.0/OggOpusEncoder.wasm',
-             WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@0.8.0/WebMOpusEncoder.wasm',
-           };
-           
-           console.log('[AudioRecording] Using opus-media-recorder polyfill');
-           mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg;codecs=opus' }, workerOptions);
-           opusRecorderRef.current = mediaRecorder;
-           usingPolyfill = true;
-           setIsNativeOgg(true); // Polyfill produces native OGG
-           setNeedsConversion(false);
-           setRecordingFormat('ogg');
-         } catch (polyfillError) {
-           console.warn('[AudioRecording] Polyfill failed, using native WebM:', polyfillError);
-           // Priority 3: Fallback to WebM (will need conversion)
-           const fallbackMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-             ? 'audio/webm;codecs=opus' 
-             : 'audio/webm';
-           mediaRecorder = new MediaRecorder(stream, { 
-             mimeType: fallbackMime,
-             audioBitsPerSecond: 64000
-           });
-           setIsNativeOgg(false);
-           setNeedsConversion(true);
-           setRecordingFormat('webm');
-         }
+         // Priority 2: Fallback to WebM (Chrome, Edge, etc.)
+         // WebM with Opus codec - will need server-side conversion
+         const fallbackMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+           ? 'audio/webm;codecs=opus' 
+           : 'audio/webm';
+         console.log('[AudioRecording] Using WebM recording (needs conversion):', fallbackMime);
+         mediaRecorder = new MediaRecorder(stream, { 
+           mimeType: fallbackMime,
+           audioBitsPerSecond: 64000
+         });
+         setIsNativeOgg(false);
+         setNeedsConversion(true);
+         setRecordingFormat('webm');
        }
       
       mediaRecorderRef.current = mediaRecorder;
@@ -170,7 +152,6 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
     }
     
     audioChunksRef.current = [];
-     opusRecorderRef.current = null;
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
