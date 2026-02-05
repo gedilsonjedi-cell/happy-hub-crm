@@ -85,6 +85,7 @@ import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
 import { SectorFilter } from "@/components/whatsapp/SectorFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
+import { convertToOgg, preloadFFmpeg, needsConversion as checkNeedsConversion } from "@/lib/audioConverter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -274,6 +275,7 @@ const AtendimentoV2 = () => {
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [quickResponses, setQuickResponses] = useState<QuickResponse[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [isConvertingAudio, setIsConvertingAudio] = useState(false);
   const [pastedImage, setPastedImage] = useState<{ file: File; preview: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -287,8 +289,17 @@ const AtendimentoV2 = () => {
     recordingDuration, 
     startRecording, 
     stopRecording, 
-    cancelRecording
+    cancelRecording,
+    needsConversion: recordingNeedsConversion
   } = useAudioRecording();
+
+  // Preload FFmpeg in background if conversion will be needed
+  useEffect(() => {
+    if (recordingNeedsConversion) {
+      console.log('[AtendimentoV2] Browser needs audio conversion, preloading FFmpeg...');
+      preloadFFmpeg();
+    }
+  }, [recordingNeedsConversion]);
 
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
   
@@ -2284,12 +2295,6 @@ const AtendimentoV2 = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .single();
-
       if (audioBlob.size === 0) {
         toast.error('Erro: gravação vazia');
         setUploadingMedia(false);
@@ -2297,56 +2302,70 @@ const AtendimentoV2 = () => {
       }
 
       const actualMimeType = audioBlob.type || 'audio/webm';
-      const isWebM = actualMimeType.includes('webm');
+      const needsAudioConversion = checkNeedsConversion(actualMimeType);
 
+      let finalBlob = audioBlob;
       let extension = 'ogg';
-      if (actualMimeType.includes('ogg')) extension = 'ogg';
-      else if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) extension = 'm4a';
-      else if (actualMimeType.includes('webm')) extension = 'webm';
 
-      const fileName = `audio_${Date.now()}.${extension}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, audioBlob, { cacheControl: '3600', upsert: false, contentType: actualMimeType });
-
-      if (uploadError) {
-        toast.error('Erro ao fazer upload do áudio');
-        setUploadingMedia(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
-      let publicUrl = urlData.publicUrl;
-
-      if (isWebM) {
-        toast.info('Convertendo áudio para formato compatível...');
+      // Convert audio if browser recorded in unsupported format (WebM)
+      if (needsAudioConversion) {
+        console.log('[AtendimentoV2] Audio needs conversion from', actualMimeType);
+        setIsConvertingAudio(true);
+        toast.info('Convertendo áudio para formato compatível...', { duration: 3000 });
         
         try {
-          const { data: convertData, error: convertError } = await supabase.functions.invoke('convert-audio', {
-            body: { audioUrl: publicUrl, organizationId: profile?.organization_id }
+          finalBlob = await convertToOgg(audioBlob);
+          extension = 'ogg';
+          console.log('[AtendimentoV2] Audio converted successfully', {
+            originalSize: audioBlob.size,
+            convertedSize: finalBlob.size
           });
-
-          if (convertError || !convertData?.success) {
-            toast.error('Formato de áudio não suportado pelo WhatsApp. Use um dispositivo móvel para gravar áudio.');
-            setUploadingMedia(false);
-            return;
-          }
-
-          publicUrl = convertData.convertedUrl;
-          toast.success('Áudio convertido com sucesso!');
-        } catch {
-          toast.error('Seu navegador grava em formato WebM que não é suportado pelo WhatsApp.');
+        } catch (conversionError) {
+          console.error('[AtendimentoV2] Audio conversion failed:', conversionError);
+          toast.error('Erro ao converter áudio. Tente novamente.');
+          setIsConvertingAudio(false);
           setUploadingMedia(false);
           return;
         }
+        setIsConvertingAudio(false);
+      } else {
+        // Determine extension from mime type
+        if (actualMimeType.includes('ogg')) extension = 'ogg';
+        else if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) extension = 'm4a';
+        else if (actualMimeType.includes('mpeg') || actualMimeType.includes('mp3')) extension = 'mp3';
+        else if (actualMimeType.includes('aac')) extension = 'aac';
       }
+
+      // Upload the final blob (converted or original)
+      const fileName = `audio_${Date.now()}.${extension}`;
+      const filePath = `${user.id}/${fileName}`;
+      const contentType = extension === 'ogg' ? 'audio/ogg' : 
+                          extension === 'mp3' ? 'audio/mpeg' : 
+                          extension === 'm4a' ? 'audio/mp4' : 
+                          `audio/${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, finalBlob, { 
+          cacheControl: '3600', 
+          upsert: false, 
+          contentType 
+        });
+
+      if (uploadError) {
+        console.error('[AtendimentoV2] Upload error:', uploadError);
+        toast.error('Erro ao fazer upload do áudio');
+          setUploadingMedia(false);
+          return;
+      }
+
+      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+      const publicUrl = urlData.publicUrl;
 
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
-        fileName: `gravacao.${extension === 'webm' ? 'ogg' : extension}`
+        fileName: `gravacao.${extension}`
       });
 
     } catch (error) {
@@ -2354,6 +2373,7 @@ const AtendimentoV2 = () => {
       toast.error('Erro ao enviar áudio');
     }
 
+    setIsConvertingAudio(false);
     setUploadingMedia(false);
   };
 
@@ -3618,10 +3638,15 @@ const AtendimentoV2 = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" onClick={handleCancelVoiceRecording} className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100"><X className="w-5 h-5" /></Button>
-                        <Button onClick={handleSendVoiceRecording} disabled={uploadingMedia} className="h-9 px-4 bg-green-600 hover:bg-green-700">
-                          {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                        <Button onClick={handleSendVoiceRecording} disabled={uploadingMedia || isConvertingAudio} className="h-9 px-4 bg-green-600 hover:bg-green-700">
+                          {(uploadingMedia || isConvertingAudio) ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                         </Button>
                       </div>
+                    </div>
+                  ) : isConvertingAudio ? (
+                    <div className="flex items-center gap-3 flex-1 bg-primary/10 rounded-lg px-4 py-2 border border-primary/30">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
+                      <span className="text-primary font-medium text-sm">Convertendo áudio...</span>
                     </div>
                   ) : pastedImage ? (
                     <div className="flex items-center gap-3 flex-1 bg-muted/30 rounded-lg p-2 border border-border">

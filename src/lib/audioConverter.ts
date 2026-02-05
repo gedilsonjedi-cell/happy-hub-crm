@@ -4,6 +4,7 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 let ffmpeg: FFmpeg | null = null;
 let isLoading = false;
 let isLoaded = false;
+let loadPromise: Promise<FFmpeg> | null = null;
 
 // Load FFmpeg only once
 export const loadFFmpeg = async (): Promise<FFmpeg> => {
@@ -11,44 +12,54 @@ export const loadFFmpeg = async (): Promise<FFmpeg> => {
     return ffmpeg;
   }
 
-  if (isLoading) {
-    // Wait for loading to complete
-    while (isLoading) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    if (ffmpeg && isLoaded) {
-      return ffmpeg;
-    }
+  // If already loading, wait for the same promise
+  if (loadPromise) {
+    return loadPromise;
   }
 
   isLoading = true;
   
-  try {
+  loadPromise = (async () => {
+    try {
     ffmpeg = new FFmpeg();
     
-    // Load FFmpeg core from CDN
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      // Load FFmpeg core from CDN with timeout
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
     
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
+      console.log('[FFmpeg] Loading from CDN...');
+      
+      const [coreURL, wasmURL] = await Promise.all([
+        toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      ]);
+      
+      await ffmpeg.load({ coreURL, wasmURL });
     
     isLoaded = true;
-    console.log('FFmpeg loaded successfully');
+      console.log('[FFmpeg] Loaded successfully');
     return ffmpeg;
-  } catch (error) {
-    console.error('Failed to load FFmpeg:', error);
+    } catch (error) {
+      console.error('[FFmpeg] Failed to load:', error);
     isLoading = false;
+      loadPromise = null;
     throw error;
-  } finally {
+    } finally {
     isLoading = false;
   }
+  })();
+  
+  return loadPromise;
 };
 
-// Convert any audio format to OGG with Opus codec
+// Check if FFmpeg is loaded
+export const isFFmpegLoaded = (): boolean => isLoaded;
+
+// Convert any audio format to OGG with Opus codec (WhatsApp compatible)
 export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
-  console.log('Starting audio conversion to OGG...');
+  console.log('[FFmpeg] Starting audio conversion to OGG...', {
+    inputSize: audioBlob.size,
+    inputType: audioBlob.type
+  });
   
   const ff = await loadFFmpeg();
   
@@ -60,6 +71,8 @@ export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
     inputExt = 'ogg';
   } else if (audioBlob.type.includes('wav')) {
     inputExt = 'wav';
+  } else if (audioBlob.type.includes('mpeg') || audioBlob.type.includes('mp3')) {
+    inputExt = 'mp3';
   }
   
   const inputFileName = `input.${inputExt}`;
@@ -70,7 +83,7 @@ export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
     const inputData = await fetchFile(audioBlob);
     await ff.writeFile(inputFileName, inputData);
     
-    console.log('Converting audio...', { inputExt, inputFileName });
+    console.log('[FFmpeg] Converting...', { inputExt, inputFileName });
     
     // Convert to OGG with Opus codec
     // -c:a libopus = use Opus codec
@@ -100,7 +113,7 @@ export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
       : new Uint8Array(outputData);
     const outputBlob = new Blob([outputArray], { type: 'audio/ogg; codecs=opus' });
     
-    console.log('Audio conversion completed:', {
+    console.log('[FFmpeg] Conversion completed:', {
       inputSize: audioBlob.size,
       outputSize: outputBlob.size,
       outputType: outputBlob.type
@@ -108,14 +121,17 @@ export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
     
     return outputBlob;
   } catch (error) {
-    console.error('Audio conversion failed:', error);
+    console.error('[FFmpeg] Audio conversion failed:', error);
     throw error;
   }
 };
 
-// Convert any audio format to MP3 (more widely supported)
+// Convert any audio format to MP3 (fallback option)
 export const convertToMp3 = async (audioBlob: Blob): Promise<Blob> => {
-  console.log('Starting audio conversion to MP3...');
+  console.log('[FFmpeg] Starting audio conversion to MP3...', {
+    inputSize: audioBlob.size,
+    inputType: audioBlob.type
+  });
   
   const ff = await loadFFmpeg();
   
@@ -137,7 +153,7 @@ export const convertToMp3 = async (audioBlob: Blob): Promise<Blob> => {
     const inputData = await fetchFile(audioBlob);
     await ff.writeFile(inputFileName, inputData);
     
-    console.log('Converting audio to MP3...', { inputExt, inputFileName });
+    console.log('[FFmpeg] Converting to MP3...', { inputExt, inputFileName });
     
     // Convert to MP3
     // -c:a libmp3lame = use MP3 codec
@@ -167,7 +183,7 @@ export const convertToMp3 = async (audioBlob: Blob): Promise<Blob> => {
       : new Uint8Array(outputData);
     const outputBlob = new Blob([outputArray], { type: 'audio/mpeg' });
     
-    console.log('Audio conversion to MP3 completed:', {
+    console.log('[FFmpeg] Conversion to MP3 completed:', {
       inputSize: audioBlob.size,
       outputSize: outputBlob.size,
       outputType: outputBlob.type
@@ -175,14 +191,21 @@ export const convertToMp3 = async (audioBlob: Blob): Promise<Blob> => {
     
     return outputBlob;
   } catch (error) {
-    console.error('Audio conversion to MP3 failed:', error);
+    console.error('[FFmpeg] Audio conversion to MP3 failed:', error);
     throw error;
   }
 };
 
-// Preload FFmpeg (can be called on app startup)
+// Check if audio needs conversion (WebM is not supported by WhatsApp)
+export const needsConversion = (mimeType: string): boolean => {
+  // WhatsApp supported formats: ogg, mp3, mp4/m4a, aac
+  const supportedFormats = ['audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/m4a', 'audio/aac'];
+  return !supportedFormats.some(format => mimeType.includes(format.replace('audio/', '')));
+};
+
+// Preload FFmpeg (call on app startup to reduce first-use delay)
 export const preloadFFmpeg = () => {
   loadFFmpeg().catch(err => {
-    console.warn('FFmpeg preload failed (will retry when needed):', err);
+    console.warn('[FFmpeg] Preload failed (will retry when needed):', err);
   });
 };
