@@ -1,8 +1,3 @@
-// Polyfill for 'global' required by opus-media-recorder and other Node.js libraries
-if (typeof window !== 'undefined' && typeof (window as any).global === 'undefined') {
-  (window as any).global = window;
-}
-
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider } from "next-themes";
