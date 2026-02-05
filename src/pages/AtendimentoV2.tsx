@@ -85,7 +85,6 @@ import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
 import { SectorFilter } from "@/components/whatsapp/SectorFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
- import { convertToOgg, preloadFFmpeg } from "@/lib/audioConverter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -284,22 +283,13 @@ const AtendimentoV2 = () => {
   const documentInputRef = useRef<HTMLInputElement>(null);
   
   const playNotificationSound = useNotificationSound();
-   const { 
-     isRecording, 
-     recordingDuration, 
-     startRecording, 
-     stopRecording, 
-     cancelRecording,
-     isNativeOgg
-   } = useAudioRecording();
- 
-   // Preload FFmpeg in background if conversion might be needed
-   useEffect(() => {
-     if (!isNativeOgg) {
-       console.log('[AtendimentoV2] Browser may need audio conversion, preloading FFmpeg...');
-       preloadFFmpeg();
-     }
-   }, [isNativeOgg]);
+  const { 
+    isRecording, 
+    recordingDuration, 
+    startRecording, 
+    stopRecording, 
+    cancelRecording
+  } = useAudioRecording();
 
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
   
@@ -2290,6 +2280,7 @@ const AtendimentoV2 = () => {
     }
 
     setUploadingMedia(true);
+    setIsConvertingAudio(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -2297,39 +2288,52 @@ const AtendimentoV2 = () => {
 
       if (audioBlob.size === 0) {
         toast.error('Erro: gravação vazia');
+        setIsConvertingAudio(false);
         setUploadingMedia(false);
         return;
       }
 
-      // Upload directly with .opus extension - no client-side conversion needed
-      // The edge function handles saving with the correct extension
       const actualMimeType = audioBlob.type || 'audio/ogg';
-      console.log('[AtendimentoV2] Uploading audio directly:', { type: actualMimeType, size: audioBlob.size });
+      const isNativeOgg = actualMimeType.includes('ogg');
       
-      // Upload directly to storage with .opus extension
-      const fileName = `audio_${Date.now()}.opus`;
-      const filePath = `${user.id}/${fileName}`;
+      console.log('[AtendimentoV2] Processing audio:', { type: actualMimeType, size: audioBlob.size, isNativeOgg });
       
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, audioBlob, { 
-          cacheControl: '3600', 
-          upsert: false, 
-          contentType: 'audio/ogg' 
-        });
-
-      if (uploadError) {
-        console.error('[AtendimentoV2] Upload error:', uploadError);
-        toast.error('Erro ao fazer upload do áudio');
+      // Converter para base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let base64 = '';
+      const chunkSize = 32768;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        base64 += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      base64 = btoa(base64);
+      
+      // Chamar Edge Function para conversão no servidor
+      toast.loading('Processando áudio...', { id: 'audio-conversion' });
+      
+      const { data: convData, error: convError } = await supabase.functions.invoke('convert-audio', {
+        body: {
+          audioData: base64,
+          mimeType: actualMimeType,
+          organizationId: effectiveOrganizationId
+        }
+      });
+      
+      toast.dismiss('audio-conversion');
+      
+      if (convError || !convData?.success) {
+        console.error('[AtendimentoV2] Audio conversion error:', convError || convData?.error);
+        toast.error(convData?.error || 'Erro ao processar áudio');
+        setIsConvertingAudio(false);
         setUploadingMedia(false);
         return;
       }
-
-      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
-      const publicUrl = urlData.publicUrl;
       
-      console.log('[AtendimentoV2] Audio uploaded successfully:', publicUrl);
-
+      const publicUrl = convData.convertedUrl;
+      console.log('[AtendimentoV2] Audio processed:', { url: publicUrl, converted: convData.converted });
+      
+      // Enviar usando o mesmo método do upload manual de mídia
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
@@ -2338,6 +2342,7 @@ const AtendimentoV2 = () => {
 
     } catch (error) {
       console.error('Voice recording error:', error);
+      toast.dismiss('audio-conversion');
       toast.error('Erro ao enviar áudio');
     }
 
