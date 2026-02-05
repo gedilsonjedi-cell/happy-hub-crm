@@ -2331,52 +2331,11 @@ const AtendimentoV2 = () => {
             convertedSize: finalBlob.size
           });
         } catch (conversionError) {
-           console.error('[AtendimentoV2] FFmpeg conversion failed:', conversionError);
-           
-           // Fallback: try server-side conversion via Edge Function
-           console.log('[AtendimentoV2] Trying server-side conversion...');
-           toast.info('Tentando conversão no servidor...');
-           
-           try {
-             // Convert blob to base64 for Edge Function
-             const arrayBuffer = await audioBlob.arrayBuffer();
-             const base64Data = btoa(
-               new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-             );
-             
-             const { data: conversionResult, error: edgeFunctionError } = await supabase.functions.invoke('convert-audio', {
-               body: {
-                 audioData: base64Data,
-                 mimeType: actualMimeType,
-                 organizationId: user.id,
-                 forceConvert: true
-               }
-             });
-             
-             if (edgeFunctionError || !conversionResult?.success) {
-               throw new Error(edgeFunctionError?.message || conversionResult?.error || 'Server conversion failed');
-             }
-             
-             console.log('[AtendimentoV2] Server conversion successful:', conversionResult);
-             
-             // Use the converted URL directly
-             await handleSendMedia({
-               mediaType: 'audio',
-               mediaUrl: conversionResult.convertedUrl,
-               fileName: 'gravacao.ogg'
-             });
-             
-             setIsConvertingAudio(false);
-             setUploadingMedia(false);
-             return;
-             
-           } catch (serverConversionError) {
-             console.error('[AtendimentoV2] Server conversion also failed:', serverConversionError);
-             toast.error('Erro ao converter áudio. Seu navegador pode não ser compatível.');
-             setIsConvertingAudio(false);
-             setUploadingMedia(false);
-             return;
-           }
+          console.error('[AtendimentoV2] FFmpeg conversion failed:', conversionError);
+          toast.error('Erro ao converter áudio. Tente novamente ou use outro navegador.');
+          setIsConvertingAudio(false);
+          setUploadingMedia(false);
+          return;
         }
         setIsConvertingAudio(false);
       }
