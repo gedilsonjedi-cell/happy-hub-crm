@@ -1,13 +1,10 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
-
-let ffmpeg: FFmpeg | null = null;
+ let ffmpeg: any = null;
 let isLoading = false;
 let isLoaded = false;
-let loadPromise: Promise<FFmpeg> | null = null;
+ let loadPromise: Promise<any> | null = null;
 
-// Load FFmpeg only once
-export const loadFFmpeg = async (): Promise<FFmpeg> => {
+ // Load FFmpeg only once with dynamic import to avoid React conflicts
+ export const loadFFmpeg = async (): Promise<any> => {
   if (ffmpeg && isLoaded) {
     return ffmpeg;
   }
@@ -21,22 +18,26 @@ export const loadFFmpeg = async (): Promise<FFmpeg> => {
   
   loadPromise = (async () => {
     try {
-    ffmpeg = new FFmpeg();
+       // Dynamic import to avoid bundling issues with React
+       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+       const { toBlobURL } = await import('@ffmpeg/util');
+       
+       ffmpeg = new FFmpeg();
     
-      // Load FFmpeg core from CDN with timeout
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    
-      console.log('[FFmpeg] Loading from CDN...');
-      
-      const [coreURL, wasmURL] = await Promise.all([
-        toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      ]);
-      
-      await ffmpeg.load({ coreURL, wasmURL });
+       // Load FFmpeg core from CDN
+       const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+       
+       console.log('[FFmpeg] Loading from CDN...');
+       
+       const [coreURL, wasmURL] = await Promise.all([
+         toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+         toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+       ]);
+       
+       await ffmpeg.load({ coreURL, wasmURL });
     
     isLoaded = true;
-      console.log('[FFmpeg] Loaded successfully');
+       console.log('[FFmpeg] Loaded successfully');
     return ffmpeg;
     } catch (error) {
       console.error('[FFmpeg] Failed to load:', error);
@@ -61,6 +62,9 @@ export const convertToOgg = async (audioBlob: Blob): Promise<Blob> => {
     inputType: audioBlob.type
   });
   
+   // Dynamic import fetchFile
+   const { fetchFile } = await import('@ffmpeg/util');
+   
   const ff = await loadFFmpeg();
   
   // Determine input format from blob type
@@ -133,6 +137,9 @@ export const convertToMp3 = async (audioBlob: Blob): Promise<Blob> => {
     inputType: audioBlob.type
   });
   
+   // Dynamic import fetchFile
+   const { fetchFile } = await import('@ffmpeg/util');
+   
   const ff = await loadFFmpeg();
   
   // Determine input format from blob type
