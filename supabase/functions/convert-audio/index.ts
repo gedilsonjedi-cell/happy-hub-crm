@@ -1,5 +1,5 @@
 // Edge Function para conversão de áudio WebM → OGG/Opus via Zamzar API
-// Recebe áudio em WebM, converte para OGG/Opus, salva no storage e retorna URL
+// Recebe áudio em WebM, converte para MP3 (mais compatível com Meta API), salva no storage e retorna URL
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -10,10 +10,10 @@ const corsHeaders = {
 const ZAMZAR_API_KEY = Deno.env.get('ZAMZAR_API_KEY');
 
 // Função para fazer upload para Zamzar e iniciar conversão
-async function uploadToZamzar(audioBuffer: ArrayBuffer, fileName: string): Promise<number> {
+async function uploadToZamzar(audioBuffer: ArrayBuffer, fileName: string, targetFormat: string = 'mp3'): Promise<number> {
   const formData = new FormData();
   formData.append('source_file', new Blob([audioBuffer], { type: 'audio/webm' }), fileName);
-  formData.append('target_format', 'ogg');
+  formData.append('target_format', targetFormat);
 
   const response = await fetch('https://api.zamzar.com/v1/jobs', {
     method: 'POST',
@@ -26,7 +26,7 @@ async function uploadToZamzar(audioBuffer: ArrayBuffer, fileName: string): Promi
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[convert-audio] Zamzar upload error:', errorText);
-    throw new Error(`Zamzar upload failed: ${response.status}`);
+    throw new Error(`Zamzar upload failed: ${response.status} - ${errorText}`);
   }
 
   const job = await response.json();
@@ -119,16 +119,18 @@ Deno.serve(async (req) => {
     
     let finalAudioData: ArrayBuffer = uint8Array.buffer as ArrayBuffer;
     let converted = false;
+    let finalMimeType = 'audio/mpeg'; // MP3 mime type
 
     // Se for WebM e temos a chave Zamzar, converter para OGG
     if (isWebM && ZAMZAR_API_KEY) {
-      console.log('[convert-audio] WebM detected, converting via Zamzar...');
+      console.log('[convert-audio] WebM detected, converting to MP3 via Zamzar...');
       
       try {
         const tempFileName = `audio_${Date.now()}.webm`;
         
-        // 1. Upload para Zamzar e iniciar conversão
-        const jobId = await uploadToZamzar(uint8Array.buffer as ArrayBuffer, tempFileName);
+        // 1. Upload para Zamzar e iniciar conversão para MP3
+        // MP3 é mais compatível com a Meta API do que OGG
+        const jobId = await uploadToZamzar(uint8Array.buffer as ArrayBuffer, tempFileName, 'mp3');
         
         // 2. Aguardar conversão
         const fileId = await waitForConversion(jobId);
@@ -159,14 +161,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Salvar no storage com extensão .opus
-    const fileName = `audio_${Date.now()}.opus`;
+    // Salvar no storage com extensão .mp3 (mais compatível com Meta API)
+    const fileName = `audio_${Date.now()}.mp3`;
     const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
     
     const { error: uploadError } = await supabase.storage
       .from('whatsapp-media')
       .upload(filePath, new Uint8Array(finalAudioData), {
-        contentType: 'audio/ogg',
+        contentType: finalMimeType,
         cacheControl: '3600'
       });
 
@@ -179,15 +181,16 @@ Deno.serve(async (req) => {
       .from('whatsapp-media')
       .getPublicUrl(filePath);
 
-    console.log('[convert-audio] Audio saved:', { url: urlData.publicUrl, converted });
+    console.log('[convert-audio] Audio saved:', { url: urlData.publicUrl, converted, format: 'mp3' });
 
     return new Response(
       JSON.stringify({
         success: true,
         convertedUrl: urlData.publicUrl,
         originalFormat: mimeType,
-        isOgg: isOgg || converted,
-        converted
+        finalFormat: 'mp3',
+        converted,
+        mimeType: finalMimeType
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
