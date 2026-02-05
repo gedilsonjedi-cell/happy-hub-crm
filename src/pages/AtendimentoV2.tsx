@@ -2302,14 +2302,17 @@ const AtendimentoV2 = () => {
       }
 
       const actualMimeType = audioBlob.type || 'audio/webm';
-      const needsAudioConversion = checkNeedsConversion(actualMimeType);
 
       let finalBlob = audioBlob;
       let extension = 'ogg';
 
-      // Convert audio if browser recorded in unsupported format (WebM)
-      if (needsAudioConversion) {
-        console.log('[AtendimentoV2] Audio needs conversion from', actualMimeType);
+       // ALWAYS convert to OGG for maximum WhatsApp compatibility
+       // The Meta API has issues with browser-recorded MP4/M4A files
+       // OGG with Opus codec is the most reliable format
+       const isAlreadyOgg = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
+       
+       if (!isAlreadyOgg) {
+         console.log('[AtendimentoV2] Converting audio from', actualMimeType, 'to OGG for WhatsApp compatibility');
         setIsConvertingAudio(true);
         toast.info('Convertendo áudio para formato compatível...', { duration: 3000 });
         
@@ -2329,20 +2332,15 @@ const AtendimentoV2 = () => {
         }
         setIsConvertingAudio(false);
       } else {
-        // Determine extension from mime type
-        if (actualMimeType.includes('ogg')) extension = 'ogg';
-        else if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) extension = 'm4a';
-        else if (actualMimeType.includes('mpeg') || actualMimeType.includes('mp3')) extension = 'mp3';
-        else if (actualMimeType.includes('aac')) extension = 'aac';
+         // Already OGG, use as-is
+         console.log('[AtendimentoV2] Audio already in OGG format, no conversion needed');
+         extension = 'ogg';
       }
 
       // Upload the final blob (converted or original)
       const fileName = `audio_${Date.now()}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
-      const contentType = extension === 'ogg' ? 'audio/ogg' : 
-                          extension === 'mp3' ? 'audio/mpeg' : 
-                          extension === 'm4a' ? 'audio/mp4' : 
-                          `audio/${extension}`;
+       const contentType = 'audio/ogg; codecs=opus';
 
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
