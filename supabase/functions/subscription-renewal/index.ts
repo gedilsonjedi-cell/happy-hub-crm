@@ -28,6 +28,7 @@ interface Organization {
   subscription_status: string;
   has_paid_first_subscription: boolean;
   is_partner: boolean;
+  custom_subscription_price: number | null;
 }
 
 interface OrganizationAddon {
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
     
     const { data: organizations, error: orgsError } = await supabase
       .from("organizations")
-      .select("id, name, subscription_paid_until, subscription_status, has_paid_first_subscription, is_partner")
+      .select("id, name, subscription_paid_until, subscription_status, has_paid_first_subscription, is_partner, custom_subscription_price")
       .lte("subscription_paid_until", today)
       .eq("subscription_status", "active")
       .eq("is_partner", false);
@@ -122,19 +123,36 @@ Deno.serve(async (req) => {
           throw new Error("Could not fetch add-ons");
         }
 
-        // Determine subscription price based on whether it's first subscription
+        // Determine subscription price:
+        // 1. If custom_subscription_price is set, use that (ignores everything else)
+        // 2. Otherwise, use promotional price for first subscription or regular base price
+        const hasCustomPrice = org.custom_subscription_price != null && org.custom_subscription_price > 0;
         const isFirstSubscription = !org.has_paid_first_subscription;
-        const subscriptionPrice = isFirstSubscription ? promotionalPrice : basePrice;
+        
+        let subscriptionPrice: number;
+        let priceType: string;
+        
+        if (hasCustomPrice) {
+          subscriptionPrice = org.custom_subscription_price!;
+          priceType = 'CUSTOM';
+        } else if (isFirstSubscription) {
+          subscriptionPrice = promotionalPrice;
+          priceType = 'PROMOTIONAL';
+        } else {
+          subscriptionPrice = basePrice;
+          priceType = 'REGULAR';
+        }
 
-        // Calculate total: subscription price + add-ons
+        // Calculate total: subscription price + add-ons (only if not custom price)
+        // Custom price IGNORES add-ons - it's a fixed total
         const typedAddons = (addons || []) as unknown as OrganizationAddon[];
-        const addonsTotal = typedAddons.reduce(
+        const addonsTotal = hasCustomPrice ? 0 : typedAddons.reduce(
           (sum, addon) => sum + addon.quantity * addon.price_per_unit,
           0
         );
         const totalAmount = subscriptionPrice + addonsTotal;
 
-        console.log(`Organization ${org.name}: ${isFirstSubscription ? 'PROMOTIONAL' : 'REGULAR'} R$ ${subscriptionPrice} + Add-ons R$ ${addonsTotal} = Total R$ ${totalAmount}`);
+        console.log(`Organization ${org.name}: ${priceType} R$ ${subscriptionPrice}${!hasCustomPrice && addonsTotal > 0 ? ` + Add-ons R$ ${addonsTotal}` : ''} = Total R$ ${totalAmount}`);
 
         // Check if organization has enough balance
         const { data: balanceCheck, error: balanceError } = await supabase
@@ -171,11 +189,17 @@ Deno.serve(async (req) => {
         }
 
         // Build description with pricing detail
-        let description = isFirstSubscription 
-          ? `Primeira mensalidade (promocional): R$ ${subscriptionPrice.toFixed(2)}`
-          : `Renovação mensal: Plano Base R$ ${subscriptionPrice.toFixed(2)}`;
+        let description: string;
         
-        if (typedAddons.length > 0) {
+        if (hasCustomPrice) {
+          description = `Renovação mensal (valor personalizado): R$ ${subscriptionPrice.toFixed(2)}`;
+        } else if (isFirstSubscription) {
+          description = `Primeira mensalidade (promocional): R$ ${subscriptionPrice.toFixed(2)}`;
+        } else {
+          description = `Renovação mensal: Plano Base R$ ${subscriptionPrice.toFixed(2)}`;
+        }
+        
+        if (!hasCustomPrice && typedAddons.length > 0) {
           const addonsList = typedAddons
             .map((a) => `${a.store_products?.name || 'Add-on'} x${a.quantity}`)
             .join(", ");

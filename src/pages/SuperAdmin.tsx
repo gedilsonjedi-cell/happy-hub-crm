@@ -97,7 +97,10 @@ interface Organization {
   monthly_cost?: number;
   days_until_expiry?: number;
   is_partner?: boolean;
+  custom_subscription_price?: number | null;
 }
+
+type PlanType = "mensal" | "parceiro" | "personalizado";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   active: { label: "Ativa", className: "bg-green-500/10 text-green-500" },
@@ -131,7 +134,8 @@ export default function SuperAdmin() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPhone, setAdminPhone] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  const [isPartnerPlan, setIsPartnerPlan] = useState(false);
+  const [newOrgPlanType, setNewOrgPlanType] = useState<PlanType>("mensal");
+  const [newOrgCustomPrice, setNewOrgCustomPrice] = useState("");
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState("");
   
@@ -139,7 +143,8 @@ export default function SuperAdmin() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [editOrgName, setEditOrgName] = useState("");
-  const [editOrgPlan, setEditOrgPlan] = useState<"mensal" | "parceiro">("mensal");
+  const [editOrgPlan, setEditOrgPlan] = useState<PlanType>("mensal");
+  const [editOrgCustomPrice, setEditOrgCustomPrice] = useState("");
   const [editOrgMaxUsers, setEditOrgMaxUsers] = useState(1);
   const [editOrgMaxChannels, setEditOrgMaxChannels] = useState(1);
   const [editOrgExpiryDate, setEditOrgExpiryDate] = useState<Date | undefined>(undefined);
@@ -322,6 +327,11 @@ export default function SuperAdmin() {
         return;
       }
 
+      // Determine plan configuration based on plan type
+      const isPartner = newOrgPlanType === "parceiro";
+      const isCustom = newOrgPlanType === "personalizado";
+      const customPrice = isCustom && newOrgCustomPrice ? parseFloat(newOrgCustomPrice) : null;
+
       // 1. Create organization first
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
@@ -331,10 +341,11 @@ export default function SuperAdmin() {
           plan: newOrgPlan,
           max_users: newOrgMaxUsers,
           max_channels: newOrgMaxChannels,
-          subscription_ends_at: isPartnerPlan ? null : (newOrgExpiryDate ? newOrgExpiryDate.toISOString() : null),
+          subscription_ends_at: isPartner ? null : (newOrgExpiryDate ? newOrgExpiryDate.toISOString() : null),
           subscription_started_at: new Date().toISOString(),
-          is_partner: isPartnerPlan,
-          subscription_status: isPartnerPlan ? "active" : "trial",
+          is_partner: isPartner,
+          subscription_status: isPartner ? "active" : "trial",
+          custom_subscription_price: customPrice,
         })
         .select()
         .single();
@@ -405,7 +416,8 @@ export default function SuperAdmin() {
     setAdminEmail("");
     setAdminPhone("");
     setAdminPassword("");
-    setIsPartnerPlan(false);
+    setNewOrgPlanType("mensal");
+    setNewOrgCustomPrice("");
     setShowCredentials(false);
     setGeneratedPassword("");
   };
@@ -413,7 +425,15 @@ export default function SuperAdmin() {
   const handleOpenEditDialog = async (org: Organization) => {
     setEditingOrg(org);
     setEditOrgName(org.name);
-    setEditOrgPlan(org.is_partner ? "parceiro" : "mensal");
+    // Determine plan type
+    if (org.is_partner) {
+      setEditOrgPlan("parceiro");
+    } else if (org.custom_subscription_price != null) {
+      setEditOrgPlan("personalizado");
+      setEditOrgCustomPrice(org.custom_subscription_price.toString());
+    } else {
+      setEditOrgPlan("mensal");
+    }
     setEditOrgMaxUsers(org.max_users);
     setEditOrgMaxChannels(org.max_channels);
     setEditOrgExpiryDate(org.subscription_ends_at ? new Date(org.subscription_ends_at) : undefined);
@@ -448,6 +468,7 @@ export default function SuperAdmin() {
     setEditingOrg(null);
     setEditOrgName("");
     setEditOrgPlan("mensal");
+    setEditOrgCustomPrice("");
     setEditOrgMaxUsers(1);
     setEditOrgMaxChannels(1);
     setEditOrgExpiryDate(undefined);
@@ -463,6 +484,8 @@ export default function SuperAdmin() {
     if (!editingOrg) return;
     
     const isPartner = editOrgPlan === "parceiro";
+    const isCustom = editOrgPlan === "personalizado";
+    const customPrice = isCustom && editOrgCustomPrice ? parseFloat(editOrgCustomPrice) : null;
     
     setIsSaving(true);
     try {
@@ -476,6 +499,7 @@ export default function SuperAdmin() {
           subscription_ends_at: isPartner ? null : (editOrgExpiryDate ? editOrgExpiryDate.toISOString() : null),
           is_partner: isPartner,
           plan: isPartner ? "partner" : "pro",
+          custom_subscription_price: customPrice,
         })
         .eq("id", editingOrg.id);
 
@@ -1074,47 +1098,84 @@ export default function SuperAdmin() {
                 {/* Plan Type Selection */}
                 <div className="space-y-2">
                   <Label>Tipo de Plano</Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsPartnerPlan(false)}
+                      onClick={() => setNewOrgPlanType("mensal")}
                       className={`p-3 rounded-lg border-2 transition-all ${
-                        !isPartnerPlan 
+                        newOrgPlanType === "mensal"
                           ? "border-primary bg-primary/10" 
                           : "border-border hover:border-muted-foreground"
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <CreditCard className={`w-4 h-4 ${!isPartnerPlan ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className={`font-medium ${!isPartnerPlan ? "text-primary" : "text-foreground"}`}>
-                          Plano Mensal
+                        <CreditCard className={`w-4 h-4 ${newOrgPlanType === "mensal" ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`font-medium text-sm ${newOrgPlanType === "mensal" ? "text-primary" : "text-foreground"}`}>
+                          Mensal
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 text-left">
-                        Cobrança automática mensal
+                      <p className="text-[10px] text-muted-foreground mt-1 text-left">
+                        Cobrança automática
                       </p>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setIsPartnerPlan(true)}
+                      onClick={() => setNewOrgPlanType("parceiro")}
                       className={`p-3 rounded-lg border-2 transition-all ${
-                        isPartnerPlan 
+                        newOrgPlanType === "parceiro"
                           ? "border-primary bg-primary/10" 
                           : "border-border hover:border-muted-foreground"
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <Activity className={`w-4 h-4 ${isPartnerPlan ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className={`font-medium ${isPartnerPlan ? "text-primary" : "text-foreground"}`}>
-                          Plano Parceiro
+                        <Activity className={`w-4 h-4 ${newOrgPlanType === "parceiro" ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`font-medium text-sm ${newOrgPlanType === "parceiro" ? "text-primary" : "text-foreground"}`}>
+                          Parceiro
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 text-left">
-                        Sem cobrança de assinatura
+                      <p className="text-[10px] text-muted-foreground mt-1 text-left">
+                        Sem assinatura
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewOrgPlanType("personalizado")}
+                      className={`p-3 rounded-lg border-2 transition-all ${
+                        newOrgPlanType === "personalizado"
+                          ? "border-primary bg-primary/10" 
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <DollarSign className={`w-4 h-4 ${newOrgPlanType === "personalizado" ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`font-medium text-sm ${newOrgPlanType === "personalizado" ? "text-primary" : "text-foreground"}`}>
+                          Personalizado
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1 text-left">
+                        Valor fixo
                       </p>
                     </button>
                   </div>
                 </div>
+
+                {/* Custom Price Input */}
+                {newOrgPlanType === "personalizado" && (
+                  <div className="space-y-2">
+                    <Label>Valor Mensal Fixo (R$) *</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={newOrgCustomPrice}
+                      onChange={(e) => setNewOrgCustomPrice(e.target.value)}
+                      placeholder="Ex: 199.90"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Este valor será cobrado mensalmente, independente de usuários ou canais.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1137,7 +1198,7 @@ export default function SuperAdmin() {
                   </div>
                 </div>
 
-                {!isPartnerPlan && (
+                {newOrgPlanType !== "parceiro" && (
                   <div className="space-y-2">
                     <Label>Data de Vencimento</Label>
                     <Popover>
@@ -1162,7 +1223,8 @@ export default function SuperAdmin() {
                   </div>
                 )}
 
-                {!isPartnerPlan && subscriptionPricing && (
+                {/* Plan Summary */}
+                {newOrgPlanType === "mensal" && subscriptionPricing && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                     <p className="text-sm font-medium text-primary">
                       Valor mensal: R$ {calculateMonthlyCost(newOrgMaxUsers, newOrgMaxChannels).toFixed(2)}
@@ -1177,11 +1239,22 @@ export default function SuperAdmin() {
                   </div>
                 )}
 
-                {isPartnerPlan && (
+                {newOrgPlanType === "parceiro" && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                     <p className="text-sm font-medium text-primary">Plano Parceiro</p>
                     <p className="text-xs text-muted-foreground mt-1">
                       Sem cobrança automática de assinatura. O cliente só pagará por recursos adicionais na loja.
+                    </p>
+                  </div>
+                )}
+
+                {newOrgPlanType === "personalizado" && newOrgCustomPrice && (
+                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                    <p className="text-sm font-medium text-primary">
+                      Valor mensal fixo: R$ {parseFloat(newOrgCustomPrice).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Este valor será cobrado mensalmente, independente da quantidade de usuários ou canais.
                     </p>
                   </div>
                 )}
@@ -1287,7 +1360,7 @@ export default function SuperAdmin() {
                 <Label>Plano</Label>
                 <Select
                   value={editOrgPlan}
-                  onValueChange={(value: "mensal" | "parceiro") => setEditOrgPlan(value)}
+                  onValueChange={(value: PlanType) => setEditOrgPlan(value)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -1295,9 +1368,28 @@ export default function SuperAdmin() {
                   <SelectContent>
                     <SelectItem value="mensal">Plano Mensal</SelectItem>
                     <SelectItem value="parceiro">Plano Parceiro</SelectItem>
+                    <SelectItem value="personalizado">Plano Personalizado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Custom Price Input for Edit */}
+              {editOrgPlan === "personalizado" && (
+                <div className="space-y-2">
+                  <Label>Valor Mensal Fixo (R$) *</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editOrgCustomPrice}
+                    onChange={(e) => setEditOrgCustomPrice(e.target.value)}
+                    placeholder="Ex: 199.90"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Este valor será cobrado mensalmente, independente de usuários ou canais.
+                  </p>
+                </div>
+              )}
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1320,7 +1412,7 @@ export default function SuperAdmin() {
                 </div>
               </div>
 
-              {editOrgPlan === "mensal" && (
+              {editOrgPlan !== "parceiro" && (
                 <div className="space-y-2">
                   <Label>Data de Vencimento</Label>
                   <Popover>
@@ -1345,17 +1437,8 @@ export default function SuperAdmin() {
                 </div>
               )}
 
-              {editOrgPlan === "parceiro" ? (
-                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-primary" />
-                    <p className="text-sm font-medium text-primary">Plano Parceiro</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Sem cobrança de assinatura. O cliente só paga por recursos adicionais.
-                  </p>
-                </div>
-              ) : subscriptionPricing && (
+              {/* Plan Summary */}
+              {editOrgPlan === "mensal" && subscriptionPricing && (
                 <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                   <p className="text-sm font-medium text-primary">
                     Valor mensal: R$ {calculateMonthlyCost(editOrgMaxUsers, editOrgMaxChannels).toFixed(2)}
@@ -1366,6 +1449,32 @@ export default function SuperAdmin() {
                       ` + ${editOrgMaxUsers - subscriptionPricing.included_users} usuário(s) extra × R$ ${subscriptionPricing.price_per_user.toFixed(2)}`}
                     {editOrgMaxChannels > subscriptionPricing.included_channels && 
                       ` + ${editOrgMaxChannels - subscriptionPricing.included_channels} WhatsApp(s) extra × R$ ${subscriptionPricing.price_per_channel.toFixed(2)}`}
+                  </p>
+                </div>
+              )}
+
+              {editOrgPlan === "parceiro" && (
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <p className="text-sm font-medium text-primary">Plano Parceiro</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sem cobrança de assinatura. O cliente só paga por recursos adicionais.
+                  </p>
+                </div>
+              )}
+
+              {editOrgPlan === "personalizado" && editOrgCustomPrice && (
+                <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-primary" />
+                    <p className="text-sm font-medium text-primary">
+                      Valor mensal fixo: R$ {parseFloat(editOrgCustomPrice).toFixed(2)}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Este valor será cobrado mensalmente, independente da quantidade de usuários ou canais.
                   </p>
                 </div>
               )}
