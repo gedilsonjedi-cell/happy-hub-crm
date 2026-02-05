@@ -8,12 +8,12 @@ import {
   RefreshCw,
   Search,
   Package,
-  Users,
   Calendar,
   CheckCircle,
-  XCircle,
   Clock,
   Filter,
+  Zap,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,16 @@ interface Transaction {
   created_at: string;
 }
 
+interface PendingPayment {
+  id: string;
+  organization_id: string;
+  organization_name?: string;
+  mercadopago_id: string;
+  amount: number;
+  status: string;
+  created_at: string;
+}
+
 const transactionTypeConfig: Record<string, { label: string; icon: typeof CreditCard; className: string }> = {
   credit: { label: "Crédito", icon: TrendingUp, className: "text-green-500 bg-green-500/10" },
   debit: { label: "Débito", icon: TrendingDown, className: "text-red-500 bg-red-500/10" },
@@ -65,7 +75,10 @@ const transactionTypeConfig: Record<string, { label: string; icon: typeof Credit
 
 export function PaymentHistoryPanel() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [stats, setStats] = useState({
@@ -73,6 +86,7 @@ export function PaymentHistoryPanel() {
     totalDebits: 0,
     transactionsToday: 0,
     transactionsThisMonth: 0,
+    pendingPayments: 0,
   });
 
   const fetchTransactions = async () => {
@@ -91,12 +105,28 @@ export function PaymentHistoryPanel() {
         return;
       }
 
+      // Fetch pending PIX payments (last 24h)
+      const oneDayAgo = new Date();
+      oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+      
+      const { data: pendingData } = await supabase
+        .from("pix_payments")
+        .select("id, organization_id, mercadopago_id, amount, status, created_at")
+        .eq("status", "pending")
+        .gte("created_at", oneDayAgo.toISOString())
+        .order("created_at", { ascending: false });
+
       // Fetch organization names
-      const orgIds = [...new Set(transactionsData?.map(t => t.organization_id) || [])];
+      const allOrgIds = [
+        ...new Set([
+          ...(transactionsData?.map(t => t.organization_id) || []),
+          ...(pendingData?.map(p => p.organization_id) || []),
+        ]),
+      ];
       const { data: orgsData } = await supabase
         .from("organizations")
         .select("id, name")
-        .in("id", orgIds);
+        .in("id", allOrgIds);
 
       const orgMap = new Map(orgsData?.map(o => [o.id, o.name]) || []);
 
@@ -105,7 +135,13 @@ export function PaymentHistoryPanel() {
         organization_name: orgMap.get(t.organization_id) || "Desconhecido",
       }));
 
+      const enrichedPending = (pendingData || []).map(p => ({
+        ...p,
+        organization_name: orgMap.get(p.organization_id) || "Desconhecido",
+      }));
+
       setTransactions(enrichedTransactions);
+      setPendingPayments(enrichedPending);
 
       // Calculate stats
       const now = new Date();
@@ -133,12 +169,64 @@ export function PaymentHistoryPanel() {
         totalDebits,
         transactionsToday,
         transactionsThisMonth,
+        pendingPayments: enrichedPending.length,
       });
     } catch (error) {
       console.error("Error:", error);
       toast.error("Erro ao carregar dados");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncAllPendingPayments = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-pix-payment", {
+        body: { syncAll: true },
+      });
+
+      if (error) throw error;
+
+      const synced = data?.results?.filter((r: any) => r.credited)?.length || 0;
+      if (synced > 0) {
+        toast.success(`${synced} pagamento(s) sincronizado(s) com sucesso!`);
+      } else {
+        toast.info("Nenhum pagamento pendente foi aprovado no Mercado Pago");
+      }
+      
+      fetchTransactions();
+    } catch (error) {
+      console.error("Sync error:", error);
+      toast.error("Erro ao sincronizar pagamentos");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncSinglePayment = async (mercadopagoId: string) => {
+    setSyncingId(mercadopagoId);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-pix-payment", {
+        body: { paymentId: mercadopagoId },
+      });
+
+      if (error) throw error;
+
+      if (data?.credited) {
+        toast.success("Pagamento sincronizado e creditado com sucesso!");
+      } else if (data?.mpStatus === "approved") {
+        toast.success("Pagamento já estava processado");
+      } else {
+        toast.info(`Status no MP: ${data?.mpStatus || "desconhecido"}`);
+      }
+      
+      fetchTransactions();
+    } catch (error) {
+      console.error("Sync error:", error);
+      toast.error("Erro ao sincronizar pagamento");
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -218,6 +306,99 @@ export function PaymentHistoryPanel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pending Payments Alert */}
+      {pendingPayments.length > 0 && (
+        <Card className="border-warning/50 bg-warning/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-warning">
+              <AlertCircle className="w-5 h-5" />
+              Pagamentos Pendentes ({pendingPayments.length})
+            </CardTitle>
+            <CardDescription>
+              Pagamentos PIX aguardando confirmação do Mercado Pago nas últimas 24h
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-end">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={syncAllPendingPayments}
+                disabled={syncing}
+                className="gap-2"
+              >
+                <Zap className={`w-4 h-4 ${syncing ? "animate-pulse" : ""}`} />
+                {syncing ? "Sincronizando..." : "Sincronizar Todos"}
+              </Button>
+            </div>
+            
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data/Hora</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>ID Mercado Pago</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-24">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">
+                            {format(new Date(payment.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(payment.created_at), "HH:mm", { locale: ptBR })}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium">{payment.organization_name}</span>
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                          {payment.mercadopago_id}
+                        </code>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-medium text-primary">
+                          R$ {payment.amount.toFixed(2)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Pendente
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => syncSinglePayment(payment.mercadopago_id)}
+                          disabled={syncingId === payment.mercadopago_id}
+                        >
+                          {syncingId === payment.mercadopago_id ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Zap className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
