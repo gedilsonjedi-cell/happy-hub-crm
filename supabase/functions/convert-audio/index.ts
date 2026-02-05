@@ -27,11 +27,11 @@ async function generateCloudinarySignature(paramsToSign: Record<string, string>)
 async function uploadAndConvertWithCloudinary(audioBuffer: ArrayBuffer, fileName: string): Promise<string> {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   
-  // Parâmetros para conversão: upload como video/raw e transformar para mp3
+  // IMPORTANTE: resource_type NÃO entra na assinatura - é parte da URL
+  // Apenas format e timestamp são assinados
   const paramsToSign: Record<string, string> = {
-    timestamp: timestamp,
-    resource_type: 'video', // Cloudinary usa 'video' para áudio também
     format: 'mp3',
+    timestamp: timestamp,
   };
   
   const signature = await generateCloudinarySignature(paramsToSign);
