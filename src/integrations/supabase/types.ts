@@ -2187,6 +2187,7 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          custom_subscription_price: number | null
           has_paid_first_subscription: boolean
           id: string
           is_active: boolean
@@ -2205,6 +2206,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          custom_subscription_price?: number | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
@@ -2223,6 +2225,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          custom_subscription_price?: number | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
