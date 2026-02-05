@@ -70,6 +70,7 @@ import { DispatchPricingConfig } from "@/components/admin/DispatchPricingConfig"
 import { SubscriptionPricingConfig } from "@/components/admin/SubscriptionPricingConfig";
 import { StoreManagementPanel } from "@/components/admin/StoreManagementPanel";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
+import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -772,6 +773,10 @@ export default function SuperAdmin() {
               <Building2 className="w-4 h-4" />
               Clientes
             </TabsTrigger>
+            <TabsTrigger value="payments" className="gap-2">
+              <CreditCard className="w-4 h-4" />
+              Pagamentos
+            </TabsTrigger>
             <TabsTrigger value="store" className="gap-2">
               <ShoppingBag className="w-4 h-4" />
               Loja
@@ -785,6 +790,11 @@ export default function SuperAdmin() {
               Configurações
             </TabsTrigger>
           </TabsList>
+
+          {/* Payments Tab */}
+          <TabsContent value="payments">
+            <PaymentHistoryPanel />
+          </TabsContent>
 
           {/* Store Tab */}
           <TabsContent value="store">
