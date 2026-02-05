@@ -85,7 +85,7 @@ import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
 import { SectorFilter } from "@/components/whatsapp/SectorFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
-import { convertToOgg, preloadFFmpeg, needsConversion as checkNeedsConversion } from "@/lib/audioConverter";
+ import { convertAudioSafe, preloadFFmpeg, needsConversion as checkNeedsConversion } from "@/lib/audioConverter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -2302,59 +2302,125 @@ const AtendimentoV2 = () => {
       }
 
       const actualMimeType = audioBlob.type || 'audio/webm';
-
       let finalBlob = audioBlob;
       let extension = 'ogg';
+       let contentType = 'audio/ogg; codecs=opus';
 
-       // ALWAYS convert to OGG for maximum WhatsApp compatibility
-       // The Meta API has issues with browser-recorded MP4/M4A files
-       // OGG with Opus codec is the most reliable format
-       const isAlreadyOgg = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
+       // Check if we need to convert the audio
+       // OGG is the most reliable format for WhatsApp
+       const isOgg = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
+       const isMp3 = actualMimeType.includes('mpeg') || actualMimeType.includes('mp3');
+       const isAac = actualMimeType.includes('aac');
        
-       if (!isAlreadyOgg) {
-         console.log('[AtendimentoV2] Converting audio from', actualMimeType, 'to OGG for WhatsApp compatibility');
+       // These formats work reliably with WhatsApp
+       const isReliableFormat = isOgg || isMp3 || isAac;
+       
+       if (!isReliableFormat) {
+         console.log('[AtendimentoV2] Audio format may need conversion:', actualMimeType);
         setIsConvertingAudio(true);
         toast.info('Convertendo áudio para formato compatível...', { duration: 3000 });
         
         try {
-          finalBlob = await convertToOgg(audioBlob);
+            // Try client-side conversion (includes multiple strategies)
+           finalBlob = await convertAudioSafe(audioBlob);
           extension = 'ogg';
+           contentType = 'audio/ogg; codecs=opus';
           console.log('[AtendimentoV2] Audio converted successfully', {
             originalSize: audioBlob.size,
             convertedSize: finalBlob.size
           });
         } catch (conversionError) {
           console.error('[AtendimentoV2] Audio conversion failed:', conversionError);
-          toast.error('Erro ao converter áudio. Tente novamente.');
-          setIsConvertingAudio(false);
-          setUploadingMedia(false);
-          return;
+           
+           // Fallback: try server-side conversion via Edge Function
+           console.log('[AtendimentoV2] Trying server-side conversion...');
+           toast.info('Tentando conversão no servidor...');
+           
+           try {
+             // Convert blob to base64 for Edge Function
+             const arrayBuffer = await audioBlob.arrayBuffer();
+             const base64Data = btoa(
+               new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+             );
+             
+             const { data: conversionResult, error: edgeFunctionError } = await supabase.functions.invoke('convert-audio', {
+               body: {
+                 audioData: base64Data,
+                 mimeType: actualMimeType,
+                 organizationId: user.id,
+                 forceConvert: true
+               }
+             });
+             
+             if (edgeFunctionError || !conversionResult?.success) {
+               throw new Error(edgeFunctionError?.message || conversionResult?.error || 'Server conversion failed');
+             }
+             
+             console.log('[AtendimentoV2] Server conversion successful:', conversionResult);
+             
+             // Use the converted URL directly
+             await handleSendMedia({
+               mediaType: 'audio',
+               mediaUrl: conversionResult.convertedUrl,
+               fileName: 'gravacao.ogg'
+             });
+             
+             setIsConvertingAudio(false);
+             setUploadingMedia(false);
+             return;
+             
+           } catch (serverConversionError) {
+             console.error('[AtendimentoV2] Server conversion also failed:', serverConversionError);
+             
+             // Final fallback: try sending as-is
+             if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
+               extension = 'm4a';
+               contentType = 'audio/mp4';
+               toast.warning('Enviando no formato original (pode falhar)...');
+             } else if (actualMimeType.includes('webm')) {
+               toast.error('Formato WebM não suportado. Tente gravar em outro navegador.');
+             setIsConvertingAudio(false);
+             setUploadingMedia(false);
+             return;
+             } else {
+               extension = 'ogg';
+               contentType = 'audio/ogg';
+               toast.warning('Enviando no formato original (pode falhar)...');
+             }
+           }
         }
         setIsConvertingAudio(false);
-      } else {
-         // Already OGG, use as-is
-         console.log('[AtendimentoV2] Audio already in OGG format, no conversion needed');
+       } else if (isOgg) {
          extension = 'ogg';
+         contentType = 'audio/ogg; codecs=opus';
+         console.log('[AtendimentoV2] Audio already in OGG format');
+       } else if (isMp3) {
+         extension = 'mp3';
+         contentType = 'audio/mpeg';
+         console.log('[AtendimentoV2] Audio in MP3 format');
+       } else if (isAac) {
+         extension = 'aac';
+         contentType = 'audio/aac';
+         console.log('[AtendimentoV2] Audio in AAC format');
+      } else {
+         // Fallback
+         extension = 'ogg';
+         contentType = 'audio/ogg';
       }
 
       // Upload the final blob (converted or original)
       const fileName = `audio_${Date.now()}.${extension}`;
       const filePath = `${user.id}/${fileName}`;
-       const contentType = 'audio/ogg; codecs=opus';
 
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
-        .upload(filePath, finalBlob, { 
-          cacheControl: '3600', 
-          upsert: false, 
-          contentType 
-        });
+         .upload(filePath, finalBlob, { cacheControl: '3600', upsert: false, contentType });
 
       if (uploadError) {
         console.error('[AtendimentoV2] Upload error:', uploadError);
         toast.error('Erro ao fazer upload do áudio');
-          setUploadingMedia(false);
-          return;
+         setUploadingMedia(false);
+         return;
       }
 
       const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);

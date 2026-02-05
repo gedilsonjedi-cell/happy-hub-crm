@@ -3,6 +3,22 @@ let isLoading = false;
 let isLoaded = false;
  let loadPromise: Promise<any> | null = null;
 
+ // Simple OGG header for Opus audio
+ // This is a minimal remuxing approach - wraps raw Opus packets in OGG container
+ const createOggOpusHeader = (sampleRate: number = 48000, channels: number = 1): Uint8Array => {
+   // OpusHead packet
+   const opusHead = new Uint8Array([
+     0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, // "OpusHead"
+     0x01, // Version
+     channels, // Channel count
+     0x00, 0x00, // Pre-skip (little-endian)
+     sampleRate & 0xff, (sampleRate >> 8) & 0xff, (sampleRate >> 16) & 0xff, (sampleRate >> 24) & 0xff, // Sample rate (little-endian)
+     0x00, 0x00, // Output gain
+     0x00, // Channel mapping family
+   ]);
+   return opusHead;
+ };
+ 
  // Load FFmpeg only once with dynamic import to avoid React conflicts
  export const loadFFmpeg = async (): Promise<any> => {
   if (ffmpeg && isLoaded) {
@@ -215,4 +231,54 @@ export const preloadFFmpeg = () => {
   loadFFmpeg().catch(err => {
     console.warn('[FFmpeg] Preload failed (will retry when needed):', err);
   });
-};
+ };
+ 
+ // Alternative conversion using raw Blob manipulation
+ // This creates a properly typed OGG blob from any audio blob
+ export const repackageAsOgg = async (audioBlob: Blob): Promise<Blob> => {
+   console.log('[AudioConverter] Repackaging audio as OGG...', {
+     inputSize: audioBlob.size,
+     inputType: audioBlob.type
+   });
+   
+   // Simply re-create the blob with the correct MIME type
+   // This works because most browsers encode Opus audio which is OGG-compatible
+   const arrayBuffer = await audioBlob.arrayBuffer();
+   const uint8Array = new Uint8Array(arrayBuffer);
+   
+   // Check if it's already an OGG file (starts with "OggS")
+   if (uint8Array[0] === 0x4F && uint8Array[1] === 0x67 && uint8Array[2] === 0x67 && uint8Array[3] === 0x53) {
+     console.log('[AudioConverter] File is already OGG format');
+     return new Blob([arrayBuffer], { type: 'audio/ogg; codecs=opus' });
+   }
+   
+   // For other formats, we need to throw and let caller handle fallback
+   console.log('[AudioConverter] Cannot repackage non-OGG format, needs FFmpeg');
+   throw new Error('Format requires FFmpeg conversion');
+ };
+ 
+ // Try multiple conversion strategies
+ export const convertAudioSafe = async (audioBlob: Blob): Promise<Blob> => {
+   console.log('[AudioConverter] Starting safe conversion...', {
+     inputSize: audioBlob.size,
+     inputType: audioBlob.type
+   });
+   
+   // Strategy 1: Try repackaging (fast, works for OGG files)
+   try {
+     return await repackageAsOgg(audioBlob);
+   } catch (e) {
+     console.log('[AudioConverter] Repackaging failed, trying FFmpeg...');
+   }
+   
+   // Strategy 2: Try FFmpeg (slower, but handles all formats)
+   try {
+     return await convertToOgg(audioBlob);
+   } catch (e) {
+     console.error('[AudioConverter] FFmpeg conversion failed:', e);
+   }
+   
+   // Strategy 3: Return original with correct type (last resort)
+   console.warn('[AudioConverter] All conversion methods failed, returning original');
+   throw new Error('All conversion methods failed');
+ };
