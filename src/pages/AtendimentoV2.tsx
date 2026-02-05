@@ -2301,67 +2301,39 @@ const AtendimentoV2 = () => {
         return;
       }
 
-      const actualMimeType = audioBlob.type || 'audio/webm';
-      let finalBlob = audioBlob;
-      let extension = 'ogg';
-       let contentType = 'audio/ogg; codecs=opus';
-
-       // Check if audio is already in a reliable format
-       // isNativeOgg from hook tells us if recording was done in OGG/Opus
-       const isOggFormat = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
-       
-       if (isNativeOgg || isOggFormat) {
-         // Already in OGG format - no conversion needed
-         console.log('[AtendimentoV2] Audio already in OGG format, sending directly');
-         extension = 'ogg';
-         contentType = 'audio/ogg; codecs=opus';
-       } else {
-         // Need to convert from WebM/other formats
-         console.log('[AtendimentoV2] Audio needs conversion:', actualMimeType);
-        setIsConvertingAudio(true);
-        toast.info('Convertendo áudio para formato compatível...', { duration: 3000 });
-        
-        try {
-           // Try client-side FFmpeg conversion
-           finalBlob = await convertToOgg(audioBlob);
-          extension = 'ogg';
-           contentType = 'audio/ogg; codecs=opus';
-          console.log('[AtendimentoV2] Audio converted successfully', {
-            originalSize: audioBlob.size,
-            convertedSize: finalBlob.size
-          });
-        } catch (conversionError) {
-          console.error('[AtendimentoV2] FFmpeg conversion failed:', conversionError);
-          toast.error('Erro ao converter áudio. Tente novamente ou use outro navegador.');
-          setIsConvertingAudio(false);
-          setUploadingMedia(false);
-          return;
-        }
-        setIsConvertingAudio(false);
-      }
-
-      // Upload the final blob (converted or original)
-      const fileName = `audio_${Date.now()}.${extension}`;
+      // Upload directly with .opus extension - no client-side conversion needed
+      // The edge function handles saving with the correct extension
+      const actualMimeType = audioBlob.type || 'audio/ogg';
+      console.log('[AtendimentoV2] Uploading audio directly:', { type: actualMimeType, size: audioBlob.size });
+      
+      // Upload directly to storage with .opus extension
+      const fileName = `audio_${Date.now()}.opus`;
       const filePath = `${user.id}/${fileName}`;
-
+      
       const { error: uploadError } = await supabase.storage
         .from('whatsapp-media')
-         .upload(filePath, finalBlob, { cacheControl: '3600', upsert: false, contentType });
+        .upload(filePath, audioBlob, { 
+          cacheControl: '3600', 
+          upsert: false, 
+          contentType: 'audio/ogg' 
+        });
 
       if (uploadError) {
         console.error('[AtendimentoV2] Upload error:', uploadError);
         toast.error('Erro ao fazer upload do áudio');
-         setUploadingMedia(false);
-         return;
+        setUploadingMedia(false);
+        return;
       }
 
       const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
       const publicUrl = urlData.publicUrl;
+      
+      console.log('[AtendimentoV2] Audio uploaded successfully:', publicUrl);
 
       await handleSendMedia({
         mediaType: 'audio',
         mediaUrl: publicUrl,
-        fileName: `gravacao.${extension}`
+        fileName: `gravacao.opus`
       });
 
     } catch (error) {
