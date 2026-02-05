@@ -1,77 +1,112 @@
 
+# Plano: Correção do Envio de Áudio no WhatsApp
 
-# Plano: Adicionar Filtro por Departamento/Setor
+## Problema Identificado
 
-## Resumo
+O envio de áudios está falhando porque:
 
-Adicionar um novo filtro na tela de Atendimento V2 que permite supervisores e administradores filtrar conversas por departamento/setor, similar ao filtro de atendente já existente.
+1. Navegadores como Chrome e Firefox gravam áudio no formato **WebM**, que não é aceito pela API do WhatsApp
+2. A conversão atual depende de APIs externas (CloudConvert/Zamzar) que **não estão configuradas**
+3. Existe uma biblioteca de conversão no frontend (FFmpeg.wasm) que não está sendo utilizada
 
-## O que será feito
+## Solução
 
-1. **Criar componente `SectorFilter`** - Um select dropdown seguindo o mesmo padrão visual do `AttendantFilter`, listando todos os setores da organização
+Implementar conversão de áudio **diretamente no navegador** usando FFmpeg.wasm (que já está instalado no projeto), eliminando a necessidade de APIs externas pagas.
 
-2. **Adicionar estado de filtro** - Novo estado `filterBySector` no `AtendimentoV2` para controlar qual setor está selecionado
+---
 
-3. **Aplicar filtro nas conversas** - Modificar a lógica de filtragem para incluir o filtro de setor em todas as listas (ativas, arquivadas, busca global)
+## Etapas de Implementação
 
-## Detalhes da Implementação
+### 1. Atualizar Hook de Gravação de Áudio
 
-### Componente SectorFilter
+**Arquivo:** `src/hooks/useAudioRecording.tsx`
 
-O componente será praticamente idêntico ao `AttendantFilter`:
-- Select com ícone de departamento (Building2 ou GitBranch)
-- Opção "Todos os departamentos" como padrão
-- Lista de setores da organização ordenados alfabeticamente
+- Melhorar detecção de formato suportado
+- Adicionar flag indicando se conversão será necessária
+- Retornar informações mais detalhadas sobre o formato gravado
 
-### Integração no AtendimentoV2
+### 2. Corrigir Biblioteca de Conversão FFmpeg
 
-- O filtro aparecerá ao lado do filtro de atendente
-- Apenas visível para admins e supervisores (mesma condição do filtro de atendente)
-- Filtra por `conv.sectorId === selectedSectorId`
-- Também incluirá a opção de mostrar conversas "Sem departamento" (organic leads)
+**Arquivo:** `src/lib/audioConverter.ts`
+
+- Verificar e corrigir a função `convertToOgg` existente
+- Adicionar tratamento de erros robusto
+- Adicionar logs para debug
+- Garantir compatibilidade com diferentes navegadores
+
+### 3. Integrar Conversão Client-Side no AtendimentoV2
+
+**Arquivo:** `src/pages/AtendimentoV2.tsx`
+
+Atualizar a função `handleSendVoiceRecording` para:
+1. Detectar se o áudio gravado está em formato WebM
+2. Converter para OGG/Opus usando FFmpeg.wasm no navegador
+3. Fazer upload do arquivo já convertido
+4. Remover dependência da edge function `convert-audio`
+
+**Novo fluxo:**
+```
+Usuário grava áudio
+    ↓
+Formato é WebM? ────── NÃO ───→ Enviar diretamente
+    │
+   SIM
+    ↓
+Converter para OGG (FFmpeg no browser)
+    ↓
+Upload do arquivo OGG
+    ↓
+Enviar via meta-send/zapi-send
+```
+
+### 4. Adicionar Feedback Visual
+
+- Mostrar indicador de "Convertendo áudio..." durante a conversão
+- Toast informativo quando conversão for necessária
+- Tratamento de erros com mensagens claras
+
+### 5. Pré-carregar FFmpeg (Otimização)
+
+- Carregar FFmpeg.wasm em background ao abrir a página de atendimento
+- Isso evita delay na primeira gravação
 
 ---
 
 ## Detalhes Técnicos
 
-### Novo arquivo: `src/components/whatsapp/SectorFilter.tsx`
+### Conversão de Áudio no Browser
 
-```typescript
-interface SectorFilterProps {
-  value: string | null;
-  onChange: (sectorId: string | null) => void;
-}
-```
+O FFmpeg.wasm permite conversão de áudio diretamente no navegador:
+- WebM → OGG/Opus (formato preferido pelo WhatsApp)
+- Sem necessidade de servidor ou APIs externas
+- Funciona em Chrome, Firefox, Safari e Edge
 
-O componente busca setores da organização e renderiza um Select.
+### Formatos Aceitos pelo WhatsApp
 
-### Alterações em `AtendimentoV2.tsx`
+- `audio/ogg` (preferido)
+- `audio/mpeg` (mp3)
+- `audio/mp4` (m4a)
+- `audio/aac`
 
-1. **Novo estado**:
-```typescript
-const [filterBySector, setFilterBySector] = useState<string | null>(null);
-```
+### Estimativa de Tempo
 
-2. **Lógica de filtragem atualizada** (linhas ~2785-2830):
-```typescript
-// Apply sector filter
-const matchesSector = !filterBySector || 
-  (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
-```
+A conversão de um áudio de 1 minuto leva aproximadamente 2-5 segundos no navegador moderno.
 
-3. **UI** - Adicionar o componente ao lado do filtro de atendente:
-```tsx
-{canSeeOthers && (
-  <SectorFilter 
-    value={filterBySector} 
-    onChange={setFilterBySector}
-  />
-)}
-```
+---
 
-### Opções do Filtro
+## Arquivos a Modificar
 
-- **Todos os departamentos** - Mostra tudo (valor: `null`)
-- **Sem departamento** - Mostra apenas conversas orgânicas sem setor (valor: `"none"`)
-- **[Nome do Departamento]** - Mostra apenas conversas daquele setor específico
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/hooks/useAudioRecording.tsx` | Melhorar detecção de formato |
+| `src/lib/audioConverter.ts` | Corrigir e otimizar conversão |
+| `src/pages/AtendimentoV2.tsx` | Integrar conversão client-side |
 
+---
+
+## Resultado Esperado
+
+- Áudios gravados em qualquer navegador serão enviados com sucesso
+- Sem dependência de APIs externas pagas
+- Conversão rápida e transparente para o usuário
+- Feedback visual durante o processo
