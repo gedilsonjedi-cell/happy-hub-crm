@@ -1,10 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 
-// Polyfill for 'global' required by opus-media-recorder
-if (typeof window !== 'undefined' && typeof (window as any).global === 'undefined') {
-  (window as any).global = window;
-}
-
 interface UseAudioRecordingReturn {
   isRecording: boolean;
   recordingDuration: number;
