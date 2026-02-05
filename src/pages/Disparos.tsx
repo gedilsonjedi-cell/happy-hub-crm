@@ -77,6 +77,7 @@ interface MessageTemplate {
   content: string;
   variables?: string[] | null;
   variable_mappings?: Record<string, string> | null;
+  dispatch_type?: string | null;
 }
 
 interface ChannelTemplate {
@@ -1259,9 +1260,26 @@ const Disparos = () => {
                       ) : (
                         unifiedTemplates.map(template => (
                           <SelectItem key={template.id} value={template.id}>
-                            {template.name}
-                            {template.variables && template.variables.length > 0 && 
-                              ` (${template.variables.length} var.)`}
+                            <div className="flex items-center gap-2">
+                              <span>{template.name}</span>
+                              {template.dispatch_type && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                  template.dispatch_type === 'marketing' 
+                                    ? 'bg-purple-500/10 text-purple-500 border-purple-500/30' 
+                                    : template.dispatch_type === 'utility'
+                                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                                    : 'bg-green-500/10 text-green-500 border-green-500/30'
+                                }`}>
+                                  {template.dispatch_type === 'marketing' ? 'Marketing' : 
+                                   template.dispatch_type === 'utility' ? 'Utilitário' : 'Serviço'}
+                                </span>
+                              )}
+                              {template.variables && template.variables.length > 0 && (
+                                <span className="text-muted-foreground text-xs">
+                                  ({template.variables.length} var.)
+                                </span>
+                              )}
+                            </div>
                           </SelectItem>
                         ))
                       )}
@@ -1346,7 +1364,21 @@ const Disparos = () => {
                                 ) : (
                                   availableTemplates.map(t => (
                                     <SelectItem key={t.id} value={t.id}>
-                                      {t.name}
+                                      <div className="flex items-center gap-2">
+                                        <span>{t.name}</span>
+                                        {t.dispatch_type && (
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                            t.dispatch_type === 'marketing' 
+                                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/30' 
+                                              : t.dispatch_type === 'utility'
+                                              ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                                              : 'bg-green-500/10 text-green-500 border-green-500/30'
+                                          }`}>
+                                            {t.dispatch_type === 'marketing' ? 'Marketing' : 
+                                             t.dispatch_type === 'utility' ? 'Utilitário' : 'Serviço'}
+                                          </span>
+                                        )}
+                                      </div>
                                     </SelectItem>
                                   ))
                                 )}
