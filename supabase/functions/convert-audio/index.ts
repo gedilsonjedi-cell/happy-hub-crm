@@ -5,18 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-// Supported audio formats by WhatsApp
-const WHATSAPP_SUPPORTED_FORMATS = [
-  'audio/ogg',
-  'audio/mpeg', 
-  'audio/mp3',
-  'audio/mp4',
-  'audio/aac',
-  'audio/amr',
-  'audio/m4a',
-  'audio/opus'
-];
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -35,7 +23,7 @@ Deno.serve(async (req) => {
 
      console.log('Processing audio:', { audioUrl, organizationId, forceConvert, hasAudioData: !!audioData });
 
-     // Initialize Supabase client first
+     // Initialize Supabase client
      const supabase = createClient(
        Deno.env.get('SUPABASE_URL') ?? '',
        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -70,14 +58,18 @@ Deno.serve(async (req) => {
       originalMimeType
     });
 
-    // Check if it's already a native OGG file (starts with "OggS")
-    const isNativeOgg = uint8Array[0] === 0x4F && uint8Array[1] === 0x67 && 
-                        uint8Array[2] === 0x67 && uint8Array[3] === 0x53;
+     // Check magic bytes for file format detection
+     const isOggFile = uint8Array[0] === 0x4F && uint8Array[1] === 0x67 && 
+                       uint8Array[2] === 0x67 && uint8Array[3] === 0x53; // "OggS"
     
-    if (isNativeOgg && !forceConvert) {
-      console.log('Audio is already native OGG format');
+     // Check for WebM (starts with EBML header 0x1A45DFA3)
+     const isWebM = uint8Array[0] === 0x1A && uint8Array[1] === 0x45 && 
+                    uint8Array[2] === 0xDF && uint8Array[3] === 0xA3;
+     
+     if (isOggFile && !forceConvert) {
+       console.log('Audio is already in OGG format');
       
-      // Upload directly
+       // Upload directly with correct content type
       const fileName = `audio_${Date.now()}.ogg`;
       const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
       
@@ -99,20 +91,26 @@ Deno.serve(async (req) => {
             convertedUrl: urlData.publicUrl,
             originalFormat: originalMimeType,
             converted: false,
-            message: 'Formato OGG nativo'
+             message: 'Already OGG format'
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
 
-    // Try CloudConvert API if available
+     // Try CloudConvert API if configured
     const cloudConvertApiKey = Deno.env.get('CLOUDCONVERT_API_KEY');
     
     if (cloudConvertApiKey) {
       console.log('Using CloudConvert API...');
       try {
-        const tempFileName = `temp_${Date.now()}.${originalMimeType.includes('mp4') ? 'm4a' : 'webm'}`;
+         // Determine input extension
+         let inputExt = 'webm';
+         if (originalMimeType.includes('mp4') || originalMimeType.includes('m4a')) inputExt = 'm4a';
+         else if (originalMimeType.includes('wav')) inputExt = 'wav';
+         else if (originalMimeType.includes('mp3') || originalMimeType.includes('mpeg')) inputExt = 'mp3';
+         
+         const tempFileName = `temp_${Date.now()}.${inputExt}`;
         const tempFilePath = organizationId ? `${organizationId}/${tempFileName}` : `temp/${tempFileName}`;
         
         await supabase.storage
@@ -127,7 +125,15 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             tasks: {
               'import-audio': { operation: 'import/url', url: tempUrlData.publicUrl },
-              'convert-audio': { operation: 'convert', input: 'import-audio', output_format: 'ogg', audio_codec: 'libopus', audio_bitrate: 64 },
+               'convert-audio': { 
+                 operation: 'convert', 
+                 input: 'import-audio', 
+                 output_format: 'ogg', 
+                 audio_codec: 'libopus', 
+                 audio_bitrate: 64,
+                 audio_channels: 1,
+                 audio_frequency: 48000
+               },
               'export-audio': { operation: 'export/url', input: 'convert-audio' }
             }
           })
@@ -135,44 +141,96 @@ Deno.serve(async (req) => {
         
         if (createJobResponse.ok) {
           const job = await createJobResponse.json();
-          let attempts = 0;
-          while (attempts < 30) {
-            await new Promise(r => setTimeout(r, 2000));
+           // Poll for completion (max 60 seconds)
+           for (let attempts = 0; attempts < 30; attempts++) {
+             await new Promise(r => setTimeout(r, 2000)); // Wait 2 seconds
+             
             const statusResponse = await fetch(`https://api.cloudconvert.com/v2/jobs/${job.data.id}`, {
               headers: { 'Authorization': `Bearer ${cloudConvertApiKey}` }
             });
             const status = await statusResponse.json();
+             
             if (status.data.status === 'finished') {
               const exportTask = status.data.tasks.find((t: { name: string }) => t.name === 'export-audio');
               if (exportTask?.result?.files?.[0]?.url) {
+                 // Download converted file
                 const convertedResponse = await fetch(exportTask.result.files[0].url);
                 const convertedBuffer = await convertedResponse.arrayBuffer();
+                 
+                 // Upload to storage
                 const fileName = `converted_${Date.now()}.ogg`;
                 const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
                 const { error: uploadError } = await supabase.storage
                   .from('whatsapp-media')
                   .upload(filePath, new Uint8Array(convertedBuffer), { contentType: 'audio/ogg', cacheControl: '3600' });
+                 
+                 // Clean up temp file
                 await supabase.storage.from('whatsapp-media').remove([tempFilePath]);
+                 
                 if (!uploadError) {
                   const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
                   return new Response(
-                    JSON.stringify({ success: true, convertedUrl: urlData.publicUrl, originalFormat: originalMimeType, convertedFormat: 'audio/ogg', converted: true, method: 'cloudconvert' }),
+                     JSON.stringify({ 
+                       success: true, 
+                       convertedUrl: urlData.publicUrl, 
+                       originalFormat: originalMimeType, 
+                       convertedFormat: 'audio/ogg', 
+                       converted: true, 
+                       method: 'cloudconvert' 
+                     }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                   );
                 }
               }
               break;
-            } else if (status.data.status === 'error') { break; }
-            attempts++;
+             } else if (status.data.status === 'error') { 
+               console.error('CloudConvert job failed:', status.data);
+               break; 
+             }
           }
         }
+         // Clean up temp file on failure
         await supabase.storage.from('whatsapp-media').remove([tempFilePath]);
-      } catch (e) { console.error('CloudConvert error:', e); }
+       } catch (e) { 
+         console.error('CloudConvert error:', e); 
+       }
     }
     
-    // No conversion service - return error
+     // No conversion available - upload as-is with warning
+     // Some formats may still work with WhatsApp
+     console.log('No conversion service available, uploading original');
+     
+     const fileName = `audio_${Date.now()}.${isWebM ? 'webm' : 'audio'}`;
+     const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
+     
+     const { error: uploadError } = await supabase.storage
+       .from('whatsapp-media')
+       .upload(filePath, uint8Array, { 
+         contentType: originalMimeType, 
+         cacheControl: '3600' 
+       });
+     
+     if (!uploadError) {
+       const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+       
+       return new Response(
+         JSON.stringify({ 
+           success: true,
+           convertedUrl: urlData.publicUrl,
+           originalFormat: originalMimeType,
+           converted: false,
+           warning: 'No conversion performed - format may not be compatible with WhatsApp'
+         }),
+         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+       );
+     }
+     
     return new Response(
-      JSON.stringify({ success: false, error: 'Conversão de áudio não disponível', details: 'Configure CLOUDCONVERT_API_KEY', originalFormat: originalMimeType }),
+       JSON.stringify({ 
+         success: false, 
+         error: 'Failed to process audio',
+         originalFormat: originalMimeType 
+       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

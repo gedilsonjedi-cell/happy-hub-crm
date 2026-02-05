@@ -85,7 +85,7 @@ import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
 import { SectorFilter } from "@/components/whatsapp/SectorFilter";
 import { useAudioRecording } from "@/hooks/useAudioRecording";
- import { convertAudioSafe, preloadFFmpeg, needsConversion as checkNeedsConversion } from "@/lib/audioConverter";
+ import { convertToOgg, preloadFFmpeg } from "@/lib/audioConverter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -284,22 +284,22 @@ const AtendimentoV2 = () => {
   const documentInputRef = useRef<HTMLInputElement>(null);
   
   const playNotificationSound = useNotificationSound();
-  const { 
-    isRecording, 
-    recordingDuration, 
-    startRecording, 
-    stopRecording, 
-    cancelRecording,
-    needsConversion: recordingNeedsConversion
-  } = useAudioRecording();
-
-  // Preload FFmpeg in background if conversion will be needed
-  useEffect(() => {
-    if (recordingNeedsConversion) {
-      console.log('[AtendimentoV2] Browser needs audio conversion, preloading FFmpeg...');
-      preloadFFmpeg();
-    }
-  }, [recordingNeedsConversion]);
+   const { 
+     isRecording, 
+     recordingDuration, 
+     startRecording, 
+     stopRecording, 
+     cancelRecording,
+     isNativeOgg
+   } = useAudioRecording();
+ 
+   // Preload FFmpeg in background if conversion might be needed
+   useEffect(() => {
+     if (!isNativeOgg) {
+       console.log('[AtendimentoV2] Browser may need audio conversion, preloading FFmpeg...');
+       preloadFFmpeg();
+     }
+   }, [isNativeOgg]);
 
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
   
@@ -2306,23 +2306,24 @@ const AtendimentoV2 = () => {
       let extension = 'ogg';
        let contentType = 'audio/ogg; codecs=opus';
 
-       // Check if we need to convert the audio
-       // OGG is the most reliable format for WhatsApp
-       const isOgg = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
-       const isMp3 = actualMimeType.includes('mpeg') || actualMimeType.includes('mp3');
-       const isAac = actualMimeType.includes('aac');
+       // Check if audio is already in a reliable format
+       // isNativeOgg from hook tells us if recording was done in OGG/Opus
+       const isOggFormat = actualMimeType.includes('ogg') && !actualMimeType.includes('webm');
        
-       // These formats work reliably with WhatsApp
-       const isReliableFormat = isOgg || isMp3 || isAac;
-       
-       if (!isReliableFormat) {
-         console.log('[AtendimentoV2] Audio format may need conversion:', actualMimeType);
+       if (isNativeOgg || isOggFormat) {
+         // Already in OGG format - no conversion needed
+         console.log('[AtendimentoV2] Audio already in OGG format, sending directly');
+         extension = 'ogg';
+         contentType = 'audio/ogg; codecs=opus';
+       } else {
+         // Need to convert from WebM/other formats
+         console.log('[AtendimentoV2] Audio needs conversion:', actualMimeType);
         setIsConvertingAudio(true);
         toast.info('Convertendo áudio para formato compatível...', { duration: 3000 });
         
         try {
-            // Try client-side conversion (includes multiple strategies)
-           finalBlob = await convertAudioSafe(audioBlob);
+           // Try client-side FFmpeg conversion
+           finalBlob = await convertToOgg(audioBlob);
           extension = 'ogg';
            contentType = 'audio/ogg; codecs=opus';
           console.log('[AtendimentoV2] Audio converted successfully', {
@@ -2330,7 +2331,7 @@ const AtendimentoV2 = () => {
             convertedSize: finalBlob.size
           });
         } catch (conversionError) {
-          console.error('[AtendimentoV2] Audio conversion failed:', conversionError);
+           console.error('[AtendimentoV2] FFmpeg conversion failed:', conversionError);
            
            // Fallback: try server-side conversion via Edge Function
            console.log('[AtendimentoV2] Trying server-side conversion...');
@@ -2371,41 +2372,13 @@ const AtendimentoV2 = () => {
              
            } catch (serverConversionError) {
              console.error('[AtendimentoV2] Server conversion also failed:', serverConversionError);
-             
-             // Final fallback: try sending as-is
-             if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
-               extension = 'm4a';
-               contentType = 'audio/mp4';
-               toast.warning('Enviando no formato original (pode falhar)...');
-             } else if (actualMimeType.includes('webm')) {
-               toast.error('Formato WebM não suportado. Tente gravar em outro navegador.');
+             toast.error('Erro ao converter áudio. Seu navegador pode não ser compatível.');
              setIsConvertingAudio(false);
              setUploadingMedia(false);
              return;
-             } else {
-               extension = 'ogg';
-               contentType = 'audio/ogg';
-               toast.warning('Enviando no formato original (pode falhar)...');
-             }
            }
         }
         setIsConvertingAudio(false);
-       } else if (isOgg) {
-         extension = 'ogg';
-         contentType = 'audio/ogg; codecs=opus';
-         console.log('[AtendimentoV2] Audio already in OGG format');
-       } else if (isMp3) {
-         extension = 'mp3';
-         contentType = 'audio/mpeg';
-         console.log('[AtendimentoV2] Audio in MP3 format');
-       } else if (isAac) {
-         extension = 'aac';
-         contentType = 'audio/aac';
-         console.log('[AtendimentoV2] Audio in AAC format');
-      } else {
-         // Fallback
-         extension = 'ogg';
-         contentType = 'audio/ogg';
       }
 
       // Upload the final blob (converted or original)
