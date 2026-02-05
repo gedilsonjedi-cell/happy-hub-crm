@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 interface UseAudioRecordingReturn {
   isRecording: boolean;
@@ -7,54 +7,32 @@ interface UseAudioRecordingReturn {
   stopRecording: () => Promise<Blob | null>;
   cancelRecording: () => void;
   needsConversion: boolean;
-  recordingFormat: string;
+   recordingFormat: string;
+   isNativeOgg: boolean;
 }
 
-// Check what format the browser supports for recording
-const getSupportedMimeType = (): { mimeType: string; extension: string; whatsappSupported: boolean } => {
-  // Priority: OGG Opus > MP4/AAC > MP3 > WebM (not supported by WhatsApp)
-  const formats = [
-    { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg', whatsappSupported: true },
-    { mimeType: 'audio/ogg', extension: 'ogg', whatsappSupported: true },
-    { mimeType: 'audio/mp4', extension: 'm4a', whatsappSupported: true },
-    { mimeType: 'audio/aac', extension: 'aac', whatsappSupported: true },
-    { mimeType: 'audio/mpeg', extension: 'mp3', whatsappSupported: true },
-    { mimeType: 'audio/webm;codecs=opus', extension: 'webm', whatsappSupported: false },
-    { mimeType: 'audio/webm', extension: 'webm', whatsappSupported: false },
-  ];
-
-  for (const format of formats) {
-    if (MediaRecorder.isTypeSupported(format.mimeType)) {
-      console.log('[AudioRecording] Browser supports:', format);
-      return format;
-    }
-  }
-
-  // Fallback
-  return { mimeType: 'audio/webm', extension: 'webm', whatsappSupported: false };
-};
+ // We'll use opus-media-recorder polyfill to always record in OGG/Opus
+ // This eliminates the need for post-recording conversion
 
 export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [needsConversion, setNeedsConversion] = useState(false);
-  const [recordingFormat, setRecordingFormat] = useState('webm');
+   const [needsConversion, setNeedsConversion] = useState(false); 
+   const [recordingFormat, setRecordingFormat] = useState('ogg');
+   const [isNativeOgg, setIsNativeOgg] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const formatInfoRef = useRef<{ mimeType: string; extension: string; whatsappSupported: boolean } | null>(null);
+   const opusRecorderRef = useRef<any>(null);
 
-  // Check supported format on mount
-  useEffect(() => {
-    const format = getSupportedMimeType();
-    formatInfoRef.current = format;
-    setNeedsConversion(!format.whatsappSupported);
-    setRecordingFormat(format.extension);
-    
-    console.log('[AudioRecording] Format detected:', format, 'Needs conversion:', !format.whatsappSupported);
-  }, []);
+   // Check if native OGG recording is supported
+   const nativeOggSupported = useMemo(() => {
+     if (typeof MediaRecorder === 'undefined') return false;
+     return MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') || 
+            MediaRecorder.isTypeSupported('audio/ogg');
+   }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -68,15 +46,53 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       });
       streamRef.current = stream;
       
-      // Get the best supported format
-      const format = formatInfoRef.current || getSupportedMimeType();
-      
-      console.log('[AudioRecording] Starting with format:', format.mimeType);
-      
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType: format.mimeType,
-        audioBitsPerSecond: 128000
-      });
+       let mediaRecorder: MediaRecorder;
+       let usingPolyfill = false;
+       
+       // Priority 1: Try native OGG/Opus recording
+       if (nativeOggSupported) {
+         const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') 
+           ? 'audio/ogg;codecs=opus' 
+           : 'audio/ogg';
+         console.log('[AudioRecording] Using native OGG recording:', mimeType);
+         mediaRecorder = new MediaRecorder(stream, { 
+           mimeType,
+           audioBitsPerSecond: 64000
+         });
+         setIsNativeOgg(true);
+         setNeedsConversion(false);
+         setRecordingFormat('ogg');
+       } else {
+         // Priority 2: Try opus-media-recorder polyfill
+         try {
+           const OpusMediaRecorder = (await import('opus-media-recorder')).default;
+           const workerOptions = {
+             OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@0.8.0/OggOpusEncoder.wasm',
+             WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@0.8.0/WebMOpusEncoder.wasm',
+           };
+           
+           console.log('[AudioRecording] Using opus-media-recorder polyfill');
+           mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg;codecs=opus' }, workerOptions);
+           opusRecorderRef.current = mediaRecorder;
+           usingPolyfill = true;
+           setIsNativeOgg(true); // Polyfill produces native OGG
+           setNeedsConversion(false);
+           setRecordingFormat('ogg');
+         } catch (polyfillError) {
+           console.warn('[AudioRecording] Polyfill failed, using native WebM:', polyfillError);
+           // Priority 3: Fallback to WebM (will need conversion)
+           const fallbackMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+             ? 'audio/webm;codecs=opus' 
+             : 'audio/webm';
+           mediaRecorder = new MediaRecorder(stream, { 
+             mimeType: fallbackMime,
+             audioBitsPerSecond: 64000
+           });
+           setIsNativeOgg(false);
+           setNeedsConversion(true);
+           setRecordingFormat('webm');
+         }
+       }
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -87,7 +103,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         }
       };
       
-      mediaRecorder.start(250);
+       mediaRecorder.start(500); // Slightly longer chunks for better compression
       setIsRecording(true);
       setRecordingDuration(0);
       
@@ -130,19 +146,15 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
           return;
         }
 
-        // Get format info
-        const format = formatInfoRef.current || getSupportedMimeType();
-        const mimeType = mediaRecorderRef.current?.mimeType || format.mimeType;
-        const audioBlob = new Blob(chunks, { type: mimeType });
+         // Determine actual MIME type from recorder
+         const actualMimeType = mediaRecorderRef.current?.mimeType || 'audio/ogg;codecs=opus';
+         const audioBlob = new Blob(chunks, { type: actualMimeType });
         audioChunksRef.current = [];
         
         console.log('[AudioRecording] Recording completed:', {
-          format: mimeType,
-          extension: format.extension,
+           format: actualMimeType,
           size: audioBlob.size,
-          chunks: chunks.length,
-          whatsappSupported: format.whatsappSupported,
-          needsConversion: !format.whatsappSupported
+           chunks: chunks.length
         });
 
         resolve(audioBlob);
@@ -150,7 +162,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
 
       mediaRecorderRef.current.stop();
     });
-  }, []);
+   }, [nativeOggSupported]);
 
   const cancelRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -158,6 +170,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
     }
     
     audioChunksRef.current = [];
+     opusRecorderRef.current = null;
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -180,6 +193,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
     stopRecording,
     cancelRecording,
     needsConversion,
-    recordingFormat
+     recordingFormat,
+     isNativeOgg
   };
 };
