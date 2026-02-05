@@ -1,96 +1,111 @@
 
-# Plano: Correção do Envio de Áudio no WhatsApp
+# Plano: Correção Definitiva do Envio de Áudio no WhatsApp
 
-## Problema Identificado
+## Diagnóstico do Problema
 
-O envio de áudios está falhando porque:
+Analisando os logs do console, identifiquei a causa raiz:
 
-1. Navegadores como Chrome e Firefox gravam áudio no formato **WebM**, que não é aceito pela API do WhatsApp
-2. A conversão atual depende de APIs externas (CloudConvert/Zamzar) que **não estão configuradas**
-3. Existe uma biblioteca de conversão no frontend (FFmpeg.wasm) que não está sendo utilizada
+```
+[AudioRecording] OpusMediaRecorder failed, falling back to WebM: SecurityError
+[FFmpeg] Failed to load: Error: failed to import ffmpeg-core.js  
+[AudioRecording] Recording completed: { format: "audio/webm;codecs=opus", size: 30891 }
+```
 
-## Solução
-
-Implementar conversão de áudio **diretamente no navegador** usando FFmpeg.wasm (que já está instalado no projeto), eliminando a necessidade de APIs externas pagas.
+**O que está acontecendo:**
+1. O navegador (Chrome/Edge) não suporta gravação nativa em OGG
+2. O polyfill `opus-media-recorder` falha por causa de CORS (Worker externo bloqueado)
+3. O FFmpeg.wasm também falha ao carregar
+4. O sistema grava em **WebM** mas salva com extensão **.opus**
+5. A Meta API rejeita porque o arquivo não é um OGG/Opus válido - é WebM disfarçado
 
 ---
 
-## Etapas de Implementação
+## Solução Proposta
 
-### 1. Atualizar Hook de Gravação de Áudio
+Como a conversão no navegador falha e você confirmou que **enviar mídia manualmente funciona**, a solução é usar a **Edge Function `convert-audio`** para fazer a conversão no servidor usando a API do Zamzar (já configurada).
+
+### Etapa 1: Modificar o Hook de Gravação
 
 **Arquivo:** `src/hooks/useAudioRecording.tsx`
 
-- Melhorar detecção de formato suportado
-- Adicionar flag indicando se conversão será necessária
-- Retornar informações mais detalhadas sobre o formato gravado
+**Mudanças:**
+- Remover tentativa de usar `opus-media-recorder` (sempre falha por CORS)
+- Sempre gravar em WebM (formato nativo do Chrome/Edge)
+- Retornar flag indicando que conversão no servidor é necessária
 
-### 2. Corrigir Biblioteca de Conversão FFmpeg
+### Etapa 2: Atualizar a Edge Function `convert-audio`
 
-**Arquivo:** `src/lib/audioConverter.ts`
+**Arquivo:** `supabase/functions/convert-audio/index.ts`
 
-- Verificar e corrigir a função `convertToOgg` existente
-- Adicionar tratamento de erros robusto
-- Adicionar logs para debug
-- Garantir compatibilidade com diferentes navegadores
+**Mudanças:**
+- Usar a API do Zamzar (secret já configurada) para converter WebM para OGG/Opus
+- Salvar com extensão `.opus` no storage
+- Retornar a URL pública do arquivo convertido
 
-### 3. Integrar Conversão Client-Side no AtendimentoV2
+**Fluxo da conversão:**
+```
+Browser grava WebM → Upload para Supabase Storage → 
+Edge Function baixa → Envia para Zamzar → 
+Recebe OGG convertido → Salva como .opus no Storage →
+Retorna URL pública
+```
+
+### Etapa 3: Atualizar AtendimentoV2 para Usar a Edge Function
 
 **Arquivo:** `src/pages/AtendimentoV2.tsx`
 
-Atualizar a função `handleSendVoiceRecording` para:
-1. Detectar se o áudio gravado está em formato WebM
-2. Converter para OGG/Opus usando FFmpeg.wasm no navegador
-3. Fazer upload do arquivo já convertido
-4. Remover dependência da edge function `convert-audio`
+**Mudanças na função `handleSendVoiceRecording`:**
+1. Gravar áudio normalmente (será WebM)
+2. Converter para base64
+3. Chamar Edge Function `convert-audio` com o áudio
+4. Receber URL do arquivo já convertido (.opus)
+5. Enviar via `handleSendMedia` (mesmo método usado pelo upload manual)
 
-**Novo fluxo:**
 ```
-Usuário grava áudio
-    ↓
-Formato é WebM? ────── NÃO ───→ Enviar diretamente
-    │
-   SIM
-    ↓
-Converter para OGG (FFmpeg no browser)
-    ↓
-Upload do arquivo OGG
-    ↓
-Enviar via meta-send/zapi-send
+Usuário grava → Blob WebM → Base64 → 
+Edge Function convert-audio → Zamzar API → 
+OGG/Opus no Storage → URL pública → 
+handleSendMedia → meta-send → WhatsApp
 ```
 
-### 4. Adicionar Feedback Visual
+### Etapa 4: Adicionar Feedback Visual
 
-- Mostrar indicador de "Convertendo áudio..." durante a conversão
-- Toast informativo quando conversão for necessária
-- Tratamento de erros com mensagens claras
-
-### 5. Pré-carregar FFmpeg (Otimização)
-
-- Carregar FFmpeg.wasm em background ao abrir a página de atendimento
-- Isso evita delay na primeira gravação
+- Mostrar "Processando áudio..." durante a conversão no servidor
+- Toast informativo em caso de erro
+- Timeout de 30 segundos para a conversão
 
 ---
 
 ## Detalhes Técnicos
 
-### Conversão de Áudio no Browser
+### Formato do Request para convert-audio
 
-O FFmpeg.wasm permite conversão de áudio diretamente no navegador:
-- WebM → OGG/Opus (formato preferido pelo WhatsApp)
-- Sem necessidade de servidor ou APIs externas
-- Funciona em Chrome, Firefox, Safari e Edge
+```typescript
+const response = await supabase.functions.invoke('convert-audio', {
+  body: {
+    audioData: base64AudioData, // WebM em base64
+    mimeType: 'audio/webm',
+    organizationId: organizationId
+  }
+});
+```
 
-### Formatos Aceitos pelo WhatsApp
+### Resposta esperada
 
-- `audio/ogg` (preferido)
-- `audio/mpeg` (mp3)
-- `audio/mp4` (m4a)
-- `audio/aac`
+```json
+{
+  "success": true,
+  "convertedUrl": "https://...supabase.co/.../audio_123.opus",
+  "originalFormat": "audio/webm"
+}
+```
 
-### Estimativa de Tempo
+### Por que usar Zamzar no servidor?
 
-A conversão de um áudio de 1 minuto leva aproximadamente 2-5 segundos no navegador moderno.
+1. **Funciona de forma confiável** - serviço especializado em conversão
+2. **Secret já configurada** - `ZAMZAR_API_KEY` já existe no projeto
+3. **Sem limitações de CORS** - Edge Functions não têm restrições de browser
+4. **Formatos garantidos** - Zamzar suporta WebM → OGG/Opus nativamente
 
 ---
 
@@ -98,15 +113,16 @@ A conversão de um áudio de 1 minuto leva aproximadamente 2-5 segundos no naveg
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useAudioRecording.tsx` | Melhorar detecção de formato |
-| `src/lib/audioConverter.ts` | Corrigir e otimizar conversão |
-| `src/pages/AtendimentoV2.tsx` | Integrar conversão client-side |
+| `src/hooks/useAudioRecording.tsx` | Simplificar - sempre WebM, sem polyfills |
+| `supabase/functions/convert-audio/index.ts` | Integrar API Zamzar para conversão real |
+| `src/pages/AtendimentoV2.tsx` | Chamar Edge Function antes de enviar |
 
 ---
 
 ## Resultado Esperado
 
-- Áudios gravados em qualquer navegador serão enviados com sucesso
-- Sem dependência de APIs externas pagas
-- Conversão rápida e transparente para o usuário
-- Feedback visual durante o processo
+- Gravação funciona em todos os navegadores (WebM nativo)
+- Conversão feita no servidor com Zamzar (100% confiável)
+- Arquivo salvo como .opus real (não WebM disfarçado)
+- Envio via meta-send funciona normalmente
+- Mesmo fluxo do upload manual (que você confirmou funcionar)
