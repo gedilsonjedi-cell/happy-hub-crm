@@ -604,6 +604,8 @@ const Disparos = () => {
           status: formData.startTime === "now" ? "running" : "scheduled",
           scheduled_at: scheduledAt,
           total_recipients: recipientData.phones.length,
+          // CRITICAL: Save manual variables for template substitution in batch processor
+          manual_variables: Object.keys(manualVariables).length > 0 ? manualVariables : null,
         })
         .select()
         .single();

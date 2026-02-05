@@ -124,6 +124,10 @@ async function processCampaignDispatch(
       return;
     }
 
+    // CRITICAL FIX: Use manual_variables from DB if not passed in request
+    // This ensures variables are available when campaign is resumed
+    const effectiveManualVariables = manualVariables || (campaign.manual_variables as Record<string, string> | null) || {};
+
     // Get intervals
     const minInterval = campaign.min_interval || campaign.dispatch_interval || 3;
     const maxInterval = campaign.max_interval || (campaign.dispatch_interval ? campaign.dispatch_interval + 5 : 10);
@@ -227,7 +231,12 @@ async function processCampaignDispatch(
             let value = '';
             
             if (mapping === 'manual') {
-              value = manualVariables?.[varName] || varName;
+              // CRITICAL FIX: Use effectiveManualVariables (from request OR database)
+              // Try exact match first, then try with different prefixes (VAR_, p)
+              value = effectiveManualVariables[varName] 
+                || effectiveManualVariables[varName.replace(/^VAR_/, 'p')] 
+                || effectiveManualVariables[varName.replace(/^p/, 'VAR_')]
+                || varName;
             } else if (mapping === 'contact_first_name') {
               value = getFirstName(recipient.name) || varName;
             } else if (variableFieldMap[mapping]) {

@@ -507,6 +507,7 @@ export type Database = {
           dispatch_interval: number
           failed_count: number
           id: string
+          manual_variables: Json | null
           max_interval: number | null
           min_interval: number | null
           name: string
@@ -532,6 +533,7 @@ export type Database = {
           dispatch_interval?: number
           failed_count?: number
           id?: string
+          manual_variables?: Json | null
           max_interval?: number | null
           min_interval?: number | null
           name: string
@@ -557,6 +559,7 @@ export type Database = {
           dispatch_interval?: number
           failed_count?: number
           id?: string
+          manual_variables?: Json | null
           max_interval?: number | null
           min_interval?: number | null
           name?: string

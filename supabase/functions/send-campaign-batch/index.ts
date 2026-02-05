@@ -419,18 +419,29 @@ Deno.serve(async (req) => {
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
 
-      // Build template params
+      // Build template params - CRITICAL: Use manual_variables from campaign
       const templateParams: string[] = [];
+      const manualVariables = campaign.manual_variables as Record<string, string> | null;
+      
       if (template.variables && template.variables.length > 0) {
         for (const varName of template.variables) {
           const mapping = template.variable_mappings?.[varName] || 'manual';
-          let value = varName;
+          let value = varName; // Fallback to variable name
 
           if (mapping === 'contact_first_name') {
             value = getFirstName(recipient.name) || varName;
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || varName);
+          } else if (mapping === 'manual' && manualVariables) {
+            // CRITICAL FIX: Use manual variables saved in the campaign
+            // Try exact match first, then try with different prefixes (VAR_, p)
+            const manualValue = manualVariables[varName] 
+              || manualVariables[varName.replace(/^VAR_/, 'p')] 
+              || manualVariables[varName.replace(/^p/, 'VAR_')];
+            if (manualValue) {
+              value = manualValue;
+            }
           }
           templateParams.push(value);
         }
