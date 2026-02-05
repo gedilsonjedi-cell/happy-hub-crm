@@ -6,58 +6,54 @@ interface UseAudioRecordingReturn {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<Blob | null>;
   cancelRecording: () => void;
-  supportedFormat: 'ogg' | 'mp3' | 'webm' | null;
+  needsConversion: boolean;
+  recordingFormat: string;
 }
 
-// Check if we can record in a WhatsApp-supported format
-const getSupportedMimeType = (): { mimeType: string; extension: string; supported: boolean } => {
+// Check what format the browser supports for recording
+const getSupportedMimeType = (): { mimeType: string; extension: string; whatsappSupported: boolean } => {
   // Priority: OGG Opus > MP4/AAC > MP3 > WebM (not supported by WhatsApp)
   const formats = [
-    { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg', supported: true },
-    { mimeType: 'audio/ogg', extension: 'ogg', supported: true },
-    { mimeType: 'audio/mp4', extension: 'm4a', supported: true },
-    { mimeType: 'audio/aac', extension: 'aac', supported: true },
-    { mimeType: 'audio/mpeg', extension: 'mp3', supported: true },
-    { mimeType: 'audio/webm;codecs=opus', extension: 'webm', supported: false },
-    { mimeType: 'audio/webm', extension: 'webm', supported: false },
+    { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg', whatsappSupported: true },
+    { mimeType: 'audio/ogg', extension: 'ogg', whatsappSupported: true },
+    { mimeType: 'audio/mp4', extension: 'm4a', whatsappSupported: true },
+    { mimeType: 'audio/aac', extension: 'aac', whatsappSupported: true },
+    { mimeType: 'audio/mpeg', extension: 'mp3', whatsappSupported: true },
+    { mimeType: 'audio/webm;codecs=opus', extension: 'webm', whatsappSupported: false },
+    { mimeType: 'audio/webm', extension: 'webm', whatsappSupported: false },
   ];
 
   for (const format of formats) {
     if (MediaRecorder.isTypeSupported(format.mimeType)) {
-      console.log('Best supported format:', format);
+      console.log('[AudioRecording] Browser supports:', format);
       return format;
     }
   }
 
   // Fallback
-  return { mimeType: 'audio/webm', extension: 'webm', supported: false };
+  return { mimeType: 'audio/webm', extension: 'webm', whatsappSupported: false };
 };
 
 export const useAudioRecording = (): UseAudioRecordingReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [supportedFormat, setSupportedFormat] = useState<'ogg' | 'mp3' | 'webm' | null>(null);
+  const [needsConversion, setNeedsConversion] = useState(false);
+  const [recordingFormat, setRecordingFormat] = useState('webm');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const formatInfoRef = useRef<{ mimeType: string; extension: string; supported: boolean } | null>(null);
+  const formatInfoRef = useRef<{ mimeType: string; extension: string; whatsappSupported: boolean } | null>(null);
 
   // Check supported format on mount
   useEffect(() => {
     const format = getSupportedMimeType();
     formatInfoRef.current = format;
+    setNeedsConversion(!format.whatsappSupported);
+    setRecordingFormat(format.extension);
     
-    if (format.extension === 'ogg') {
-      setSupportedFormat('ogg');
-    } else if (format.extension === 'mp3' || format.extension === 'm4a' || format.extension === 'aac') {
-      setSupportedFormat('mp3');
-    } else {
-      setSupportedFormat('webm');
-    }
-    
-    console.log('Audio recording format detected:', format);
+    console.log('[AudioRecording] Format detected:', format, 'Needs conversion:', !format.whatsappSupported);
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -75,7 +71,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       // Get the best supported format
       const format = formatInfoRef.current || getSupportedMimeType();
       
-      console.log('Starting recording with format:', format.mimeType);
+      console.log('[AudioRecording] Starting with format:', format.mimeType);
       
       const mediaRecorder = new MediaRecorder(stream, { 
         mimeType: format.mimeType,
@@ -100,7 +96,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
       }, 1000);
       
     } catch (error) {
-      console.error("Error starting recording:", error);
+      console.error("[AudioRecording] Error starting recording:", error);
       throw new Error("Não foi possível acessar o microfone");
     }
   }, []);
@@ -129,7 +125,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         const chunks = audioChunksRef.current;
         
         if (chunks.length === 0) {
-          console.error('No audio chunks recorded');
+          console.error('[AudioRecording] No audio chunks recorded');
           resolve(null);
           return;
         }
@@ -140,12 +136,13 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
         const audioBlob = new Blob(chunks, { type: mimeType });
         audioChunksRef.current = [];
         
-        console.log('Recording completed:', {
+        console.log('[AudioRecording] Recording completed:', {
           format: mimeType,
           extension: format.extension,
           size: audioBlob.size,
           chunks: chunks.length,
-          whatsappSupported: format.supported
+          whatsappSupported: format.whatsappSupported,
+          needsConversion: !format.whatsappSupported
         });
 
         resolve(audioBlob);
@@ -182,6 +179,7 @@ export const useAudioRecording = (): UseAudioRecordingReturn => {
     startRecording,
     stopRecording,
     cancelRecording,
-    supportedFormat
+    needsConversion,
+    recordingFormat
   };
 };
