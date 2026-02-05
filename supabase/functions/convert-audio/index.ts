@@ -1,4 +1,4 @@
-// Edge Function para conversão de áudio WebM → OGG/Opus via Zamzar API
+// Edge Function para conversão de áudio WebM → MP3 via Cloudinary (gratuito)
 // Recebe áudio em WebM, converte para MP3 (mais compatível com Meta API), salva no storage e retorna URL
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -7,76 +7,73 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const ZAMZAR_API_KEY = Deno.env.get('ZAMZAR_API_KEY');
+const CLOUDINARY_CLOUD_NAME = Deno.env.get('CLOUDINARY_CLOUD_NAME');
+const CLOUDINARY_API_KEY = Deno.env.get('CLOUDINARY_API_KEY');
+const CLOUDINARY_API_SECRET = Deno.env.get('CLOUDINARY_API_SECRET');
 
-// Função para fazer upload para Zamzar e iniciar conversão
-async function uploadToZamzar(audioBuffer: ArrayBuffer, fileName: string, targetFormat: string = 'mp3'): Promise<number> {
+// Função para gerar assinatura SHA-1 para Cloudinary
+async function generateCloudinarySignature(paramsToSign: Record<string, string>): Promise<string> {
+  const sortedKeys = Object.keys(paramsToSign).sort();
+  const stringToSign = sortedKeys.map(k => `${k}=${paramsToSign[k]}`).join('&') + CLOUDINARY_API_SECRET;
+  
+  const encoder = new TextEncoder();
+  const data = encoder.encode(stringToSign);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Upload para Cloudinary e obter URL do arquivo convertido para MP3
+async function uploadAndConvertWithCloudinary(audioBuffer: ArrayBuffer, fileName: string): Promise<string> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  
+  // Parâmetros para conversão: upload como video/raw e transformar para mp3
+  const paramsToSign: Record<string, string> = {
+    timestamp: timestamp,
+    resource_type: 'video', // Cloudinary usa 'video' para áudio também
+    format: 'mp3',
+  };
+  
+  const signature = await generateCloudinarySignature(paramsToSign);
+  
   const formData = new FormData();
-  formData.append('source_file', new Blob([audioBuffer], { type: 'audio/webm' }), fileName);
-  formData.append('target_format', targetFormat);
-
-  const response = await fetch('https://api.zamzar.com/v1/jobs', {
+  formData.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), fileName);
+  formData.append('timestamp', timestamp);
+  formData.append('api_key', CLOUDINARY_API_KEY!);
+  formData.append('signature', signature);
+  formData.append('resource_type', 'video');
+  formData.append('format', 'mp3');
+  
+  const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
+  
+  console.log('[convert-audio] Uploading to Cloudinary...');
+  
+  const response = await fetch(uploadUrl, {
     method: 'POST',
-    headers: {
-      'Authorization': 'Basic ' + btoa(ZAMZAR_API_KEY + ':'),
-    },
     body: formData
   });
-
+  
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[convert-audio] Zamzar upload error:', errorText);
-    throw new Error(`Zamzar upload failed: ${response.status} - ${errorText}`);
+    console.error('[convert-audio] Cloudinary upload error:', errorText);
+    throw new Error(`Cloudinary upload failed: ${response.status} - ${errorText}`);
   }
-
-  const job = await response.json();
-  console.log('[convert-audio] Zamzar job created:', job.id);
-  return job.id;
+  
+  const result = await response.json();
+  console.log('[convert-audio] Cloudinary upload successful:', result.secure_url);
+  
+  // Retorna a URL do arquivo já convertido para MP3
+  return result.secure_url;
 }
 
-// Função para aguardar conversão e obter arquivo
-async function waitForConversion(jobId: number, maxAttempts = 30): Promise<number> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const response = await fetch(`https://api.zamzar.com/v1/jobs/${jobId}`, {
-      headers: {
-        'Authorization': 'Basic ' + btoa(ZAMZAR_API_KEY + ':'),
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Zamzar status check failed: ${response.status}`);
-    }
-
-    const job = await response.json();
-    console.log('[convert-audio] Job status:', job.status);
-
-    if (job.status === 'successful' && job.target_files?.length > 0) {
-      return job.target_files[0].id;
-    }
-
-    if (job.status === 'failed') {
-      throw new Error('Zamzar conversion failed');
-    }
-
-    // Aguardar 1 segundo antes de verificar novamente
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-
-  throw new Error('Zamzar conversion timeout');
-}
-
-// Função para baixar arquivo convertido
-async function downloadConvertedFile(fileId: number): Promise<ArrayBuffer> {
-  const response = await fetch(`https://api.zamzar.com/v1/files/${fileId}/content`, {
-    headers: {
-      'Authorization': 'Basic ' + btoa(ZAMZAR_API_KEY + ':'),
-    }
-  });
-
+// Baixar arquivo convertido do Cloudinary
+async function downloadFromCloudinary(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  
   if (!response.ok) {
-    throw new Error(`Zamzar download failed: ${response.status}`);
+    throw new Error(`Failed to download from Cloudinary: ${response.status}`);
   }
-
+  
   return await response.arrayBuffer();
 }
 
@@ -120,23 +117,21 @@ Deno.serve(async (req) => {
     let finalAudioData: ArrayBuffer = uint8Array.buffer as ArrayBuffer;
     let converted = false;
     let finalMimeType = 'audio/mpeg'; // MP3 mime type
+    
+    const hasCloudinaryConfig = CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET;
 
-    // Se for WebM e temos a chave Zamzar, converter para OGG
-    if (isWebM && ZAMZAR_API_KEY) {
-      console.log('[convert-audio] WebM detected, converting to MP3 via Zamzar...');
+    // Se for WebM e temos Cloudinary configurado, converter para MP3
+    if (isWebM && hasCloudinaryConfig) {
+      console.log('[convert-audio] WebM detected, converting to MP3 via Cloudinary (free)...');
       
       try {
         const tempFileName = `audio_${Date.now()}.webm`;
         
-        // 1. Upload para Zamzar e iniciar conversão para MP3
-        // MP3 é mais compatível com a Meta API do que OGG
-        const jobId = await uploadToZamzar(uint8Array.buffer as ArrayBuffer, tempFileName, 'mp3');
+        // 1. Upload para Cloudinary que converte automaticamente para MP3
+        const cloudinaryUrl = await uploadAndConvertWithCloudinary(uint8Array.buffer as ArrayBuffer, tempFileName);
         
-        // 2. Aguardar conversão
-        const fileId = await waitForConversion(jobId);
-        
-        // 3. Baixar arquivo convertido
-        finalAudioData = await downloadConvertedFile(fileId);
+        // 2. Baixar o arquivo MP3 convertido
+        finalAudioData = await downloadFromCloudinary(cloudinaryUrl);
         converted = true;
         
         console.log('[convert-audio] Conversion successful:', { 
@@ -144,7 +139,7 @@ Deno.serve(async (req) => {
           convertedSize: finalAudioData.byteLength 
         });
       } catch (convError) {
-        console.error('[convert-audio] Zamzar conversion failed:', convError);
+        console.error('[convert-audio] Cloudinary conversion failed:', convError);
         return new Response(
           JSON.stringify({ 
             error: 'Audio conversion failed', 
@@ -153,8 +148,8 @@ Deno.serve(async (req) => {
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-    } else if (isWebM && !ZAMZAR_API_KEY) {
-      console.error('[convert-audio] WebM detected but ZAMZAR_API_KEY not configured');
+    } else if (isWebM && !hasCloudinaryConfig) {
+      console.error('[convert-audio] WebM detected but Cloudinary not configured');
       return new Response(
         JSON.stringify({ error: 'Audio conversion service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
