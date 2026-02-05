@@ -221,6 +221,11 @@
 
     <!-- Prevent theme flash -->
     <script>
+      // Polyfill for 'global' required by opus-media-recorder
+      if (typeof window !== 'undefined' && typeof window.global === 'undefined') {
+        window.global = window;
+      }
+      
       (function() {
         try {
           var theme = localStorage.getItem('optimuscrm-theme');
