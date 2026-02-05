@@ -40,11 +40,10 @@ Deno.serve(async (req) => {
     const isOgg = uint8Array[0] === 0x4F && uint8Array[1] === 0x67 && 
                   uint8Array[2] === 0x67 && uint8Array[3] === 0x53;
     
-    // Use .oggs extension for WhatsApp compatibility
-    const extension = isOgg ? 'oggs' : 'oggs';
+    // Use .opus extension for WhatsApp compatibility
     const contentType = isOgg ? 'audio/ogg' : (mimeType || 'audio/ogg');
     
-    const fileName = `audio_${Date.now()}.oggs`;
+    const fileName = `audio_${Date.now()}.opus`;
     const filePath = organizationId ? `${organizationId}/${fileName}` : `public/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
