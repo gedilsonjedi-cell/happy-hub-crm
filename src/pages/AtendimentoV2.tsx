@@ -842,18 +842,21 @@ const AtendimentoV2 = () => {
       });
     };
     
-    // Initial sync after 500ms (quick sync to catch stale state immediately)
-    const initialTimer = setTimeout(syncAssignments, 500);
+    // IMMEDIATE sync on mount - don't wait
+    syncAssignments();
     
-    // Second sync after 3 seconds (catch any delayed updates)
-    const secondTimer = setTimeout(syncAssignments, 3000);
+    // Second sync after 1 second (catch any race conditions)
+    const secondTimer = setTimeout(syncAssignments, 1000);
     
-    // Periodic sync every 15 seconds (more frequent to ensure consistency)
-    const intervalId = setInterval(syncAssignments, 15000);
+    // Third sync after 3 seconds (catch any delayed updates)
+    const thirdTimer = setTimeout(syncAssignments, 3000);
+    
+    // Periodic sync every 10 seconds (more frequent to ensure consistency)
+    const intervalId = setInterval(syncAssignments, 10000);
     
     return () => {
-      clearTimeout(initialTimer);
       clearTimeout(secondTimer);
+      clearTimeout(thirdTimer);
       clearInterval(intervalId);
     };
   }, [channels]);
@@ -2997,26 +3000,35 @@ const AtendimentoV2 = () => {
   const visibleConversations = canSeeOthers 
     ? activeConversations 
     : activeConversations.filter(conv => {
-        // STRICT RULE 1: Always show conversations assigned to this user
-        if (conv.assignedTo === user?.id) return true;
-        
-        // STRICT RULE 2: If conversation is assigned to ANYONE else, hide it completely
-        // This is critical - attendants should NEVER see other people's conversations
-        if (conv.assignedTo && conv.assignedTo !== user?.id) return false;
-        
-        // STRICT RULE 3: Only show truly orphan conversations (no assignee AND no sector)
-        // If a conversation has a sector, it should have been auto-distributed
-        // and belongs in someone's "Meus", not in the general "Novos" queue
-        if (!conv.assignedTo && !conv.sectorId) return true;
-        
-        // STRICT RULE 4: Conversations with sector but no assignee = 
-        // ONLY visible if user belongs to that sector
-        // This handles the rare case where auto-distribution hasn't happened yet
-        if (!conv.assignedTo && conv.sectorId) {
-          return sectorIds.includes(conv.sectorId);
+        // ABSOLUTE RULE 1: If conversation has an assignee that is NOT this user, HIDE IT
+        // This is the MOST IMPORTANT rule - attendants MUST NEVER see other people's conversations
+        if (conv.assignedTo && conv.assignedTo !== user?.id) {
+          return false;
         }
         
-        // Default: hide everything else
+        // ABSOLUTE RULE 2: If conversation belongs to a sector the user is NOT part of, HIDE IT
+        // This ensures Adriele (Valadares) never sees Helmara's (BH) conversations
+        if (conv.sectorId && !sectorIds.includes(conv.sectorId)) {
+          return false;
+        }
+        
+        // RULE 3: Show conversations assigned to this user
+        if (conv.assignedTo === user?.id) {
+          return true;
+        }
+        
+        // RULE 4: Only show truly orphan conversations (no assignee AND no sector)
+        if (!conv.assignedTo && !conv.sectorId) {
+          return true;
+        }
+        
+        // RULE 5: Conversation has user's sector but no assignee
+        // This should be rare - normally auto-distributed immediately
+        if (!conv.assignedTo && conv.sectorId && sectorIds.includes(conv.sectorId)) {
+          return true;
+        }
+        
+        // Default: hide
         return false;
       });
   
