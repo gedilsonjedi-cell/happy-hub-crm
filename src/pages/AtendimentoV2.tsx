@@ -2908,9 +2908,30 @@ const AtendimentoV2 = () => {
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
   
+  // CRITICAL FIX: For attendants, they can ONLY see:
+  // 1. Conversations assigned to them (their "Meus")
+  // 2. Unassigned conversations that have NO sector OR belong to their sector
+  // This prevents attendants from seeing "Novos" from other departments
   const visibleConversations = canSeeOthers 
     ? activeConversations 
-    : activeConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+    : activeConversations.filter(conv => {
+        // Always show conversations assigned to this user
+        if (conv.assignedTo === user?.id) return true;
+        
+        // For unassigned conversations, only show if:
+        // - No sector (truly "orphan" conversations visible to all)
+        // - OR the conversation's sector belongs to this user
+        if (!conv.assignedTo) {
+          // No sector = visible (true "Novos" queue for everyone)
+          if (!conv.sectorId) return true;
+          
+          // Has sector = only visible if user is in that sector
+          return sectorIds.includes(conv.sectorId);
+        }
+        
+        // Assigned to someone else - not visible to attendants
+        return false;
+      });
   
   // If we have global search results and a search term, prioritize showing those
   const hasGlobalResults = globalSearchResults.length > 0 && searchTerm.length >= 3;
@@ -2919,7 +2940,7 @@ const AtendimentoV2 = () => {
     ? globalSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
-        if (filterStatus === "new") matchesFilter = !conv.assignedTo && conv.status !== "archived";
+        if (filterStatus === "new") matchesFilter = !conv.assignedTo && !conv.sectorId && conv.status !== "archived";
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
@@ -2938,9 +2959,12 @@ const AtendimentoV2 = () => {
         
         let matchesFilter = false;
         if (filterStatus === "new") {
-          // "Novos" shows ALL conversations without assignee (pending or in_progress)
-          // This ensures conversations that went to in_progress without an attendant are not lost
-          matchesFilter = !conv.assignedTo && conv.status !== "archived";
+          // CRITICAL FIX: "Novos" only shows conversations that:
+          // 1. Have NO assignee (not distributed to anyone)
+          // 2. Have NO sector (truly orphan - no automatic distribution possible)
+          // If a conversation has a sector, it SHOULD have been auto-distributed,
+          // so it belongs in "Meus" of the assigned attendant, not in "Novos"
+          matchesFilter = !conv.assignedTo && !conv.sectorId && conv.status !== "archived";
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
@@ -2958,7 +2982,17 @@ const AtendimentoV2 = () => {
 
   const visibleArchivedConversations = canSeeOthers 
     ? archivedConversations 
-    : archivedConversations.filter(conv => !conv.assignedTo || conv.assignedTo === user?.id);
+    : archivedConversations.filter(conv => {
+        // Attendants can see archived conversations that were:
+        // 1. Assigned to them
+        // 2. Unassigned but in their sector or without sector
+        if (conv.assignedTo === user?.id) return true;
+        if (!conv.assignedTo) {
+          if (!conv.sectorId) return true;
+          return sectorIds.includes(conv.sectorId);
+        }
+        return false;
+      });
     
   // Include global search results in archived if they are archived
   const archivedFromGlobalSearch = hasGlobalResults 
@@ -2993,7 +3027,8 @@ const AtendimentoV2 = () => {
         });
 
   // Counts - "Novos" counts ALL conversations without assignee (excluding archived)
-  const newCount = visibleConversations.filter(c => !c.assignedTo && c.status !== "archived").length;
+  // CRITICAL FIX: Count only truly orphan conversations (no assignee AND no sector)
+  const newCount = visibleConversations.filter(c => !c.assignedTo && !c.sectorId && c.status !== "archived").length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
 
