@@ -1470,48 +1470,80 @@ const AtendimentoV2 = () => {
                     if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
                   }
                   
-                  // Buscar assignment do banco para obter sectorId (importante para isolamento por departamento)
+                  // CRITICAL FIX: Buscar assignment ANTES de adicionar a conversa para garantir 
+                  // que conversas já distribuídas não apareçam em "Novos"
                   supabase
                     .from('conversation_assignments')
-                    .select('sector_id, assigned_to')
+                    .select('id, sector_id, assigned_to, status')
                     .eq('channel_id', newMsg.channel_id)
                     .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
                     .maybeSingle()
-                    .then(({ data: assignment }) => {
+                    .then(async ({ data: assignment }) => {
                       const sectorIdFromDb = assignment?.sector_id || null;
                       const assignedToFromDb = assignment?.assigned_to || null;
+                      
+                      // Fetch assigned user's name
+                      let assignedToNameFromDb: string | null = null;
+                      if (assignedToFromDb) {
+                        const { data: profile } = await supabase
+                          .from('profiles')
+                          .select('display_name, email')
+                          .eq('user_id', assignedToFromDb)
+                          .single();
+                        assignedToNameFromDb = profile?.display_name || profile?.email || 'Atendente';
+                      }
+                      
+                      // Map DB status to frontend status
+                      let mappedStatus: Conversation["status"] = "pending";
+                      if (assignment?.status === "active" || assignment?.status === "in_progress") mappedStatus = "in_progress";
+                      else if (assignment?.status === "archived") mappedStatus = "archived";
+                      else if (assignment?.status === "resolved") mappedStatus = "resolved";
                       
                       setAllConversations(currentPrev => {
                         // Verificar se a conversa já foi adicionada
                         const alreadyExists = currentPrev.some(c => 
                           c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
                         );
+                        
                         if (alreadyExists) {
-                          // Atualizar com sectorId e assignedTo do banco
+                          // Atualizar com dados do banco
                           return currentPrev.map(c => 
                             c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                              ? { ...c, sectorId: sectorIdFromDb, assignedTo: assignedToFromDb || c.assignedTo }
+                              ? { 
+                                  ...c, 
+                                  id: assignment?.id || c.id,
+                                  sectorId: sectorIdFromDb, 
+                                  assignedTo: assignedToFromDb,
+                                  assignedToName: assignedToNameFromDb,
+                                  status: mappedStatus
+                                }
                               : c
                           );
                         }
-                        return currentPrev;
+                        
+                        // Add new conversation with CORRECT assignment data from DB
+                        const newConv: Conversation = {
+                          id: assignment?.id,
+                          phone: displayPhone,
+                          name: leadNameFromSystem || contactName,
+                          lastMessage: newMsg.content || "",
+                          lastMessageTime: newMsg.created_at,
+                          lastInboundTime: newMsg.created_at,
+                          unreadCount: 1,
+                          channelId: newMsg.channel_id,
+                          status: mappedStatus,
+                          assignedTo: assignedToFromDb, // CRITICAL: Use DB value, not null
+                          assignedToName: assignedToNameFromDb,
+                          sectorId: sectorIdFromDb,
+                          tags: leadTagsFromSystem || null
+                        };
+                        
+                        return [newConv, ...currentPrev];
                       });
                     });
                   
-                  return [{
-                    phone: displayPhone,
-                    name: leadNameFromSystem || contactName,
-                    lastMessage: newMsg.content || "",
-                    lastMessageTime: newMsg.created_at,
-                    lastInboundTime: newMsg.created_at,
-                    unreadCount: 1,
-                    channelId: newMsg.channel_id,
-                    status: "pending" as const,
-                    assignedTo: null,
-                    assignedToName: null,
-                    sectorId: null, // Será atualizado pelo fetch acima
-                    tags: leadTagsFromSystem || null
-                  }, ...prev];
+                  // Don't add immediately - wait for the async fetch above to add with correct data
+                  return prev;
                 }
               });
             }
