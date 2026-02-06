@@ -1,4 +1,5 @@
 import { useState, useEffect, KeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Users, 
   Plus, 
@@ -16,7 +17,9 @@ import {
   UserCheck,
   Mail,
   X,
-  Loader2
+  Loader2,
+  ShoppingCart,
+  AlertTriangle
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -118,6 +121,7 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 
 const Usuarios = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
@@ -126,6 +130,10 @@ const Usuarios = () => {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  
+  // Organization limits
+  const [maxUsers, setMaxUsers] = useState<number | null>(null);
+  const [isUserLimitDialogOpen, setIsUserLimitDialogOpen] = useState(false);
   
   // Dialog states
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
@@ -162,6 +170,30 @@ const Usuarios = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  
+  // Fetch organization limits
+  const fetchOrganizationLimits = async () => {
+    if (!organizationId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("max_users")
+        .eq("id", organizationId)
+        .single();
+      
+      if (!error && data) {
+        setMaxUsers(data.max_users);
+      }
+    } catch (error) {
+      console.error("Error fetching organization limits:", error);
+    }
+  };
+  
+  // Calculate current user count for this organization
+  const currentUserCount = users.filter(u => 
+    u.organization_id === organizationId
+  ).length;
 
   // Fetch organizations for super admin filter
   const fetchOrganizations = async () => {
@@ -261,14 +293,14 @@ const Usuarios = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchUsers(), fetchSectors(), fetchOrganizations()]);
+      await Promise.all([fetchUsers(), fetchSectors(), fetchOrganizations(), fetchOrganizationLimits()]);
       setLoading(false);
     };
     
     if (isAdmin || isSuperAdmin) {
       loadData();
     }
-  }, [isAdmin, isSuperAdmin]);
+  }, [isAdmin, isSuperAdmin, organizationId]);
 
   // Handle role update
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
@@ -312,11 +344,17 @@ const Usuarios = () => {
       return;
     }
 
+    if (!organizationId) {
+      toast.error("Organização não encontrada");
+      return;
+    }
+
     try {
       const { error } = await supabase.from("sectors").insert({
         name: sectorName.trim(),
         description: sectorDescription.trim() || null,
         created_by: user?.id,
+        organization_id: organizationId,
       });
 
       if (error) throw error;
@@ -326,9 +364,9 @@ const Usuarios = () => {
       setSectorDescription("");
       setIsSectorDialogOpen(false);
       fetchSectors();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating sector:", error);
-      toast.error("Erro ao criar departamento");
+      toast.error("Erro ao criar departamento: " + (error?.message || "erro desconhecido"));
     }
   };
 
@@ -380,6 +418,24 @@ const Usuarios = () => {
   const removeEmail = (emailToRemove: string) => {
     setNewUserEmails(prev => prev.filter(email => email !== emailToRemove));
   };
+  
+  // Check if user limit is reached
+  const isUserLimitReached = () => {
+    // Super admins bypass limits
+    if (isSuperAdmin) return false;
+    // If maxUsers is null or undefined, assume unlimited
+    if (maxUsers === null || maxUsers === undefined) return false;
+    return currentUserCount >= maxUsers;
+  };
+  
+  // Handle opening new user dialog with limit check
+  const handleOpenNewUserDialog = () => {
+    if (isUserLimitReached()) {
+      setIsUserLimitDialogOpen(true);
+    } else {
+      setIsNewUserDialogOpen(true);
+    }
+  };
 
   // Handle create new user(s)
   const handleCreateUser = async () => {
@@ -394,6 +450,16 @@ const Usuarios = () => {
     if (newUserPassword.trim().length < 6) {
       toast.error("Senha deve ter pelo menos 6 caracteres");
       return;
+    }
+    
+    // Double-check limit (in case data changed)
+    if (!isSuperAdmin && maxUsers !== null && maxUsers !== undefined) {
+      const usersToCreate = newUserEmails.length;
+      if (currentUserCount + usersToCreate > maxUsers) {
+        setIsNewUserDialogOpen(false);
+        setIsUserLimitDialogOpen(true);
+        return;
+      }
     }
 
     setIsCreatingUser(true);
@@ -820,7 +886,7 @@ const Usuarios = () => {
                   </Select>
                 )}
               </div>
-              <Button onClick={() => setIsNewUserDialogOpen(true)} className="gap-2">
+              <Button onClick={handleOpenNewUserDialog} className="gap-2">
                 <Plus className="w-4 h-4" />
                 Novo Usuário
               </Button>
@@ -1388,6 +1454,53 @@ const Usuarios = () => {
                     Redefinir Senha
                   </>
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* User Limit Reached Dialog */}
+        <Dialog open={isUserLimitDialogOpen} onOpenChange={setIsUserLimitDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-warning">
+                <AlertTriangle className="w-5 h-5" />
+                Limite de Usuários Atingido
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                Sua organização atingiu o limite máximo de <strong>{maxUsers}</strong> usuário(s) contratado(s).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-muted/30 p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Usuários ativos</span>
+                  <span className="font-semibold">{currentUserCount} / {maxUsers}</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div 
+                    className="bg-warning h-2 rounded-full" 
+                    style={{ width: `${maxUsers ? Math.min((currentUserCount / maxUsers) * 100, 100) : 100}%` }}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Para adicionar mais usuários, você precisa adquirir usuários adicionais na nossa loja.
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setIsUserLimitDialogOpen(false)}>
+                Fechar
+              </Button>
+              <Button 
+                onClick={() => {
+                  setIsUserLimitDialogOpen(false);
+                  navigate("/loja");
+                }}
+                className="gap-2"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Ir para a Loja
               </Button>
             </DialogFooter>
           </DialogContent>
