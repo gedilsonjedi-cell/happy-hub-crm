@@ -29,7 +29,7 @@ import {
 
 export default function Departamentos() {
   const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isLoading: orgLoading } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -57,8 +57,15 @@ export default function Departamentos() {
 
   const addMutation = useMutation({
     mutationFn: async (dept: typeof newDepartment) => {
+      // Ensure we have a valid organization ID before inserting
+      if (!effectiveOrganizationId) {
+        throw new Error("Organization ID não disponível. Aguarde o carregamento.");
+      }
+      
+      console.log("[Departamentos] Creating sector with org_id:", effectiveOrganizationId);
+      
       const { error } = await supabase.from("sectors").insert({
-        organization_id: effectiveOrganizationId!,
+        organization_id: effectiveOrganizationId,
         created_by: user!.id,
         name: dept.name,
         description: dept.description || null,
@@ -71,8 +78,9 @@ export default function Departamentos() {
       setNewDepartment({ name: "", description: "" });
       toast.success("Departamento criado com sucesso!");
     },
-    onError: () => {
-      toast.error("Erro ao criar departamento");
+    onError: (error: any) => {
+      console.error("[Departamentos] Error creating sector:", error);
+      toast.error(error.message || "Erro ao criar departamento");
     },
   });
 
@@ -116,6 +124,10 @@ export default function Departamentos() {
       toast.error("Preencha o nome do departamento");
       return;
     }
+    if (!effectiveOrganizationId) {
+      toast.error("Aguarde o carregamento da organização");
+      return;
+    }
     addMutation.mutate(newDepartment);
   };
 
@@ -135,7 +147,7 @@ export default function Departamentos() {
     updateMutation.mutate({ id, data: editForm });
   };
 
-  if (isLoading) {
+  if (isLoading || orgLoading) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
