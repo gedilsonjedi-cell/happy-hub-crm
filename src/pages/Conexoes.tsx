@@ -22,7 +22,8 @@ import {
   MessageSquare,
   Bot,
   Zap,
-  Workflow
+  Workflow,
+  ArrowRightLeft
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MigrateWabaDialog } from "@/components/connections/MigrateWabaDialog";
 
 interface Channel {
   id: string;
@@ -136,6 +138,9 @@ const Conexoes = () => {
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [sharedVerifyToken, setSharedVerifyToken] = useState<string>('');
   const [showWabaConfig, setShowWabaConfig] = useState<{ wabaId: string; verifyToken: string } | null>(null);
+  
+  // Migrate WABA dialog state
+  const [showMigrateWabaDialog, setShowMigrateWabaDialog] = useState<Channel | null>(null);
   
   // Sync dialog state
   const [showSyncDialog, setShowSyncDialog] = useState(false);
@@ -1515,6 +1520,16 @@ const Conexoes = () => {
                         <Webhook className="w-4 h-4" />
                         Ver Configuração
                       </DropdownMenuItem>
+                      {/* Migrate WABA - Only for Meta channels */}
+                      {channel.provider === 'meta' && (
+                        <DropdownMenuItem 
+                          className="gap-2 cursor-pointer"
+                          onClick={() => setShowMigrateWabaDialog(channel)}
+                        >
+                          <ArrowRightLeft className="w-4 h-4" />
+                          Migrar WABA
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem 
                         className="gap-2 cursor-pointer"
                         onClick={() => handleToggleConnection(channel)}
@@ -2673,6 +2688,14 @@ const Conexoes = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Migrate WABA Dialog */}
+      <MigrateWabaDialog
+        channel={showMigrateWabaDialog}
+        open={!!showMigrateWabaDialog}
+        onOpenChange={(open) => !open && setShowMigrateWabaDialog(null)}
+        onSuccess={fetchChannels}
+      />
     </MainLayout>
   );
 };
