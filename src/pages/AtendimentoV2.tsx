@@ -777,6 +777,87 @@ const AtendimentoV2 = () => {
     fetchConversations();
   }, [channels, effectiveOrganizationId]);
 
+  // CRITICAL FIX: Periodic sync to ensure assignedTo is always up-to-date
+  // This prevents stale state where conversations show as unassigned when they're actually assigned in DB
+  useEffect(() => {
+    if (channels.length === 0) return;
+    
+    const syncAssignments = async () => {
+      const channelIds = channels.map(c => c.id);
+      
+      // Fetch current assignments from DB
+      const { data: assignments } = await supabase
+        .from("conversation_assignments")
+        .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
+        .in("channel_id", channelIds)
+        .neq("status", "archived");
+      
+      if (!assignments) return;
+      
+      // Build a map of phone -> assignment for quick lookup
+      const assignmentMap = new Map<string, typeof assignments[0]>();
+      assignments.forEach(a => {
+        const normalizedPhone = a.conversation_phone.replace(/\D/g, '');
+        const key = `${a.channel_id}_${normalizedPhone}`;
+        assignmentMap.set(key, a);
+      });
+      
+      // Update any conversations that have stale assignedTo values
+      setAllConversations(prev => {
+        let hasChanges = false;
+        const updated = prev.map(conv => {
+          const normalizedPhone = conv.phone.replace(/\D/g, '');
+          const key = `${conv.channelId}_${normalizedPhone}`;
+          const dbAssignment = assignmentMap.get(key);
+          
+          if (dbAssignment) {
+            // Check if local state differs from DB
+            const needsUpdate = 
+              conv.assignedTo !== dbAssignment.assigned_to ||
+              conv.sectorId !== dbAssignment.sector_id ||
+              (dbAssignment.status === 'active' && conv.status !== 'in_progress') ||
+              (dbAssignment.status === 'in_progress' && conv.status !== 'in_progress');
+            
+            if (needsUpdate) {
+              hasChanges = true;
+              let mappedStatus = conv.status;
+              if (dbAssignment.status === 'active' || dbAssignment.status === 'in_progress') {
+                mappedStatus = 'in_progress';
+              } else if (dbAssignment.status === 'pending') {
+                mappedStatus = 'pending';
+              }
+              
+              return {
+                ...conv,
+                assignedTo: dbAssignment.assigned_to,
+                sectorId: dbAssignment.sector_id,
+                status: mappedStatus
+              };
+            }
+          }
+          return conv;
+        });
+        
+        return hasChanges ? updated : prev;
+      });
+    };
+    
+    // Initial sync after 500ms (quick sync to catch stale state immediately)
+    const initialTimer = setTimeout(syncAssignments, 500);
+    
+    // Second sync after 3 seconds (catch any delayed updates)
+    const secondTimer = setTimeout(syncAssignments, 3000);
+    
+    // Periodic sync every 15 seconds (more frequent to ensure consistency)
+    const intervalId = setInterval(syncAssignments, 15000);
+    
+    return () => {
+      clearTimeout(initialTimer);
+      clearTimeout(secondTimer);
+      clearInterval(intervalId);
+    };
+  }, [channels]);
+
   // Helper function to get conversation key
   const getConversationKey = (conv: Conversation) => {
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
@@ -2908,28 +2989,34 @@ const AtendimentoV2 = () => {
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
   
-  // CRITICAL FIX: For attendants, they can ONLY see:
-  // 1. Conversations assigned to them (their "Meus")
-  // 2. Unassigned conversations that have NO sector OR belong to their sector
-  // This prevents attendants from seeing "Novos" from other departments
+  // CRITICAL FIX: For attendants, strict visibility rules:
+  // 1. ONLY see conversations assigned to them (their "Meus")
+  // 2. ONLY see unassigned conversations without sector (true orphans)
+  // Conversations with sectors should ALWAYS be auto-distributed, so attendants
+  // should NEVER see them in "Novos" - they go directly to the assigned attendant's "Meus"
   const visibleConversations = canSeeOthers 
     ? activeConversations 
     : activeConversations.filter(conv => {
-        // Always show conversations assigned to this user
+        // STRICT RULE 1: Always show conversations assigned to this user
         if (conv.assignedTo === user?.id) return true;
         
-        // For unassigned conversations, only show if:
-        // - No sector (truly "orphan" conversations visible to all)
-        // - OR the conversation's sector belongs to this user
-        if (!conv.assignedTo) {
-          // No sector = visible (true "Novos" queue for everyone)
-          if (!conv.sectorId) return true;
-          
-          // Has sector = only visible if user is in that sector
+        // STRICT RULE 2: If conversation is assigned to ANYONE else, hide it completely
+        // This is critical - attendants should NEVER see other people's conversations
+        if (conv.assignedTo && conv.assignedTo !== user?.id) return false;
+        
+        // STRICT RULE 3: Only show truly orphan conversations (no assignee AND no sector)
+        // If a conversation has a sector, it should have been auto-distributed
+        // and belongs in someone's "Meus", not in the general "Novos" queue
+        if (!conv.assignedTo && !conv.sectorId) return true;
+        
+        // STRICT RULE 4: Conversations with sector but no assignee = 
+        // ONLY visible if user belongs to that sector
+        // This handles the rare case where auto-distribution hasn't happened yet
+        if (!conv.assignedTo && conv.sectorId) {
           return sectorIds.includes(conv.sectorId);
         }
         
-        // Assigned to someone else - not visible to attendants
+        // Default: hide everything else
         return false;
       });
   
@@ -2940,7 +3027,11 @@ const AtendimentoV2 = () => {
     ? globalSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
-        if (filterStatus === "new") matchesFilter = !conv.assignedTo && !conv.sectorId && conv.status !== "archived";
+        if (filterStatus === "new") {
+          // Same strict logic as main filter - only truly orphan conversations
+          const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
+          matchesFilter = isTrulyOrphan && conv.status !== "archived";
+        }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
         
@@ -2959,12 +3050,18 @@ const AtendimentoV2 = () => {
         
         let matchesFilter = false;
         if (filterStatus === "new") {
-          // CRITICAL FIX: "Novos" only shows conversations that:
-          // 1. Have NO assignee (not distributed to anyone)
-          // 2. Have NO sector (truly orphan - no automatic distribution possible)
-          // If a conversation has a sector, it SHOULD have been auto-distributed,
-          // so it belongs in "Meus" of the assigned attendant, not in "Novos"
-          matchesFilter = !conv.assignedTo && !conv.sectorId && conv.status !== "archived";
+          // CRITICAL FIX: "Novos" ONLY shows truly orphan conversations:
+          // 1. Have NO assignee (assigned_to is null/undefined)
+          // 2. Have NO sector (sector_id is null/undefined)
+          // 3. Are not archived
+          // 
+          // STRICT ENFORCEMENT: If a conversation has a sector, it means it came from
+          // a campaign or was manually assigned to a department. Such conversations
+          // should NEVER appear in "Novos" because they WILL be auto-distributed.
+          // If the assignedTo is still null but sector exists, it means the state
+          // is stale and the conversation shouldn't be shown until synced.
+          const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
+          matchesFilter = isTrulyOrphan && conv.status !== "archived";
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
