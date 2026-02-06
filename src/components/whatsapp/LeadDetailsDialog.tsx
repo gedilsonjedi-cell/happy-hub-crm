@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useLeadActivityLog } from "@/hooks/useLeadActivityLog";
 import { toast } from "sonner";
 import { normalizePhoneForStorage } from "@/lib/brazilPhoneValidation";
@@ -98,6 +99,7 @@ export function LeadDetailsDialog({
   name,
 }: LeadDetailsDialogProps) {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("details");
@@ -142,21 +144,13 @@ export function LeadDetailsDialog({
   }, [open, phone, name]);
 
   // Fetch lead by phone - prioritize leads with tags and real names
-  // CRITICAL: Include user.id in queryKey to prevent cross-organization cache pollution
+  // CRITICAL: Include effectiveOrganizationId in queryKey to prevent cross-organization cache pollution
   const { data: lead, isLoading: loadingLead, refetch: refetchLead } = useQuery({
-    queryKey: ["lead-by-phone", normalizedPhone, user?.id, open],
+    queryKey: ["lead-by-phone", normalizedPhone, effectiveOrganizationId, open],
     queryFn: async () => {
-      if (!open) return null;
-      
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .single();
+      if (!open || !effectiveOrganizationId) return null;
 
-      if (!profile?.organization_id) return null;
-
-      console.log('[LeadDetailsDialog] Searching lead with phone:', normalizedPhone, 'org:', profile.organization_id);
+      console.log('[LeadDetailsDialog] Searching lead with phone:', normalizedPhone, 'org:', effectiveOrganizationId);
 
       // Try multiple suffix lengths to handle different phone formats
       // First try with 9 digits, then 8, then 7 for better matching
@@ -166,7 +160,7 @@ export function LeadDetailsDialog({
         const { data, error } = await supabase
           .from("leads")
           .select("*")
-          .eq("organization_id", profile.organization_id)
+          .eq("organization_id", effectiveOrganizationId)
           .ilike("phone", `%${suffix}`);
         
         if (error) {
@@ -214,73 +208,53 @@ export function LeadDetailsDialog({
       console.log('[LeadDetailsDialog] Best match:', scored[0]?.lead);
       return scored[0].lead as Lead;
     },
-    enabled: open && !!normalizedPhone && !!user,
+    enabled: open && !!normalizedPhone && !!effectiveOrganizationId,
     staleTime: 0, // Always refetch when dialog opens
     gcTime: 0, // Don't cache
   });
 
-  // Fetch custom field definitions - include user.id to prevent cache leakage
+  // Fetch custom field definitions - use effectiveOrganizationId
   const { data: customFields } = useQuery({
-    queryKey: ["custom-field-definitions", user?.id],
+    queryKey: ["custom-field-definitions", effectiveOrganizationId],
     queryFn: async () => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .single();
-
-      if (!profile?.organization_id) return [];
+      if (!effectiveOrganizationId) return [];
 
       const { data, error } = await supabase
         .from("lead_custom_field_definitions")
         .select("*")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrganizationId)
         .order("display_order", { ascending: true });
 
       if (error) throw error;
       return data as CustomFieldDefinition[];
     },
-    enabled: open && !!user,
+    enabled: open && !!effectiveOrganizationId,
   });
 
-  // Fetch available tags - include user.id in queryKey to prevent cache leakage between accounts
+  // Fetch available tags - use effectiveOrganizationId to respect impersonation
   const { data: availableTags } = useQuery({
-    queryKey: ["lead-tags", user?.id],
+    queryKey: ["lead-tags", effectiveOrganizationId],
     queryFn: async () => {
-      if (!user?.id) return [];
-      
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!profile?.organization_id) return [];
+      if (!effectiveOrganizationId) return [];
 
       const { data, error } = await supabase
         .from("lead_tags")
         .select("*")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrganizationId)
         .order("name");
 
       if (error) throw error;
       return data as LeadTag[];
     },
-    enabled: open && !!user?.id,
+    enabled: open && !!effectiveOrganizationId,
     staleTime: 30000, // 30 seconds - refetch to ensure fresh data
   });
 
-  // Fetch campaign dispatch history for this phone - include user.id to prevent cache leakage
+  // Fetch campaign dispatch history for this phone - use effectiveOrganizationId
   const { data: campaignHistory } = useQuery({
-    queryKey: ["campaign-history", normalizedPhone, user?.id],
+    queryKey: ["campaign-history", normalizedPhone, effectiveOrganizationId],
     queryFn: async () => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id)
-        .single();
-
-      if (!profile?.organization_id) return [];
+      if (!effectiveOrganizationId) return [];
 
       // Build search patterns for phone matching (use last 8 digits for best matching)
       const phonePatterns = [
@@ -315,9 +289,9 @@ export function LeadDetailsDialog({
         return [];
       }
 
-      // Filter to only include campaigns from the user's organization
+      // Filter to only include campaigns from the effective organization
       const filtered = recipients?.filter(
-        (r) => (r.campaigns as { organization_id: string })?.organization_id === profile.organization_id
+        (r) => (r.campaigns as { organization_id: string })?.organization_id === effectiveOrganizationId
       ) || [];
 
       return filtered.map((r) => ({
@@ -329,7 +303,7 @@ export function LeadDetailsDialog({
         status: r.status,
       })) as CampaignDispatch[];
     },
-    enabled: open && !!user && !!normalizedPhone,
+    enabled: open && !!effectiveOrganizationId && !!normalizedPhone,
   });
 
   // Activity log
@@ -360,21 +334,13 @@ export function LeadDetailsDialog({
   }, [lead, open, loadingLead]);
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !effectiveOrganizationId) {
+      toast.error("Organização não encontrada");
+      return;
+    }
 
     setSaving(true);
     try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!profile?.organization_id) {
-        toast.error("Organização não encontrada");
-        return;
-      }
-
       // Normaliza o telefone: SEMPRE adiciona 55 na frente
       const normalizedPhone = normalizePhoneForStorage(formData.phone);
 
@@ -389,7 +355,7 @@ export function LeadDetailsDialog({
         notes: formData.notes || null,
         tags: selectedTags,
         custom_fields: customFieldValues as unknown as Record<string, string | number | boolean | null>,
-        organization_id: profile.organization_id,
+        organization_id: effectiveOrganizationId,
         user_id: user.id,
       };
 
