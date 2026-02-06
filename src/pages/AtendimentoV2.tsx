@@ -1370,79 +1370,131 @@ const AtendimentoV2 = () => {
             }
 
             if (newMsg.direction === "inbound") {
+              // CRITICAL FIX: For inbound messages, ALWAYS fetch assignment from DB to ensure
+              // we have the correct assignedTo value. This prevents distributed conversations
+              // from appearing in "Novos" tab.
+              const fetchAndUpdateConversation = async () => {
+                // First, fetch the current assignment state from DB
+                const { data: assignment } = await supabase
+                  .from('conversation_assignments')
+                  .select('id, sector_id, assigned_to, status')
+                  .eq('channel_id', newMsg.channel_id)
+                  .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+                  .maybeSingle();
+                
+                // Get attendant name if assigned
+                let assignedToNameFromDb: string | null = null;
+                if (assignment?.assigned_to) {
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('display_name, email')
+                    .eq('user_id', assignment.assigned_to)
+                    .single();
+                  assignedToNameFromDb = profile?.display_name || profile?.email || 'Atendente';
+                }
+                
+                // Map DB status to frontend status
+                let mappedStatusFromDb: Conversation["status"] = "pending";
+                if (assignment?.status === "active" || assignment?.status === "in_progress") mappedStatusFromDb = "in_progress";
+                else if (assignment?.status === "archived") mappedStatusFromDb = "archived";
+                else if (assignment?.status === "resolved") mappedStatusFromDb = "resolved";
+                else if (assignment?.status === "pending") mappedStatusFromDb = "pending";
+                
+                setAllConversations(prev => {
+                  const existing = prev.find(c => 
+                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                  );
+                  
+                  if (existing) {
+                    // Determine status based on DB assignment or archived reactivation
+                    let newStatus = mappedStatusFromDb;
+                    if (existing.status === "archived" && assignment) {
+                      // Reactivate archived conversation
+                      const hadPreviousAttendant = assignment.assigned_to !== null;
+                      newStatus = hadPreviousAttendant ? "in_progress" : "pending";
+                      
+                      // Update in DB
+                      if (existing.channelId) {
+                        supabase
+                          .from("conversation_assignments")
+                          .update({ 
+                            status: newStatus, 
+                            updated_at: new Date().toISOString() 
+                          })
+                          .eq("id", assignment.id)
+                          .then(() => {});
+                      }
+                    }
+                    
+                    const currentSelectedConv = selectedConversationRef.current;
+                    const normalizedSelectedPhone = currentSelectedConv?.phone.replace(/\D/g, '') || '';
+                    const selectedChannelId = currentSelectedConv?.channelId || '';
+                    const selectedConversationKeyLocal = `${selectedChannelId}_${normalizedSelectedPhone}`;
+                    const msgConversationKeyLocal = `${newMsg.channel_id}_${normalizedContactPhone}`;
+                    const isCurrentConversation = selectedConversationKeyLocal === msgConversationKeyLocal;
+                    
+                    // Get lead name from system
+                    const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
+                    const phoneWith55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
+                    const phoneSuffix8 = normalizedContactPhone.slice(-8);
+                    
+                    const matches = [
+                      leadsMapRef.current.byPhone.get(normalizedContactPhone),
+                      leadsMapRef.current.byPhone.get(phoneWithout55),
+                      leadsMapRef.current.byPhone.get(phoneWith55),
+                      leadsMapRef.current.bySuffix.get(phoneSuffix8)
+                    ].filter(Boolean);
+                    
+                    let leadNameFromSystem: string | undefined;
+                    let leadTagsFromSystem: string[] | null = null;
+                    
+                    for (const match of matches) {
+                      if (!match) continue;
+                      if (!leadNameFromSystem && match.name) leadNameFromSystem = match.name;
+                      if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && match.tags && match.tags.length > 0) {
+                        leadTagsFromSystem = match.tags;
+                      }
+                      if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
+                    }
+                    
+                    const updated = prev.map(c => 
+                      c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
+                        ? { 
+                            ...c, 
+                            id: assignment?.id || c.id,
+                            lastMessage: newMsg.content || "", 
+                            lastMessageTime: newMsg.created_at,
+                            lastInboundTime: newMsg.created_at,
+                            unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                            status: newStatus,
+                            // CRITICAL: Always sync assignedTo from DB to prevent appearing in "Novos"
+                            assignedTo: assignment?.assigned_to ?? c.assignedTo,
+                            assignedToName: assignedToNameFromDb ?? c.assignedToName,
+                            sectorId: assignment?.sector_id ?? c.sectorId,
+                            name: leadNameFromSystem || c.name || contactName,
+                            tags: leadTagsFromSystem || c.tags
+                          }
+                        : c
+                    );
+                    
+                    return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+                  }
+                  
+                  return prev;
+                });
+              };
+              
+              // Execute the async function
+              fetchAndUpdateConversation();
+              
+              // Also check if conversation exists in current state for new conversations
               setAllConversations(prev => {
                 const existing = prev.find(c => 
                   c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
                 );
                 if (existing) {
-                  let newStatus = existing.status;
-                  if (existing.status === "archived") {
-                    // Se tinha atendente anterior, volta para ele (in_progress)
-                    // Se não tinha, vai para pending
-                    const hadPreviousAttendant = existing.assignedTo !== null;
-                    newStatus = hadPreviousAttendant ? "in_progress" : "pending";
-                    const convKey = `${existing.channelId}_${existing.phone.replace(/\D/g, '')}`;
-                    setConversationStatuses(prevStatuses => ({ ...prevStatuses, [convKey]: newStatus }));
-                    if (existing.channelId) {
-                      supabase
-                        .from("conversation_assignments")
-                        .update({ 
-                          status: newStatus, 
-                          updated_at: new Date().toISOString() 
-                        })
-                        .eq("channel_id", existing.channelId)
-                        .or(`conversation_phone.eq.${existing.phone.replace(/\D/g, '')},conversation_phone.eq.+${existing.phone.replace(/\D/g, '')}`)
-                        .then(() => {});
-                    }
-                  }
-                  
-                  const isCurrentConversation = selectedConversationKey === msgConversationKey;
-                  // Get lead name from system with multiple lookup strategies
-                  const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
-                  const phoneWith55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
-                  const phoneSuffix8 = normalizedContactPhone.slice(-8);
-                  
-                  // Find best lead match with merged data
-                  const matches = [
-                    leadsMapRef.current.byPhone.get(normalizedContactPhone),
-                    leadsMapRef.current.byPhone.get(phoneWithout55),
-                    leadsMapRef.current.byPhone.get(phoneWith55),
-                    leadsMapRef.current.bySuffix.get(phoneSuffix8)
-                  ].filter(Boolean);
-                  
-                  let leadNameFromSystem: string | undefined;
-                  let leadTagsFromSystem: string[] | null = null;
-                  
-                  for (const match of matches) {
-                    if (!match) continue;
-                    if (!leadNameFromSystem && match.name) leadNameFromSystem = match.name;
-                    if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && match.tags && match.tags.length > 0) {
-                      leadTagsFromSystem = match.tags;
-                    }
-                    if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
-                  }
-                  const updated = prev.map(c => 
-                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone 
-                      ? { 
-                          ...c, 
-                          lastMessage: newMsg.content || "", 
-                          lastMessageTime: newMsg.created_at,
-                          lastInboundTime: newMsg.created_at,
-                          unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
-                          status: newStatus,
-                          name: leadNameFromSystem || c.name || contactName,
-                          tags: leadTagsFromSystem || c.tags
-                        }
-                      : c
-                  );
-                  
-                  const updatedIndex = updated.findIndex(c => 
-                    c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                  );
-                  if (updatedIndex > 0) {
-                    return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
-                  }
-                  return updated;
+                  // Will be handled by fetchAndUpdateConversation above
+                  return prev;
                 } else {
                   const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
                   // Get lead name from system with multiple lookup strategies
