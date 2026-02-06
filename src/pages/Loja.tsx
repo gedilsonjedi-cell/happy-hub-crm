@@ -471,7 +471,7 @@ export default function Loja() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {products.map((product) => {
+              {products.filter(p => !p.name.toLowerCase().includes("higieniza")).map((product) => {
                 const isSubscription = product.product_type === "subscription";
                 const isAddon = product.product_type === "addon";
                 const isMonthly = isSubscription || isAddon;

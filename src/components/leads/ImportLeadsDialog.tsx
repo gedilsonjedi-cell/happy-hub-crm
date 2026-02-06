@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users, Loader2, CheckCircle2, XCircle, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +20,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -64,6 +65,7 @@ interface ParsedLead {
   state: string | null;
   customFields: Record<string, string>;
   rowIndex: number;
+  hasWhatsApp?: boolean;
 }
 
 interface ExistingLead {
@@ -109,7 +111,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [step, setStep] = useState<"upload" | "mapping" | "conflicts" | "tags">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "validating" | "conflicts" | "tags">("upload");
   const [parsedFileData, setParsedFileData] = useState<ParsedFileData | null>(null);
   
   // Column mapping states
@@ -125,6 +127,14 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const [newFieldColumnIndex, setNewFieldColumnIndex] = useState<number | null>(null);
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [isCreatingField, setIsCreatingField] = useState(false);
+  
+  // WhatsApp validation states
+  const [validationProgress, setValidationProgress] = useState(0);
+  const [validationStats, setValidationStats] = useState<{
+    total: number;
+    withWhatsApp: number;
+    withoutWhatsApp: number;
+  } | null>(null);
   
   // Conflict resolution states
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -387,6 +397,67 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     return digits.slice(-8);
   };
 
+  // Validate WhatsApp numbers using Z-API
+  const validateWhatsAppNumbers = async (leads: ParsedLead[]): Promise<ParsedLead[]> => {
+    const phones = leads.map(l => l.phone);
+    const BATCH_SIZE = 500;
+    const validatedLeads: ParsedLead[] = [];
+    
+    let processed = 0;
+    
+    for (let i = 0; i < phones.length; i += BATCH_SIZE) {
+      const batch = phones.slice(i, i + BATCH_SIZE);
+      
+      try {
+        const { data, error } = await supabase.functions.invoke("zapi-validate-batch", {
+          body: { phones: batch },
+        });
+        
+        if (error) {
+          console.error("Z-API validation error:", error);
+          // On error, mark all as having WhatsApp (don't block import)
+          for (let j = 0; j < batch.length; j++) {
+            const leadIndex = i + j;
+            if (leadIndex < leads.length) {
+              validatedLeads.push({ ...leads[leadIndex], hasWhatsApp: true });
+            }
+          }
+        } else if (data?.results) {
+          // Map results back to leads
+          for (let j = 0; j < batch.length; j++) {
+            const leadIndex = i + j;
+            if (leadIndex < leads.length) {
+              const result = data.results[j];
+              validatedLeads.push({
+                ...leads[leadIndex],
+                hasWhatsApp: result?.exists ?? true, // Default to true if no result
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error calling Z-API:", err);
+        // On error, include all leads (don't block)
+        for (let j = 0; j < batch.length; j++) {
+          const leadIndex = i + j;
+          if (leadIndex < leads.length) {
+            validatedLeads.push({ ...leads[leadIndex], hasWhatsApp: true });
+          }
+        }
+      }
+      
+      processed += batch.length;
+      setValidationProgress(Math.round((processed / phones.length) * 100));
+      
+      // Small delay between batches
+      if (i + BATCH_SIZE < phones.length) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    return validatedLeads;
+  };
+
   const handleMappingConfirm = async () => {
     if (selectedPhoneColumn === null) {
       toast.error("Selecione a coluna de telefone");
@@ -395,7 +466,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     
     if (!parsedFileData || !organizationId) return;
     
-    setCheckingConflicts(true);
+    // Move to validating step
+    setStep("validating");
+    setValidationProgress(0);
+    setValidationStats(null);
     
     try {
       // Parse all leads from file
@@ -432,11 +506,34 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         })
         .filter((l): l is ParsedLead => l !== null);
       
-      setParsedLeads(leads);
+      // VALIDATE WHATSAPP - This is now mandatory
+      const validatedLeads = await validateWhatsAppNumbers(leads);
+      
+      // Filter only leads with WhatsApp
+      const leadsWithWhatsApp = validatedLeads.filter(l => l.hasWhatsApp === true);
+      const leadsWithoutWhatsApp = validatedLeads.filter(l => l.hasWhatsApp === false);
+      
+      setValidationStats({
+        total: validatedLeads.length,
+        withWhatsApp: leadsWithWhatsApp.length,
+        withoutWhatsApp: leadsWithoutWhatsApp.length,
+      });
+      
+      // If no leads have WhatsApp, show error and stop
+      if (leadsWithWhatsApp.length === 0) {
+        toast.error("Nenhum número com WhatsApp encontrado na planilha");
+        setStep("mapping");
+        return;
+      }
+      
+      setParsedLeads(leadsWithWhatsApp);
+      
+      // Now check for conflicts (only with leads that have WhatsApp)
+      setCheckingConflicts(true);
       
       // Check for duplicates within the spreadsheet
       const phoneGroups = new Map<string, ParsedLead[]>();
-      leads.forEach(lead => {
+      leadsWithWhatsApp.forEach(lead => {
         const normalizedPhone = normalizePhoneForCompare(lead.phone);
         const existing = phoneGroups.get(normalizedPhone) || [];
         existing.push(lead);
@@ -454,10 +551,6 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           });
         }
       });
-      
-      // Get unique phones from file (deduplicated)
-      const uniquePhones = leads.map(l => l.phone);
-      const phoneSuffixes = [...new Set(leads.map(l => normalizePhoneForCompare(l.phone)))];
       
       // Check which phones already exist in database using suffix matching
       const { data: existingLeads } = await supabase
@@ -482,7 +575,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       const databaseConflicts: DatabaseConflict[] = [];
       const seenPhoneSuffixes = new Set<string>();
       
-      leads.forEach(lead => {
+      leadsWithWhatsApp.forEach(lead => {
         const suffix = normalizePhoneForCompare(lead.phone);
         if (seenPhoneSuffixes.has(suffix)) return; // Skip duplicates in file
         seenPhoneSuffixes.add(suffix);
@@ -508,8 +601,9 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         setStep("tags");
       }
     } catch (error) {
-      console.error("Error checking conflicts:", error);
-      toast.error("Erro ao verificar conflitos");
+      console.error("Error validating/checking conflicts:", error);
+      toast.error("Erro ao validar números");
+      setStep("mapping");
     } finally {
       setCheckingConflicts(false);
     }
@@ -822,6 +916,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     setConflicts([]);
     setParsedLeads([]);
     setExistingLeadsMap(new Map());
+    setValidationProgress(0);
+    setValidationStats(null);
     setStep("upload");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -847,6 +943,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           <DialogDescription>
             {step === "upload" && "Selecione um arquivo CSV para importar"}
             {step === "mapping" && "Configure o mapeamento das colunas"}
+            {step === "validating" && "Validando números no WhatsApp..."}
             {step === "conflicts" && "Resolva conflitos de telefones duplicados"}
             {step === "tags" && "Adicione tags aos leads importados (opcional)"}
           </DialogDescription>
@@ -857,10 +954,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
             {step === "upload" && (
               <>
                 <Alert>
-                  <AlertCircle className="h-4 w-4" />
+                  <Smartphone className="h-4 w-4" />
                   <AlertDescription>
-                    O arquivo CSV deve conter pelo menos uma coluna de <strong>telefone</strong>. 
-                    Outras colunas serão detectadas automaticamente.
+                    Apenas contatos com <strong>WhatsApp ativo</strong> serão importados. 
+                    A validação é automática e gratuita.
                   </AlertDescription>
                 </Alert>
 
@@ -1177,8 +1274,62 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               </>
             )}
 
+            {step === "validating" && (
+              <div className="py-12 space-y-6">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">Validando números no WhatsApp</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Verificando quais contatos possuem WhatsApp ativo...
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Progresso</span>
+                    <span>{validationProgress}%</span>
+                  </div>
+                  <Progress value={validationProgress} className="h-2" />
+                </div>
+                
+                {validationStats && (
+                  <div className="grid grid-cols-3 gap-4 mt-6">
+                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                      <p className="text-2xl font-bold">{validationStats.total}</p>
+                      <p className="text-xs text-muted-foreground">Total</p>
+                    </div>
+                    <div className="text-center p-4 bg-primary/10 rounded-lg">
+                      <p className="text-2xl font-bold text-primary">{validationStats.withWhatsApp}</p>
+                      <p className="text-xs text-muted-foreground">Com WhatsApp</p>
+                    </div>
+                    <div className="text-center p-4 bg-destructive/10 rounded-lg">
+                      <p className="text-2xl font-bold text-destructive">{validationStats.withoutWhatsApp}</p>
+                      <p className="text-xs text-muted-foreground">Sem WhatsApp</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {step === "conflicts" && (
               <>
+                {/* Show validation summary if available */}
+                {validationStats && (
+                  <Alert className="mb-4 bg-primary/5 border-primary/20">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <AlertDescription>
+                      <strong>{validationStats.withWhatsApp}</strong> contatos com WhatsApp serão importados
+                      {validationStats.withoutWhatsApp > 0 && (
+                        <span className="text-muted-foreground">
+                          {" "}({validationStats.withoutWhatsApp} descartados por não terem WhatsApp)
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium flex items-center gap-2">
@@ -1252,46 +1403,39 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
                       </div>
                     );
                   })}
-                  
+
                   {/* Database Conflicts */}
                   {conflicts.filter(c => c.type === "database").map((conflict) => {
                     const c = conflict as DatabaseConflict;
                     return (
                       <div key={c.phone} className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <AlertCircle className="w-4 h-4 text-blue-500" />
+                          <AlertCircle className="w-4 h-4" />
                           <span>Contato já existe no sistema</span>
                           <Badge variant="outline" className="ml-auto">
                             ({c.newLead.phone.slice(0, 2)}) {c.newLead.phone.slice(2, 7)}-{c.newLead.phone.slice(7)}
                           </Badge>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 rounded-lg bg-muted/50 border">
-                            <p className="text-xs text-muted-foreground mb-1">Na planilha (novo)</p>
-                            <p className="font-medium text-sm">{c.newLead.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {c.newLead.document || "-"} • {c.newLead.city || "-"}
-                            </p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="p-3 bg-muted/30 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Na planilha</p>
+                            <p className="font-medium">{c.newLead.name}</p>
+                            <p className="text-xs">{c.newLead.email || "-"}</p>
+                            <p className="text-xs">{c.newLead.document || "-"}</p>
                           </div>
-                          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-                            <p className="text-xs text-blue-500 mb-1">No sistema (existente)</p>
-                            <p className="font-medium text-sm">{c.existingLead.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {c.existingLead.document || "-"} • {c.existingLead.city || "-"}
-                            </p>
+                          <div className="p-3 bg-muted/30 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">No sistema</p>
+                            <p className="font-medium">{c.existingLead.name}</p>
+                            <p className="text-xs">{c.existingLead.email || "-"}</p>
+                            <p className="text-xs">{c.existingLead.document || "-"}</p>
                             {c.existingLead.tags && c.existingLead.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {c.existingLead.tags.slice(0, 2).map((tag, i) => (
-                                  <Badge key={i} variant="secondary" className="text-[10px] h-4">
+                              <div className="flex gap-1 mt-1">
+                                {c.existingLead.tags.slice(0, 3).map((tag, i) => (
+                                  <Badge key={i} variant="secondary" className="text-[10px] px-1 py-0">
                                     {tag}
                                   </Badge>
                                 ))}
-                                {c.existingLead.tags.length > 2 && (
-                                  <Badge variant="secondary" className="text-[10px] h-4">
-                                    +{c.existingLead.tags.length - 2}
-                                  </Badge>
-                                )}
                               </div>
                             )}
                           </div>
@@ -1324,9 +1468,24 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
 
             {step === "tags" && parsedFileData && (
               <>
+                {/* Show validation summary */}
+                {validationStats && (
+                  <Alert className="mb-4 bg-primary/5 border-primary/20">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <AlertDescription>
+                      <strong>{parsedLeads.length}</strong> contatos com WhatsApp prontos para importar
+                      {validationStats.withoutWhatsApp > 0 && (
+                        <span className="text-muted-foreground">
+                          {" "}({validationStats.withoutWhatsApp} descartados)
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">{parsedLeads.length > 0 ? parsedLeads.length : parsedFileData.rows.length} leads prontos para importar</p>
+                    <p className="font-medium">{parsedLeads.length} leads prontos para importar</p>
                     <p className="text-sm text-muted-foreground">Adicione tags opcionalmente</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => conflicts.length > 0 ? setStep("conflicts") : setStep("mapping")}>
@@ -1473,12 +1632,18 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           <Button variant="outline" onClick={() => {
             handleReset();
             onOpenChange(false);
-          }}>
+          }} disabled={step === "validating"}>
             Cancelar
           </Button>
           {step === "mapping" && (
-            <Button onClick={handleMappingConfirm} disabled={selectedPhoneColumn === null || checkingConflicts}>
-              {checkingConflicts ? "Verificando..." : "Continuar"}
+            <Button onClick={handleMappingConfirm} disabled={selectedPhoneColumn === null}>
+              Validar WhatsApp
+            </Button>
+          )}
+          {step === "validating" && (
+            <Button disabled>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Validando...
             </Button>
           )}
           {step === "conflicts" && (
@@ -1501,7 +1666,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               className="gap-2"
             >
               <Check className="w-4 h-4" />
-              {importing ? "Importando..." : `Importar ${parsedLeads.length > 0 ? parsedLeads.length : parsedFileData?.rows.length} leads`}
+              {importing ? "Importando..." : `Importar ${parsedLeads.length} leads`}
             </Button>
           )}
         </DialogFooter>

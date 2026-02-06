@@ -75,8 +75,6 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { validateBrazilianPhone, formatBrazilianPhone, getValidationMessage, normalizePhoneForStorage, type PhoneValidationResult } from "@/lib/brazilPhoneValidation";
-import { useHasAddon } from "@/hooks/useHasAddon";
-import { PremiumFeaturePaywall } from "@/components/paywall/PremiumFeaturePaywall";
 import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
 
 interface PhoneEntry {
@@ -127,17 +125,6 @@ export default function Higienizacao() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Check if user has the Higienização addon
-  const { hasAddon, isLoading: isLoadingAddon } = useHasAddon("Higienização");
-  const [showPaywall, setShowPaywall] = useState(false);
-
-  // Show paywall when addon check is complete and user doesn't have it
-  useEffect(() => {
-    if (!isLoadingAddon && !hasAddon) {
-      setShowPaywall(true);
-    }
-  }, [isLoadingAddon, hasAddon]);
 
   // Module selection state - null means show selection screen
   const [selectedModule, setSelectedModule] = useState<"nova-vida" | "whatsapp" | null>(null);
@@ -2544,16 +2531,7 @@ export default function Higienizacao() {
           </DialogContent>
         </Dialog>
 
-        {/* Premium Feature Paywall */}
-        <PremiumFeaturePaywall
-          open={showPaywall && !isLoadingAddon && !hasAddon}
-          productName="Higienização"
-          onClose={() => setShowPaywall(false)}
-          onPurchased={() => {
-            setShowPaywall(false);
-            queryClient.invalidateQueries({ queryKey: ["organization-addon"] });
-          }}
-        />
+        {/* Higienização is now a free core feature */}
         </>
         )}
       </div>
