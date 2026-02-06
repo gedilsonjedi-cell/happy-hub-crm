@@ -62,7 +62,6 @@ const crmSubmenu = [
   { icon: Briefcase, label: "Carteira de Clientes", path: "/carteira-clientes", permission: null },
   { icon: GitBranch, label: "Pipeline", path: "/pipeline", permission: null },
   { icon: RotateCcw, label: "Follow-up", path: "/follow-up", permission: null },
-  { icon: Sparkles, label: "Higienização", path: "/higienizacao", permission: null },
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: null },
 ];
 
