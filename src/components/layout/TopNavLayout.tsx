@@ -109,7 +109,6 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Follow-Up", path: "/follow-up", icon: Calendar },
         { label: "Templates", path: "/templates", icon: FileText },
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
-        { label: "Higienização", path: "/higienizacao", icon: Zap },
         { label: "Loja", path: "/loja", icon: ShoppingCart },
       ]
     },
