@@ -423,26 +423,65 @@ Deno.serve(async (req) => {
       const templateParams: string[] = [];
       const manualVariables = campaign.manual_variables as Record<string, string> | null;
       
+      console.log(`[Batch] Template variables: ${JSON.stringify(template.variables)}`);
+      console.log(`[Batch] Variable mappings: ${JSON.stringify(template.variable_mappings)}`);
+      console.log(`[Batch] Manual variables from campaign: ${JSON.stringify(manualVariables)}`);
+      
       if (template.variables && template.variables.length > 0) {
         for (const varName of template.variables) {
           const mapping = template.variable_mappings?.[varName] || 'manual';
-          let value = varName; // Fallback to variable name
+          // CRITICAL FIX: Default to empty string, NEVER show variable name
+          let value = '';
 
           if (mapping === 'contact_first_name') {
-            value = getFirstName(recipient.name) || varName;
+            value = getFirstName(recipient.name) || '';
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
-            value = String((recipient as unknown as Recipient)[field] || varName);
-          } else if (mapping === 'manual' && manualVariables) {
+            value = String((recipient as unknown as Recipient)[field] || '');
+          } else if (mapping === 'manual') {
             // CRITICAL FIX: Use manual variables saved in the campaign
-            // Try exact match first, then try with different prefixes (VAR_, p)
-            const manualValue = manualVariables[varName] 
-              || manualVariables[varName.replace(/^VAR_/, 'p')] 
-              || manualVariables[varName.replace(/^p/, 'VAR_')];
-            if (manualValue) {
-              value = manualValue;
+            // Try multiple possible key formats to find the value
+            if (manualVariables) {
+              const possibleKeys = [
+                varName,                                    // Exact match (e.g., "VAR_1")
+                varName.replace(/^VAR_/, 'p'),              // VAR_1 -> p1
+                varName.replace(/^p/, 'VAR_'),              // p1 -> VAR_1
+                `VAR_${varName.replace(/\D/g, '')}`,        // Extract number and add VAR_
+                `p${varName.replace(/\D/g, '')}`,           // Extract number and add p
+                varName.toLowerCase(),                      // Try lowercase
+                varName.toUpperCase(),                      // Try uppercase
+              ];
+              
+              for (const key of possibleKeys) {
+                if (manualVariables[key] !== undefined && manualVariables[key] !== '') {
+                  value = manualVariables[key];
+                  console.log(`[Batch] Found manual variable: ${varName} = "${value}" (key: ${key})`);
+                  break;
+                }
+              }
+            }
+            
+            // If still no value found, check if there's a value by position
+            if (!value && manualVariables) {
+              const keys = Object.keys(manualVariables);
+              const varIndex = template.variables.indexOf(varName);
+              if (varIndex >= 0 && varIndex < keys.length) {
+                const positionalValue = manualVariables[keys[varIndex]];
+                if (positionalValue) {
+                  value = positionalValue;
+                  console.log(`[Batch] Found manual variable by position: ${varName} = "${value}"`);
+                }
+              }
             }
           }
+          
+          // NEVER allow VAR_X or similar patterns to be sent as literal text
+          if (value.match(/^(VAR_\d+|p\d+)$/i)) {
+            console.warn(`[Batch] Preventing variable name from being sent as value: ${value}`);
+            value = '';
+          }
+          
+          console.log(`[Batch] Final param for ${varName}: "${value}"`);
           templateParams.push(value);
         }
       }
