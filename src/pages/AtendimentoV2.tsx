@@ -1759,7 +1759,9 @@ const AtendimentoV2 = () => {
 
     // Verificar se o usuário pode interagir com este setor
     if (!canInteractWithSector(conversation.sectorId)) {
-      toast.error("Você não tem permissão para atender conversas deste departamento");
+      // Get sector name for better error message
+      const sectorName = sectors.find(s => s.id === conversation.sectorId)?.name || "outro departamento";
+      toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
       return;
     }
 
@@ -1772,6 +1774,15 @@ const AtendimentoV2 = () => {
       .eq('channel_id', conversation.channelId)
       .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
       .maybeSingle();
+
+    // CRITICAL: Re-check sector permission using the actual sector_id from DB
+    // This prevents race conditions where frontend state is stale
+    const actualSectorId = currentAssignment?.sector_id || conversation.sectorId;
+    if (!canInteractWithSector(actualSectorId)) {
+      const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "outro departamento";
+      toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
+      return;
+    }
 
     // Se já está atribuída a outro atendente e está ativa, bloquear
     if (currentAssignment?.assigned_to && 
@@ -1805,7 +1816,7 @@ const AtendimentoV2 = () => {
     }
 
     // Get user's first sector to assign to the conversation if it doesn't have one
-    let sectorToAssign = conversation.sectorId || currentAssignment?.sector_id;
+    let sectorToAssign = actualSectorId;
     if (!sectorToAssign && sectorIds.length > 0) {
       // Inherit sector from the user accepting the conversation
       sectorToAssign = sectorIds[0];
@@ -1825,7 +1836,16 @@ const AtendimentoV2 = () => {
           onConflict: "conversation_phone,channel_id"
         });
 
-      if (error) throw error;
+      if (error) {
+        // Check if it's a RLS error
+        if (error.message?.includes('row-level security') || error.code === '42501') {
+          const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
+          toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
+        } else {
+          toast.error("Erro ao aceitar atendimento: " + error.message);
+        }
+        return;
+      }
 
       const userName = profile.display_name || profile.email || 'Você';
       setAllConversations(prev => prev.map(c => {
@@ -1839,9 +1859,15 @@ const AtendimentoV2 = () => {
       updateConversationStatus(getConversationKey(conversation), "in_progress");
       toast.success("Atendimento aceito!");
       setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress", sectorId: sectorToAssign });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao aceitar atendimento:", error);
-      toast.error("Erro ao aceitar atendimento");
+      // Better error message for RLS violations
+      if (error?.message?.includes('row-level security') || error?.code === '42501') {
+        const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
+        toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
+      } else {
+        toast.error("Erro ao aceitar atendimento");
+      }
     }
   };
 
