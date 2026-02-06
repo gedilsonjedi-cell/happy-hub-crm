@@ -23,7 +23,6 @@ import {
   BookUser,
   X,
   PanelLeftClose,
-  Sparkles,
   PanelLeft,
   Briefcase,
   Settings,
