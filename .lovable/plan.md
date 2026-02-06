@@ -1,128 +1,168 @@
 
-# Plano: Correção Definitiva do Envio de Áudio no WhatsApp
+# Plano: Sistema de Contingência para Migração de WABA
 
-## Diagnóstico do Problema
+## Entendimento do Problema
 
-Analisando os logs do console, identifiquei a causa raiz:
-
-```
-[AudioRecording] OpusMediaRecorder failed, falling back to WebM: SecurityError
-[FFmpeg] Failed to load: Error: failed to import ffmpeg-core.js  
-[AudioRecording] Recording completed: { format: "audio/webm;codecs=opus", size: 30891 }
-```
-
-**O que está acontecendo:**
-1. O navegador (Chrome/Edge) não suporta gravação nativa em OGG
-2. O polyfill `opus-media-recorder` falha por causa de CORS (Worker externo bloqueado)
-3. O FFmpeg.wasm também falha ao carregar
-4. O sistema grava em **WebM** mas salva com extensão **.opus**
-5. A Meta API rejeita porque o arquivo não é um OGG/Opus válido - é WebM disfarçado
-
----
+Quando um WABA (WhatsApp Business Account) é restrito pela Meta, você transfere os números para outro WABA. Hoje, para refletir isso no sistema:
+- Você precisa **excluir** o canal e **recriá-lo** com o novo WABA
+- Isso gera um novo `channel_id`, quebrando o vínculo com mensagens e conversas
+- O cliente perde o histórico e a experiência é interrompida
 
 ## Solução Proposta
 
-Como a conversão no navegador falha e você confirmou que **enviar mídia manualmente funciona**, a solução é usar a **Edge Function `convert-audio`** para fazer a conversão no servidor usando a API do Zamzar (já configurada).
+### Nova Funcionalidade: "Migrar WABA"
 
-### Etapa 1: Modificar o Hook de Gravação
+Adicionar um botão no menu de ações de cada canal Meta que permite **trocar o WABA** sem perder o histórico:
 
-**Arquivo:** `src/hooks/useAudioRecording.tsx`
-
-**Mudanças:**
-- Remover tentativa de usar `opus-media-recorder` (sempre falha por CORS)
-- Sempre gravar em WebM (formato nativo do Chrome/Edge)
-- Retornar flag indicando que conversão no servidor é necessária
-
-### Etapa 2: Atualizar a Edge Function `convert-audio`
-
-**Arquivo:** `supabase/functions/convert-audio/index.ts`
-
-**Mudanças:**
-- Usar a API do Zamzar (secret já configurada) para converter WebM para OGG/Opus
-- Salvar com extensão `.opus` no storage
-- Retornar a URL pública do arquivo convertido
-
-**Fluxo da conversão:**
-```
-Browser grava WebM → Upload para Supabase Storage → 
-Edge Function baixa → Envia para Zamzar → 
-Recebe OGG convertido → Salva como .opus no Storage →
-Retorna URL pública
+```text
+┌─────────────────────────────────────────┐
+│  Canal: L&P Financeira (+55 21 9204...) │
+│  WABA: 925630689888926                  │
+├─────────────────────────────────────────┤
+│  ⋮ Menu                                 │
+│  ├── 🔄 Reconectar                      │
+│  ├── 🔧 Ver Configuração                │
+│  ├── 🤖 Vincular Chatbot                │
+│  ├── 🔀 Migrar WABA  ← NOVO             │
+│  └── 🗑️ Excluir                         │
+└─────────────────────────────────────────┘
 ```
 
-### Etapa 3: Atualizar AtendimentoV2 para Usar a Edge Function
+### Fluxo da Migração
 
-**Arquivo:** `src/pages/AtendimentoV2.tsx`
+1. **Usuário clica "Migrar WABA"**
+   - Abre modal solicitando:
+     - Novo WABA ID
+     - Novo Access Token
 
-**Mudanças na função `handleSendVoiceRecording`:**
-1. Gravar áudio normalmente (será WebM)
-2. Converter para base64
-3. Chamar Edge Function `convert-audio` com o áudio
-4. Receber URL do arquivo já convertido (.opus)
-5. Enviar via `handleSendMedia` (mesmo método usado pelo upload manual)
+2. **Sistema valida o novo WABA**
+   - Busca números do novo WABA via Meta API
+   - Verifica se o número do canal existe no novo WABA
 
-```
-Usuário grava → Blob WebM → Base64 → 
-Edge Function convert-audio → Zamzar API → 
-OGG/Opus no Storage → URL pública → 
-handleSendMedia → meta-send → WhatsApp
-```
+3. **Atualiza o canal existente**
+   - Atualiza `waba_id` com o novo ID
+   - Atualiza `access_token` com o novo token
+   - Atualiza `app_name` (Phone Number ID) se necessário
+   - Gera novo `webhook_verify_token`
 
-### Etapa 4: Adicionar Feedback Visual
+4. **Re-registra no Meta**
+   - Chama `meta-register-phone` para ativar no novo WABA
+   - Chama `meta-subscribe-webhook` para inscrever webhook
 
-- Mostrar "Processando áudio..." durante a conversão no servidor
-- Toast informativo em caso de erro
-- Timeout de 30 segundos para a conversão
-
----
-
-## Detalhes Técnicos
-
-### Formato do Request para convert-audio
-
-```typescript
-const response = await supabase.functions.invoke('convert-audio', {
-  body: {
-    audioData: base64AudioData, // WebM em base64
-    mimeType: 'audio/webm',
-    organizationId: organizationId
-  }
-});
-```
-
-### Resposta esperada
-
-```json
-{
-  "success": true,
-  "convertedUrl": "https://...supabase.co/.../audio_123.opus",
-  "originalFormat": "audio/webm"
-}
-```
-
-### Por que usar Zamzar no servidor?
-
-1. **Funciona de forma confiável** - serviço especializado em conversão
-2. **Secret já configurada** - `ZAMZAR_API_KEY` já existe no projeto
-3. **Sem limitações de CORS** - Edge Functions não têm restrições de browser
-4. **Formatos garantidos** - Zamzar suporta WebM → OGG/Opus nativamente
-
----
+5. **Histórico preservado**
+   - O `channel_id` permanece o mesmo
+   - Todas as mensagens e conversas continuam vinculadas
+   - Cliente continua a conversa normalmente
 
 ## Arquivos a Modificar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/hooks/useAudioRecording.tsx` | Simplificar - sempre WebM, sem polyfills |
-| `supabase/functions/convert-audio/index.ts` | Integrar API Zamzar para conversão real |
-| `src/pages/AtendimentoV2.tsx` | Chamar Edge Function antes de enviar |
+### 1. `src/pages/Conexoes.tsx`
+- Adicionar estado para modal de migração (`showMigrateWabaDialog`)
+- Criar função `handleMigrateWaba` que:
+  - Valida novas credenciais com Meta API
+  - Encontra o Phone Number ID correto no novo WABA
+  - Atualiza o canal no banco
+  - Re-registra e inscreve webhook
+- Adicionar item "Migrar WABA" no DropdownMenu de cada canal Meta
 
----
+### 2. Componente do Modal de Migração
+Campos:
+- Novo WABA ID (obrigatório)
+- Novo Access Token (obrigatório)
 
-## Resultado Esperado
+Botões:
+- "Cancelar"
+- "Validar e Migrar" (busca números, valida, executa migração)
 
-- Gravação funciona em todos os navegadores (WebM nativo)
-- Conversão feita no servidor com Zamzar (100% confiável)
-- Arquivo salvo como .opus real (não WebM disfarçado)
-- Envio via meta-send funciona normalmente
-- Mesmo fluxo do upload manual (que você confirmou funcionar)
+## Detalhes Técnicos
+
+### Lógica de Migração (pseudocódigo)
+
+```typescript
+async function handleMigrateWaba(channel, newWabaId, newAccessToken) {
+  // 1. Buscar números do novo WABA
+  const phones = await fetchPhonesFromMeta(newWabaId, newAccessToken);
+  
+  // 2. Encontrar o número do canal no novo WABA
+  const matchingPhone = phones.find(p => 
+    normalizePhone(p.displayPhoneNumber) === normalizePhone(channel.phone)
+  );
+  
+  if (!matchingPhone) {
+    throw new Error("Número não encontrado no novo WABA");
+  }
+  
+  // 3. Atualizar canal (mantém mesmo channel_id!)
+  await supabase.from("channels").update({
+    waba_id: newWabaId,
+    access_token: newAccessToken,
+    app_name: matchingPhone.id, // Novo Phone Number ID
+    webhook_verify_token: generateNewToken(),
+    connected: false, // Será ativado após registro
+  }).eq("id", channel.id);
+  
+  // 4. Registrar número no Meta
+  await registerPhoneWithMeta(matchingPhone.id, newAccessToken);
+  
+  // 5. Inscrever webhook
+  await subscribeWebhook(newWabaId, matchingPhone.id, newAccessToken);
+  
+  // 6. Marcar como conectado
+  await supabase.from("channels").update({ connected: true }).eq("id", channel.id);
+}
+```
+
+### Validações de Segurança
+
+- Verificar se o número realmente existe no novo WABA antes de migrar
+- Confirmar que o usuário tem permissão para modificar o canal
+- Manter backup das credenciais antigas caso precise reverter
+
+## Benefícios
+
+1. **Zero downtime** - Cliente não percebe a troca
+2. **Histórico preservado** - Todas as mensagens e conversas mantidas
+3. **Fluxo simples** - Apenas inserir novo WABA ID e token
+4. **Automatizado** - Sistema encontra automaticamente o Phone Number ID correto
+5. **Contingência rápida** - Resposta imediata quando WABA é restrito
+
+## Estimativa
+
+- **Complexidade**: Média
+- **Arquivos**: 1 (Conexoes.tsx)
+- **Componentes novos**: 1 modal
+
+## Interface Visual Proposta
+
+```text
+┌────────────────────────────────────────────────────┐
+│  🔀 Migrar WABA                                    │
+├────────────────────────────────────────────────────┤
+│                                                    │
+│  Canal: L&P Financeira                             │
+│  Número: +55 21 92041-8100                         │
+│  WABA Atual: 925630689888926                       │
+│                                                    │
+│  ─────────────────────────────────────────────     │
+│                                                    │
+│  Novo WABA ID *                                    │
+│  ┌────────────────────────────────────────┐        │
+│  │                                        │        │
+│  └────────────────────────────────────────┘        │
+│                                                    │
+│  Novo Access Token *                               │
+│  ┌────────────────────────────────────────┐ 👁️    │
+│  │ ••••••••••••••••••••••••••••••••       │        │
+│  └────────────────────────────────────────┘        │
+│                                                    │
+│  ⚠️ O número (+55 21 92041-8100) deve existir      │
+│     no novo WABA para a migração funcionar.        │
+│                                                    │
+│  ─────────────────────────────────────────────     │
+│                                                    │
+│            [Cancelar]    [Validar e Migrar]        │
+│                                                    │
+└────────────────────────────────────────────────────┘
+```
+
+Após aprovação, implementarei esta funcionalidade mantendo a consistência com o código existente.
