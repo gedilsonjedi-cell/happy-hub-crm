@@ -221,12 +221,20 @@ const AtendimentoV2 = () => {
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
-  
-  // Filter conversations based on user's sector access
-  const conversations = allConversations.filter(c => canSeeSector(c.sectorId));
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  
+  // CRITICAL: Build a set of valid channel IDs for safety filtering
+  const validChannelIds = useMemo(() => new Set(channels.map(c => c.id)), [channels]);
+  
+  // Filter conversations based on user's sector access AND valid channel ownership
+  // This is the FINAL defense against cross-org data leaks
+  const conversations = allConversations.filter(c => 
+    canSeeSector(c.sectorId) && 
+    (c.channelId ? validChannelIds.has(c.channelId) : true)
+  );
+  
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [tagColors, setTagColors] = useState<Map<string, string>>(new Map());
   const [templates, setTemplates] = useState<Map<string, { 
@@ -384,6 +392,11 @@ const AtendimentoV2 = () => {
     };
 
     if (user && effectiveOrganizationId) {
+      // CRITICAL: Clear conversations and channels IMMEDIATELY when org changes
+      // This prevents stale data from previous org being visible during transition
+      setChannels([]);
+      setAllConversations([]);
+      setSelectedConversation(null);
       fetchChannels();
     } else {
       console.log("[AtendimentoV2] Waiting for user or org", { 
