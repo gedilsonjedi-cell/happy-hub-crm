@@ -1706,6 +1706,9 @@ const AtendimentoV2 = () => {
     );
 
     // Subscription para mudanças em conversation_assignments (atribuições)
+    // CRITICAL: Build a Set of channel IDs for fast lookup to prevent cross-org data leaks
+    const channelIdSet = new Set(channels.map(c => c.id));
+    
     const assignmentSubscription = supabase
       .channel('atendimento-v2-assignments')
       .on(
@@ -1726,6 +1729,12 @@ const AtendimentoV2 = () => {
           };
           
           if (!assignment?.conversation_phone) return;
+          
+          // CRITICAL: Ignore assignments from other organizations
+          // Only process if the channel_id belongs to the current org's channels
+          if (!assignment.channel_id || !channelIdSet.has(assignment.channel_id)) {
+            return;
+          }
           
           const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
           
