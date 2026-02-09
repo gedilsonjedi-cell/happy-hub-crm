@@ -3353,7 +3353,8 @@ const AtendimentoV2 = () => {
                       if (v && v !== user?.id) {
                         setFilterStatus("others");
                       }
-                    }} 
+                    }}
+                    selectedSectorId={filterBySector}
                   />
                   <SectorFilter 
                     value={filterBySector} 
