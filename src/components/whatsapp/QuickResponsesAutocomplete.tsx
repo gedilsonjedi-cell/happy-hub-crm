@@ -83,7 +83,7 @@ export const QuickResponsesAutocomplete = ({
     const { data, error } = await supabase
       .from("quick_responses")
       .select("*")
-      .eq("organization_id", effectiveOrganizationId)
+      .or(`organization_id.eq.${effectiveOrganizationId},and(organization_id.is.null,user_id.eq.${user.id})`)
       .order("title");
 
     if (!error && data) {

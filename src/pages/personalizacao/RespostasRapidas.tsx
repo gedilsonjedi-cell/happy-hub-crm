@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { 
   Plus, 
@@ -156,6 +157,7 @@ function SortableCard({
 
 export default function RespostasRapidas() {
   const { user } = useAuth();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [responses, setResponses] = useState<QuickResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -189,6 +191,9 @@ export default function RespostasRapidas() {
     const { data, error } = await supabase
       .from("quick_responses")
       .select("id, title, content, shortcut, category, display_order")
+      .or(effectiveOrganizationId 
+        ? `organization_id.eq.${effectiveOrganizationId},and(organization_id.is.null,user_id.eq.${user?.id})`
+        : `user_id.eq.${user?.id}`)
       .order("display_order", { ascending: true });
 
     if (error) {
@@ -274,6 +279,7 @@ export default function RespostasRapidas() {
             shortcut: formData.shortcut.trim() || null,
             category: formData.category || null,
             user_id: user?.id,
+            organization_id: effectiveOrganizationId,
             display_order: maxOrder + 1,
           });
 

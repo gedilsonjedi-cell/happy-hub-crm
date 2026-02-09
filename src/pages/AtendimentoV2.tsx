@@ -310,7 +310,7 @@ const AtendimentoV2 = () => {
       const { data } = await supabase
         .from("quick_responses")
         .select("shortcut, content")
-        .eq("organization_id", effectiveOrganizationId)
+        .or(`organization_id.eq.${effectiveOrganizationId},and(organization_id.is.null,user_id.eq.${user.id})`)
         .not("shortcut", "is", null);
       
       if (data) {
