@@ -235,6 +235,9 @@ const AtendimentoV2 = () => {
     (c.channelId ? validChannelIds.has(c.channelId) : true)
   );
   
+  // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
+  const [attendantSectorsMap, setAttendantSectorsMap] = useState<Map<string, Set<string>>>(new Map());
+  
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [tagColors, setTagColors] = useState<Map<string, string>>(new Map());
   const [templates, setTemplates] = useState<Map<string, { 
@@ -408,16 +411,37 @@ const AtendimentoV2 = () => {
 
   // Fetch sectors/departments
   useEffect(() => {
-    const fetchSectors = async () => {
+   const fetchSectors = async () => {
       if (!effectiveOrganizationId) return;
       
-      const { data, error } = await supabase
+      // First fetch sectors for this org
+      const { data: sectorsData, error: sectorsError } = await supabase
         .from("sectors")
         .select("id, name")
         .eq("organization_id", effectiveOrganizationId);
 
-      if (!error && data) {
-        setSectors(data);
+      if (!sectorsError && sectorsData) {
+        setSectors(sectorsData);
+        
+        // Then fetch user_sectors for these sectors
+        if (sectorsData.length > 0) {
+          const sectorIdsList = sectorsData.map(s => s.id);
+          const { data: userSectorsData, error: userSectorsError } = await supabase
+            .from("user_sectors")
+            .select("user_id, sector_id")
+            .in("sector_id", sectorIdsList);
+          
+          if (!userSectorsError && userSectorsData) {
+            const map = new Map<string, Set<string>>();
+            userSectorsData.forEach(us => {
+              if (!map.has(us.user_id)) {
+                map.set(us.user_id, new Set());
+              }
+              map.get(us.user_id)!.add(us.sector_id);
+            });
+            setAttendantSectorsMap(map);
+          }
+        }
       }
     };
 
@@ -3054,6 +3078,30 @@ const AtendimentoV2 = () => {
         return false;
       });
   
+  // Helper: check if conversation matches sector filter
+  // CRITICAL: Also cross-references the attendant's actual sector membership
+  // to prevent conversations from showing under wrong department
+  const matchesSectorFilter = useCallback((conv: Conversation): boolean => {
+    if (!filterBySector) return true;
+    if (filterBySector === "none") return !conv.sectorId;
+    
+    // Check conversation's sector matches
+    const convSectorMatches = conv.sectorId === filterBySector;
+    
+    // Additionally, if conversation has an assignee, verify the attendant 
+    // actually belongs to the filtered sector
+    if (convSectorMatches && conv.assignedTo && attendantSectorsMap.size > 0) {
+      const attendantSectors = attendantSectorsMap.get(conv.assignedTo);
+      // If we have sector data for this attendant and they DON'T belong to
+      // the filtered sector, hide this conversation from this filter view
+      if (attendantSectors && !attendantSectors.has(filterBySector)) {
+        return false;
+      }
+    }
+    
+    return convSectorMatches;
+  }, [filterBySector, attendantSectorsMap]);
+
   // If we have global search results and a search term, prioritize showing those
   const hasGlobalResults = globalSearchResults.length > 0 && searchTerm.length >= 3;
   
@@ -3073,9 +3121,8 @@ const AtendimentoV2 = () => {
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
         const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
-        // Apply sector filter
-        const matchesSector = !filterBySector || 
-          (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+        // Apply sector filter with attendant cross-reference
+        const matchesSector = matchesSectorFilter(conv);
         
         return matchesFilter && matchesAttendant && matchesSector && conv.status !== "archived";
       })
@@ -3104,9 +3151,8 @@ const AtendimentoV2 = () => {
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
         const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
-        // Apply sector filter
-        const matchesSector = !filterBySector || 
-          (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+        // Apply sector filter with attendant cross-reference
+        const matchesSector = matchesSectorFilter(conv);
         
         return matchesSearch && matchesFilter && matchesAttendant && matchesSector;
       });
@@ -3134,8 +3180,7 @@ const AtendimentoV2 = () => {
     ? archivedFromGlobalSearch
         .filter(conv => {
           const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
-          const matchesSector = !filterBySector || 
-            (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+          const matchesSector = matchesSectorFilter(conv);
           return matchesAttendant && matchesSector;
         })
         .sort((a, b) => {
@@ -3147,8 +3192,7 @@ const AtendimentoV2 = () => {
         .filter(conv => {
           const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
           const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
-          const matchesSector = !filterBySector || 
-            (filterBySector === "none" ? !conv.sectorId : conv.sectorId === filterBySector);
+          const matchesSector = matchesSectorFilter(conv);
           return matchesSearch && matchesAttendant && matchesSector;
         })
         .sort((a, b) => {
