@@ -111,7 +111,7 @@ export default function Horarios() {
     message: "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve.",
   });
   const [formWelcome, setFormWelcome] = useState<WelcomeMessageConfig>({
-    is_enabled: true,
+    is_enabled: false,
     message: "Olá! Seja bem-vindo(a)! Como posso ajudá-lo(a) hoje?",
   });
 
