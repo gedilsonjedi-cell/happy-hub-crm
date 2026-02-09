@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Clock, Save } from "lucide-react";
+import { Clock, Save, PartyPopper, Moon } from "lucide-react";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Domingo" },
@@ -31,6 +31,12 @@ interface BusinessHour {
 }
 
 interface AwayMessageConfig {
+  id?: string;
+  is_enabled: boolean;
+  message: string;
+}
+
+interface WelcomeMessageConfig {
   id?: string;
   is_enabled: boolean;
   message: string;
@@ -79,48 +85,73 @@ export default function Horarios() {
     enabled: !!profile?.organization_id,
   });
 
-  const [localHours, setLocalHours] = useState<BusinessHour[]>([]);
-  const [localAwayConfig, setLocalAwayConfig] = useState<AwayMessageConfig>({
+  const { data: welcomeConfig, isLoading: loadingWelcome } = useQuery({
+    queryKey: ["welcome-message-config", profile?.organization_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("welcome_message_config")
+        .select("*")
+        .eq("organization_id", profile!.organization_id)
+        .single();
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
+  const defaultHours = DAYS_OF_WEEK.map((day) => ({
+    day_of_week: day.value,
+    start_time: "09:00",
+    end_time: "18:00",
+    is_active: day.value >= 1 && day.value <= 5,
+  }));
+
+  const [formHours, setFormHours] = useState<BusinessHour[]>(defaultHours);
+  const [formAway, setFormAway] = useState<AwayMessageConfig>({
     is_enabled: true,
     message: "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve.",
   });
+  const [formWelcome, setFormWelcome] = useState<WelcomeMessageConfig>({
+    is_enabled: true,
+    message: "Olá! Seja bem-vindo(a)! Como posso ajudá-lo(a) hoje?",
+  });
 
-  // Initialize local state when data loads
-  useState(() => {
+  // Sync form state when data loads
+  useEffect(() => {
     if (businessHours && businessHours.length > 0) {
-      setLocalHours(businessHours);
-    } else {
-      // Initialize with default hours for all days
-      setLocalHours(
-        DAYS_OF_WEEK.map((day) => ({
-          day_of_week: day.value,
-          start_time: "09:00",
-          end_time: "18:00",
-          is_active: day.value >= 1 && day.value <= 5, // Mon-Fri active by default
-        }))
-      );
+      setFormHours(businessHours);
     }
-  });
+  }, [businessHours]);
 
-  useState(() => {
+  useEffect(() => {
     if (awayConfig) {
-      setLocalAwayConfig(awayConfig);
+      setFormAway({
+        id: awayConfig.id,
+        is_enabled: awayConfig.is_enabled ?? true,
+        message: awayConfig.message ?? "",
+      });
     }
-  });
+  }, [awayConfig]);
 
-  const displayHours = businessHours && businessHours.length > 0 
-    ? businessHours 
-    : DAYS_OF_WEEK.map((day) => ({
-        day_of_week: day.value,
-        start_time: "09:00",
-        end_time: "18:00",
-        is_active: day.value >= 1 && day.value <= 5,
-      }));
-
-  const displayAwayConfig = awayConfig || localAwayConfig;
+  useEffect(() => {
+    if (welcomeConfig) {
+      setFormWelcome({
+        id: welcomeConfig.id,
+        is_enabled: welcomeConfig.is_enabled ?? true,
+        message: welcomeConfig.message ?? "",
+      });
+    }
+  }, [welcomeConfig]);
 
   const saveMutation = useMutation({
-    mutationFn: async ({ hours, away }: { hours: BusinessHour[]; away: AwayMessageConfig }) => {
+    mutationFn: async ({ 
+      hours, 
+      away, 
+      welcome 
+    }: { 
+      hours: BusinessHour[]; 
+      away: AwayMessageConfig; 
+      welcome: WelcomeMessageConfig;
+    }) => {
       // Save business hours
       for (const hour of hours) {
         const { error } = await supabase
@@ -148,30 +179,29 @@ export default function Horarios() {
           onConflict: "organization_id",
         });
       if (awayError) throw awayError;
+
+      // Save welcome message config
+      const { error: welcomeError } = await supabase
+        .from("welcome_message_config")
+        .upsert({
+          organization_id: profile!.organization_id,
+          is_enabled: welcome.is_enabled,
+          message: welcome.message,
+        }, {
+          onConflict: "organization_id",
+        });
+      if (welcomeError) throw welcomeError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["business-hours"] });
       queryClient.invalidateQueries({ queryKey: ["away-message-config"] });
-      toast.success("Horários salvos com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["welcome-message-config"] });
+      toast.success("Configurações salvas com sucesso!");
     },
     onError: () => {
-      toast.error("Erro ao salvar horários");
+      toast.error("Erro ao salvar configurações");
     },
   });
-
-  const [formHours, setFormHours] = useState<BusinessHour[]>(displayHours);
-  const [formAway, setFormAway] = useState<AwayMessageConfig>(displayAwayConfig);
-
-  // Update form state when data loads
-  if (businessHours && businessHours.length > 0 && formHours.length === 0) {
-    setFormHours(businessHours);
-  }
-  if (!formHours.length && displayHours.length) {
-    setFormHours(displayHours);
-  }
-  if (awayConfig && !formAway.id && awayConfig.id) {
-    setFormAway(awayConfig);
-  }
 
   const handleHourChange = (dayOfWeek: number, field: keyof BusinessHour, value: any) => {
     setFormHours((prev) =>
@@ -182,10 +212,10 @@ export default function Horarios() {
   };
 
   const handleSave = () => {
-    saveMutation.mutate({ hours: formHours, away: formAway });
+    saveMutation.mutate({ hours: formHours, away: formAway, welcome: formWelcome });
   };
 
-  if (loadingHours || loadingAway) {
+  if (loadingHours || loadingAway || loadingWelcome) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
@@ -200,8 +230,8 @@ export default function Horarios() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Horários de Atendimento</h1>
-            <p className="text-muted-foreground">Configure os horários de funcionamento</p>
+            <h1 className="text-2xl font-bold text-foreground">Horários e Mensagens</h1>
+            <p className="text-muted-foreground">Configure horários e mensagens automáticas</p>
           </div>
           <Button onClick={handleSave} disabled={saveMutation.isPending}>
             <Save className="w-4 h-4 mr-2" />
@@ -209,8 +239,9 @@ export default function Horarios() {
           </Button>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Business Hours Card */}
+          <Card className="lg:row-span-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="w-5 h-5" />
@@ -263,11 +294,51 @@ export default function Horarios() {
             </CardContent>
           </Card>
 
+          {/* Welcome Message Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Mensagem de Ausência</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <PartyPopper className="w-5 h-5" />
+                Mensagem de Boas-Vindas
+              </CardTitle>
               <CardDescription>
-                Configure a mensagem automática fora do horário de atendimento
+                Enviada apenas na primeira mensagem de cada contato
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formWelcome.is_enabled}
+                  onCheckedChange={(checked) =>
+                    setFormWelcome((prev) => ({ ...prev, is_enabled: checked }))
+                  }
+                />
+                <Label>Enviar mensagem de boas-vindas</Label>
+              </div>
+              <Textarea
+                value={formWelcome.message}
+                onChange={(e) =>
+                  setFormWelcome((prev) => ({ ...prev, message: e.target.value }))
+                }
+                placeholder="Olá! Seja bem-vindo(a)! Como posso ajudá-lo(a)?"
+                rows={4}
+                disabled={!formWelcome.is_enabled}
+              />
+              <p className="text-xs text-muted-foreground">
+                Esta mensagem é enviada uma única vez, no primeiro contato de cada pessoa.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Away Message Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Moon className="w-5 h-5" />
+                Mensagem de Ausência
+              </CardTitle>
+              <CardDescription>
+                Enviada fora do horário de atendimento
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -278,17 +349,20 @@ export default function Horarios() {
                     setFormAway((prev) => ({ ...prev, is_enabled: checked }))
                   }
                 />
-                <Label>Enviar mensagem automática</Label>
+                <Label>Enviar mensagem de ausência</Label>
               </div>
               <Textarea
                 value={formAway.message}
                 onChange={(e) =>
                   setFormAway((prev) => ({ ...prev, message: e.target.value }))
                 }
-                placeholder="Mensagem de ausência..."
+                placeholder="Olá! Estamos fora do horário de atendimento..."
                 rows={4}
                 disabled={!formAway.is_enabled}
               />
+              <p className="text-xs text-muted-foreground">
+                Enviada quando a mensagem chegar fora dos horários configurados.
+              </p>
             </CardContent>
           </Card>
         </div>

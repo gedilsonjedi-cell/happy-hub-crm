@@ -3051,6 +3051,80 @@ export type Database = {
           },
         ]
       }
+      welcome_message_config: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean | null
+          message: string | null
+          organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          message?: string | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          message?: string | null
+          organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "welcome_message_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      welcome_message_sent: {
+        Row: {
+          channel_id: string | null
+          contact_phone: string
+          id: string
+          organization_id: string | null
+          sent_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          contact_phone: string
+          id?: string
+          organization_id?: string | null
+          sent_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          contact_phone?: string
+          id?: string
+          organization_id?: string | null
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "welcome_message_sent_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "welcome_message_sent_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           channel_id: string | null
