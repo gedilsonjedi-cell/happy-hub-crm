@@ -76,6 +76,55 @@ async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: 
   return { isOpen, awayMessage: null };
 }
 
+// Helper function to check if should send welcome message
+async function shouldSendWelcomeMessage(
+  organizationId: string, 
+  channelId: string, 
+  contactPhone: string
+): Promise<{ shouldSend: boolean; message: string | null }> {
+  // Check if welcome message is configured and enabled
+  const { data: welcomeConfig } = await supabase
+    .from('welcome_message_config')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .single();
+
+  if (!welcomeConfig?.is_enabled || !welcomeConfig?.message) {
+    return { shouldSend: false, message: null };
+  }
+
+  // Check if we already sent welcome message to this contact on this channel
+  const { data: existingSent } = await supabase
+    .from('welcome_message_sent')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('channel_id', channelId)
+    .eq('contact_phone', contactPhone)
+    .single();
+
+  if (existingSent) {
+    console.log('Welcome message already sent to:', contactPhone);
+    return { shouldSend: false, message: null };
+  }
+
+  return { shouldSend: true, message: welcomeConfig.message };
+}
+
+// Helper function to mark welcome message as sent
+async function markWelcomeMessageSent(
+  organizationId: string,
+  channelId: string,
+  contactPhone: string
+): Promise<void> {
+  await supabase
+    .from('welcome_message_sent')
+    .insert({
+      organization_id: organizationId,
+      channel_id: channelId,
+      contact_phone: contactPhone,
+    });
+}
+
 // Helper function to check if today is a holiday
 async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; awayMessage: string | null }> {
   const now = new Date();
@@ -1159,7 +1208,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Check business hours and holidays
+        // Check business hours, holidays, and welcome message
         if (channel.organization_id && channel.access_token && channel.app_name) {
           const holidayCheck = await isHoliday(channel.organization_id);
           
@@ -1182,6 +1231,52 @@ Deno.serve(async (req) => {
                 normalizedPhone,
                 businessCheck.awayMessage
               );
+            } else if (businessCheck.isOpen) {
+              // Only send welcome message during business hours
+              const welcomeCheck = await shouldSendWelcomeMessage(
+                channel.organization_id,
+                channel.id,
+                normalizedPhone
+              );
+              
+              if (welcomeCheck.shouldSend && welcomeCheck.message) {
+                console.log('Sending welcome message to:', normalizedPhone);
+                const welcomeSent = await sendWhatsAppMessage(
+                  channel.app_name,
+                  channel.access_token,
+                  normalizedPhone,
+                  welcomeCheck.message
+                );
+                
+                if (welcomeSent) {
+                  await markWelcomeMessageSent(
+                    channel.organization_id,
+                    channel.id,
+                    normalizedPhone
+                  );
+                  
+                  // Save welcome message to history
+                  const welcomeMessageId = `welcome_${normalizedPhone}_${Date.now()}`;
+                  await supabase.from('whatsapp_messages').insert({
+                    channel_id: channel.id,
+                    message_id: welcomeMessageId,
+                    sender_phone: channel.phone,
+                    sender_name: 'Sistema',
+                    message_type: 'text',
+                    content: welcomeCheck.message,
+                    direction: 'outbound',
+                    status: 'sent',
+                    organization_id: channel.organization_id,
+                    metadata: {
+                      provider: 'meta',
+                      welcome_message: true,
+                      destination: normalizedPhone
+                    }
+                  });
+                  
+                  console.log('Welcome message sent and recorded');
+                }
+              }
             }
           }
         }
