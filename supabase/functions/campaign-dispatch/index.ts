@@ -342,8 +342,8 @@ async function processCampaignDispatch(
         }).eq('id', campaignId);
       }
 
-      // Wait random interval before next message
-      if (i < campaignRecipients.length - 1) {
+      // Wait random interval before next message (skip if full mode: intervals = 0)
+      if (i < campaignRecipients.length - 1 && (minInterval > 0 || maxInterval > 0)) {
         const randomInterval = getRandomInterval(minInterval, maxInterval);
         console.log(`[Campaign] ⏱ Waiting ${randomInterval}s...`);
         await sleep(randomInterval * 1000);
