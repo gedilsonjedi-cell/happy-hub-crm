@@ -288,7 +288,7 @@ async function processCampaignDispatch(
     if (isFullMode) {
       console.log(`[Campaign] 🚀 FULL MODE — sending ${campaignRecipients.length - sentCount} messages in parallel`);
       const remaining = campaignRecipients.slice(sentCount);
-      const BATCH_SIZE = 50; // batches of 50 to avoid overwhelming
+      const BATCH_SIZE = 200;
       
       for (let b = 0; b < remaining.length; b += BATCH_SIZE) {
         // Check pause/cancel
