@@ -461,17 +461,43 @@ async function handleConversationAssignment(
   // PRIMARY LOOKUP: By lead_id + channel_id (most reliable)
   let { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, conversation_phone')
+    .select('id, assigned_to, status, sector_id, conversation_phone, channel_id')
     .eq('lead_id', leadId)
     .eq('channel_id', channelId)
     .single();
   
-  // FALLBACK: If no match by lead_id, try by phone (for legacy data)
+  // FALLBACK 1: By lead_id ANY channel (cross-channel replies - e.g. campaign sent on channel A, reply on channel B)
+  if (!existingAssignment) {
+    const { data: crossChannelMatch } = await supabase
+      .from('conversation_assignments')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, channel_id')
+      .eq('lead_id', leadId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (crossChannelMatch) {
+      existingAssignment = crossChannelMatch;
+      console.log('Found cross-channel assignment for lead:', leadId, 'original channel:', crossChannelMatch.channel_id, 'current channel:', channelId);
+      
+      // Update channel_id to the current channel where the reply came in
+      await supabase
+        .from('conversation_assignments')
+        .update({ 
+          channel_id: channelId,
+          conversation_phone: normalizedPhone,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', crossChannelMatch.id);
+    }
+  }
+
+  // FALLBACK 2: By phone + channel_id (for legacy data without lead_id)
   if (!existingAssignment) {
     const phoneEnd8 = normalizedPhone.slice(-8);
     const { data: phoneMatch } = await supabase
       .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, channel_id')
       .eq('channel_id', channelId)
       .like('conversation_phone', `%${phoneEnd8}`)
       .single();
@@ -479,7 +505,6 @@ async function handleConversationAssignment(
     if (phoneMatch) {
       existingAssignment = phoneMatch;
       
-      // Update the assignment to include lead_id for future lookups
       if (!phoneMatch.lead_id) {
         await supabase
           .from('conversation_assignments')
@@ -491,6 +516,33 @@ async function handleConversationAssignment(
           .eq('id', phoneMatch.id);
         console.log('Updated legacy assignment with lead_id:', leadId);
       }
+    }
+  }
+
+  // FALLBACK 3: By phone ANY channel (cross-channel without lead_id)
+  if (!existingAssignment) {
+    const phoneEnd8 = normalizedPhone.slice(-8);
+    const { data: phoneAnyChannel } = await supabase
+      .from('conversation_assignments')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, channel_id')
+      .like('conversation_phone', `%${phoneEnd8}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (phoneAnyChannel) {
+      existingAssignment = phoneAnyChannel;
+      console.log('Found cross-channel assignment by phone suffix:', phoneEnd8);
+      
+      await supabase
+        .from('conversation_assignments')
+        .update({ 
+          channel_id: channelId,
+          lead_id: leadId,
+          conversation_phone: normalizedPhone,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', phoneAnyChannel.id);
     }
   }
   
