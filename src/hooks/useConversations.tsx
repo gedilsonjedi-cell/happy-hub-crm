@@ -72,11 +72,14 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
 
     try {
       // Parallel fetches - using conversation_assignments as PRIMARY source
+      // Fetch assignments: include those matching channel_ids OR those with NULL channel_id
+      // (orphaned from campaigns that didn't set channel properly - RLS handles org isolation)
+      const channelFilter = channelIds.map(id => `channel_id.eq.${id}`).join(',');
       const [assignmentsResult, profilesResult, leadsResult] = await Promise.all([
         supabase
           .from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .in("channel_id", channelIds)
+          .or(`${channelFilter},channel_id.is.null`)
           .order("updated_at", { ascending: false }),
         supabase
           .from("profiles")
@@ -307,10 +310,11 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     
     try {
       // Search in conversation_assignments by phone
+      const channelFilter = channelIds.map(id => `channel_id.eq.${id}`).join(',');
       const { data: assignments, error } = await supabase
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
+        .or(`${channelFilter},channel_id.is.null`)
         .or(`conversation_phone.ilike.%${normalizedSearch}%,conversation_phone.ilike.%${searchTerm}%`)
         .order("updated_at", { ascending: false })
         .limit(50);
@@ -337,7 +341,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
         const { data: byLeadPhone } = await supabase
           .from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .in("channel_id", channelIds)
+          .or(`${channelFilter},channel_id.is.null`)
           .or(phoneConditions)
           .order("updated_at", { ascending: false })
           .limit(50);
