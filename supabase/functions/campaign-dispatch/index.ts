@@ -192,47 +192,28 @@ async function processCampaignDispatch(
 
     console.log(`[Campaign] Starting from position ${sentCount}/${campaignRecipients.length}`);
 
-    // Process ALL recipients in a single continuous loop
-    for (let i = sentCount; i < campaignRecipients.length; i++) {
-      // Check if campaign was paused/cancelled
-      const { data: currentCampaign } = await supabase
-        .from('campaigns')
-        .select('status')
-        .eq('id', campaignId)
-        .single();
+    const isFullMode = minInterval === 0 && maxInterval === 0;
 
-      if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'cancelled') {
-        console.log(`[Campaign] ${campaignId} is ${currentCampaign.status}, stopping at ${sentCount}/${campaignRecipients.length}`);
-        return;
-      }
-
-      const recipient = campaignRecipients[i];
-      const campaignChannel = campaignChannels[i % campaignChannels.length];
+    // Helper to send a single recipient
+    async function sendToRecipient(recipient: CampaignRecipient, index: number) {
+      const campaignChannel = campaignChannels[index % campaignChannels.length];
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id);
 
       if (!channel || !template) {
         console.error(`[Campaign] Missing channel/template for ${recipient.phone}`);
-        failedCount++;
-        sentCount++;
-        await supabase.from('campaigns').update({ sent_count: sentCount, failed_count: failedCount }).eq('id', campaignId);
-        continue;
+        return { success: false, phone: recipient.phone };
       }
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
-      console.log(`[Campaign] [${i + 1}/${campaignRecipients.length}] Sending to ${formattedPhone}`);
 
       try {
-        // Build template params
         const templateParams: string[] = [];
         if (template.variables && template.variables.length > 0) {
           for (const varName of template.variables) {
             const mapping = template.variable_mappings?.[varName] || 'manual';
             let value = '';
-            
             if (mapping === 'manual') {
-              // CRITICAL FIX: Use effectiveManualVariables (from request OR database)
-              // Try exact match first, then try with different prefixes (VAR_, p)
               value = effectiveManualVariables[varName] 
                 || effectiveManualVariables[varName.replace(/^VAR_/, 'p')] 
                 || effectiveManualVariables[varName.replace(/^p/, 'VAR_')]
@@ -249,7 +230,6 @@ async function processCampaignDispatch(
           }
         }
 
-        // Send via meta-send
         const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
           method: 'POST',
           headers: {
@@ -269,11 +249,6 @@ async function processCampaignDispatch(
         const metaSendResult = await metaSendResponse.json();
 
         if (metaSendResult.success) {
-          sentCount++;
-          deliveredCount++;
-          console.log(`[Campaign] ✓ Sent to ${formattedPhone}`);
-
-          // Handle chatbot assignment if enabled
           if (campaign.chatbot_enabled && campaign.chatbot_id) {
             const { data: existingAssignment } = await supabase
               .from('conversation_assignments')
@@ -281,72 +256,86 @@ async function processCampaignDispatch(
               .eq('conversation_phone', formattedPhone)
               .eq('channel_id', channel.id)
               .single();
-
             if (existingAssignment) {
-              await supabase
-                .from('conversation_assignments')
-                .update({ 
-                  campaign_chatbot_id: campaign.chatbot_id,
-                  is_bot_handling: true,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', existingAssignment.id);
+              await supabase.from('conversation_assignments').update({ 
+                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, updated_at: new Date().toISOString()
+              }).eq('id', existingAssignment.id);
             } else {
-              await supabase
-                .from('conversation_assignments')
-                .insert({
-                  conversation_phone: formattedPhone,
-                  channel_id: channel.id,
-                  campaign_chatbot_id: campaign.chatbot_id,
-                  is_bot_handling: true,
-                  status: 'pending'
-                });
+              await supabase.from('conversation_assignments').insert({
+                conversation_phone: formattedPhone, channel_id: channel.id,
+                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, status: 'pending'
+              });
             }
           }
+          return { success: true, phone: formattedPhone };
         } else {
-          sentCount++;
-          failedCount++;
-          console.error(`[Campaign] ✗ Failed ${formattedPhone}: ${metaSendResult.error}`);
-
           await supabase.from('whatsapp_messages').insert({
-            channel_id: channel.id,
-            organization_id: channel.organization_id,
-            message_id: `failed_${Date.now()}_${formattedPhone}`,
-            sender_phone: channel.phone,
-            message_type: 'template',
-            content: `Template: ${template.name}`,
-            direction: 'outbound',
-            status: 'failed',
-            metadata: {
-              destination: formattedPhone,
-              error: metaSendResult.error,
-              campaignId: campaignId
-            }
+            channel_id: channel.id, organization_id: channel.organization_id,
+            message_id: `failed_${Date.now()}_${formattedPhone}`, sender_phone: channel.phone,
+            message_type: 'template', content: `Template: ${template.name}`,
+            direction: 'outbound', status: 'failed',
+            metadata: { destination: formattedPhone, error: metaSendResult.error, campaignId }
           });
+          return { success: false, phone: formattedPhone, error: metaSendResult.error };
         }
-
-        // Update progress
-        await supabase.from('campaigns').update({ 
-          sent_count: sentCount,
-          delivered_count: deliveredCount,
-          failed_count: failedCount
-        }).eq('id', campaignId);
-
       } catch (error) {
         console.error(`[Campaign] Error sending to ${formattedPhone}:`, error);
-        sentCount++;
-        failedCount++;
+        return { success: false, phone: formattedPhone, error: String(error) };
+      }
+    }
+
+    // === FULL MODE: fire all at once in parallel batches ===
+    if (isFullMode) {
+      console.log(`[Campaign] 🚀 FULL MODE — sending ${campaignRecipients.length - sentCount} messages in parallel`);
+      const remaining = campaignRecipients.slice(sentCount);
+      const BATCH_SIZE = 50; // batches of 50 to avoid overwhelming
+      
+      for (let b = 0; b < remaining.length; b += BATCH_SIZE) {
+        // Check pause/cancel
+        const { data: currentCampaign } = await supabase.from('campaigns').select('status').eq('id', campaignId).single();
+        if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'cancelled') {
+          console.log(`[Campaign] ${campaignId} is ${currentCampaign.status}, stopping`);
+          return;
+        }
+
+        const batch = remaining.slice(b, b + BATCH_SIZE);
+        console.log(`[Campaign] 🚀 Batch ${Math.floor(b/BATCH_SIZE)+1}: sending ${batch.length} messages`);
+        
+        const results = await Promise.all(
+          batch.map((recipient, idx) => sendToRecipient(recipient, sentCount + b + idx))
+        );
+
+        for (const r of results) {
+          sentCount++;
+          if (r.success) { deliveredCount++; } else { failedCount++; }
+        }
+
         await supabase.from('campaigns').update({ 
-          sent_count: sentCount,
-          failed_count: failedCount
+          sent_count: sentCount, delivered_count: deliveredCount, failed_count: failedCount 
         }).eq('id', campaignId);
       }
+    } else {
+      // === STANDARD/WARMUP: sequential with intervals ===
+      for (let i = sentCount; i < campaignRecipients.length; i++) {
+        const { data: currentCampaign } = await supabase.from('campaigns').select('status').eq('id', campaignId).single();
+        if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'cancelled') {
+          console.log(`[Campaign] ${campaignId} is ${currentCampaign.status}, stopping at ${sentCount}/${campaignRecipients.length}`);
+          return;
+        }
 
-      // Wait random interval before next message (skip if full mode: intervals = 0)
-      if (i < campaignRecipients.length - 1 && (minInterval > 0 || maxInterval > 0)) {
-        const randomInterval = getRandomInterval(minInterval, maxInterval);
-        console.log(`[Campaign] ⏱ Waiting ${randomInterval}s...`);
-        await sleep(randomInterval * 1000);
+        const result = await sendToRecipient(campaignRecipients[i], i);
+        sentCount++;
+        if (result.success) { deliveredCount++; } else { failedCount++; }
+
+        await supabase.from('campaigns').update({ 
+          sent_count: sentCount, delivered_count: deliveredCount, failed_count: failedCount 
+        }).eq('id', campaignId);
+
+        if (i < campaignRecipients.length - 1) {
+          const randomInterval = getRandomInterval(minInterval, maxInterval);
+          console.log(`[Campaign] ⏱ Waiting ${randomInterval}s...`);
+          await sleep(randomInterval * 1000);
+        }
       }
     }
 
