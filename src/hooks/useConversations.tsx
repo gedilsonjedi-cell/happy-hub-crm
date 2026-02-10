@@ -80,7 +80,9 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
           .from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
           .or(`${channelFilter},channel_id.is.null`)
-          .order("updated_at", { ascending: false }),
+          .neq("status", "archived")
+          .order("updated_at", { ascending: false })
+          .limit(2000),
         supabase
           .from("profiles")
           .select("user_id, display_name, email"),
