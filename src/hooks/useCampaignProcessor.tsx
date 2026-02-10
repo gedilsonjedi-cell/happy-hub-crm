@@ -46,18 +46,20 @@ export function useCampaignProcessor({
     processingRef.current.add(campaign.id);
 
     try {
-      console.log(`[Processor] Sending batch for ${campaign.name} (${campaign.sent_count}/${campaign.total_recipients})`);
+      const isFullMode = (campaign.min_interval === 0 && campaign.max_interval === 0);
+      const currentBatchSize = isFullMode ? 200 : 1;
+      
+      console.log(`[Processor] Sending batch for ${campaign.name} (${campaign.sent_count}/${campaign.total_recipients}) [batch=${currentBatchSize}]`);
 
       const { data, error } = await supabase.functions.invoke('send-campaign-batch', {
         body: {
           campaignId: campaign.id,
-          batchSize: 1 // Envia 1 por vez para controle preciso do intervalo
+          batchSize: currentBatchSize
         }
       });
 
       if (error) {
         console.error(`[Processor] Error for ${campaign.name}:`, error);
-        // Retry after 5 seconds on error
         const timeout = setTimeout(() => {
           processingRef.current.delete(campaign.id);
           processNextBatch(campaign);
@@ -67,22 +69,19 @@ export function useCampaignProcessor({
       }
 
       console.log(`[Processor] Response for ${campaign.name}:`, data);
-
-      // Update UI
       onUpdate();
 
-      // If not done, schedule next batch
-      // IMPORTANT: Also continue polling when status is 'waiting_retry' to pick up retries when they're ready
       if (!data.done && (data.status === 'running' || data.status === 'waiting_retry')) {
         let waitTime: number;
         
         if (data.status === 'waiting_retry') {
-          // When waiting for retries, poll every 60 seconds to check if any retry is ready
-          // Retries are scheduled 12-48 hours ahead, so no need to poll too frequently
           waitTime = 60000;
           console.log(`[Processor] ${campaign.name}: ${data.pendingRetries || 0} retries pending, polling every 60s`);
+        } else if (isFullMode) {
+          // Full mode: no delay, fire next batch immediately
+          waitTime = 100; // minimal delay just for event loop
+          console.log(`[Processor] ${campaign.name}: FULL MODE — next batch immediately`);
         } else {
-          // Normal interval for sending
           const minInterval = campaign.min_interval || 5;
           const maxInterval = campaign.max_interval || 120;
           waitTime = getRandomInterval(minInterval, maxInterval) * 1000;

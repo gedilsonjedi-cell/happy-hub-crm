@@ -118,12 +118,13 @@ Deno.serve(async (req) => {
       const lastUpdate = new Date(campaign.updated_at).getTime()
       const nowMs = Date.now()
       const minWait = (campaign.min_interval || 5) * 1000
+      const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0;
       
       // For retry campaigns, process immediately
       const isRetryOnly = retriableCampaigns.some(c => c.id === campaign.id);
       
-      // Check if enough time has passed since last update (skip for retry-only)
-      if (!isRetryOnly && nowMs - lastUpdate < minWait) {
+      // Check if enough time has passed since last update (skip for retry-only and full mode)
+      if (!isRetryOnly && !isFullMode && nowMs - lastUpdate < minWait) {
         console.log(`[Processor] ${campaign.name}: waiting (${Math.round((nowMs - lastUpdate) / 1000)}s < ${campaign.min_interval}s)`)
         results.push({ 
           campaign: campaign.name, 
@@ -133,14 +134,13 @@ Deno.serve(async (req) => {
         continue
       }
 
-      console.log(`[Processor] Processing ${campaign.name}${isRetryOnly ? ' (retries only)' : ''}...`)
+      console.log(`[Processor] Processing ${campaign.name}${isRetryOnly ? ' (retries only)' : ''}${isFullMode ? ' (FULL MODE)' : ''}...`)
 
       try {
-        // Use supabase.functions.invoke which handles auth properly
         const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
           body: {
             campaignId: campaign.id,
-            batchSize: 1,
+            batchSize: isFullMode ? 200 : 1,
             processRetries: isRetryOnly
           }
         })

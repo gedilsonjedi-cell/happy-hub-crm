@@ -391,97 +391,57 @@ Deno.serve(async (req) => {
     let failedThisBatch = 0;
     let scheduledRetryThisBatch = 0;
 
-    // Process each recipient in the batch
-    for (const recipient of recipientsToSend) {
-      const idx = campaign.sent_count + sentThisBatch;
+    const manualVariables = campaign.manual_variables as Record<string, string> | null;
+
+    // Helper function to process a single recipient
+    async function processRecipient(recipient: typeof recipientsToSend[0], idx: number) {
       const campaignChannel = campaignChannels[idx % campaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id) as { 
-        id: string; 
-        name: string; 
-        variables?: string[] | null; 
-        variable_mappings?: Record<string, string> | null 
+        id: string; name: string; variables?: string[] | null; variable_mappings?: Record<string, string> | null 
       } | undefined;
 
       if (!channel || !template) {
-        failedThisBatch++;
-        sentThisBatch++;
-        // Mark recipient as failed if we have the ID
         if (recipient.recipientId) {
           await supabase.from('campaign_recipients').update({
-            status: 'failed',
-            error_message: 'Canal ou template não encontrado',
-            last_error_code: 'CONFIG_ERROR'
+            status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR'
           }).eq('id', recipient.recipientId);
         }
-        continue;
+        return { sent: true, delivered: false, failed: true, retry: false };
       }
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
 
-      // Build template params - CRITICAL: Use manual_variables from campaign
       const templateParams: string[] = [];
-      const manualVariables = campaign.manual_variables as Record<string, string> | null;
-      
-      console.log(`[Batch] Template variables: ${JSON.stringify(template.variables)}`);
-      console.log(`[Batch] Variable mappings: ${JSON.stringify(template.variable_mappings)}`);
-      console.log(`[Batch] Manual variables from campaign: ${JSON.stringify(manualVariables)}`);
-      
       if (template.variables && template.variables.length > 0) {
         for (const varName of template.variables) {
           const mapping = template.variable_mappings?.[varName] || 'manual';
-          // CRITICAL FIX: Default to empty string, NEVER show variable name
           let value = '';
-
           if (mapping === 'contact_first_name') {
             value = getFirstName(recipient.name) || '';
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || '');
-          } else if (mapping === 'manual') {
-            // CRITICAL FIX: Use manual variables saved in the campaign
-            // Try multiple possible key formats to find the value
-            if (manualVariables) {
-              const possibleKeys = [
-                varName,                                    // Exact match (e.g., "VAR_1")
-                varName.replace(/^VAR_/, 'p'),              // VAR_1 -> p1
-                varName.replace(/^p/, 'VAR_'),              // p1 -> VAR_1
-                `VAR_${varName.replace(/\D/g, '')}`,        // Extract number and add VAR_
-                `p${varName.replace(/\D/g, '')}`,           // Extract number and add p
-                varName.toLowerCase(),                      // Try lowercase
-                varName.toUpperCase(),                      // Try uppercase
-              ];
-              
-              for (const key of possibleKeys) {
-                if (manualVariables[key] !== undefined && manualVariables[key] !== '') {
-                  value = manualVariables[key];
-                  console.log(`[Batch] Found manual variable: ${varName} = "${value}" (key: ${key})`);
-                  break;
-                }
+          } else if (mapping === 'manual' && manualVariables) {
+            const possibleKeys = [
+              varName, varName.replace(/^VAR_/, 'p'), varName.replace(/^p/, 'VAR_'),
+              `VAR_${varName.replace(/\D/g, '')}`, `p${varName.replace(/\D/g, '')}`,
+              varName.toLowerCase(), varName.toUpperCase(),
+            ];
+            for (const key of possibleKeys) {
+              if (manualVariables[key] !== undefined && manualVariables[key] !== '') {
+                value = manualVariables[key]; break;
               }
             }
-            
-            // If still no value found, check if there's a value by position
-            if (!value && manualVariables) {
+            if (!value) {
               const keys = Object.keys(manualVariables);
               const varIndex = template.variables.indexOf(varName);
               if (varIndex >= 0 && varIndex < keys.length) {
-                const positionalValue = manualVariables[keys[varIndex]];
-                if (positionalValue) {
-                  value = positionalValue;
-                  console.log(`[Batch] Found manual variable by position: ${varName} = "${value}"`);
-                }
+                value = manualVariables[keys[varIndex]] || '';
               }
             }
           }
-          
-          // NEVER allow VAR_X or similar patterns to be sent as literal text
-          if (value.match(/^(VAR_\d+|p\d+)$/i)) {
-            console.warn(`[Batch] Preventing variable name from being sent as value: ${value}`);
-            value = '';
-          }
-          
-          console.log(`[Batch] Final param for ${varName}: "${value}"`);
+          if (value.match(/^(VAR_\d+|p\d+)$/i)) value = '';
           templateParams.push(value);
         }
       }
@@ -489,136 +449,82 @@ Deno.serve(async (req) => {
       try {
         const response = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
           body: JSON.stringify({
-            channelId: channel.id,
-            destination: formattedPhone,
-            templateName: template.name,
+            channelId: channel.id, destination: formattedPhone, templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
-            templateLanguage: 'pt_BR',
-            campaignId: campaignId
+            templateLanguage: 'pt_BR', campaignId: campaignId
           }),
         });
 
         const result = await response.json();
 
         if (result.success) {
-          deliveredThisBatch++;
-          if (!recipient.isRetry) sentThisBatch++;
-          console.log(`[Batch] ✓ ${recipient.isRetry ? 'RETRY' : 'Sent'} to ${formattedPhone}`);
-
-          // Update recipient status if we have the ID
           if (recipient.recipientId) {
             await supabase.from('campaign_recipients').update({
-              status: 'sent',
-              sent_at: new Date().toISOString(),
-              error_message: null,
-              last_error_code: null,
-              next_retry_at: null
+              status: 'sent', sent_at: new Date().toISOString(), error_message: null, last_error_code: null, next_retry_at: null
             }).eq('id', recipient.recipientId);
           }
 
-          // CRITICAL: Create/update conversation assignment for EVERY campaign dispatch
-          // Campaigns: status = 'archived' until customer replies
-          // This ensures conversations don't disappear and appear in "Arquivados"
-          const { data: existing } = await supabase
-            .from('conversation_assignments')
-            .select('id')
-            .eq('conversation_phone', formattedPhone)
-            .eq('channel_id', channel.id)
-            .single();
-
+          const { data: existing } = await supabase.from('conversation_assignments').select('id')
+            .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).single();
           if (existing) {
-            // Update existing assignment
             await supabase.from('conversation_assignments').update({
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
-              status: 'archived', // Campaign dispatches go to archived until customer replies
-              sector_id: campaign.sector_id || null, // Inherit sector from campaign
-              updated_at: new Date().toISOString()
+              status: 'archived', sector_id: campaign.sector_id || null, updated_at: new Date().toISOString()
             }).eq('id', existing.id);
           } else {
-            // Create NEW assignment with archived status
-            // NOTE: conversation_assignments does NOT have organization_id column
             await supabase.from('conversation_assignments').insert({
-              conversation_phone: formattedPhone,
-              channel_id: channel.id,
+              conversation_phone: formattedPhone, channel_id: channel.id,
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
-              status: 'archived', // Campaign dispatches start as archived
-              sector_id: campaign.sector_id || null // Inherit sector from campaign
+              status: 'archived', sector_id: campaign.sector_id || null
             });
           }
-          console.log(`[Batch] Assignment created/updated for ${formattedPhone} with status: archived, sector: ${campaign.sector_id || 'none'}`);
+          return { sent: !recipient.isRetry, delivered: true, failed: false, retry: false };
         } else {
-          // Check if error is retryable
           const errorCode = extractMetaErrorCode(result.error || '');
-          
           if (isRetryableError(errorCode) && recipient.recipientId) {
             const currentRetryCount = recipient.retryCount || 0;
             const config = getRetryConfig(errorCode!);
-            
             if (config && currentRetryCount < config.maxRetries) {
-              // Schedule retry
               const nextRetryAt = calculateNextRetryTime(errorCode!, currentRetryCount);
-              
               await supabase.from('campaign_recipients').update({
-                status: 'waiting_retry',
-                retry_count: currentRetryCount + 1,
-                next_retry_at: nextRetryAt?.toISOString(),
-                error_message: result.error || 'Erro temporário - retry agendado',
+                status: 'waiting_retry', retry_count: currentRetryCount + 1,
+                next_retry_at: nextRetryAt?.toISOString(), error_message: result.error || 'Erro temporário',
                 last_error_code: errorCode
               }).eq('id', recipient.recipientId);
-              
-              scheduledRetryThisBatch++;
-              if (!recipient.isRetry) sentThisBatch++;
-              
-              const hoursUntilRetry = nextRetryAt ? Math.round((nextRetryAt.getTime() - Date.now()) / 3600000) : 0;
-              console.log(`[Batch] ⏳ Scheduled retry #${currentRetryCount + 1} for ${formattedPhone} in ${hoursUntilRetry}h (error ${errorCode})`);
-            } else {
-              // Max retries reached
-              await supabase.from('campaign_recipients').update({
-                status: 'failed',
-                error_message: `Falha após ${currentRetryCount} tentativas: ${result.error}`,
-                last_error_code: errorCode || 'MAX_RETRIES'
-              }).eq('id', recipient.recipientId);
-              
-              failedThisBatch++;
-              if (!recipient.isRetry) sentThisBatch++;
-              console.log(`[Batch] ✗ Max retries reached for ${formattedPhone}`);
-            }
-          } else {
-            // Permanent failure - Mark as failed immediately
-            failedThisBatch++;
-            if (!recipient.isRetry) sentThisBatch++;
-            console.log(`[Batch] ✗ Failed ${formattedPhone}: ${result.error} (code: ${errorCode})`);
-            
-            if (recipient.recipientId) {
-              await supabase.from('campaign_recipients').update({
-                status: 'failed',
-                error_message: result.error || 'Erro desconhecido',
-                last_error_code: errorCode || 'UNKNOWN'
-              }).eq('id', recipient.recipientId);
+              return { sent: !recipient.isRetry, delivered: false, failed: false, retry: true };
             }
           }
+          if (recipient.recipientId) {
+            await supabase.from('campaign_recipients').update({
+              status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN'
+            }).eq('id', recipient.recipientId);
+          }
+          return { sent: !recipient.isRetry, delivered: false, failed: true, retry: false };
         }
       } catch (error) {
-        failedThisBatch++;
-        if (!recipient.isRetry) sentThisBatch++;
-        console.error(`[Batch] Error sending to ${formattedPhone}:`, error);
-        
-        // Update recipient status if we have the ID
         if (recipient.recipientId) {
           await supabase.from('campaign_recipients').update({
-            status: 'failed',
-            error_message: String(error),
-            last_error_code: 'EXCEPTION'
+            status: 'failed', error_message: String(error), last_error_code: 'EXCEPTION'
           }).eq('id', recipient.recipientId);
         }
+        return { sent: !recipient.isRetry, delivered: false, failed: true, retry: false };
       }
+    }
+
+    // Process all recipients in PARALLEL
+    const results = await Promise.all(
+      recipientsToSend.map((recipient, i) => processRecipient(recipient, campaign.sent_count + i))
+    );
+
+    for (const r of results) {
+      if (r.sent) sentThisBatch++;
+      if (r.delivered) deliveredThisBatch++;
+      if (r.failed) failedThisBatch++;
+      if (r.retry) scheduledRetryThisBatch++;
     }
 
     // Check if there are remaining pending or retry recipients
