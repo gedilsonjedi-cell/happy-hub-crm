@@ -166,7 +166,7 @@ const Disparos = () => {
     scheduledDate: "",
     scheduledTime: "",
     unifiedTemplate: "",
-    cadenceType: "standard" as "standard" | "warmup",
+    cadenceType: "standard" as "standard" | "warmup" | "full",
     minInterval: "5",
     maxInterval: "90"
   });
@@ -986,7 +986,7 @@ const Disparos = () => {
                   Escolha o tipo de cadência para os disparos. A cadência de aquecimento é mais lenta e recomendada para números novos.
                 </p>
                 
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${role === "super_admin" ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div 
                     className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                       formData.cadenceType === "standard" 
@@ -1044,6 +1044,37 @@ const Disparos = () => {
                     </p>
                     <p className="text-xs text-amber-500 mt-1">Para números novos ou pouco usados</p>
                   </div>
+
+                  {role === "super_admin" && (
+                    <div 
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        formData.cadenceType === "full" 
+                          ? "border-destructive bg-destructive/10" 
+                          : "border-border bg-card hover:border-destructive/50"
+                      }`}
+                      onClick={() => setFormData({ 
+                        ...formData, 
+                        cadenceType: "full",
+                        minInterval: "0",
+                        maxInterval: "0"
+                      })}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          formData.cadenceType === "full" ? "border-destructive" : "border-muted-foreground"
+                        }`}>
+                          {formData.cadenceType === "full" && (
+                            <div className="w-2 h-2 rounded-full bg-destructive" />
+                          )}
+                        </div>
+                        <span className="font-medium text-foreground">Full</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Sem intervalo</strong> — todos de uma vez
+                      </p>
+                      <p className="text-xs text-destructive mt-1">Apenas para administradores</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
@@ -1051,7 +1082,9 @@ const Disparos = () => {
                   <p className="text-xs text-primary">
                     {formData.cadenceType === "standard" 
                       ? "Disparos rápidos com intervalos entre 5 segundos e 1 minuto e 30 segundos"
-                      : "Disparos lentos com intervalos entre 3 e 5 minutos para aquecer o número"
+                      : formData.cadenceType === "warmup"
+                        ? "Disparos lentos com intervalos entre 3 e 5 minutos para aquecer o número"
+                        : "⚡ Disparo FULL — todas as mensagens serão enviadas simultaneamente, sem intervalo"
                     }
                   </p>
                 </div>
@@ -1210,7 +1243,10 @@ const Disparos = () => {
                   <span className="text-primary font-medium">Cadência:</span>
                   <span className="text-foreground flex items-center gap-1">
                     <Shuffle className="w-3 h-3" />
-                    {formData.minInterval}s - {formData.maxInterval}s (aleatório)
+                    {formData.cadenceType === "full" 
+                      ? "Full (sem intervalo)" 
+                      : `${formData.minInterval}s - ${formData.maxInterval}s (aleatório)`
+                    }
                   </span>
                 </div>
               </div>
