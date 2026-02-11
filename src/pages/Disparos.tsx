@@ -62,6 +62,16 @@ import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar"
 import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
 import { RecycleFailuresDialog } from "@/components/campaigns/RecycleFailuresDialog";
 import { useCampaignProcessor } from "@/hooks/useCampaignProcessor";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Channel {
   id: string;
@@ -795,13 +805,18 @@ const Disparos = () => {
     });
   };
 
-  const handleDeleteCampaign = async (id: string) => {
-    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+  const [deleteCampaignId, setDeleteCampaignId] = useState<string | null>(null);
+  const [deleteCampaignName, setDeleteCampaignName] = useState<string>("");
+
+  const confirmDeleteCampaign = async () => {
+    if (!deleteCampaignId) return;
+    const { error } = await supabase.from("campaigns").delete().eq("id", deleteCampaignId);
     if (error) {
       toast.error("Erro ao excluir campanha");
       return;
     }
     toast.success("Campanha excluída");
+    setDeleteCampaignId(null);
     fetchData();
   };
 
@@ -1748,7 +1763,10 @@ const Disparos = () => {
                           )}
                           <DropdownMenuItem 
                             className="text-destructive"
-                            onClick={() => handleDeleteCampaign(campaign.id)}
+                            onClick={() => {
+                              setDeleteCampaignId(campaign.id);
+                              setDeleteCampaignName(campaign.name);
+                            }}
                           >
                             Excluir
                           </DropdownMenuItem>
@@ -1785,6 +1803,31 @@ const Disparos = () => {
         onOpenChange={setShowRecycleDialog}
         onSuccess={fetchData}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteCampaignId} onOpenChange={(open) => { if (!open) setDeleteCampaignId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Campanha</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a campanha <strong>{deleteCampaignName}</strong>?
+              <br />
+              <span className="text-destructive">
+                Esta ação não pode ser desfeita. Todos os dados de envio serão perdidos.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteCampaign}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 };
