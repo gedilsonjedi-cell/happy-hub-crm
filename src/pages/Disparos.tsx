@@ -156,6 +156,7 @@ const Disparos = () => {
     source: null
   });
   const [manualVariables, setManualVariables] = useState<Record<string, string>>({});
+  const [channelManualVariables, setChannelManualVariables] = useState<Record<string, Record<string, string>>>({});
   const [formData, setFormData] = useState({
     campaignName: "",
     department: "",
@@ -428,6 +429,11 @@ const Disparos = () => {
           delete updated[channelId];
           return updated;
         });
+        setChannelManualVariables(current => {
+          const updated = { ...current };
+          delete updated[channelId];
+          return updated;
+        });
       }
       
       // Reset unified template if it's no longer valid
@@ -463,6 +469,22 @@ const Disparos = () => {
       ...prev,
       [channelId]: templateId
     }));
+    // Initialize manual variables for this channel's template
+    const manualVars = getManualVariablesForTemplate(templateId);
+    if (manualVars.length > 0) {
+      const initialValues: Record<string, string> = {};
+      manualVars.forEach(v => { initialValues[v] = ''; });
+      setChannelManualVariables(prev => ({
+        ...prev,
+        [channelId]: initialValues
+      }));
+    } else {
+      setChannelManualVariables(prev => {
+        const updated = { ...prev };
+        delete updated[channelId];
+        return updated;
+      });
+    }
   };
 
   const getSelectedTemplatesPreview = () => {
@@ -517,6 +539,19 @@ const Disparos = () => {
       if (!allHaveTemplates) {
         toast.error("Selecione um template para cada canal");
         return;
+      }
+      // Validate per-channel manual variables
+      for (const chId of selectedChannels) {
+        const templateId = channelTemplates[chId];
+        if (!templateId) continue;
+        const manualVars = getManualVariablesForTemplate(templateId);
+        const channelVars = channelManualVariables[chId] || {};
+        const emptyVars = manualVars.filter(v => !channelVars[v]?.trim());
+        if (emptyVars.length > 0) {
+          const channel = channels.find(c => c.id === chId);
+          toast.error(`Preencha as variáveis do canal ${channel?.name}: ${emptyVars.join(', ')}`);
+          return;
+        }
       }
     }
 
@@ -605,7 +640,16 @@ const Disparos = () => {
           scheduled_at: scheduledAt,
           total_recipients: recipientData.phones.length,
           // CRITICAL: Save manual variables for template substitution in batch processor
-          manual_variables: Object.keys(manualVariables).length > 0 ? manualVariables : null,
+          // For per-channel mode, merge all channel variables (if same var name across channels, last wins)
+          manual_variables: useUnifiedTemplate 
+            ? (Object.keys(manualVariables).length > 0 ? manualVariables : null)
+            : (() => {
+                const merged: Record<string, string> = {};
+                Object.values(channelManualVariables).forEach(vars => {
+                  Object.entries(vars).forEach(([k, v]) => { if (v) merged[k] = v; });
+                });
+                return Object.keys(merged).length > 0 ? merged : null;
+              })(),
         })
         .select()
         .single();
@@ -734,6 +778,7 @@ const Disparos = () => {
     setUseUnifiedTemplate(true);
     setRecipientData({ phones: [], source: null });
     setManualVariables({});
+    setChannelManualVariables({});
     setFormData({
       campaignName: "",
       department: "",
@@ -1363,7 +1408,7 @@ const Disparos = () => {
                     Selecione um template aprovado para cada canal.
                   </p>
                   
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
                     {selectedChannels.length === 0 ? (
                       <div className="text-center py-6 text-muted-foreground text-sm">
                         Selecione pelo menos um canal
@@ -1427,6 +1472,39 @@ const Disparos = () => {
                                 {template.content.substring(0, 80)}...
                               </p>
                             )}
+                            {/* Per-channel manual variables */}
+                            {(() => {
+                              const templateId = channelTemplates[chId];
+                              if (!templateId) return null;
+                              const manualVars = getManualVariablesForTemplate(templateId);
+                              if (manualVars.length === 0) return null;
+                              const channelVars = channelManualVariables[chId] || {};
+                              return (
+                                <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg space-y-2 mt-1">
+                                  <div className="flex items-center gap-2 text-warning">
+                                    <Settings2 className="w-3.5 h-3.5" />
+                                    <span className="font-medium text-xs">Variáveis do template</span>
+                                  </div>
+                                  {manualVars.map((varName) => (
+                                    <div key={varName}>
+                                      <Label className="text-xs mb-1 block">{varName}</Label>
+                                      <Input
+                                        placeholder={`Valor para ${varName}`}
+                                        value={channelVars[varName] || ''}
+                                        onChange={(e) => setChannelManualVariables(prev => ({
+                                          ...prev,
+                                          [chId]: {
+                                            ...(prev[chId] || {}),
+                                            [varName]: e.target.value
+                                          }
+                                        }))}
+                                        className="bg-card h-8 text-sm"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })
