@@ -1236,10 +1236,18 @@ const AtendimentoV2 = () => {
       if (inboundMessages.length > 0) {
         const latestInbound = inboundMessages[inboundMessages.length - 1];
         const conversationKey = getConversationKey(selectedConversation);
+        
+        // Update BOTH allConversations AND selectedConversation
+        const shouldUpdate = !selectedConversation.lastInboundTime || 
+          new Date(latestInbound.created_at) > new Date(selectedConversation.lastInboundTime);
+        
+        if (shouldUpdate) {
+          setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInbound.created_at } : null);
+        }
+        
         setAllConversations(prev => prev.map(c => {
           const key = getConversationKey(c);
           if (key !== conversationKey) return c;
-          // Only update if the fetched inbound time is newer than what we have
           if (!c.lastInboundTime || new Date(latestInbound.created_at) > new Date(c.lastInboundTime)) {
             return { ...c, lastInboundTime: latestInbound.created_at };
           }
