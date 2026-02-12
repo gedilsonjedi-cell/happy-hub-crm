@@ -71,25 +71,47 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     const channelIds = channels.map(c => c.id);
 
     try {
-      // Parallel fetches - using conversation_assignments as PRIMARY source
-      // Fetch assignments: include those matching channel_ids OR those with NULL channel_id
-      // (orphaned from campaigns that didn't set channel properly - RLS handles org isolation)
+      // UNLIMITED: Paginated fetchers
       const channelFilter = channelIds.map(id => `channel_id.eq.${id}`).join(',');
+
+      const fetchAllAssignments = async () => {
+        const all: any[] = []; let from = 0; let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase.from("conversation_assignments")
+            .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
+            .or(`${channelFilter},channel_id.is.null`).neq("status", "archived")
+            .order("updated_at", { ascending: false }).range(from, from + 999);
+          if (error || !data || data.length === 0) hasMore = false;
+          else { all.push(...data); from += 1000; hasMore = data.length === 1000; }
+        }
+        return { data: all, error: null };
+      };
+
+      const fetchAllProfiles = async () => {
+        const all: any[] = []; let from = 0; let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase.from("profiles")
+            .select("user_id, display_name, email").range(from, from + 999);
+          if (error || !data || data.length === 0) hasMore = false;
+          else { all.push(...data); from += 1000; hasMore = data.length === 1000; }
+        }
+        return { data: all, error: null };
+      };
+
+      const fetchAllLeads = async () => {
+        const all: any[] = []; let from = 0; let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase.from("leads")
+            .select("id, phone, name, tags").eq("organization_id", effectiveOrganizationId)
+            .range(from, from + 999);
+          if (error || !data || data.length === 0) hasMore = false;
+          else { all.push(...data); from += 1000; hasMore = data.length === 1000; }
+        }
+        return { data: all, error: null };
+      };
+
       const [assignmentsResult, profilesResult, leadsResult] = await Promise.all([
-        supabase
-          .from("conversation_assignments")
-          .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .or(`${channelFilter},channel_id.is.null`)
-          .neq("status", "archived")
-          .order("updated_at", { ascending: false })
-          .limit(2000),
-        supabase
-          .from("profiles")
-          .select("user_id, display_name, email"),
-        supabase
-          .from("leads")
-          .select("id, phone, name, tags")
-          .eq("organization_id", effectiveOrganizationId)
+        fetchAllAssignments(), fetchAllProfiles(), fetchAllLeads()
       ]);
 
       if (assignmentsResult.error) {
@@ -153,20 +175,15 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       });
       profilesMapRef.current = profilesMap;
 
-      // Fetch last message for each conversation (batch query)
-      const conversationPhones = assignmentsResult.data?.map(a => ({
-        channelId: a.channel_id,
-        phone: a.conversation_phone.replace(/\D/g, '')
-      })) || [];
-
-      // Get last messages for all conversations in one query
+      // Fetch recent messages per channel - we use a large batch here
+      // The background recovery in AtendimentoV2 handles any conversations missed by this batch
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(500)
+          .limit(5000)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
