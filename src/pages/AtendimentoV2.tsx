@@ -523,19 +523,45 @@ const AtendimentoV2 = () => {
 
       // CRITICAL FIX: Use conversation_assignments as PRIMARY source
       // This prevents conversations from "disappearing" due to message limits
+      // CRITICAL: Fetch ALL leads using pagination to support high-scale orgs (10k+ leads)
+      const fetchAllLeads = async () => {
+        const allLeads: Array<{ id: string; phone: string; name: string | null; tags: string[] | null }> = [];
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("leads")
+            .select("id, phone, name, tags")
+            .eq("organization_id", effectiveOrganizationId)
+            .range(from, from + PAGE_SIZE - 1);
+          
+          if (error || !data || data.length === 0) {
+            hasMore = false;
+          } else {
+            allLeads.push(...data);
+            from += PAGE_SIZE;
+            hasMore = data.length === PAGE_SIZE;
+          }
+        }
+        
+        console.log(`[AtendimentoV2] Fetched ${allLeads.length} leads total (paginated)`);
+        return { data: allLeads, error: null };
+      };
+
       const [assignmentsResult, profilesResult, leadsResult] = await Promise.all([
         supabase
           .from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
           .in("channel_id", channelIds)
-          .order("updated_at", { ascending: false }),
+          .order("updated_at", { ascending: false })
+          .limit(5000),
         supabase
           .from("profiles")
-          .select("user_id, display_name, email"),
-        supabase
-          .from("leads")
-          .select("id, phone, name, tags")
-          .eq("organization_id", effectiveOrganizationId)
+          .select("user_id, display_name, email")
+          .limit(2000),
+        fetchAllLeads()
       ]);
 
       if (assignmentsResult.error) {
@@ -645,7 +671,7 @@ const AtendimentoV2 = () => {
           .select("channel_id, sender_phone, sender_name, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(1000)
+          .limit(3000)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
@@ -827,7 +853,8 @@ const AtendimentoV2 = () => {
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
         .in("channel_id", channelIds)
-        .neq("status", "archived");
+        .neq("status", "archived")
+        .limit(5000);
       
       if (!assignments) return;
       
