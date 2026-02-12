@@ -835,6 +835,82 @@ const AtendimentoV2 = () => {
 
       setAllConversations(conversationsFromAssignments);
       setLoading(false);
+
+      // CRITICAL: For conversations without lastMessage (not covered by batch limit),
+      // fetch their last message individually in background batches
+      const emptyMessageConvs = conversationsFromAssignments.filter(c => !c.lastMessage && c.channelId);
+      if (emptyMessageConvs.length > 0) {
+        console.log(`[AtendimentoV2] Fetching last messages for ${emptyMessageConvs.length} conversations without preview`);
+        
+        const BATCH = 50;
+        for (let i = 0; i < emptyMessageConvs.length; i += BATCH) {
+          const batch = emptyMessageConvs.slice(i, i + BATCH);
+          
+          const results = await Promise.all(batch.map(async (conv) => {
+            const phone = conv.phone.replace(/\D/g, '');
+            const phoneWithPlus = `+${phone}`;
+            
+            // Fetch last inbound OR outbound message for this conversation
+            const [inboundRes, outboundRes] = await Promise.all([
+              supabase
+                .from("whatsapp_messages")
+                .select("content, created_at, direction, sender_name")
+                .eq("channel_id", conv.channelId!)
+                .eq("direction", "inbound")
+                .or(`sender_phone.eq.${phone},sender_phone.eq.${phoneWithPlus}`)
+                .order("created_at", { ascending: false })
+                .limit(1),
+              supabase
+                .from("whatsapp_messages")
+                .select("content, created_at, direction, metadata")
+                .eq("channel_id", conv.channelId!)
+                .eq("direction", "outbound")
+                .or(`metadata->>destination.eq.${phone},metadata->>destination.eq.${phoneWithPlus}`)
+                .order("created_at", { ascending: false })
+                .limit(1)
+            ]);
+            
+            const inMsg = inboundRes.data?.[0];
+            const outMsg = outboundRes.data?.[0];
+            
+            // Pick the most recent message
+            let lastMsg: { content: string | null; created_at: string; direction: string; senderName?: string | null } | null = null;
+            if (inMsg && outMsg) {
+              lastMsg = new Date(inMsg.created_at) > new Date(outMsg.created_at) 
+                ? { ...inMsg, senderName: inMsg.sender_name } 
+                : { ...outMsg };
+            } else {
+              lastMsg = inMsg ? { ...inMsg, senderName: inMsg.sender_name } : outMsg ? { ...outMsg } : null;
+            }
+            
+            return { phone: conv.phone, channelId: conv.channelId, lastMsg };
+          }));
+          
+          // Update conversations with fetched messages
+          setAllConversations(prev => {
+            let changed = false;
+            const updated = prev.map(c => {
+              const result = results.find(r => 
+                r.phone === c.phone && r.channelId === c.channelId && r.lastMsg
+              );
+              if (result && result.lastMsg && !c.lastMessage) {
+                changed = true;
+                return {
+                  ...c,
+                  lastMessage: result.lastMsg.content || "",
+                  lastMessageTime: result.lastMsg.created_at,
+                  lastInboundTime: result.lastMsg.direction === 'inbound' ? result.lastMsg.created_at : c.lastInboundTime,
+                  name: c.name || (result.lastMsg as { senderName?: string | null }).senderName || c.name,
+                };
+              }
+              return c;
+            });
+            return changed ? updated : prev;
+          });
+        }
+        
+        console.log(`[AtendimentoV2] Finished fetching missing last messages`);
+      }
     };
 
     fetchConversations();
