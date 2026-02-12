@@ -550,17 +550,47 @@ const AtendimentoV2 = () => {
         return { data: allLeads, error: null };
       };
 
+      // UNLIMITED: Paginated fetch for assignments
+      const fetchAllAssignments = async () => {
+        const all: Array<{ id: string; conversation_phone: string; channel_id: string | null; assigned_to: string | null; status: string | null; sector_id: string | null; lead_id: string | null; updated_at: string }> = [];
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("conversation_assignments")
+            .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
+            .in("channel_id", channelIds)
+            .neq("status", "archived")
+            .order("updated_at", { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+          if (error || !data || data.length === 0) { hasMore = false; } 
+          else { all.push(...data); from += PAGE_SIZE; hasMore = data.length === PAGE_SIZE; }
+        }
+        console.log(`[AtendimentoV2] Fetched ${all.length} assignments total (paginated)`);
+        return { data: all, error: null };
+      };
+
+      // UNLIMITED: Paginated fetch for profiles
+      const fetchAllProfiles = async () => {
+        const all: Array<{ user_id: string; display_name: string | null; email: string | null }> = [];
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("user_id, display_name, email")
+            .range(from, from + PAGE_SIZE - 1);
+          if (error || !data || data.length === 0) { hasMore = false; }
+          else { all.push(...data); from += PAGE_SIZE; hasMore = data.length === PAGE_SIZE; }
+        }
+        return { data: all, error: null };
+      };
+
       const [assignmentsResult, profilesResult, leadsResult] = await Promise.all([
-        supabase
-          .from("conversation_assignments")
-          .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .in("channel_id", channelIds)
-          .order("updated_at", { ascending: false })
-          .limit(5000),
-        supabase
-          .from("profiles")
-          .select("user_id, display_name, email")
-          .limit(2000),
+        fetchAllAssignments(),
+        fetchAllProfiles(),
         fetchAllLeads()
       ]);
 
@@ -664,14 +694,14 @@ const AtendimentoV2 = () => {
         profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
       });
 
-      // Fetch last messages for conversations (batch by channel)
+      // Large batch for messages - background recovery handles any misses
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, sender_name, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(3000)
+          .limit(5000)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
@@ -924,13 +954,21 @@ const AtendimentoV2 = () => {
     const syncAssignments = async () => {
       const channelIds = channels.map(c => c.id);
       
-      // Fetch current assignments from DB
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
-        .in("channel_id", channelIds)
-        .neq("status", "archived")
-        .limit(5000);
+      // UNLIMITED: Paginated fetch for sync assignments
+      const allSyncAssignments: Array<any> = [];
+      let syncFrom = 0;
+      let syncHasMore = true;
+      while (syncHasMore) {
+        const { data } = await supabase
+          .from("conversation_assignments")
+          .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
+          .in("channel_id", channelIds)
+          .neq("status", "archived")
+          .range(syncFrom, syncFrom + 999);
+        if (!data || data.length === 0) { syncHasMore = false; }
+        else { allSyncAssignments.push(...data); syncFrom += 1000; syncHasMore = data.length === 1000; }
+      }
+      const assignments = allSyncAssignments;
       
       if (!assignments) return;
       

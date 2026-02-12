@@ -206,7 +206,7 @@ const Leads = () => {
 
         let { data, error } = await query
           .order("created_at", { ascending: false })
-          .limit(500);
+          .limit(10000);
 
         if (error) throw error;
         
@@ -234,7 +234,7 @@ const Leads = () => {
 
       const { data, error } = await query
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(10000);
 
       if (error) throw error;
       return (data || []) as Lead[];
