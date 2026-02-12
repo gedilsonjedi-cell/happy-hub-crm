@@ -1230,6 +1230,22 @@ const AtendimentoV2 = () => {
       ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       setMessages(allMessages as Message[]);
+
+      // CRITICAL: Update lastInboundTime from actual messages to fix 24h window check
+      const inboundMessages = inboundResult.data || [];
+      if (inboundMessages.length > 0) {
+        const latestInbound = inboundMessages[inboundMessages.length - 1];
+        const conversationKey = getConversationKey(selectedConversation);
+        setAllConversations(prev => prev.map(c => {
+          const key = getConversationKey(c);
+          if (key !== conversationKey) return c;
+          // Only update if the fetched inbound time is newer than what we have
+          if (!c.lastInboundTime || new Date(latestInbound.created_at) > new Date(c.lastInboundTime)) {
+            return { ...c, lastInboundTime: latestInbound.created_at };
+          }
+          return c;
+        }));
+      }
       
       // Mark as read
       const unreadMessageIds = allMessages
