@@ -359,6 +359,9 @@ const AtendimentoV2 = () => {
     }
   }, [notificationsEnabled]);
 
+  // Track previous org to only reset state on actual org change
+  const prevOrgIdRef = useRef<string | null>(null);
+
   // Fetch channels
   useEffect(() => {
     const fetchChannels = async () => {
@@ -387,19 +390,31 @@ const AtendimentoV2 = () => {
       });
 
       if (!error && data) {
-        setChannels(data);
-        if (data.length > 0) {
+        // Only update channels if they actually changed (prevents unnecessary re-renders and re-fetches)
+        setChannels(prev => {
+          const prevIds = prev.map(c => c.id).sort().join(',');
+          const newIds = data.map((c: any) => c.id).sort().join(',');
+          if (prevIds === newIds) return prev;
+          return data;
+        });
+        if (data.length > 0 && !selectedChannel) {
           setSelectedChannel(data[0]);
         }
       }
     };
 
     if (user && effectiveOrganizationId) {
-      // CRITICAL: Clear conversations and channels IMMEDIATELY when org changes
-      // This prevents stale data from previous org being visible during transition
-      setChannels([]);
-      setAllConversations([]);
-      setSelectedConversation(null);
+      const orgChanged = prevOrgIdRef.current !== null && prevOrgIdRef.current !== effectiveOrganizationId;
+      
+      if (orgChanged) {
+        // Only clear state when the organization ACTUALLY changes (e.g. super admin switching client)
+        console.log("[AtendimentoV2] Org changed, clearing state", { from: prevOrgIdRef.current, to: effectiveOrganizationId });
+        setChannels([]);
+        setAllConversations([]);
+        setSelectedConversation(null);
+      }
+      
+      prevOrgIdRef.current = effectiveOrganizationId;
       fetchChannels();
     } else {
       console.log("[AtendimentoV2] Waiting for user or org", { 
