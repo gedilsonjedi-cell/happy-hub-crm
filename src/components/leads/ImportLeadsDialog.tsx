@@ -111,7 +111,11 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [step, setStep] = useState<"upload" | "mapping" | "validating" | "conflicts" | "tags">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "duplicates" | "validating" | "conflicts" | "tags">("upload");
+  
+  // Spreadsheet duplicates state (before WhatsApp validation)
+  const [spreadsheetDuplicates, setSpreadsheetDuplicates] = useState<SpreadsheetConflict[]>([]);
+  const [dedupedLeads, setDedupedLeads] = useState<ParsedLead[]>([]);
   const [parsedFileData, setParsedFileData] = useState<ParsedFileData | null>(null);
   
   // Column mapping states
@@ -458,6 +462,18 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     return validatedLeads;
   };
 
+  // Score a lead to determine which is "best" to keep
+  const scoreLead = (lead: ParsedLead): number => {
+    let score = 0;
+    if (lead.name && !lead.name.startsWith('Lead ')) score += 100;
+    if (lead.email) score += 50;
+    if (lead.document) score += 50;
+    if (lead.city) score += 25;
+    if (lead.state) score += 25;
+    if (Object.keys(lead.customFields).length > 0) score += 20;
+    return score;
+  };
+
   const handleMappingConfirm = async () => {
     if (selectedPhoneColumn === null) {
       toast.error("Selecione a coluna de telefone");
@@ -466,46 +482,124 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     
     if (!parsedFileData || !organizationId) return;
     
-    // Move to validating step
+    // Parse all leads from file
+    const leads: ParsedLead[] = parsedFileData.rows
+      .map((row, rowIndex) => {
+        const rawPhone = row[selectedPhoneColumn]?.replace(/\D/g, "");
+        if (!rawPhone || rawPhone.length < 10) return null;
+        
+        const phone = normalizePhoneForStorage(rawPhone);
+        
+        const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
+        const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;
+        const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : null;
+        const city = selectedCityColumn !== null ? row[selectedCityColumn] : null;
+        const state = selectedStateColumn !== null ? row[selectedStateColumn] : null;
+
+        const customFields: Record<string, string> = {};
+        Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
+          const value = row[colIndex];
+          if (value) customFields[fieldName] = value;
+        });
+
+        return {
+          phone,
+          name: name?.trim() || `Lead ${phone}`,
+          email: email?.trim() || null,
+          document: document?.trim() || null,
+          city: city?.trim() || null,
+          state: state?.trim() || null,
+          customFields,
+          rowIndex,
+        };
+      })
+      .filter((l): l is ParsedLead => l !== null);
+
+    if (leads.length === 0) {
+      toast.error("Nenhum número válido encontrado");
+      return;
+    }
+
+    // Detect duplicates within the spreadsheet BEFORE WhatsApp validation
+    const phoneGroups = new Map<string, ParsedLead[]>();
+    leads.forEach(lead => {
+      const normalizedPhone = normalizePhoneForCompare(lead.phone);
+      const existing = phoneGroups.get(normalizedPhone) || [];
+      existing.push(lead);
+      phoneGroups.set(normalizedPhone, existing);
+    });
+    
+    const duplicates: SpreadsheetConflict[] = [];
+    phoneGroups.forEach((groupLeads, phone) => {
+      if (groupLeads.length > 1) {
+        // Auto-select the lead with the best data
+        const scored = groupLeads.map((lead, idx) => ({ lead, idx, score: scoreLead(lead) }));
+        scored.sort((a, b) => b.score - a.score);
+        
+        duplicates.push({
+          type: "spreadsheet",
+          phone,
+          leads: groupLeads,
+          selectedIndex: scored[0].idx, // Auto-select the best one
+        });
+      }
+    });
+
+    if (duplicates.length > 0) {
+      // Show duplicates step for user to review/confirm
+      setSpreadsheetDuplicates(duplicates);
+      setDedupedLeads(leads);
+      setStep("duplicates");
+      toast.info(`${duplicates.length} número(s) duplicado(s) encontrado(s) na planilha`);
+    } else {
+      // No duplicates, proceed directly to WhatsApp validation
+      setDedupedLeads(leads);
+      proceedToValidation(leads);
+    }
+  };
+
+  const updateDuplicateSelection = (phone: string, selectedIndex: number) => {
+    setSpreadsheetDuplicates(prev => prev.map(c => 
+      c.phone === phone ? { ...c, selectedIndex } : c
+    ));
+  };
+
+  const handleDuplicatesConfirm = () => {
+    // Check all duplicates are resolved
+    const unresolved = spreadsheetDuplicates.filter(c => c.selectedIndex === null);
+    if (unresolved.length > 0) {
+      toast.error(`Resolva ${unresolved.length} conflito(s) de duplicatas`);
+      return;
+    }
+
+    // Build deduplicated leads list
+    const duplicatePhones = new Set(spreadsheetDuplicates.map(c => c.phone));
+    const selectedRowIndices = new Set(
+      spreadsheetDuplicates.map(c => c.leads[c.selectedIndex!].rowIndex)
+    );
+    
+    const finalLeads = dedupedLeads.filter(lead => {
+      const suffix = normalizePhoneForCompare(lead.phone);
+      if (duplicatePhones.has(suffix)) {
+        return selectedRowIndices.has(lead.rowIndex);
+      }
+      return true;
+    });
+
+    const removedCount = dedupedLeads.length - finalLeads.length;
+    if (removedCount > 0) {
+      toast.success(`${removedCount} duplicata(s) removida(s)`);
+    }
+
+    proceedToValidation(finalLeads);
+  };
+
+  const proceedToValidation = async (leads: ParsedLead[]) => {
     setStep("validating");
     setValidationProgress(0);
     setValidationStats(null);
     
     try {
-      // Parse all leads from file
-      const leads: ParsedLead[] = parsedFileData.rows
-        .map((row, rowIndex) => {
-          const rawPhone = row[selectedPhoneColumn]?.replace(/\D/g, "");
-          if (!rawPhone || rawPhone.length < 10) return null;
-          
-          // Normaliza o telefone: SEMPRE adiciona 55 na frente
-          const phone = normalizePhoneForStorage(rawPhone);
-          
-          const name = selectedNameColumn !== null ? row[selectedNameColumn] : null;
-          const email = selectedEmailColumn !== null ? row[selectedEmailColumn] : null;
-          const document = selectedDocumentColumn !== null ? row[selectedDocumentColumn] : null;
-          const city = selectedCityColumn !== null ? row[selectedCityColumn] : null;
-          const state = selectedStateColumn !== null ? row[selectedStateColumn] : null;
-
-          const customFields: Record<string, string> = {};
-          Object.entries(selectedCustomFieldColumns).forEach(([fieldName, colIndex]) => {
-            const value = row[colIndex];
-            if (value) customFields[fieldName] = value;
-          });
-
-          return {
-            phone,
-            name: name?.trim() || `Lead ${phone}`,
-            email: email?.trim() || null,
-            document: document?.trim() || null,
-            city: city?.trim() || null,
-            state: state?.trim() || null,
-            customFields,
-            rowIndex,
-          };
-        })
-        .filter((l): l is ParsedLead => l !== null);
-      
       // VALIDATE WHATSAPP - This is now mandatory
       const validatedLeads = await validateWhatsAppNumbers(leads);
       
@@ -519,7 +613,6 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         withoutWhatsApp: leadsWithoutWhatsApp.length,
       });
       
-      // If no leads have WhatsApp, show error and stop
       if (leadsWithWhatsApp.length === 0) {
         toast.error("Nenhum número com WhatsApp encontrado na planilha");
         setStep("mapping");
@@ -528,29 +621,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       
       setParsedLeads(leadsWithWhatsApp);
       
-      // Now check for conflicts (only with leads that have WhatsApp)
+      // Now check for database conflicts only
       setCheckingConflicts(true);
-      
-      // Check for duplicates within the spreadsheet
-      const phoneGroups = new Map<string, ParsedLead[]>();
-      leadsWithWhatsApp.forEach(lead => {
-        const normalizedPhone = normalizePhoneForCompare(lead.phone);
-        const existing = phoneGroups.get(normalizedPhone) || [];
-        existing.push(lead);
-        phoneGroups.set(normalizedPhone, existing);
-      });
-      
-      const spreadsheetConflicts: SpreadsheetConflict[] = [];
-      phoneGroups.forEach((groupLeads, phone) => {
-        if (groupLeads.length > 1) {
-          spreadsheetConflicts.push({
-            type: "spreadsheet",
-            phone,
-            leads: groupLeads,
-            selectedIndex: null,
-          });
-        }
-      });
       
       // Check which phones already exist in database using suffix matching
       const { data: existingLeads } = await supabase
@@ -558,11 +630,9 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         .select("id, phone, name, email, document, city, state, tags, custom_fields")
         .eq("organization_id", organizationId);
       
-      // Build map of existing leads by phone suffix
       const existingMap = new Map<string, ExistingLead>();
       (existingLeads || []).forEach(lead => {
         const suffix = normalizePhoneForCompare(lead.phone);
-        // Keep the one with more data (tags, name, etc.)
         const existing = existingMap.get(suffix);
         if (!existing || (lead.tags && lead.tags.length > 0) || (lead.name && !lead.name.startsWith('Lead '))) {
           existingMap.set(suffix, lead as ExistingLead);
@@ -571,13 +641,13 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       
       setExistingLeadsMap(existingMap);
       
-      // Find database conflicts
+      // Find database conflicts only (no more spreadsheet conflicts here)
       const databaseConflicts: DatabaseConflict[] = [];
       const seenPhoneSuffixes = new Set<string>();
       
       leadsWithWhatsApp.forEach(lead => {
         const suffix = normalizePhoneForCompare(lead.phone);
-        if (seenPhoneSuffixes.has(suffix)) return; // Skip duplicates in file
+        if (seenPhoneSuffixes.has(suffix)) return;
         seenPhoneSuffixes.add(suffix);
         
         const existingLead = existingMap.get(suffix);
@@ -587,15 +657,14 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
             phone: suffix,
             newLead: lead,
             existingLead,
-            resolution: "update", // Default to update
+            resolution: "update",
           });
         }
       });
       
-      const allConflicts = [...spreadsheetConflicts, ...databaseConflicts];
-      setConflicts(allConflicts);
+      setConflicts(databaseConflicts);
       
-      if (allConflicts.length > 0) {
+      if (databaseConflicts.length > 0) {
         setStep("conflicts");
       } else {
         setStep("tags");
@@ -617,13 +686,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     }).length;
   }, [conflicts]);
 
-  const updateSpreadsheetConflictSelection = (phone: string, selectedIndex: number) => {
-    setConflicts(prev => prev.map(c => 
-      c.type === "spreadsheet" && c.phone === phone 
-        ? { ...c, selectedIndex } 
-        : c
-    ));
-  };
+  // updateSpreadsheetConflictSelection removed - now handled in duplicates step
 
   const updateDatabaseConflictResolution = (phone: string, resolution: "update" | "skip") => {
     setConflicts(prev => prev.map(c => 
@@ -634,16 +697,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
   };
 
   const handleConflictsConfirm = () => {
-    // Check spreadsheet conflicts are resolved
-    const unresolvedSpreadsheet = conflicts.filter(
-      c => c.type === "spreadsheet" && c.selectedIndex === null
-    );
-    
-    if (unresolvedSpreadsheet.length > 0) {
-      toast.error(`Resolva ${unresolvedSpreadsheet.length} conflito(s) de planilha`);
-      return;
-    }
-    
+    // Database conflicts all have default resolution, so just proceed
     setStep("tags");
   };
 
@@ -738,33 +792,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
 
     try {
       // Build list of leads to import based on conflict resolutions
-      const spreadsheetConflicts = conflicts.filter(c => c.type === "spreadsheet") as SpreadsheetConflict[];
-      const databaseConflicts = conflicts.filter(c => c.type === "database") as DatabaseConflict[];
+      const databaseConflicts = conflicts as DatabaseConflict[];
       
-      // Get phones that should be skipped from spreadsheet conflicts
-      const selectedFromConflicts = new Set<number>();
-      spreadsheetConflicts.forEach(c => {
-        if (c.selectedIndex !== null) {
-          selectedFromConflicts.add(c.leads[c.selectedIndex].rowIndex);
-        }
-      });
-      
-      // Get leads to import (either from parsedLeads or filtered by conflicts)
-      let leadsToProcess: ParsedLead[];
-      
-      if (spreadsheetConflicts.length > 0) {
-        // Only include leads that were selected from conflicts OR are not in any conflict
-        const conflictPhones = new Set(spreadsheetConflicts.map(c => c.phone));
-        leadsToProcess = parsedLeads.filter(lead => {
-          const suffix = normalizePhoneForCompare(lead.phone);
-          if (conflictPhones.has(suffix)) {
-            return selectedFromConflicts.has(lead.rowIndex);
-          }
-          return true;
-        });
-      } else {
-        leadsToProcess = parsedLeads;
-      }
+      // All spreadsheet duplicates were already resolved before validation
+      let leadsToProcess = parsedLeads;
       
       if (leadsToProcess.length === 0) {
         toast.error("Nenhum lead para importar");
@@ -918,6 +949,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
     setExistingLeadsMap(new Map());
     setValidationProgress(0);
     setValidationStats(null);
+    setSpreadsheetDuplicates([]);
+    setDedupedLeads([]);
     setStep("upload");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -943,8 +976,9 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           <DialogDescription>
             {step === "upload" && "Selecione um arquivo CSV para importar"}
             {step === "mapping" && "Configure o mapeamento das colunas"}
+            {step === "duplicates" && "Números duplicados detectados na planilha"}
             {step === "validating" && "Validando números no WhatsApp..."}
-            {step === "conflicts" && "Resolva conflitos de telefones duplicados"}
+            {step === "conflicts" && "Resolva conflitos com leads já existentes"}
             {step === "tags" && "Adicione tags aos leads importados (opcional)"}
           </DialogDescription>
         </DialogHeader>
@@ -1274,6 +1308,80 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               </>
             )}
 
+            {step === "duplicates" && (
+              <>
+                <Alert className="bg-amber-500/10 border-amber-500/30">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertDescription>
+                    Foram encontrados <strong>{spreadsheetDuplicates.length}</strong> número(s) repetido(s) na planilha.
+                    {" "}O sistema selecionou automaticamente o registro mais completo de cada grupo.
+                    Revise e confirme antes de prosseguir.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium flex items-center gap-2">
+                      <Users className="w-4 h-4 text-amber-500" />
+                      {spreadsheetDuplicates.reduce((acc, c) => acc + c.leads.length - 1, 0)} duplicata(s) serão removidas
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      De {dedupedLeads.length} registros, {dedupedLeads.length - spreadsheetDuplicates.reduce((acc, c) => acc + c.leads.length - 1, 0)} serão enviados para validação
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {spreadsheetDuplicates.map((c) => (
+                    <div key={c.phone} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users className="w-4 h-4" />
+                        <span>{c.leads.length} registros com o mesmo número</span>
+                        <Badge variant="outline" className="ml-auto font-mono">
+                          {c.leads[0].phone}
+                        </Badge>
+                      </div>
+                      
+                      <RadioGroup
+                        value={c.selectedIndex?.toString() ?? ""}
+                        onValueChange={(v) => updateDuplicateSelection(c.phone, parseInt(v))}
+                      >
+                        {c.leads.map((lead, idx) => (
+                          <div 
+                            key={idx} 
+                            className={cn(
+                              "flex items-center justify-between p-3 rounded-lg border transition-colors",
+                              c.selectedIndex === idx 
+                                ? "border-primary bg-primary/5" 
+                                : "border-border hover:border-primary/50"
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <RadioGroupItem value={idx.toString()} id={`dup-${c.phone}-${idx}`} />
+                              <div>
+                                <p className="font-medium">{lead.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {[
+                                    lead.email,
+                                    lead.document,
+                                    lead.city && lead.state ? `${lead.city} - ${lead.state}` : lead.city || lead.state,
+                                    Object.keys(lead.customFields).length > 0 ? `${Object.keys(lead.customFields).length} campo(s)` : null,
+                                  ].filter(Boolean).join(' • ') || 'Sem dados adicionais'}
+                                </p>
+                              </div>
+                            </div>
+                            <Label htmlFor={`dup-${c.phone}-${idx}`} className="text-sm cursor-pointer text-primary">
+                              {c.selectedIndex === idx ? "✓ Selecionado" : "Manter este"}
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             {step === "validating" && (
               <div className="py-12 space-y-6">
                 <div className="text-center">
@@ -1334,86 +1442,28 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
                   <div>
                     <p className="font-medium flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-warning" />
-                      Conflitos encontrados
+                      Leads já existentes no sistema
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Revise os registros duplicados e escolha qual manter
+                      Escolha se deseja atualizar ou manter os dados existentes
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold">{resolvedConflictsCount} / {conflicts.length}</p>
-                    <p className="text-xs text-muted-foreground">Resolvidos</p>
+                    <p className="text-2xl font-bold">{conflicts.length}</p>
+                    <p className="text-xs text-muted-foreground">Conflito(s)</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  {/* Spreadsheet Conflicts */}
-                  {conflicts.filter(c => c.type === "spreadsheet").map((conflict) => {
-                    const c = conflict as SpreadsheetConflict;
-                    return (
-                      <div key={c.phone} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Users className="w-4 h-4" />
-                          <span>Contatos duplicados na planilha</span>
-                          <Badge variant="outline" className="ml-auto">
-                            ({c.leads[0].phone.slice(0, 2)}) {c.leads[0].phone.slice(2, 7)}-{c.leads[0].phone.slice(7)}
-                          </Badge>
-                        </div>
-                        
-                        <RadioGroup
-                          value={c.selectedIndex?.toString() ?? ""}
-                          onValueChange={(v) => updateSpreadsheetConflictSelection(c.phone, parseInt(v))}
-                        >
-                          {c.leads.map((lead, idx) => (
-                            <div 
-                              key={idx} 
-                              className={cn(
-                                "flex items-center justify-between p-3 rounded-lg border transition-colors",
-                                c.selectedIndex === idx 
-                                  ? "border-primary bg-primary/5" 
-                                  : "border-border hover:border-primary/50"
-                              )}
-                            >
-                              <div className="flex items-center gap-3">
-                                <RadioGroupItem value={idx.toString()} id={`${c.phone}-${idx}`} />
-                                <div>
-                                  <p className="font-medium">{lead.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {lead.document || "-"} • {lead.city || "-"}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Label htmlFor={`${c.phone}-${idx}`} className="text-sm cursor-pointer">
-                                  Manter este
-                                </Label>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={() => {
-                                    // Could show more details
-                                  }}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </RadioGroup>
-                      </div>
-                    );
-                  })}
-
-                  {/* Database Conflicts */}
-                  {conflicts.filter(c => c.type === "database").map((conflict) => {
+                  {conflicts.map((conflict) => {
                     const c = conflict as DatabaseConflict;
                     return (
                       <div key={c.phone} className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <AlertCircle className="w-4 h-4" />
                           <span>Contato já existe no sistema</span>
-                          <Badge variant="outline" className="ml-auto">
-                            ({c.newLead.phone.slice(0, 2)}) {c.newLead.phone.slice(2, 7)}-{c.newLead.phone.slice(7)}
+                          <Badge variant="outline" className="ml-auto font-mono">
+                            {c.newLead.phone}
                           </Badge>
                         </div>
                         
@@ -1637,8 +1687,21 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
           </Button>
           {step === "mapping" && (
             <Button onClick={handleMappingConfirm} disabled={selectedPhoneColumn === null}>
-              Validar WhatsApp
+              Próximo
             </Button>
+          )}
+          {step === "duplicates" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("mapping")}>
+                Voltar
+              </Button>
+              <Button 
+                onClick={handleDuplicatesConfirm}
+                disabled={spreadsheetDuplicates.some(c => c.selectedIndex === null)}
+              >
+                Validar WhatsApp ({dedupedLeads.length - spreadsheetDuplicates.reduce((acc, c) => acc + c.leads.length - 1, 0)} leads)
+              </Button>
+            </>
           )}
           {step === "validating" && (
             <Button disabled>
@@ -1651,10 +1714,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
               <Button variant="outline" onClick={() => setStep("mapping")}>
                 Voltar
               </Button>
-              <Button 
-                onClick={handleConflictsConfirm}
-                disabled={conflicts.filter(c => c.type === "spreadsheet" && c.selectedIndex === null).length > 0}
-              >
+              <Button onClick={handleConflictsConfirm}>
                 Próximo
               </Button>
             </>
