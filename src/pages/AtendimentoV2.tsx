@@ -3411,7 +3411,7 @@ const AtendimentoV2 = () => {
 
   const isWindowExpired = selectedConversation ? is24HourWindowExpired(selectedConversation.lastInboundTime) : false;
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(selectedConversation.lastInboundTime) : null;
-  const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id;
+  const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
 
   // Handle paste event for images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {

@@ -2006,8 +2006,8 @@ const WhatsAppChat = () => {
   // Check if conversation belongs to current user (for blocking message input)
   const isMyConversation = useMemo(() => {
     if (!selectedConversation) return false;
-    return !selectedConversation.assignedTo || selectedConversation.assignedTo === user?.id;
-  }, [selectedConversation, user?.id]);
+    return !selectedConversation.assignedTo || selectedConversation.assignedTo === user?.id || canSeeOthers;
+  }, [selectedConversation, user?.id, canSeeOthers]);
 
   // Get conversation context for Sales Assistant
   const conversationContext = messages.map(m => 
