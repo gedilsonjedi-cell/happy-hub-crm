@@ -265,17 +265,17 @@ const Usuarios = () => {
 
   // Fetch sectors
   const fetchSectors = async () => {
+    if (!organizationId) {
+      setSectors([]);
+      return;
+    }
+
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from("sectors")
         .select("*")
+        .eq("organization_id", organizationId)
         .order("name");
-
-      if (organizationId) {
-        query = query.eq("organization_id", organizationId);
-      }
-
-      const { data, error } = await query;
 
       if (error) throw error;
 
