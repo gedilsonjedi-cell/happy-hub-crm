@@ -266,10 +266,16 @@ const Usuarios = () => {
   // Fetch sectors
   const fetchSectors = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("sectors")
         .select("*")
         .order("name");
+
+      if (organizationId) {
+        query = query.eq("organization_id", organizationId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
