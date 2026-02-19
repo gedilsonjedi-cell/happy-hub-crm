@@ -1137,15 +1137,40 @@ const AtendimentoV2 = () => {
       const profilesMap = new Map<string, string>();
       profiles?.forEach(p => profilesMap.set(p.user_id, p.display_name || p.email || 'Atendente'));
 
-      // Build search results
+      // Build search results - resolve names using leadsMap for ALL results
       const results: Conversation[] = uniqueAssignments.map(assignment => {
         const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
         const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
 
-        // Find matching lead for name
-        const matchingLead = (leadsByName || []).find(l => 
+        // Find matching lead by name search results first
+        const matchingLeadByName = (leadsByName || []).find(l => 
           l.phone.replace(/\D/g, '').slice(-8) === normalizedPhone.slice(-8)
         );
+
+        // Also try resolving from existing leadsMap for conversations not found by name
+        let resolvedName = matchingLeadByName?.name || null;
+        let resolvedTags = matchingLeadByName?.tags || null;
+        
+        if (!resolvedName) {
+          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+          const phoneSuffix8 = normalizedPhone.slice(-8);
+          const phoneSuffix9 = normalizedPhone.slice(-9);
+          
+          const candidates = [
+            leadsMapRef.current.byPhone.get(normalizedPhone),
+            leadsMapRef.current.byPhone.get(phoneWithout55),
+            leadsMapRef.current.byPhone.get(phoneWith55),
+            leadsMapRef.current.bySuffix.get(phoneSuffix9),
+            leadsMapRef.current.bySuffix.get(phoneSuffix8),
+          ].filter(Boolean);
+          
+          const bestMatch = candidates.find(c => c && c.name && !c.name.startsWith('LeadWhats-')) || candidates[0];
+          if (bestMatch) {
+            resolvedName = bestMatch.name || null;
+            resolvedTags = bestMatch.tags || null;
+          }
+        }
 
         let mappedStatus: Conversation["status"] = "pending";
         if (assignment.status === "active" || assignment.status === "in_progress") mappedStatus = "in_progress";
@@ -1153,8 +1178,9 @@ const AtendimentoV2 = () => {
         else if (assignment.status === "resolved") mappedStatus = "resolved";
 
         return {
+          id: assignment.id,
           phone: displayPhone,
-          name: matchingLead?.name || null,
+          name: resolvedName,
           lastMessage: "",
           lastMessageTime: assignment.updated_at,
           lastInboundTime: null,
@@ -1164,7 +1190,8 @@ const AtendimentoV2 = () => {
           assignedTo: assignment.assigned_to,
           assignedToName: assignment.assigned_to ? profilesMap.get(assignment.assigned_to) || null : null,
           sectorId: assignment.sector_id,
-          tags: matchingLead?.tags || null
+          tags: resolvedTags,
+          leadId: assignment.lead_id
         };
       });
 
@@ -3564,41 +3591,39 @@ const AtendimentoV2 = () => {
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Buscar atendimento (mín. 3 caracteres para busca global)" 
-                  className="pl-10 bg-muted/30 border-border h-9 text-sm" 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                />
-                {isSearchingGlobal && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
-                )}
-              </div>
-              
-              {/* Filters for admins/supervisors */}
-              {canSeeOthers && (
-                <div className="flex gap-2">
-                  <AttendantFilter 
-                    value={filterByAttendant} 
-                    onChange={(v) => {
-                      setFilterByAttendant(v);
-                      // Auto-switch to "Outros" when filtering by specific attendant
-                      if (v && v !== user?.id) {
-                        setFilterStatus("others");
-                      }
-                    }}
-                    selectedSectorId={filterBySector}
-                  />
-                  <SectorFilter 
-                    value={filterBySector} 
-                    onChange={setFilterBySector}
-                  />
-                </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Buscar por nome ou telefone (mín. 3 caracteres)" 
+                className="pl-10 bg-muted/30 border-border h-9 text-sm w-full" 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+              />
+              {isSearchingGlobal && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
               )}
             </div>
+              
+            {/* Filters for admins/supervisors */}
+            {canSeeOthers && (
+              <div className="flex gap-2">
+                <AttendantFilter 
+                  value={filterByAttendant} 
+                  onChange={(v) => {
+                    setFilterByAttendant(v);
+                    // Auto-switch to "Outros" when filtering by specific attendant
+                    if (v && v !== user?.id) {
+                      setFilterStatus("others");
+                    }
+                  }}
+                  selectedSectorId={filterBySector}
+                />
+                <SectorFilter 
+                  value={filterBySector} 
+                  onChange={setFilterBySector}
+                />
+              </div>
+            )}
           </div>
 
           {/* Archived section (collapsible panel - full list when showing) */}
