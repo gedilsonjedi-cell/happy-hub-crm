@@ -709,14 +709,15 @@ const AtendimentoV2 = () => {
         profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
       });
 
-      // Large batch for messages - background recovery handles any misses
+      // Optimized: fetch only recent messages (last 1500 per channel)
+      // Background recovery handles conversations not covered by this batch
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, sender_name, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(5000)
+          .limit(1500)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
@@ -969,21 +970,14 @@ const AtendimentoV2 = () => {
     const syncAssignments = async () => {
       const channelIds = channels.map(c => c.id);
       
-      // UNLIMITED: Paginated fetch for sync assignments
-      const allSyncAssignments: Array<any> = [];
-      let syncFrom = 0;
-      let syncHasMore = true;
-      while (syncHasMore) {
-        const { data } = await supabase
-          .from("conversation_assignments")
-          .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
-          .in("channel_id", channelIds)
-          .neq("status", "archived")
-          .range(syncFrom, syncFrom + 999);
-        if (!data || data.length === 0) { syncHasMore = false; }
-        else { allSyncAssignments.push(...data); syncFrom += 1000; syncHasMore = data.length === 1000; }
-      }
-      const assignments = allSyncAssignments;
+      // Optimized: Only sync recent assignments (last 500) to reduce load
+      const { data: assignments } = await supabase
+        .from("conversation_assignments")
+        .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
+        .in("channel_id", channelIds)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .limit(500);
       
       if (!assignments) return;
       
@@ -1038,18 +1032,14 @@ const AtendimentoV2 = () => {
     // IMMEDIATE sync on mount - don't wait
     syncAssignments();
     
-    // Second sync after 1 second (catch any race conditions)
-    const secondTimer = setTimeout(syncAssignments, 1000);
+    // Second sync after 3 seconds (catch any race conditions)
+    const secondTimer = setTimeout(syncAssignments, 3000);
     
-    // Third sync after 3 seconds (catch any delayed updates)
-    const thirdTimer = setTimeout(syncAssignments, 3000);
-    
-    // Periodic sync every 10 seconds (more frequent to ensure consistency)
-    const intervalId = setInterval(syncAssignments, 10000);
+    // Periodic sync every 30 seconds (reduced frequency for performance)
+    const intervalId = setInterval(syncAssignments, 30000);
     
     return () => {
       clearTimeout(secondTimer);
-      clearTimeout(thirdTimer);
       clearInterval(intervalId);
     };
   }, [channels]);

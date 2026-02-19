@@ -175,15 +175,14 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       });
       profilesMapRef.current = profilesMap;
 
-      // Fetch recent messages per channel - we use a large batch here
-      // The background recovery in AtendimentoV2 handles any conversations missed by this batch
+      // Optimized: fetch only recent messages (last 1500 per channel)
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(5000)
+          .limit(1500)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
