@@ -50,29 +50,11 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       .order("started_at", { ascending: false });
 
     if (!error && data) {
-      // Only update state if data actually changed (prevents flickering)
       const newDataString = JSON.stringify(data);
       if (newDataString !== previousDataRef.current) {
         previousDataRef.current = newDataString;
-        
-        // Merge with previous data to prevent counter regression
-        // This can happen when data is fetched during trigger execution
-        setRunningCampaigns((prev) => {
-          if (prev.length === 0) return data;
-          
-          return data.map((newCamp: RunningCampaign) => {
-            const oldCamp = prev.find(c => c.id === newCamp.id);
-            if (!oldCamp) return newCamp;
-            
-            // IMPORTANT: Never let counters decrease during running campaigns
-            return {
-              ...newCamp,
-              sent_count: Math.max(oldCamp.sent_count, newCamp.sent_count),
-              delivered_count: Math.max(oldCamp.delivered_count, newCamp.delivered_count),
-              failed_count: Math.max(oldCamp.failed_count, newCamp.failed_count),
-            };
-          });
-        });
+        // Always use the latest values from database (source of truth)
+        setRunningCampaigns(data);
       }
     }
   }, [effectiveOrganizationId]);
@@ -144,14 +126,16 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
 
       <div className="space-y-3">
         {runningCampaigns.map((campaign) => {
-          // Progress based on final results (delivered + failed) vs total
-          const processedCount = campaign.delivered_count + campaign.failed_count;
+          // Progress: sent + failed vs total (sent includes delivered+read)
+          const processedCount = campaign.sent_count + campaign.failed_count;
           const progress = campaign.total_recipients > 0
-            ? Math.round((processedCount / campaign.total_recipients) * 100)
+            ? Math.min(100, Math.round((processedCount / campaign.total_recipients) * 100))
             : 0;
           
+          const isFinishing = processedCount >= campaign.total_recipients;
+          
           // Estimate remaining time based on pending recipients
-          const pendingCount = campaign.total_recipients - campaign.sent_count;
+          const pendingCount = Math.max(0, campaign.total_recipients - processedCount);
           const avgInterval = ((campaign.min_interval || 5) + (campaign.max_interval || 120)) / 2;
           const estimatedMinutes = Math.ceil((pendingCount * avgInterval) / 60);
 
@@ -191,7 +175,12 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
                     <span className="text-destructive">✗ {campaign.failed_count} falhas</span>
                   )}
                 </div>
-                <span>{progress}% • ~{estimatedMinutes} min restantes</span>
+                <span>
+                  {isFinishing 
+                    ? `${progress}% • Finalizando...` 
+                    : `${progress}% • ~${estimatedMinutes} min restantes`
+                  }
+                </span>
               </div>
             </div>
           );
