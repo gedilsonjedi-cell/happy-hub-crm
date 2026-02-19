@@ -60,6 +60,14 @@ export function useCampaignProcessor({
 
       if (error) {
         console.error(`[Processor] Error for ${campaign.name}:`, error);
+        // Stop processing if campaign was deleted (404)
+        if (error.message?.includes('404') || error.message?.includes('Campaign not found')) {
+          console.log(`[Processor] Campaign ${campaign.name} no longer exists, stopping`);
+          processingRef.current.delete(campaign.id);
+          timeoutsRef.current.delete(campaign.id);
+          onUpdate();
+          return;
+        }
         const timeout = setTimeout(() => {
           processingRef.current.delete(campaign.id);
           processNextBatch(campaign);
