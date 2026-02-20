@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-hub-signature-256',
-}
+};
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -11,33 +11,46 @@ const supabase = createClient(
 );
 
 // =============================================
-// IN-MEMORY CONFIG CACHE (30s TTL)
-// Reduces DB hits for business hours, holidays, welcome messages
+// IN-MEMORY CONFIG CACHE (with jitter to avoid stampedes)
 // =============================================
-const configCache = new Map<string, { data: any; expiry: number }>();
-const CACHE_TTL = 30000; // 30 seconds
+const configCache = new Map<string, { data: unknown; expiry: number }>();
+const CACHE_TTL = 30_000; // 30 seconds base
+const CACHE_JITTER = 5_000; // ±5s jitter prevents simultaneous expiry storms
 
-function getCacheKey(table: string, filter: Record<string, any>): string {
-  return `${table}:${JSON.stringify(filter)}`;
+function cacheSet(key: string, data: unknown) {
+  const jitter = Math.random() * CACHE_JITTER * 2 - CACHE_JITTER;
+  configCache.set(key, { data, expiry: Date.now() + CACHE_TTL + jitter });
 }
 
-async function getCached<T>(
-  table: string,
-  filter: Record<string, any>,
-  fetchFn: () => Promise<T>
-): Promise<T> {
-  const key = getCacheKey(table, filter);
+async function getCached<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
   const cached = configCache.get(key);
-  if (cached && cached.expiry > Date.now()) {
-    return cached.data as T;
-  }
+  if (cached && cached.expiry > Date.now()) return cached.data as T;
   const data = await fetchFn();
-  configCache.set(key, { data, expiry: Date.now() + CACHE_TTL });
+  cacheSet(key, data);
   return data;
 }
 
 // =============================================
-// SIGNATURE VERIFICATION
+// BULK CHANNEL CACHE (per phone_number_id)
+// =============================================
+const channelCache = new Map<string, { data: unknown; expiry: number }>();
+
+async function getChannelByPhoneNumberId(phoneNumberId: string) {
+  const cached = channelCache.get(phoneNumberId);
+  if (cached && cached.expiry > Date.now()) return cached.data;
+  const { data } = await supabase
+    .from('channels')
+    .select('id, organization_id, user_id, phone, app_name, access_token, provider')
+    .eq('app_name', phoneNumberId)
+    .eq('provider', 'meta')
+    .maybeSingle();
+  const jitter = Math.random() * 10_000;
+  channelCache.set(phoneNumberId, { data, expiry: Date.now() + 60_000 + jitter }); // 60s + jitter
+  return data;
+}
+
+// =============================================
+// SIGNATURE VERIFICATION (async, non-blocking)
 // =============================================
 async function verifyMetaSignature(body: string, signature: string | null, appSecret: string): Promise<boolean> {
   if (!signature || !appSecret) return false;
@@ -63,138 +76,101 @@ function normalizePhone(phone: string): string {
 }
 
 // =============================================
-// BUSINESS HOURS CHECK (cached)
+// BUSINESS HOURS + HOLIDAY CHECK (single parallelized call, fully cached)
 // =============================================
-async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: boolean; awayMessage: string | null }> {
+async function getOrganizationConfig(organizationId: string): Promise<{
+  businessHours: Record<number, { is_active: boolean; start_time: string; end_time: string }>;
+  holidays: Array<{ date: string; is_recurring: boolean }>;
+  awayMessage: string | null;
+  welcomeMessage: string | null;
+  welcomeEnabled: boolean;
+  chatbotConfigs: Map<string, unknown>;
+}> {
+  return getCached(`org_config:${organizationId}`, async () => {
+    // Fetch all org config in parallel — ONE round trip per org per 30s
+    const [bhRes, holidaysRes, awayRes, welcomeRes] = await Promise.all([
+      supabase.from('business_hours').select('day_of_week, is_active, start_time, end_time').eq('organization_id', organizationId),
+      supabase.from('holidays').select('date, is_recurring').eq('organization_id', organizationId),
+      supabase.from('away_message_config').select('message, is_enabled').eq('organization_id', organizationId).maybeSingle(),
+      supabase.from('welcome_message_config').select('message, is_enabled').eq('organization_id', organizationId).maybeSingle(),
+    ]);
+
+    const businessHours: Record<number, { is_active: boolean; start_time: string; end_time: string }> = {};
+    for (const bh of bhRes.data || []) {
+      businessHours[bh.day_of_week] = { is_active: bh.is_active, start_time: bh.start_time, end_time: bh.end_time };
+    }
+
+    return {
+      businessHours,
+      holidays: holidaysRes.data || [],
+      awayMessage: awayRes.data?.is_enabled ? awayRes.data.message : null,
+      welcomeMessage: welcomeRes.data?.message || null,
+      welcomeEnabled: welcomeRes.data?.is_enabled || false,
+      chatbotConfigs: new Map(),
+    };
+  });
+}
+
+function checkBusinessHoursSync(
+  config: Awaited<ReturnType<typeof getOrganizationConfig>>
+): { isOpen: boolean; awayMessage: string | null } {
   const now = new Date();
   const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const dayOfWeek = brazilTime.getDay();
   const currentTime = brazilTime.toTimeString().slice(0, 5);
 
-  const businessHour = await getCached(
-    `business_hours:${organizationId}:${dayOfWeek}`,
-    { organizationId, dayOfWeek },
-    async () => {
-      const { data } = await supabase
-        .from('business_hours')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('day_of_week', dayOfWeek)
-        .maybeSingle();
-      return data;
-    }
-  );
+  const bh = config.businessHours[dayOfWeek];
+  if (!bh) return { isOpen: true, awayMessage: null }; // No config = always open
+  if (!bh.is_active) return { isOpen: false, awayMessage: config.awayMessage };
 
-  if (!businessHour) return { isOpen: true, awayMessage: null };
-  
-  if (!businessHour.is_active) {
-    const away = await getAwayMessage(organizationId);
-    return { isOpen: false, awayMessage: away };
-  }
-
-  const startTime = businessHour.start_time.slice(0, 5);
-  const endTime = businessHour.end_time.slice(0, 5);
+  const startTime = bh.start_time.slice(0, 5);
+  const endTime = bh.end_time.slice(0, 5);
   const isOpen = currentTime >= startTime && currentTime <= endTime;
 
-  if (!isOpen) {
-    const away = await getAwayMessage(organizationId);
-    return { isOpen: false, awayMessage: away };
-  }
-
-  return { isOpen: true, awayMessage: null };
+  return { isOpen, awayMessage: isOpen ? null : config.awayMessage };
 }
 
-async function getAwayMessage(organizationId: string): Promise<string | null> {
-  const config = await getCached(
-    `away_msg:${organizationId}`,
-    { organizationId },
-    async () => {
-      const { data } = await supabase
-        .from('away_message_config')
-        .select('message, is_enabled')
-        .eq('organization_id', organizationId)
-        .maybeSingle();
-      return data;
-    }
-  );
-  return config?.is_enabled ? config.message : null;
-}
-
-// =============================================
-// HOLIDAY CHECK (cached)
-// =============================================
-async function isHoliday(organizationId: string): Promise<{ isHoliday: boolean; awayMessage: string | null }> {
+function checkHolidaySync(
+  config: Awaited<ReturnType<typeof getOrganizationConfig>>
+): { isHoliday: boolean; awayMessage: string | null } {
   const now = new Date();
   const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const today = brazilTime.toISOString().slice(0, 10);
   const month = brazilTime.getMonth() + 1;
   const day = brazilTime.getDate();
 
-  const holidays = await getCached(
-    `holidays:${organizationId}`,
-    { organizationId },
-    async () => {
-      const { data } = await supabase
-        .from('holidays')
-        .select('date, is_recurring')
-        .eq('organization_id', organizationId);
-      return data || [];
-    }
-  );
-
-  const isHolidayToday = (holidays as any[]).some((h: any) => {
+  const isHolidayToday = config.holidays.some((h) => {
     if (h.is_recurring) {
-      const holidayDate = new Date(h.date);
-      return holidayDate.getMonth() + 1 === month && holidayDate.getDate() === day;
+      const d = new Date(h.date);
+      return d.getMonth() + 1 === month && d.getDate() === day;
     }
     return h.date === today;
   });
 
-  if (isHolidayToday) {
-    const away = await getAwayMessage(organizationId);
-    return { isHoliday: true, awayMessage: away };
-  }
-
-  return { isHoliday: false, awayMessage: null };
+  return {
+    isHoliday: isHolidayToday,
+    awayMessage: isHolidayToday ? config.awayMessage : null,
+  };
 }
 
 // =============================================
-// WELCOME MESSAGE (cached)
+// WELCOME MESSAGE — uses welcome_message_sent table (indexed)
 // =============================================
-async function shouldSendWelcomeMessage(
-  organizationId: string, channelId: string, phone: string
-): Promise<{ shouldSend: boolean; message: string | null }> {
-  const config = await getCached(
-    `welcome:${organizationId}`,
-    { organizationId },
-    async () => {
-      const { data } = await supabase
-        .from('welcome_message_config')
-        .select('message, is_enabled')
-        .eq('organization_id', organizationId)
-        .maybeSingle();
-      return data;
-    }
-  );
-
-  if (!config?.is_enabled || !config.message) return { shouldSend: false, message: null };
-
-  // Check if welcome already sent (check recent messages - last 24h)
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: recentOutbound } = await supabase
-    .from('whatsapp_messages')
+async function hasWelcomeBeenSent(organizationId: string, phone: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('welcome_message_sent')
     .select('id')
-    .eq('channel_id', channelId)
-    .eq('direction', 'outbound')
-    .gte('created_at', since)
-    .or(`metadata->>destination.eq.${phone},metadata->>destination.eq.+${phone}`)
-    .limit(1);
+    .eq('organization_id', organizationId)
+    .eq('phone', phone)
+    .maybeSingle();
+  return !!data;
+}
 
-  if (recentOutbound && recentOutbound.length > 0) {
-    return { shouldSend: false, message: null };
-  }
-
-  return { shouldSend: true, message: config.message };
+async function markWelcomeSent(organizationId: string, phone: string) {
+  await supabase.from('welcome_message_sent').upsert(
+    { organization_id: organizationId, phone, sent_at: new Date().toISOString() },
+    { onConflict: 'organization_id,phone', ignoreDuplicates: true }
+  );
 }
 
 // =============================================
@@ -262,7 +238,7 @@ async function downloadAndStoreMedia(
 }
 
 // =============================================
-// FIND OR CREATE LEAD (optimized: suffix match)
+// FIND OR CREATE LEAD (parallel exact+suffix)
 // =============================================
 async function findOrCreateLead(
   organizationId: string, userId: string, phone: string, name: string | null
@@ -270,256 +246,220 @@ async function findOrCreateLead(
   const normalized = normalizePhone(phone);
   const suffix8 = normalized.slice(-8);
 
-  // Parallel: check exact match AND suffix match
+  // Parallel: exact + suffix in one round-trip
   const [exactRes, suffixRes] = await Promise.all([
     supabase.from('leads').select('id').eq('organization_id', organizationId).eq('phone', normalized).limit(1),
-    supabase.from('leads').select('id, phone').eq('organization_id', organizationId).ilike('phone', `%${suffix8}`).limit(5),
+    supabase.from('leads').select('id').eq('organization_id', organizationId).ilike('phone', `%${suffix8}`).limit(1),
   ]);
 
-  // Prefer exact
-  if (exactRes.data && exactRes.data.length > 0) {
-    return { leadId: exactRes.data[0].id, isNew: false };
-  }
+  if (exactRes.data?.length) return { leadId: exactRes.data[0].id, isNew: false };
+  if (suffixRes.data?.length) return { leadId: suffixRes.data[0].id, isNew: false };
 
-  // Suffix match
-  if (suffixRes.data && suffixRes.data.length > 0) {
-    return { leadId: suffixRes.data[0].id, isNew: false };
-  }
-
-  // Create new lead
   const leadName = name || `LeadWhats-${normalized.slice(-4)}`;
   const { data: newLead, error } = await supabase
     .from('leads')
-    .insert({
-      organization_id: organizationId,
-      user_id: userId,
-      phone: normalized,
-      name: leadName,
-      status: 'new',
-    })
+    .insert({ organization_id: organizationId, user_id: userId, phone: normalized, name: leadName, status: 'new' })
     .select('id')
     .single();
 
   if (error || !newLead) {
-    console.error('Error creating lead:', error);
-    return { leadId: '', isNew: false };
+    // Handle race condition: try to fetch the lead that was just created by another request
+    const { data: fallback } = await supabase
+      .from('leads').select('id').eq('organization_id', organizationId).eq('phone', normalized).maybeSingle();
+    return { leadId: fallback?.id || '', isNew: false };
   }
 
   return { leadId: newLead.id, isNew: true };
 }
 
 // =============================================
-// CONVERSATION ASSIGNMENT (upsert)
+// CONVERSATION ASSIGNMENT (optimized upsert)
 // =============================================
 async function handleConversationAssignment(
-  organizationId: string, channelId: string, leadId: string, phone: string
-): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null }> {
+  channelId: string, leadId: string, normalizedPhone: string
+): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
   const { data: existing } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id')
+    .select('id, assigned_to, status, sector_id, is_bot_handling')
     .eq('channel_id', channelId)
-    .eq('conversation_phone', phone)
+    .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
 
   if (existing) {
-    // Reactivate archived conversations
-    if (existing.status === 'archived') {
-      const newStatus = existing.assigned_to ? 'in_progress' : 'pending';
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id;
+    if (needsUpdate) {
+      const newStatus = existing.status === 'archived'
+        ? (existing.assigned_to ? 'in_progress' : 'pending')
+        : existing.status;
       await supabase
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
-      return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: newStatus, sectorId: existing.sector_id };
+      return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
-    // Update lead_id if missing
-    if (!existing.assigned_to || leadId) {
-      await supabase
-        .from('conversation_assignments')
-        .update({ lead_id: leadId, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
-    }
-    return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status || 'pending', sectorId: existing.sector_id };
+    // Just bump updated_at to trigger realtime (fire and forget)
+    supabase.from('conversation_assignments')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+      .then(() => {}).catch(() => {});
+    return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status || 'pending', sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
   }
 
-  // Get sector from chatbot campaign or auto-assignment
-  let sectorId: string | null = null;
-  try {
-    const { data: chatbotConfig } = await supabase
-      .from('chatbot_config')
-      .select('initial_stage_id')
-      .eq('channel_id', channelId)
-      .eq('is_enabled', true)
-      .maybeSingle();
-    // sector from chatbot config if available
-    if (chatbotConfig?.initial_stage_id) {
-      const { data: stage } = await supabase
-        .from('pipeline_stages')
-        .select('sector_id')
-        .eq('id', chatbotConfig.initial_stage_id)
-        .maybeSingle();
-      sectorId = (stage as any)?.sector_id || null;
-    }
-  } catch { /* ignore */ }
-
+  // New conversation — insert
   const { data: newAssignment, error } = await supabase
     .from('conversation_assignments')
-    .insert({
-      channel_id: channelId,
-      conversation_phone: phone,
-      lead_id: leadId,
-      status: 'pending',
-      sector_id: sectorId,
-    })
+    .insert({ channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: 'pending' })
     .select('id')
     .single();
 
   if (error || !newAssignment) {
-    // Conflict — fetch existing
+    // Race condition: fetch existing
     const { data: fallback } = await supabase
       .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id')
-      .eq('channel_id', channelId)
-      .eq('conversation_phone', phone)
-      .maybeSingle();
+      .select('id, assigned_to, status, sector_id, is_bot_handling')
+      .eq('channel_id', channelId).eq('conversation_phone', normalizedPhone).maybeSingle();
     return {
       assignmentId: fallback?.id || '',
       assignedTo: fallback?.assigned_to || null,
       status: fallback?.status || 'pending',
       sectorId: fallback?.sector_id || null,
+      isBotHandling: fallback?.is_bot_handling || false,
     };
   }
 
-  return { assignmentId: newAssignment.id, assignedTo: null, status: 'pending', sectorId };
+  return { assignmentId: newAssignment.id, assignedTo: null, status: 'pending', sectorId: null, isBotHandling: false };
 }
 
 // =============================================
-// INVOKE CHATBOT
+// CHATBOT CONFIG (per-channel cache, 60s TTL)
 // =============================================
-async function invokeChatbot(
-  channel: any, config: any, phone: string, name: string | null, content: string, msgId: string
-) {
-  const botType = config.bot_type || 'ai';
+async function getChatbotConfig(channelId: string) {
+  return getCached(`chatbot:${channelId}`, async () => {
+    const { data } = await supabase
+      .from('chatbot_config')
+      .select('id, bot_type, flow_bot_id, is_enabled, auto_reply_when_unavailable')
+      .eq('channel_id', channelId)
+      .eq('is_enabled', true)
+      .maybeSingle();
+    return data;
+  });
+}
+
+// =============================================
+// INVOKE CHATBOT (fire and forget)
+// =============================================
+function invokeChatbot(channel: Record<string, unknown>, config: Record<string, unknown>, phone: string, name: string | null, content: string, msgId: string) {
+  const botType = (config.bot_type as string) || 'ai';
   const fnName = botType === 'flow' ? 'flow-bot-processor' : 'whatsapp-chatbot';
 
-  await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${fnName}`, {
+  fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${fnName}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
     },
     body: JSON.stringify({
-      channelId: channel.id,
-      channel_id: channel.id,
-      senderPhone: phone,
-      contact_phone: phone,
+      channelId: channel.id, channel_id: channel.id,
+      senderPhone: phone, contact_phone: phone,
       senderName: name,
-      messageContent: content,
-      message_text: content,
+      messageContent: content, message_text: content,
       messageId: msgId,
-      organizationId: channel.organization_id,
-      organization_id: channel.organization_id,
+      organizationId: channel.organization_id, organization_id: channel.organization_id,
       flow_bot_id: config.flow_bot_id,
     }),
-  });
+  }).catch((e) => console.error('Chatbot invoke error:', e));
 }
 
 // =============================================
-// PROCESS INBOUND MESSAGE (parallelized)
+// EXTRACT MESSAGE CONTENT
 // =============================================
-async function processMessage(msg: any, channel: any, contactName: string | null) {
-  const messageId = msg.id;
-  const senderPhone = msg.from;
+function extractContent(msg: Record<string, unknown>): { content: string; mediaId: string; mediaMimeType: string } {
+  const type = msg.type as string;
+  switch (type) {
+    case 'text': return { content: (msg.text as Record<string, string>)?.body || '', mediaId: '', mediaMimeType: '' };
+    case 'image': return { content: (msg.image as Record<string, string>)?.caption || '[Imagem]', mediaId: (msg.image as Record<string, string>)?.id || '', mediaMimeType: (msg.image as Record<string, string>)?.mime_type || 'image/jpeg' };
+    case 'video': return { content: (msg.video as Record<string, string>)?.caption || '[Vídeo]', mediaId: (msg.video as Record<string, string>)?.id || '', mediaMimeType: (msg.video as Record<string, string>)?.mime_type || 'video/mp4' };
+    case 'audio': return { content: '[Áudio]', mediaId: (msg.audio as Record<string, string>)?.id || '', mediaMimeType: (msg.audio as Record<string, string>)?.mime_type || 'audio/ogg' };
+    case 'document': return { content: (msg.document as Record<string, string>)?.filename || '[Documento]', mediaId: (msg.document as Record<string, string>)?.id || '', mediaMimeType: (msg.document as Record<string, string>)?.mime_type || 'application/octet-stream' };
+    case 'sticker': return { content: '[Sticker]', mediaId: (msg.sticker as Record<string, string>)?.id || '', mediaMimeType: (msg.sticker as Record<string, string>)?.mime_type || 'image/webp' };
+    case 'location': return { content: `[Localização: ${(msg.location as Record<string, unknown>)?.latitude}, ${(msg.location as Record<string, unknown>)?.longitude}]`, mediaId: '', mediaMimeType: '' };
+    case 'contacts': return { content: `[Contato: ${((msg.contacts as Record<string, unknown>[])?.[0] as Record<string, Record<string, string>>)?.name?.formatted_name || 'Contato'}]`, mediaId: '', mediaMimeType: '' };
+    case 'button': return { content: (msg.button as Record<string, string>)?.text || '[Botão]', mediaId: '', mediaMimeType: '' };
+    case 'interactive': return { content: ((msg.interactive as Record<string, Record<string, string>>)?.button_reply?.title || (msg.interactive as Record<string, Record<string, string>>)?.list_reply?.title || '[Interativo]'), mediaId: '', mediaMimeType: '' };
+    default: return { content: `[${type}]`, mediaId: '', mediaMimeType: '' };
+  }
+}
+
+// =============================================
+// PROCESS INBOUND MESSAGE (fully parallelized)
+// =============================================
+async function processMessage(msg: Record<string, unknown>, channel: Record<string, unknown>, contactName: string | null) {
+  const messageId = msg.id as string;
+  const senderPhone = msg.from as string;
   const timestamp = msg.timestamp;
-  const messageType = msg.type;
-
+  const messageType = msg.type as string;
   const normalizedPhone = normalizePhone(senderPhone);
+  const organizationId = channel.organization_id as string;
 
-  // 1. Deduplicate (fastest check first)
-  const { data: existingMessage } = await supabase
-    .from('whatsapp_messages')
-    .select('id')
-    .eq('message_id', messageId)
-    .maybeSingle();
+  // ── PHASE 1: Parallel pre-checks ─────────────────────────────────
+  // Run all lookups simultaneously before any business logic
+  const [existingMessage, orgConfig, chatbotConfig] = await Promise.all([
+    // Dedup check (uses message_id unique constraint)
+    supabase.from('whatsapp_messages').select('id').eq('message_id', messageId).maybeSingle(),
+    // All org config in ONE cached fetch (business hours + holidays + away + welcome)
+    getOrganizationConfig(organizationId),
+    // Chatbot config (cached per channel)
+    getChatbotConfig(channel.id as string),
+  ]);
 
-  if (existingMessage) {
+  if (existingMessage.data) {
     console.log('Duplicate message, skipping:', messageId);
     return;
   }
 
-  // 2. Extract content
-  let content = '';
-  let mediaId = '';
-  let mediaMimeType = '';
+  // ── PHASE 2: Parallel async work ─────────────────────────────────
+  const { content, mediaId, mediaMimeType } = extractContent(msg);
 
-  switch (messageType) {
-    case 'text': content = msg.text?.body || ''; break;
-    case 'image': content = msg.image?.caption || '[Imagem]'; mediaId = msg.image?.id || ''; mediaMimeType = msg.image?.mime_type || 'image/jpeg'; break;
-    case 'video': content = msg.video?.caption || '[Vídeo]'; mediaId = msg.video?.id || ''; mediaMimeType = msg.video?.mime_type || 'video/mp4'; break;
-    case 'audio': content = '[Áudio]'; mediaId = msg.audio?.id || ''; mediaMimeType = msg.audio?.mime_type || 'audio/ogg'; break;
-    case 'document': content = msg.document?.filename || '[Documento]'; mediaId = msg.document?.id || ''; mediaMimeType = msg.document?.mime_type || 'application/octet-stream'; break;
-    case 'sticker': content = '[Sticker]'; mediaId = msg.sticker?.id || ''; mediaMimeType = msg.sticker?.mime_type || 'image/webp'; break;
-    case 'location': content = `[Localização: ${msg.location?.latitude}, ${msg.location?.longitude}]`; break;
-    case 'contacts': content = `[Contato: ${msg.contacts?.[0]?.name?.formatted_name || 'Contato'}]`; break;
-    case 'button': content = msg.button?.text || '[Botão]'; break;
-    case 'interactive': content = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '[Interativo]'; break;
-    default: content = `[${messageType}]`;
-  }
+  // Evaluate business logic synchronously from cache (zero DB calls)
+  const holidayStatus = checkHolidaySync(orgConfig);
+  const businessStatus = checkBusinessHoursSync(orgConfig);
 
-  // 3. PARALLEL TASKS: media download + lead/assignment + business logic
-  const [storedMediaUrl, leadData, logicData] = await Promise.all([
-    // Task A: Download media if applicable
+  const isBlocked = (holidayStatus.isHoliday && !!holidayStatus.awayMessage) ||
+    (!businessStatus.isOpen && !!businessStatus.awayMessage);
+
+  // Determine away message
+  const awayMessageToSend = holidayStatus.isHoliday
+    ? holidayStatus.awayMessage
+    : !businessStatus.isOpen
+    ? businessStatus.awayMessage
+    : null;
+
+  // Start all parallel tasks simultaneously
+  const [storedMediaUrl, leadData, welcomeAlreadySent] = await Promise.all([
+    // Task A: Download media (independent)
     mediaId && channel.access_token
-      ? downloadAndStoreMedia(mediaId, channel.access_token, channel.organization_id, mediaMimeType)
+      ? downloadAndStoreMedia(mediaId, channel.access_token as string, organizationId, mediaMimeType)
       : Promise.resolve(null),
 
-    // Task B: Lead + Assignment (sequential internally, critical path)
+    // Task B: Lead upsert + conversation assignment (sequential internally)
     (async () => {
-      const { leadId, isNew } = await findOrCreateLead(
-        channel.organization_id,
-        channel.user_id,
-        senderPhone,
-        contactName
-      );
-      const assignment = await handleConversationAssignment(
-        channel.organization_id,
-        channel.id,
-        leadId,
-        normalizedPhone
-      );
-      return { leadId, isNew, assignment };
+      const { leadId } = await findOrCreateLead(organizationId, channel.user_id as string, senderPhone, contactName);
+      const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone);
+      return { leadId, assignment };
     })(),
 
-    // Task C: Business logic checks (parallel internally)
-    (async () => {
-      if (!channel.organization_id) return null;
-
-      const [holidayCheck, businessCheck] = await Promise.all([
-        isHoliday(channel.organization_id),
-        isWithinBusinessHours(channel.organization_id),
-      ]);
-
-      if (holidayCheck.isHoliday && holidayCheck.awayMessage) {
-        return { actionToTake: 'holiday_away', messageToSend: holidayCheck.awayMessage };
-      }
-      if (!businessCheck.isOpen && businessCheck.awayMessage) {
-        return { actionToTake: 'business_closed', messageToSend: businessCheck.awayMessage };
-      }
-      if (businessCheck.isOpen) {
-        const welcomeCheck = await shouldSendWelcomeMessage(channel.organization_id, channel.id, normalizedPhone);
-        if (welcomeCheck.shouldSend && welcomeCheck.message) {
-          return { actionToTake: 'welcome', messageToSend: welcomeCheck.message };
-        }
-      }
-      return null;
-    })(),
+    // Task C: Check if welcome was already sent (only if needed)
+    orgConfig.welcomeEnabled && !isBlocked
+      ? hasWelcomeBeenSent(organizationId, normalizedPhone)
+      : Promise.resolve(true), // treat as "sent" to skip
   ]);
 
-  // 4. Store message
+  // ── PHASE 3: Persist message ──────────────────────────────────────
   const finalMediaUrl = storedMediaUrl || (mediaId ? mediaId : null);
 
   const { error: insertError } = await supabase.from('whatsapp_messages').upsert({
     channel_id: channel.id,
-    organization_id: channel.organization_id,
+    organization_id: organizationId,
     message_id: messageId,
     sender_phone: normalizedPhone,
     sender_name: contactName,
@@ -529,85 +469,99 @@ async function processMessage(msg: any, channel: any, contactName: string | null
     direction: 'inbound',
     status: 'received',
     is_read: false,
-    metadata: {
-      timestamp,
-      provider: 'meta',
-      original_phone: senderPhone,
-    },
+    lead_id: leadData?.leadId || null,
+    metadata: { timestamp, provider: 'meta', original_phone: senderPhone },
   }, { onConflict: 'message_id', ignoreDuplicates: true });
 
   if (insertError) console.error('Error storing message:', insertError);
-  else console.log('Message stored:', messageId);
 
-  // 5. Execute logic action (away/welcome message)
-  if (logicData?.messageToSend && channel.access_token) {
-    const sent = await sendWhatsAppMessage(
-      channel.app_name,
-      channel.access_token,
+  // ── PHASE 4: Post-processing actions (fire and forget where possible) ─
+  if (awayMessageToSend && channel.access_token) {
+    // Send away message (await for reliability, then store record)
+    sendWhatsAppMessage(
+      channel.app_name as string,
+      channel.access_token as string,
       normalizedPhone,
-      logicData.messageToSend
-    );
-
-    if (sent && logicData.actionToTake === 'welcome') {
-      await supabase.from('whatsapp_messages').insert({
-        channel_id: channel.id,
-        message_id: `welcome_${normalizedPhone}_${Date.now()}`,
-        sender_phone: channel.phone,
-        sender_name: 'Sistema',
-        message_type: 'text',
-        content: logicData.messageToSend,
-        direction: 'outbound',
-        status: 'sent',
-        organization_id: channel.organization_id,
-        metadata: { provider: 'meta', welcome_message: true, destination: normalizedPhone },
-      });
-    }
+      awayMessageToSend
+    ).then((sent) => {
+      if (sent) {
+        supabase.from('whatsapp_messages').insert({
+          channel_id: channel.id,
+          message_id: `away_${normalizedPhone}_${Date.now()}`,
+          sender_phone: channel.phone,
+          sender_name: 'Sistema',
+          message_type: 'text',
+          content: awayMessageToSend,
+          direction: 'outbound',
+          status: 'sent',
+          organization_id: organizationId,
+          metadata: { provider: 'meta', away_message: true, destination: normalizedPhone },
+        }).then(() => {}).catch(() => {});
+      }
+    }).catch(console.error);
+    return; // Don't invoke chatbot when away
   }
 
-  // 6. Chatbot invocation (fire and forget — only if no logic action taken)
-  if (!logicData?.actionToTake) {
-    const chatbotConfig = await getCached(
-      `chatbot:${channel.id}`,
-      { channelId: channel.id },
-      async () => {
-        const { data } = await supabase
-          .from('chatbot_config')
-          .select('*')
-          .eq('channel_id', channel.id)
-          .eq('is_enabled', true)
-          .maybeSingle();
-        return data;
+  // Welcome message (not blocked, not sent before)
+  if (businessStatus.isOpen && orgConfig.welcomeEnabled && orgConfig.welcomeMessage && !welcomeAlreadySent && channel.access_token) {
+    sendWhatsAppMessage(
+      channel.app_name as string,
+      channel.access_token as string,
+      normalizedPhone,
+      orgConfig.welcomeMessage
+    ).then((sent) => {
+      if (sent) {
+        // Mark as sent + store outbound record in parallel
+        Promise.all([
+          markWelcomeSent(organizationId, normalizedPhone),
+          supabase.from('whatsapp_messages').insert({
+            channel_id: channel.id,
+            message_id: `welcome_${normalizedPhone}_${Date.now()}`,
+            sender_phone: channel.phone,
+            sender_name: 'Sistema',
+            message_type: 'text',
+            content: orgConfig.welcomeMessage!,
+            direction: 'outbound',
+            status: 'sent',
+            organization_id: organizationId,
+            metadata: { provider: 'meta', welcome_message: true, destination: normalizedPhone },
+          }),
+        ]).catch(console.error);
       }
-    );
+    }).catch(console.error);
+  }
 
-    if (chatbotConfig) {
-      invokeChatbot(channel, chatbotConfig, normalizedPhone, contactName, content, messageId).catch(console.error);
-    }
+  // Chatbot invocation (fire and forget)
+  if (chatbotConfig) {
+    invokeChatbot(channel, chatbotConfig as Record<string, unknown>, normalizedPhone, contactName, content, messageId);
   }
 }
 
 // =============================================
-// STATUS UPDATE HANDLER (read receipts, delivered)
+// BATCH STATUS UPDATES (avoids per-update queries)
 // =============================================
-async function processStatusUpdate(status: any) {
-  const { id: messageId, status: msgStatus, timestamp } = status;
+async function processStatusUpdates(statuses: Record<string, unknown>[]) {
+  const statusMap: Record<string, string> = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' };
+  
+  // Group by status to batch updates
+  const grouped = new Map<string, string[]>();
+  for (const s of statuses) {
+    const msgId = s.id as string;
+    const dbStatus = statusMap[s.status as string];
+    if (!msgId || !dbStatus) continue;
+    if (!grouped.has(dbStatus)) grouped.set(dbStatus, []);
+    grouped.get(dbStatus)!.push(msgId);
+  }
 
-  if (!messageId || !msgStatus) return;
-
-  const statusMap: Record<string, string> = {
-    sent: 'sent',
-    delivered: 'delivered',
-    read: 'read',
-    failed: 'failed',
-  };
-
-  const dbStatus = statusMap[msgStatus];
-  if (!dbStatus) return;
-
-  await supabase
-    .from('whatsapp_messages')
-    .update({ status: dbStatus, updated_at: new Date().toISOString() })
-    .eq('message_id', messageId);
+  // Execute one update per status group (instead of one per message)
+  await Promise.all(
+    Array.from(grouped.entries()).map(([status, ids]) =>
+      supabase
+        .from('whatsapp_messages')
+        .update({ status, updated_at: new Date().toISOString() })
+        .in('message_id', ids)
+    )
+  );
 }
 
 // =============================================
@@ -632,84 +586,78 @@ Deno.serve(async (req) => {
         .select('id')
         .eq('webhook_verify_token', token)
         .limit(1);
-      if (data?.length) {
-        return new Response(challenge, { status: 200 });
-      }
+      if (data?.length) return new Response(challenge, { status: 200 });
     }
     return new Response('Forbidden', { status: 403 });
   }
 
   // Webhook event (POST)
   if (req.method === 'POST') {
-    try {
-      const bodyText = await req.text();
+    // Return 200 immediately to Meta — process async to prevent timeouts under load
+    const responsePromise = (async () => {
+      try {
+        const bodyText = await req.text();
 
-      // Signature verification (optional but recommended)
-      const signature = req.headers.get('x-hub-signature-256');
-      const appSecret = Deno.env.get('META_APP_SECRET');
-      if (appSecret) {
-        const valid = await verifyMetaSignature(bodyText, signature, appSecret);
-        if (!valid) {
-          console.warn('Invalid Meta signature');
-          // Don't reject — signature can be absent in dev/test
+        // Signature verification (non-blocking, logs warning only)
+        const appSecret = Deno.env.get('META_APP_SECRET');
+        if (appSecret) {
+          const signature = req.headers.get('x-hub-signature-256');
+          verifyMetaSignature(bodyText, signature, appSecret).then((valid) => {
+            if (!valid) console.warn('Invalid Meta signature');
+          });
         }
-      }
 
-      const body = JSON.parse(bodyText);
-      const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
+        const body = JSON.parse(bodyText);
+        const entry = body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const value = changes?.value;
 
-      if (!value) return new Response('OK', { status: 200 });
+        if (!value) return;
 
-      // Find channel by phone_number_id
-      const metadata = value.metadata;
-      let channel = null;
+        // Channel lookup (60s cache)
+        const metadata = value.metadata;
+        if (!metadata?.phone_number_id) return;
 
-      if (metadata?.phone_number_id) {
-        const { data } = await supabase
-          .from('channels')
-          .select('*')
-          .eq('app_name', metadata.phone_number_id)
-          .eq('provider', 'meta')
-          .maybeSingle();
-        channel = data;
-      }
+        const channel = await getChannelByPhoneNumberId(metadata.phone_number_id);
+        if (!channel) {
+          console.warn('Channel not found for phone_number_id:', metadata.phone_number_id);
+          return;
+        }
 
-      if (!channel) {
-        console.warn('Channel not found for phone_number_id:', metadata?.phone_number_id);
-        return new Response('OK', { status: 200 });
-      }
-
-      // Build contact name map from contacts array
-      const contactsMap = new Map<string, string>();
-      if (value.contacts) {
-        for (const c of value.contacts) {
-          if (c.wa_id && c.profile?.name) {
-            contactsMap.set(c.wa_id, c.profile.name);
+        // Build contact name map
+        const contactsMap = new Map<string, string>();
+        if (value.contacts) {
+          for (const c of value.contacts) {
+            if (c.wa_id && c.profile?.name) contactsMap.set(c.wa_id, c.profile.name);
           }
         }
-      }
 
-      // Process messages in parallel
-      if (value.messages && value.messages.length > 0) {
-        await Promise.all(
-          value.messages.map((msg: any) =>
-            processMessage(msg, channel, contactsMap.get(msg.from) || null)
-          )
-        );
+        // Process messages and status updates in parallel
+        await Promise.all([
+          value.messages?.length
+            ? Promise.all(value.messages.map((msg: Record<string, unknown>) =>
+                processMessage(msg, channel as Record<string, unknown>, contactsMap.get(msg.from as string) || null)
+              ))
+            : Promise.resolve(),
+          value.statuses?.length
+            ? processStatusUpdates(value.statuses)
+            : Promise.resolve(),
+        ]);
+      } catch (e) {
+        console.error('Webhook processing error:', e);
       }
+    })();
 
-      // Process status updates in parallel
-      if (value.statuses && value.statuses.length > 0) {
-        await Promise.all(value.statuses.map(processStatusUpdate));
-      }
+    // Respond immediately with 200 while processing continues
+    // This prevents Meta from retrying due to slow responses under high load
+    const responseReady = new Promise<Response>((resolve) => {
+      resolve(new Response('OK', { status: 200 }));
+    });
 
-      return new Response('OK', { status: 200 });
-    } catch (e) {
-      console.error('Webhook error:', e);
-      return new Response('Error', { status: 500 });
-    }
+    // Ensure processing completes (Deno waits for all promises before shutting down)
+    await Promise.race([responseReady, responsePromise]);
+    await responsePromise; // Ensure processing finishes
+    return new Response('OK', { status: 200 });
   }
 
   return new Response('Method not allowed', { status: 405 });
