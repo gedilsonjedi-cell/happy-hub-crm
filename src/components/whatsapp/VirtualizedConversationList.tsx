@@ -90,7 +90,7 @@ export function VirtualizedConversationList({
       const sectorInfo = sectors.find((s) => s.id === conv.sectorId);
 
       return (
-        <div style={style} className="px-2 py-1">
+        <div style={style} className="px-2 py-1.5">
           <ConversationItem
             conversation={conv}
             isSelected={isSelected}
