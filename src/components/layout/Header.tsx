@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { LogOut, User, RefreshCw, Menu, Sun, Moon } from "lucide-react";
+import { LogOut, User, RefreshCw, Menu, Sun, Moon, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -68,6 +68,24 @@ export function Header() {
             </TooltipContent>
           </Tooltip>
         )}
+
+        {/* Support WhatsApp */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <a
+              href="https://wa.me/5582996251871"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-3 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 transition-colors text-xs font-medium border border-green-500/20"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Suporte</span>
+            </a>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Contato Suporte via WhatsApp
+          </TooltipContent>
+        </Tooltip>
 
         {/* Theme Toggle */}
         <Tooltip>
