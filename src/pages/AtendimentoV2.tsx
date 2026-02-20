@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
 import { 
   MessageSquare, 
@@ -225,8 +226,7 @@ const AtendimentoV2 = () => {
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
-  // Legacy messages state — kept for optimistic updates during send
-  // Primary source is useInfiniteMessages hook below
+  // Legacy messages state — still used for SalesAssistant context (read-only, derived from infinite hook)
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -254,7 +254,7 @@ const AtendimentoV2 = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendingMessage] = [false]; // Kept for legacy references; replaced by isSendingMessage from useMutation
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [globalSearchResults, setGlobalSearchResults] = useState<Conversation[]>([]);
@@ -320,6 +320,10 @@ const AtendimentoV2 = () => {
     selectedConversation?.channelId ?? null,
     selectedConversation?.phone ?? null
   );
+
+  // ─── useMutation: optimistic send with TanStack Query ─────────────────────
+  const sendMessageMutation = useSendMessage((restoredText) => setNewMessage(restoredText));
+  const isSendingMessage = sendMessageMutation.isPending;
   
   // Track chatbot config for selected channel to show bot type indicator
   const [channelBotConfig, setChannelBotConfig] = useState<{
@@ -2055,157 +2059,98 @@ const AtendimentoV2 = () => {
     return channels.find(c => c.id === selectedConversation.channelId) || null;
   }, [selectedConversation?.channelId, channels]);
 
-  // Send message
+  // Send message — now delegates to useSendMessage (useMutation + optimistic cache update)
   const handleSendMessage = async () => {
     const conversationChannelId = selectedConversation?.channelId;
-    if (!newMessage.trim() || !selectedConversation || !conversationChannelId || sendingMessage) return;
+    if (!newMessage.trim() || !selectedConversation || !conversationChannelId || isSendingMessage) return;
 
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
     const messageToSend = newMessage.trim();
-    setNewMessage("");
-    setSendingMessage(true);
 
-    const tempId = `temp_${Date.now()}_${Math.random()}`;
-    const optimisticMessage: Message = {
-      id: tempId,
-      channel_id: conversationChannelId,
-      message_id: tempId,
-      sender_phone: conversationChannel?.phone || "",
-      sender_name: null,
-      message_type: "text",
-      content: messageToSend,
-      media_url: null,
-      direction: "outbound",
-      status: "sending",
-      created_at: new Date().toISOString(),
-      metadata: { destination: selectedConversation.phone }
-    };
-    setMessages(prev => [...prev, optimisticMessage]);
+    // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+    const { data: currentAssignment } = await supabase
+      .from('conversation_assignments')
+      .select('assigned_to, sector_id')
+      .eq('channel_id', conversationChannelId)
+      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+      .maybeSingle();
 
-    try {
-      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
-      
-      // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
-      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-      const { data: currentAssignment } = await supabase
-        .from('conversation_assignments')
-        .select('assigned_to, sector_id')
-        .eq('channel_id', conversationChannelId)
-        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-        .maybeSingle();
-      
-      // Verificar se o usuário tem acesso ao setor da conversa
-      const assignmentSectorId = currentAssignment?.sector_id || selectedConversation.sectorId;
-      if (!canInteractWithSector(assignmentSectorId)) {
-        toast.error('Você não tem permissão para enviar mensagens para este departamento');
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-        setNewMessage(messageToSend);
-        setSendingMessage(false);
-        return;
-      }
-      
-      // Se já está atribuída a outro atendente, bloquear envio
-      if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
-        toast.error('Esta conversa já foi assumida por outro atendente');
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-        setNewMessage(messageToSend);
-        setSendingMessage(false);
-        
-        // Atualizar estado local para refletir a atribuição
-        const { data: assignedProfile } = await supabase
-          .from('profiles')
-          .select('display_name, email')
-          .eq('user_id', currentAssignment.assigned_to)
-          .single();
-        
-        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
-        
-        setAllConversations(prev => prev.map(c => {
-          const cNormalized = c.phone.replace(/\D/g, '');
-          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
-            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-            : c;
-        }));
-        setSelectedConversation(prev => prev 
-          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName } 
-          : null
-        );
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke(sendFunction, {
-        body: {
-          channelId: conversationChannelId,
-          destination: selectedConversation.phone,
-          message: messageToSend,
-          messageType: 'text'
-        }
-      });
-
-      if (error) {
-        toast.error('Erro ao enviar mensagem');
-        setMessages(prev => prev.map(m => m.id === tempId 
-          ? { ...m, status: 'failed', error_message: 'Erro de conexão ao enviar mensagem' }
-          : m
-        ));
-        setNewMessage(messageToSend);
-        setSendingMessage(false);
-        return;
-      }
-
-      if (data.success) {
-        setMessages(prev => prev.map(m => 
-          m.id === tempId 
-            ? { ...m, message_id: data.messageId, status: "sent" }
-            : m
-        ));
-
-        // Auto-assign quando envia primeira mensagem (usar insert com onConflict para garantir atomicidade)
-        if (!selectedConversation.assignedTo && user?.id) {
-          const { error: assignError } = await supabase
-            .from('conversation_assignments')
-            .upsert({
-              conversation_phone: normalizedPhone,
-              channel_id: conversationChannelId,
-              assigned_to: user.id,
-              assigned_at: new Date().toISOString(),
-              status: 'in_progress',
-              sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
-            }, { onConflict: 'conversation_phone,channel_id' });
-
-          if (!assignError) {
-            setAllConversations(prev => prev.map(c => {
-              const normalizedCPhone = c.phone.replace(/\D/g, '');
-              return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
-                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
-                : c;
-            }));
-            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
-          }
-        }
-      } else {
-        const errorMsg = data.error || 'Erro ao enviar mensagem';
-        toast.error(errorMsg);
-        setMessages(prev => prev.map(m => m.id === tempId 
-          ? { ...m, status: 'failed', error_message: errorMsg, message_id: data.messageId || tempId }
-          : m
-        ));
-        setNewMessage(messageToSend);
-      }
-    } catch (err) {
-      console.error('Send error:', err);
-      toast.error('Erro ao enviar mensagem');
-      setMessages(prev => prev.map(m => m.id === tempId 
-        ? { ...m, status: 'failed', error_message: 'Erro inesperado ao enviar mensagem' }
-        : m
-      ));
-      setNewMessage(messageToSend);
+    // Verificar acesso ao setor
+    const assignmentSectorId = currentAssignment?.sector_id || selectedConversation.sectorId;
+    if (!canInteractWithSector(assignmentSectorId)) {
+      toast.error('Você não tem permissão para enviar mensagens para este departamento');
+      return;
     }
 
-    setSendingMessage(false);
+    // Se já atribuída a outro atendente, bloquear envio
+    if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
+      toast.error('Esta conversa já foi assumida por outro atendente');
+      const { data: assignedProfile } = await supabase
+        .from('profiles')
+        .select('display_name, email')
+        .eq('user_id', currentAssignment.assigned_to)
+        .single();
+      const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+      setAllConversations(prev => prev.map(c => {
+        const cNormalized = c.phone.replace(/\D/g, '');
+        return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+          ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+          : c;
+      }));
+      setSelectedConversation(prev => prev
+        ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+        : null
+      );
+      return;
+    }
+
+    // Clear input immediately (optimistic UX) — restored by useSendMessage.onError if needed
+    setNewMessage("");
+
+    // Fire mutation — onMutate injects optimistic bubble into infinite cache instantly
+    sendMessageMutation.mutate(
+      {
+        channelId: conversationChannelId,
+        channelPhone: conversationChannel?.phone || "",
+        channelProvider: conversationChannel?.provider || "meta",
+        destination: selectedConversation.phone,
+        message: messageToSend,
+        messageType: "text",
+      },
+      {
+        onSuccess: async (data) => {
+          if (!data.success) return; // onSuccess in hook already handles error state
+
+          // Auto-assign when sending first message
+          if (!selectedConversation.assignedTo && user?.id) {
+            const { error: assignError } = await supabase
+              .from('conversation_assignments')
+              .upsert({
+                conversation_phone: normalizedPhone,
+                channel_id: conversationChannelId,
+                assigned_to: user.id,
+                assigned_at: new Date().toISOString(),
+                status: 'in_progress',
+                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
+              }, { onConflict: 'conversation_phone,channel_id' });
+
+            if (!assignError) {
+              setAllConversations(prev => prev.map(c => {
+                const normalizedCPhone = c.phone.replace(/\D/g, '');
+                return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                  ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                  : c;
+              }));
+              setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+            }
+          }
+        },
+      }
+    );
   };
 
-  // Send media
+  // Send media — delegates to useSendMessage (optimistic updates via infinite cache)
   const handleSendMedia = async (mediaData: {
     mediaType: string;
     mediaUrl: string;
@@ -2216,147 +2161,82 @@ const AtendimentoV2 = () => {
     if (!selectedConversation || !conversationChannelId) return;
 
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
-    setSendingMessage(true);
+    const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
 
-    try {
-      const sendFunction = conversationChannel?.provider === 'zapi' ? 'zapi-send' : 'meta-send';
-      
-      // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
-      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-      const { data: currentAssignment } = await supabase
-        .from('conversation_assignments')
-        .select('assigned_to, sector_id')
-        .eq('channel_id', conversationChannelId)
-        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-        .maybeSingle();
-      
-      // Se já está atribuída a outro atendente, bloquear envio
-      if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
-        toast.error('Esta conversa já foi assumida por outro atendente');
-        setSendingMessage(false);
-        
-        // Atualizar estado local para refletir a atribuição
-        const { data: assignedProfile } = await supabase
-          .from('profiles')
-          .select('display_name, email')
-          .eq('user_id', currentAssignment.assigned_to)
-          .single();
-        
-        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
-        
-        setAllConversations(prev => prev.map(c => {
-          const cNormalized = c.phone.replace(/\D/g, '');
-          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
-            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-            : c;
-        }));
-        setSelectedConversation(prev => prev 
-          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName } 
-          : null
-        );
-        return;
-      }
-      
-      const { data, error } = await supabase.functions.invoke(sendFunction, {
-        body: {
-          channelId: conversationChannelId,
-          destination: selectedConversation.phone,
-          messageType: mediaData.mediaType,
-          mediaUrl: mediaData.mediaUrl,
-          mediaCaption: mediaData.mediaCaption,
-          fileName: mediaData.fileName
-        }
-      });
+    // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
+    const { data: currentAssignment } = await supabase
+      .from('conversation_assignments')
+      .select('assigned_to, sector_id')
+      .eq('channel_id', conversationChannelId)
+      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+      .maybeSingle();
 
-      if (error) {
-        const failedMessage: Message = {
-          id: `temp_failed_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: `failed_media_${Date.now()}`,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
-          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
-          media_url: mediaData.mediaUrl,
-          direction: "outbound",
-          status: "failed",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone },
-          error_message: 'Erro de conexão ao enviar mídia'
-        };
-        setMessages(prev => [...prev, failedMessage]);
-        toast.error('Erro ao enviar mídia');
-        setSendingMessage(false);
-        return;
-      }
-
-      if (data.success) {
-        const optimisticMessage: Message = {
-          id: `temp_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: data.messageId,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
-          content: mediaData.mediaCaption || (mediaData.mediaType === 'ptt' ? '[Mensagem de voz]' : `[${mediaData.mediaType}]`),
-          media_url: mediaData.mediaUrl,
-          direction: "outbound",
-          status: "sent",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone }
-        };
-        setMessages(prev => [...prev, optimisticMessage]);
-        toast.success(mediaData.mediaType === 'ptt' ? "Áudio enviado!" : "Mídia enviada!");
-
-        // Auto-assign quando envia (usar insert com onConflict para garantir atomicidade)
-        if (!selectedConversation.assignedTo && user?.id) {
-          const { error: assignError } = await supabase
-            .from('conversation_assignments')
-            .upsert({
-              conversation_phone: normalizedPhone,
-              channel_id: conversationChannelId,
-              assigned_to: user.id,
-              assigned_at: new Date().toISOString(),
-              status: 'in_progress',
-              sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
-            }, { onConflict: 'conversation_phone,channel_id' });
-
-          if (!assignError) {
-            setAllConversations(prev => prev.map(c => {
-              const normalizedCPhone = c.phone.replace(/\D/g, '');
-              return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
-                ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
-                : c;
-            }));
-            setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
-          }
-        }
-      } else {
-        const errorMsg = data.error || 'Erro ao enviar mídia';
-        const failedMessage: Message = {
-          id: `temp_failed_${Date.now()}`,
-          channel_id: conversationChannelId,
-          message_id: data.messageId || `failed_media_${Date.now()}`,
-          sender_phone: conversationChannel?.phone || "",
-          sender_name: null,
-          message_type: mediaData.mediaType === 'ptt' ? 'audio' : mediaData.mediaType,
-          content: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
-          media_url: mediaData.mediaUrl,
-          direction: "outbound",
-          status: "failed",
-          created_at: new Date().toISOString(),
-          metadata: { destination: selectedConversation.phone },
-          error_message: errorMsg
-        };
-        setMessages(prev => [...prev, failedMessage]);
-        toast.error(errorMsg);
-      }
-    } catch (err) {
-      console.error('Send media error:', err);
-      toast.error('Erro ao enviar mídia');
+    if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
+      toast.error('Esta conversa já foi assumida por outro atendente');
+      const { data: assignedProfile } = await supabase
+        .from('profiles')
+        .select('display_name, email')
+        .eq('user_id', currentAssignment.assigned_to)
+        .single();
+      const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+      setAllConversations(prev => prev.map(c => {
+        const cNormalized = c.phone.replace(/\D/g, '');
+        return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+          ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+          : c;
+      }));
+      setSelectedConversation(prev => prev
+        ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+        : null
+      );
+      return;
     }
 
-    setSendingMessage(false);
+    sendMessageMutation.mutate(
+      {
+        channelId: conversationChannelId,
+        channelPhone: conversationChannel?.phone || "",
+        channelProvider: conversationChannel?.provider || "meta",
+        destination: selectedConversation.phone,
+        message: mediaData.mediaCaption || `[${mediaData.mediaType}]`,
+        messageType: mediaData.mediaType,
+        mediaUrl: mediaData.mediaUrl,
+        mediaCaption: mediaData.mediaCaption,
+        fileName: mediaData.fileName,
+      },
+      {
+        onSuccess: async (data) => {
+          if (!data.success) return;
+          if (mediaData.mediaType === 'ptt') {
+            toast.success("Áudio enviado!");
+          } else {
+            toast.success("Mídia enviada!");
+          }
+          // Auto-assign
+          if (!selectedConversation.assignedTo && user?.id) {
+            const { error: assignError } = await supabase
+              .from('conversation_assignments')
+              .upsert({
+                conversation_phone: normalizedPhone,
+                channel_id: conversationChannelId,
+                assigned_to: user.id,
+                assigned_at: new Date().toISOString(),
+                status: 'in_progress',
+                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
+              }, { onConflict: 'conversation_phone,channel_id' });
+            if (!assignError) {
+              setAllConversations(prev => prev.map(c => {
+                const normalizedCPhone = c.phone.replace(/\D/g, '');
+                return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                  ? { ...c, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' as const }
+                  : c;
+              }));
+              setSelectedConversation(prev => prev ? { ...prev, assignedTo: user.id, assignedToName: 'Você', status: 'in_progress' } : null);
+            }
+          }
+        },
+      }
+    );
   };
 
   // File upload handler
@@ -2515,93 +2395,33 @@ const AtendimentoV2 = () => {
     toast.info("Gravação cancelada");
   };
 
-  // Send template
+  // Send template — delegates to useSendMessage (optimistic updates via infinite cache)
   const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
     const conversationChannelId = selectedConversation?.channelId;
     if (!selectedConversation || !conversationChannelId) return;
 
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
-    
+
     if (conversationChannel?.provider === 'zapi') {
       toast.error('Templates não são suportados em canais Z-API. Use mensagens de texto.');
       return;
     }
-    
-    setSendingMessage(true);
 
-    // CRITICAL: Create optimistic message BEFORE API call to prevent duplication
-    // The Realtime handler will find this and update it instead of adding a duplicate
-    const tempId = `temp_template_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const optimisticMessage: Message = {
-      id: tempId,
-      channel_id: conversationChannelId,
-      message_id: tempId, // Temporary, will be updated with real messageId
-      sender_phone: conversationChannel?.phone || "",
-      sender_name: null,
-      message_type: "template",
-      content: `Template: ${templateName}`,
-      media_url: null,
-      direction: "outbound",
-      status: "sending", // Show "sending" status while waiting for API
-      created_at: new Date().toISOString(),
-      metadata: { destination: selectedConversation.phone, templateName, templateParams }
-    };
-    
-    // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticMessage]);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('meta-send', {
-        body: {
-          channelId: conversationChannelId,
-          destination: selectedConversation.phone,
-          messageType: 'template',
-          templateName,
-          templateParams
-        }
-      });
-
-      if (error) {
-        // Update existing optimistic message to failed
-        setMessages(prev => prev.map(m => 
-          m.id === tempId 
-            ? { ...m, status: "failed", error_message: 'Erro de conexão ao enviar template' }
-            : m
-        ));
-        toast.error('Erro ao enviar template');
-        setSendingMessage(false);
-        return;
+    sendMessageMutation.mutate(
+      {
+        channelId: conversationChannelId,
+        channelPhone: conversationChannel?.phone || "",
+        channelProvider: "meta",
+        destination: selectedConversation.phone,
+        message: `Template: ${templateName}`,
+        messageType: "template",
+      },
+      {
+        onSuccess: (data) => {
+          if (data.success) toast.success("Template enviado!");
+        },
       }
-
-      if (data.success) {
-        // Update existing optimistic message with real messageId and success status
-        setMessages(prev => prev.map(m => 
-          m.id === tempId 
-            ? { ...m, message_id: data.messageId, status: "sent" }
-            : m
-        ));
-        toast.success("Template enviado!");
-      } else {
-        const errorMsg = data.error || 'Erro ao enviar template';
-        // Update existing optimistic message to failed
-        setMessages(prev => prev.map(m => 
-          m.id === tempId 
-            ? { ...m, message_id: data.messageId || tempId, status: "failed", error_message: errorMsg }
-            : m
-        ));
-        toast.error(errorMsg);
-      }
-    } catch {
-      // Update existing optimistic message to failed
-      setMessages(prev => prev.map(m => 
-        m.id === tempId 
-          ? { ...m, status: "failed", error_message: 'Erro inesperado ao enviar template' }
-          : m
-      ));
-      toast.error('Erro ao enviar template');
-    }
-
-    setSendingMessage(false);
+    );
   };
 
   // Handler for when template is sent manually via ManualSendDialog
@@ -3876,8 +3696,8 @@ const AtendimentoV2 = () => {
                       {isWindowExpired ? (
                         <Button onClick={() => setShowTemplateSelector(true)} className="h-11 px-4 shrink-0"><FileText className="w-5 h-5" /></Button>
                       ) : newMessage.trim() ? (
-                        <Button onClick={handleSendMessage} disabled={sendingMessage} className="h-11 px-4 shrink-0">
-                          {sendingMessage ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                        <Button onClick={handleSendMessage} disabled={isSendingMessage} className="h-11 px-4 shrink-0">
+                          {isSendingMessage ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                         </Button>
                       ) : (
                         <Button onClick={handleStartVoiceRecording} disabled={uploadingMedia} variant="default" className="h-11 px-4 bg-green-600 hover:bg-green-700 shrink-0">
