@@ -273,10 +273,51 @@ async function findOrCreateLead(
 }
 
 // =============================================
-// CONVERSATION ASSIGNMENT (optimized upsert)
+// ROUND-ROBIN ATTENDANT ASSIGNMENT
+// =============================================
+async function getNextAvailableAttendant(
+  organizationId: string,
+  sectorId: string | null
+): Promise<{ userId: string } | null> {
+  if (!sectorId) return null;
+
+  const { data: sectorUsers } = await supabase
+    .from('user_sectors')
+    .select('user_id')
+    .eq('sector_id', sectorId);
+
+  if (!sectorUsers || sectorUsers.length === 0) return null;
+
+  const userIds = sectorUsers.map(u => u.user_id);
+
+  const { data: availableAttendants } = await supabase
+    .from('attendant_availability')
+    .select('user_id, last_assignment_at')
+    .eq('organization_id', organizationId)
+    .eq('is_available', true)
+    .in('user_id', userIds)
+    .order('last_assignment_at', { ascending: true, nullsFirst: true });
+
+  if (!availableAttendants || availableAttendants.length === 0) return null;
+
+  const nextAttendant = availableAttendants[0];
+
+  // Update last_assignment_at (fire and forget)
+  supabase
+    .from('attendant_availability')
+    .update({ last_assignment_at: new Date().toISOString() })
+    .eq('user_id', nextAttendant.user_id)
+    .eq('organization_id', organizationId)
+    .then(() => {}).catch(() => {});
+
+  return { userId: nextAttendant.user_id };
+}
+
+// =============================================
+// CONVERSATION ASSIGNMENT (optimized upsert with round-robin)
 // =============================================
 async function handleConversationAssignment(
-  channelId: string, leadId: string, normalizedPhone: string
+  channelId: string, leadId: string, normalizedPhone: string, organizationId: string
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
   const { data: existing } = await supabase
     .from('conversation_assignments')
@@ -288,15 +329,27 @@ async function handleConversationAssignment(
   if (existing) {
     const needsUpdate = existing.status === 'archived' || !existing.lead_id;
     if (needsUpdate) {
-      const newStatus = existing.status === 'archived'
-        ? (existing.assigned_to ? 'in_progress' : 'pending')
+      // Try round-robin if sector exists and no attendant assigned
+      let assignedTo = existing.assigned_to;
+      let newStatus = existing.status === 'archived'
+        ? (assignedTo ? 'in_progress' : 'pending')
         : existing.status;
+
+      if (!assignedTo && existing.sector_id) {
+        const attendant = await getNextAvailableAttendant(organizationId, existing.sector_id);
+        if (attendant) {
+          assignedTo = attendant.userId;
+          newStatus = 'in_progress';
+          console.log(`[handleConversationAssignment] Round-robin assigned ${normalizedPhone} → ${assignedTo} (sector: ${existing.sector_id})`);
+        }
+      }
+
       await supabase
         .from('conversation_assignments')
-        .update({ status: newStatus, lead_id: leadId, updated_at: new Date().toISOString() })
+        .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
       console.log(`[handleConversationAssignment] Reactivated archived conversation for ${normalizedPhone} → ${newStatus} (sector: ${existing.sector_id})`);
-      return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
+      return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
     supabase.from('conversation_assignments')
@@ -306,10 +359,28 @@ async function handleConversationAssignment(
     return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status || 'pending', sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
   }
 
-  // New conversation — insert
+  // New conversation — get sector from campaign history, then try round-robin
+  const campaignSectorResult = await supabase.rpc('get_campaign_sector_for_phone', {
+    _organization_id: organizationId,
+    _phone: normalizedPhone,
+  });
+  const sectorId = campaignSectorResult.data || null;
+
+  let assignedTo: string | null = null;
+  let finalStatus = 'pending';
+
+  if (sectorId) {
+    const attendant = await getNextAvailableAttendant(organizationId, sectorId);
+    if (attendant) {
+      assignedTo = attendant.userId;
+      finalStatus = 'in_progress';
+      console.log(`[handleConversationAssignment] New conv round-robin: ${normalizedPhone} → ${assignedTo} (sector: ${sectorId})`);
+    }
+  }
+
   const { data: newAssignment, error } = await supabase
     .from('conversation_assignments')
-    .insert({ channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: 'pending' })
+    .insert({ channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: finalStatus, sector_id: sectorId, assigned_to: assignedTo })
     .select('id')
     .single();
 
@@ -328,7 +399,7 @@ async function handleConversationAssignment(
     };
   }
 
-  return { assignmentId: newAssignment.id, assignedTo: null, status: 'pending', sectorId: null, isBotHandling: false };
+  return { assignmentId: newAssignment.id, assignedTo, status: finalStatus, sectorId, isBotHandling: false };
 }
 
 // =============================================
@@ -454,7 +525,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     // Task B: Lead upsert + conversation assignment (sequential internally)
     (async () => {
       const { leadId } = await findOrCreateLead(organizationId, channel.user_id as string, senderPhone, contactName);
-      const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone);
+      const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone, organizationId);
       return { leadId, assignment };
     })(),
 
