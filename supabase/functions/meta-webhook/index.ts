@@ -295,6 +295,7 @@ async function handleConversationAssignment(
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
+      console.log(`[handleConversationAssignment] Reactivated archived conversation for ${normalizedPhone} → ${newStatus} (sector: ${existing.sector_id})`);
       return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
@@ -400,6 +401,15 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const messageType = msg.type as string;
   const normalizedPhone = normalizePhone(senderPhone);
   const organizationId = channel.organization_id as string;
+
+  // Guard: ignore messages sent BY the channel itself (outbound echo/status events misrouted as inbound)
+  // This prevents ghost "pending" conversations from delivery receipts
+  const channelPhone = ((channel.phone as string) || '').replace(/\D/g, '');
+  const senderDigits = senderPhone.replace(/\D/g, '');
+  if (channelPhone && (senderDigits === channelPhone || senderDigits.endsWith(channelPhone.slice(-8)))) {
+    console.log('[processMessage] Ignoring outbound echo from channel phone:', senderPhone);
+    return;
+  }
 
   // ── PHASE 1: Parallel pre-checks ─────────────────────────────────
   // Run all lookups simultaneously before any business logic
