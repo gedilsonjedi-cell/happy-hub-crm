@@ -138,8 +138,12 @@ const MessageBubble = memo(function MessageBubble({
       const buttons = metadata?.templateButtons || templateData?.components?.buttons || [];
 
       if (displayContent) {
+        // Use replaceAll to ensure ALL occurrences of each placeholder are replaced
         templateParams.forEach((param, index) => {
-          displayContent = displayContent.replace(`{{${index + 1}}}`, param);
+          const placeholder = `{{${index + 1}}}`;
+          while (displayContent.includes(placeholder)) {
+            displayContent = displayContent.replace(placeholder, param);
+          }
         });
 
         return (
