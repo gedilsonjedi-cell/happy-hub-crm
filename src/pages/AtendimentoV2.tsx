@@ -5,6 +5,7 @@ import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
+import { VirtualizedConversationList } from "@/components/whatsapp/VirtualizedConversationList";
 import { 
   MessageSquare, 
   Send, 
@@ -298,6 +299,9 @@ const AtendimentoV2 = () => {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
+  // Container ref + measured height for the virtualized conversation list
+  const conversationListContainerRef = useRef<HTMLDivElement>(null);
+  const [conversationListHeight, setConversationListHeight] = useState(600);
   
   const playNotificationSound = useNotificationSound();
   const { 
@@ -1213,7 +1217,7 @@ const AtendimentoV2 = () => {
     }
   }, [channels, effectiveOrganizationId]);
 
-  // Debounced global search effect
+  // Debounced global search — 300ms for snappy feel
   useEffect(() => {
     if (!searchTerm || searchTerm.length < 3) {
       setGlobalSearchResults([]);
@@ -1222,7 +1226,7 @@ const AtendimentoV2 = () => {
 
     const debounceTimer = setTimeout(() => {
       searchConversationsGlobal(searchTerm);
-    }, 500);
+    }, 300);
 
     return () => clearTimeout(debounceTimer);
   }, [searchTerm, searchConversationsGlobal]);
@@ -1436,6 +1440,18 @@ const AtendimentoV2 = () => {
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
   }, [showNotification, soundEnabled, playNotificationSound]);
+
+  // Measure the conversation list container so the virtualized list fills it exactly
+  useEffect(() => {
+    const el = conversationListContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setConversationListHeight(el.clientHeight);
+    });
+    ro.observe(el);
+    setConversationListHeight(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
 
   // OPTIMIZATION: Single consolidated Realtime subscription via useChatRealtime
   // Replaces: N per-channel subscriptions + 1 global assignment subscription
@@ -3306,10 +3322,9 @@ const AtendimentoV2 = () => {
             </div>
           )}
 
-          {/* Conversations list - hidden when showing archived */}
+          {/* Conversations list - virtualized for high-scale performance */}
           {!showArchived && (
-          <ScrollArea className="flex-1">
-            <div className="divide-y divide-border">
+            <div ref={conversationListContainerRef} className="flex-1 min-h-0 overflow-hidden">
               {loading ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Carregando...
@@ -3320,103 +3335,19 @@ const AtendimentoV2 = () => {
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
-                filteredConversations.map((conversation) => {
-                  const conversationKey = getConversationKey(conversation);
-                  const sectorInfo = sectors.find(s => s.id === conversation.sectorId);
-                  const isSelected = selectedConversation && getConversationKey(selectedConversation) === conversationKey;
-                  
-                  return (
-                    <button 
-                      key={conversationKey} 
-                      onClick={() => setSelectedConversation(conversation)} 
-                      className={cn(
-                        "w-full p-3 text-left transition-all hover:bg-muted/30",
-                        isSelected && "bg-primary/5",
-                        recentlyUpdatedConversations.has(conversationKey) && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary"
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Avatar with WhatsApp icon overlay */}
-                        <div className="relative shrink-0">
-                          <Avatar className="w-10 h-10">
-                            <AvatarFallback className="bg-pink-100 text-pink-600 text-sm font-semibold">
-                              {conversation.name ? conversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                            <MessageSquare className="w-2.5 h-2.5 text-white" />
-                          </div>
-                        </div>
-                        
-                        {/* Content - Name and Last Message */}
-                        <div className="flex-1 min-w-0 overflow-hidden">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
-                              {conversation.name || conversation.phone}
-                            </span>
-                            {sectorInfo && (
-                              <Badge variant="outline" className="text-[10px] h-5 px-2 bg-primary text-primary-foreground border-0 shrink-0 max-w-[90px] truncate">
-                                {sectorInfo.name}
-                              </Badge>
-                            )}
-                          </div>
-                          {/* Lead Tags */}
-                          {conversation.tags && conversation.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-0.5">
-                              {conversation.tags.slice(0, 3).map((tagName, idx) => {
-                                const tagColor = tagColors.get(tagName) || '#6366f1';
-                                return (
-                                  <Badge 
-                                    key={idx}
-                                    variant="outline" 
-                                    className="text-[9px] h-4 px-1.5 border-0"
-                                    style={{
-                                      backgroundColor: tagColor + "30",
-                                      color: tagColor
-                                    }}
-                                  >
-                                    {tagName}
-                                  </Badge>
-                                );
-                              })}
-                              {conversation.tags.length > 3 && (
-                                <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-0">
-                                  +{conversation.tags.length - 3}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                          {conversation.assignedToName && (
-                            <div className="flex items-center gap-1 mb-0.5">
-                              <UserCheck className="w-3 h-3 text-blue-400" />
-                              <span className="text-[11px] text-blue-400 font-medium truncate">
-                                {conversation.assignedToName}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                              {conversation.lastMessage}
-                            </p>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                {formatConversationDate(conversation.lastMessageTime)}
-                              </span>
-                              {conversation.unreadCount > 0 && (
-                                <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {conversation.unreadCount}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
+                <VirtualizedConversationList
+                  conversations={filteredConversations}
+                  selectedConversationKey={selectedConversation ? getConversationKey(selectedConversation) : null}
+                  recentlyUpdatedConversations={recentlyUpdatedConversations}
+                  sectors={sectors}
+                  tagColors={tagColors}
+                  onSelect={(conv) => setSelectedConversation(conv as Conversation)}
+                  formatDate={formatConversationDate}
+                  getConversationKey={getConversationKey}
+                  height={conversationListHeight}
+                />
               )}
             </div>
-          </ScrollArea>
           )}
 
           {/* Manual send footer */}
