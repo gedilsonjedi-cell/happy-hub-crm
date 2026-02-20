@@ -27,13 +27,49 @@ export interface MessageRow {
   is_read?: boolean;
 }
 
+/**
+ * Generate phone number variants to handle Brazilian number format differences.
+ * Brazilian mobile numbers can have 8 or 9 digits (with/without the leading 9).
+ * e.g. 558386640756 vs 5583986640756 (same number, different format)
+ */
+function getPhoneVariants(phone: string): string[] {
+  const normalized = phone.replace(/\D/g, "");
+  const variants = new Set<string>();
+
+  variants.add(normalized);
+  variants.add(`+${normalized}`);
+
+  // Brazilian numbers: if starts with 55 (country code)
+  if (normalized.startsWith("55") && normalized.length >= 10) {
+    const withoutCountry = normalized.slice(2); // e.g. "83986640756" or "8386640756"
+    const areaCode = withoutCountry.slice(0, 2); // "83"
+    const localNumber = withoutCountry.slice(2);  // "986640756" or "86640756"
+
+    if (localNumber.length === 9 && localNumber.startsWith("9")) {
+      // Has 9 prefix → also try without it
+      const without9 = areaCode + localNumber.slice(1); // "8386640756"
+      variants.add(`55${without9}`);
+      variants.add(`+55${without9}`);
+    } else if (localNumber.length === 8) {
+      // Missing 9 prefix → also try with it
+      const with9 = areaCode + "9" + localNumber; // "83986640756"
+      variants.add(`55${with9}`);
+      variants.add(`+55${with9}`);
+    }
+  }
+
+  return Array.from(variants);
+}
+
 async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
   cursor: string | null
 ): Promise<MessagePage> {
   const normalizedPhone = conversationPhone.replace(/\D/g, "");
-  const phoneWithPlus = `+${normalizedPhone}`;
+  
+  // Generate all phone variants (with/without 9 digit for BR numbers)
+  const phoneVariants = getPhoneVariants(normalizedPhone);
 
   // Cursor = oldest created_at from previous page (we paginate backwards)
   const cursorFilter = cursor ? cursor : new Date().toISOString();
@@ -42,13 +78,21 @@ async function fetchMessagePage(
   const essentialSelect =
     "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
+  // Build OR filter for all phone variants
+  const inboundPhoneFilter = phoneVariants
+    .map(p => `sender_phone.eq.${p}`)
+    .join(",");
+  const outboundPhoneFilter = phoneVariants
+    .map(p => `metadata->>destination.eq.${p}`)
+    .join(",");
+
   const [inboundResult, outboundResult] = await Promise.all([
     supabase
       .from("whatsapp_messages")
       .select(essentialSelect)
       .eq("channel_id", channelId)
       .eq("direction", "inbound")
-      .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
+      .or(inboundPhoneFilter)
       .lt("created_at", cursorFilter)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
@@ -58,9 +102,7 @@ async function fetchMessagePage(
       .select(essentialSelect)
       .eq("channel_id", channelId)
       .eq("direction", "outbound")
-      .or(
-        `metadata->>destination.eq.${normalizedPhone},metadata->>destination.eq.${phoneWithPlus}`
-      )
+      .or(outboundPhoneFilter)
       .lt("created_at", cursorFilter)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
