@@ -261,9 +261,10 @@ async function processCampaignDispatch(
                 campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, updated_at: new Date().toISOString()
               }).eq('id', existingAssignment.id);
             } else {
+              // IMPORTANT: campaigns start as 'archived' — only become 'pending' when client replies
               await supabase.from('conversation_assignments').insert({
                 conversation_phone: formattedPhone, channel_id: channel.id,
-                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, status: 'pending'
+                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, status: 'archived'
               });
             }
           }
