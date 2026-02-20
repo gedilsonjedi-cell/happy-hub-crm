@@ -210,17 +210,21 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
             if (!contactPhone) return;
           }
 
+          // Store with channel-specific key AND with phone-only key (for null channel_id assignments)
           const key = `${msg.channel_id}_${contactPhone}`;
+          const phoneOnlyKey = `_${contactPhone}`; // fallback key for orphaned assignments
           const existing = lastMessagesByConv.get(key);
 
+          const msgData = {
+            content: msg.content || '',
+            createdAt: msg.created_at,
+            lastInboundTime: msg.direction === 'inbound' ? msg.created_at : null,
+            unreadCount: msg.direction === 'inbound' && !msg.is_read ? 1 : 0,
+            senderName: msg.direction === 'inbound' ? (msg as { sender_name?: string }).sender_name || null : null
+          };
+
           if (!existing) {
-            lastMessagesByConv.set(key, {
-              content: msg.content || '',
-              createdAt: msg.created_at,
-              lastInboundTime: msg.direction === 'inbound' ? msg.created_at : null,
-              unreadCount: msg.direction === 'inbound' && !msg.is_read ? 1 : 0,
-              senderName: msg.direction === 'inbound' ? (msg as { sender_name?: string }).sender_name || null : null
-            });
+            lastMessagesByConv.set(key, msgData);
           } else {
             // Update last inbound time if this is an inbound message
             if (msg.direction === 'inbound') {
@@ -232,13 +236,24 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
               }
             }
           }
+
+          // Also store with phone-only key for orphaned assignments (channel_id = null)
+          // Only set if this message is more recent than any existing entry
+          const existingPhoneOnly = lastMessagesByConv.get(phoneOnlyKey);
+          if (!existingPhoneOnly || new Date(msg.created_at) > new Date(existingPhoneOnly.createdAt)) {
+            lastMessagesByConv.set(phoneOnlyKey, msgData);
+          }
         });
       });
+
 
       // Build conversations from assignments
       const conversationsFromAssignments: Conversation[] = (assignmentsResult.data || []).map(assignment => {
         const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
-        const conversationKey = `${assignment.channel_id}_${normalizedPhone}`;
+        // For null channel_id (orphaned assignments from campaigns), use phone-only key as fallback
+        const conversationKey = assignment.channel_id 
+          ? `${assignment.channel_id}_${normalizedPhone}`
+          : `_${normalizedPhone}`;
         const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
 
         // Get lead info
