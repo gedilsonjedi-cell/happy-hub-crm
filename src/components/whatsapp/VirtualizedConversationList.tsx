@@ -33,7 +33,7 @@ interface VirtualizedConversationListProps {
 }
 
 // Approximate item height: avatar (40) + padding (24) + name row + content rows ~= 80px
-const ITEM_HEIGHT = 80;
+const ITEM_HEIGHT = 110;
 
 export function VirtualizedConversationList({
   conversations,
