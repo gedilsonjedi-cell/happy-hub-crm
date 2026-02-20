@@ -553,7 +553,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     grouped.get(dbStatus)!.push(msgId);
   }
 
-  // Execute one update per status group (instead of one per message)
+  // Execute one update per status group in whatsapp_messages
   await Promise.all(
     Array.from(grouped.entries()).map(([status, ids]) =>
       supabase
@@ -562,6 +562,84 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
         .in('message_id', ids)
     )
   );
+
+  // ─── SYNC CAMPAIGN RECIPIENTS ─────────────────────────────────────────
+  // For delivered, read, failed statuses: update campaign_recipients table
+  // so that campaign dashboard shows correct metrics
+  const relevantStatuses = ['delivered', 'read', 'failed'];
+  const relevantGroups = Array.from(grouped.entries()).filter(([status]) => relevantStatuses.includes(status));
+
+  if (relevantGroups.length === 0) return;
+
+  // Fetch whatsapp_messages metadata to get campaignId and destination phone
+  const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
+  const { data: messages } = await supabase
+    .from('whatsapp_messages')
+    .select('message_id, status, metadata')
+    .in('message_id', allRelevantIds)
+    .eq('direction', 'outbound');
+
+  if (!messages || messages.length === 0) return;
+
+  // Update campaign_recipients for each message that has a campaignId
+  const updatePromises: Promise<unknown>[] = [];
+  for (const msg of messages) {
+    const campaignId = (msg.metadata as Record<string, unknown>)?.campaignId as string | null;
+    const destination = (msg.metadata as Record<string, unknown>)?.destination as string | null;
+    if (!campaignId || !destination) continue;
+
+    const cleanPhone = destination.replace(/\D/g, '');
+    const suffix8 = cleanPhone.slice(-8);
+    const suffix11 = cleanPhone.slice(-11);
+
+    const recipientStatus = msg.status; // delivered, read, or failed
+
+    // Map whatsapp status to campaign_recipient fields
+    if (recipientStatus === 'delivered') {
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'delivered',
+          delivered_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'sent') // only update if still 'sent'
+        .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
+      );
+    } else if (recipientStatus === 'read') {
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'read',
+          read_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('campaign_id', campaignId)
+        .in('status', ['sent', 'delivered']) // update if sent or delivered
+        .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
+      );
+    } else if (recipientStatus === 'failed') {
+      // Extract error from status details if available
+      const errorDetails = statuses.find(s => s.id === msg.message_id);
+      const errorMsg = (errorDetails?.errors as Record<string, unknown>[])?.[0]?.title as string || 'Falha reportada pela Meta';
+      const errorCode = String((errorDetails?.errors as Record<string, unknown>[])?.[0]?.code || 'WEBHOOK_FAILED');
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'failed',
+          error_message: errorMsg,
+          last_error_code: errorCode,
+          updated_at: new Date().toISOString()
+        })
+        .eq('campaign_id', campaignId)
+        .in('status', ['sent', 'delivered'])
+        .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
+      );
+    }
+  }
+
+  if (updatePromises.length > 0) {
+    await Promise.all(updatePromises);
+    console.log(`[Webhook] Updated ${updatePromises.length} campaign_recipients status updates`);
+  }
 }
 
 // =============================================
