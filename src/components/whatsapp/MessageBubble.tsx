@@ -38,6 +38,7 @@ const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const isOutbound = message.direction === "outbound";
   const isFailed = message.status === "failed";
+  const isSending = message.status === "sending";
 
   const renderContent = () => {
     const isMedia = ["image", "video", "audio", "document", "file", "sticker"].includes(
@@ -195,7 +196,11 @@ const MessageBubble = memo(function MessageBubble({
       )}
 
       <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
-        <div className={cn("max-w-[80%]", isFailed ? "space-y-2" : "")}>
+        <div className={cn(
+          "max-w-[80%] transition-opacity duration-300",
+          isFailed ? "space-y-2" : "",
+          isSending ? "opacity-60" : "opacity-100"
+        )}>
           <div
             className={cn(
               "rounded-2xl px-4 py-2 shadow-sm",
