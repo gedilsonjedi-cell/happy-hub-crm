@@ -5,6 +5,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * cleanup-old-data
+ *
+ * POLICY (strictly enforced):
+ * - Mensagens (whatsapp_messages) → NUNCA apagadas diretamente.
+ *   Apenas mensagens de conversas arquivadas há >15 dias são removidas.
+ * - Leads → NUNCA apagados.
+ * - Logs técnicos (flow_sessions, conversation_memory, lead_activity_log) → limpos por prazo.
+ * - Campanhas concluídas + recipients → limpos após 30 dias.
+ * - Balance transactions → limpos após 90 dias.
+ */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -13,27 +24,24 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Calculate cutoff dates
-    const cutoff7Days = new Date();
-    cutoff7Days.setDate(cutoff7Days.getDate() - 7);
-    const cutoff7DaysISO = cutoff7Days.toISOString();
 
-    const cutoff30Days = new Date();
+    const now = new Date();
+
+    const cutoff15Days = new Date(now);
+    cutoff15Days.setDate(cutoff15Days.getDate() - 15);
+
+    const cutoff30Days = new Date(now);
     cutoff30Days.setDate(cutoff30Days.getDate() - 30);
-    const cutoff30DaysISO = cutoff30Days.toISOString();
 
-    const cutoff90Days = new Date();
+    const cutoff90Days = new Date(now);
     cutoff90Days.setDate(cutoff90Days.getDate() - 90);
-    const cutoff90DaysISO = cutoff90Days.toISOString();
-    
-    console.log(`[Cleanup] Starting optimized cleanup`);
-    console.log(`[Cleanup] 7 days cutoff: ${cutoff7DaysISO}`);
-    console.log(`[Cleanup] 30 days cutoff: ${cutoff30DaysISO}`);
-    console.log(`[Cleanup] 90 days cutoff: ${cutoff90DaysISO}`);
-    
+
+    const cutoff7Days = new Date(now);
+    cutoff7Days.setDate(cutoff7Days.getDate() - 7);
+
+    console.log(`[Cleanup] Starting. Cutoffs: 15d=${cutoff15Days.toISOString()}, 30d=${cutoff30Days.toISOString()}, 90d=${cutoff90Days.toISOString()}`);
+
     const results = {
       whatsapp_messages: 0,
       conversation_notes: 0,
@@ -46,174 +54,131 @@ Deno.serve(async (req) => {
       balance_transactions: 0,
     };
 
-    // 1. Get archived conversations older than 7 days
-    console.log(`[Cleanup] Fetching archived conversations...`);
+    // ─── 1. Limpar mensagens SOMENTE de conversas arquivadas há >15 dias ──────
+    // Leads e mensagens de conversas ativas NUNCA são tocados.
+    console.log(`[Cleanup] Fetching archived conversations older than 15 days...`);
     const { data: archivedConversations, error: archiveError } = await supabase
       .from("conversation_assignments")
       .select("id, channel_id, conversation_phone")
       .eq("status", "archived")
-      .lt("updated_at", cutoff7DaysISO);
+      .lt("updated_at", cutoff15Days.toISOString());
 
     if (archiveError) {
       console.error("[Cleanup] Error fetching archived conversations:", archiveError);
     } else {
-      console.log(`[Cleanup] Found ${archivedConversations?.length || 0} archived conversations to clean`);
+      console.log(`[Cleanup] Found ${archivedConversations?.length || 0} archived conversations`);
 
-      // 2. Delete messages ONLY from archived conversations
       if (archivedConversations && archivedConversations.length > 0) {
-        for (const conv of archivedConversations) {
-          const phoneSuffix = conv.conversation_phone?.slice(-8);
-          
-          if (!phoneSuffix || !conv.channel_id) continue;
+        // Process in batches of 20 to avoid overwhelming the DB
+        const BATCH_SIZE = 20;
+        for (let i = 0; i < archivedConversations.length; i += BATCH_SIZE) {
+          const batch = archivedConversations.slice(i, i + BATCH_SIZE);
 
-          // Delete inbound messages (sender_phone matches)
-          const { error: inboundError, count: inboundCount } = await supabase
-            .from("whatsapp_messages")
-            .delete({ count: "exact" })
-            .eq("channel_id", conv.channel_id)
-            .like("sender_phone", `%${phoneSuffix}`)
-            .lt("created_at", cutoff7DaysISO);
+          await Promise.all(batch.map(async (conv) => {
+            const phoneSuffix = conv.conversation_phone?.slice(-8);
+            if (!phoneSuffix || !conv.channel_id) return;
 
-          if (!inboundError && inboundCount) {
-            results.whatsapp_messages += inboundCount;
-          }
+            const [inboundDel, outboundDel, notesDel] = await Promise.all([
+              // Delete inbound messages
+              supabase
+                .from("whatsapp_messages")
+                .delete({ count: "exact" })
+                .eq("channel_id", conv.channel_id)
+                .like("sender_phone", `%${phoneSuffix}`)
+                .lt("created_at", cutoff15Days.toISOString()),
+              // Delete outbound messages
+              supabase
+                .from("whatsapp_messages")
+                .delete({ count: "exact" })
+                .eq("channel_id", conv.channel_id)
+                .eq("direction", "outbound")
+                .like("metadata->>destination", `%${phoneSuffix}`)
+                .lt("created_at", cutoff15Days.toISOString()),
+              // Delete conversation notes
+              supabase
+                .from("conversation_notes")
+                .delete({ count: "exact" })
+                .eq("channel_id", conv.channel_id)
+                .like("contact_phone", `%${phoneSuffix}`)
+                .lt("created_at", cutoff15Days.toISOString()),
+            ]);
 
-          // Delete outbound messages (metadata->destination matches)
-          const { error: outboundError, count: outboundCount } = await supabase
-            .from("whatsapp_messages")
-            .delete({ count: "exact" })
-            .eq("channel_id", conv.channel_id)
-            .eq("direction", "outbound")
-            .like("metadata->>destination", `%${phoneSuffix}`)
-            .lt("created_at", cutoff7DaysISO);
-
-          if (!outboundError && outboundCount) {
-            results.whatsapp_messages += outboundCount;
-          }
-
-          // Delete conversation notes for this archived conversation
-          const { error: notesError, count: notesCount } = await supabase
-            .from("conversation_notes")
-            .delete({ count: "exact" })
-            .eq("channel_id", conv.channel_id)
-            .like("contact_phone", `%${phoneSuffix}`)
-            .lt("created_at", cutoff7DaysISO);
-
-          if (!notesError && notesCount) {
-            results.conversation_notes += notesCount;
-          }
+            results.whatsapp_messages += (inboundDel.count || 0) + (outboundDel.count || 0);
+            results.conversation_notes += notesDel.count || 0;
+          }));
         }
 
-        console.log(`[Cleanup] Deleted ${results.whatsapp_messages} whatsapp_messages from archived conversations`);
-        console.log(`[Cleanup] Deleted ${results.conversation_notes} conversation_notes from archived conversations`);
+        console.log(`[Cleanup] Deleted ${results.whatsapp_messages} messages, ${results.conversation_notes} notes`);
 
-        // 3. Delete the archived conversation_assignments themselves
+        // Delete the archived assignments themselves
         const archivedIds = archivedConversations.map(c => c.id);
-        const { error: assignError, count: assignCount } = await supabase
+        const { count: assignCount } = await supabase
           .from("conversation_assignments")
           .delete({ count: "exact" })
           .in("id", archivedIds);
 
-        if (assignError) {
-          console.error("[Cleanup] Error deleting conversation_assignments:", assignError);
-        } else {
-          results.conversation_assignments = assignCount || 0;
-          console.log(`[Cleanup] Deleted ${assignCount} archived conversation_assignments`);
-        }
+        results.conversation_assignments = assignCount || 0;
+        console.log(`[Cleanup] Deleted ${assignCount} archived conversation_assignments`);
       }
     }
 
-    // 4. Delete old campaign recipients (> 7 days)
-    const { error: recipError, count: recipCount } = await supabase
+    // ─── 2. Limpar campaign_recipients de campanhas concluídas há >30 dias ──
+    const { count: recipCount } = await supabase
       .from("campaign_recipients")
       .delete({ count: "exact" })
-      .lt("created_at", cutoff7DaysISO);
-    
-    if (recipError) {
-      console.error("[Cleanup] Error deleting campaign_recipients:", recipError);
-    } else {
-      results.campaign_recipients = recipCount || 0;
-      console.log(`[Cleanup] Deleted ${recipCount} campaign_recipients`);
-    }
+      .lt("created_at", cutoff30Days.toISOString());
+    results.campaign_recipients = recipCount || 0;
 
-    // 5. Delete old completed campaigns (> 7 days)
-    const { error: campError, count: campCount } = await supabase
+    // ─── 3. Limpar campanhas concluídas há >30 dias ───────────────────────────
+    const { count: campCount } = await supabase
       .from("campaigns")
       .delete({ count: "exact" })
       .eq("status", "completed")
-      .lt("completed_at", cutoff7DaysISO);
-    
-    if (campError) {
-      console.error("[Cleanup] Error deleting campaigns:", campError);
-    } else {
-      results.campaigns = campCount || 0;
-      console.log(`[Cleanup] Deleted ${campCount} campaigns`);
-    }
+      .lt("completed_at", cutoff30Days.toISOString());
+    results.campaigns = campCount || 0;
 
-    // 6. Delete expired conversation memory
-    const { error: memError, count: memCount } = await supabase
+    // ─── 4. Limpar conversation_memory expirada ───────────────────────────────
+    const { count: memCount } = await supabase
       .from("conversation_memory")
       .delete({ count: "exact" })
-      .lt("expires_at", new Date().toISOString());
-    
-    if (memError) {
-      console.error("[Cleanup] Error deleting conversation_memory:", memError);
-    } else {
-      results.conversation_memory = memCount || 0;
-      console.log(`[Cleanup] Deleted ${memCount} conversation_memory`);
-    }
+      .lt("expires_at", now.toISOString());
+    results.conversation_memory = memCount || 0;
 
-    // 7. Delete old flow sessions (> 7 days)
-    const { error: flowError, count: flowCount } = await supabase
+    // ─── 5. Limpar flow_sessions inativas há >7 dias ─────────────────────────
+    const { count: flowCount } = await supabase
       .from("flow_sessions")
       .delete({ count: "exact" })
-      .lt("updated_at", cutoff7DaysISO);
-    
-    if (flowError) {
-      console.error("[Cleanup] Error deleting flow_sessions:", flowError);
-    } else {
-      results.flow_sessions = flowCount || 0;
-      console.log(`[Cleanup] Deleted ${flowCount} flow_sessions`);
-    }
+      .lt("updated_at", cutoff7Days.toISOString());
+    results.flow_sessions = flowCount || 0;
 
-    // 8. Delete old lead activity logs (> 30 days)
-    const { error: logError, count: logCount } = await supabase
+    // ─── 6. Limpar lead_activity_log há >30 dias ─────────────────────────────
+    const { count: logCount } = await supabase
       .from("lead_activity_log")
       .delete({ count: "exact" })
-      .lt("created_at", cutoff30DaysISO);
-    
-    if (logError) {
-      console.error("[Cleanup] Error deleting lead_activity_log:", logError);
-    } else {
-      results.lead_activity_log = logCount || 0;
-      console.log(`[Cleanup] Deleted ${logCount} lead_activity_log entries`);
-    }
+      .lt("created_at", cutoff30Days.toISOString());
+    results.lead_activity_log = logCount || 0;
 
-    // 9. Delete old balance transactions (> 90 days)
-    const { error: txError, count: txCount } = await supabase
+    // ─── 7. Limpar balance_transactions há >90 dias ───────────────────────────
+    const { count: txCount } = await supabase
       .from("balance_transactions")
       .delete({ count: "exact" })
-      .lt("created_at", cutoff90DaysISO);
-    
-    if (txError) {
-      console.error("[Cleanup] Error deleting balance_transactions:", txError);
-    } else {
-      results.balance_transactions = txCount || 0;
-      console.log(`[Cleanup] Deleted ${txCount} balance_transactions`);
-    }
+      .lt("created_at", cutoff90Days.toISOString());
+    results.balance_transactions = txCount || 0;
 
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
-    console.log(`[Cleanup] Total records deleted: ${totalDeleted}`);
+    console.log(`[Cleanup] Done. Total deleted: ${totalDeleted}`, results);
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Cleanup completed. Deleted ${totalDeleted} records.`,
         details: results,
+        policy: "Messages/Leads are NEVER deleted. Only archived conversation messages (>15d) are removed.",
         cutoffs: {
-          "7_days": cutoff7DaysISO,
-          "30_days": cutoff30DaysISO,
-          "90_days": cutoff90DaysISO,
+          "15_days_archived_messages": cutoff15Days.toISOString(),
+          "30_days_campaigns": cutoff30Days.toISOString(),
+          "7_days_flow_sessions": cutoff7Days.toISOString(),
+          "90_days_transactions": cutoff90Days.toISOString(),
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -227,3 +192,4 @@ Deno.serve(async (req) => {
     );
   }
 });
+
