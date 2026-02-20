@@ -53,8 +53,9 @@ export const ConversationItem = memo(function ConversationItem({
     <button
       onClick={() => onSelect(conversation)}
       className={cn(
-        "w-full p-3 text-left transition-all hover:bg-muted/30",
-        isSelected && "bg-primary/5",
+        "w-full p-3 text-left transition-all rounded-lg hover:bg-muted/40",
+        isSelected && "bg-primary/10 border border-primary/20",
+        !isSelected && "border border-transparent",
         isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary"
       )}
     >
