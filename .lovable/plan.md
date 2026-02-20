@@ -1,168 +1,253 @@
 
-# Plano: Sistema de Contingência para Migração de WABA
+# Plano de Otimização de Performance — Sistema de Atendimento
 
-## Entendimento do Problema
+## Diagnóstico: O Sistema Hoje
 
-Quando um WABA (WhatsApp Business Account) é restrito pela Meta, você transfere os números para outro WABA. Hoje, para refletir isso no sistema:
-- Você precisa **excluir** o canal e **recriá-lo** com o novo WABA
-- Isso gera um novo `channel_id`, quebrando o vínculo com mensagens e conversas
-- O cliente perde o histórico e a experiência é interrompida
+Após análise completa do código, banco de dados e arquitetura, o sistema tem condições de suportar 1.000+ usuários simultâneos — mas existem **7 gargalos críticos** que precisam ser eliminados primeiro.
 
-## Solução Proposta
+### Dados do Banco (situação real):
+- `whatsapp_messages`: **267.921 registros, 276 MB total**
+- `conversation_assignments`: **20.526 registros**
+- `leads`: **61.651 registros**
+- `campaign_recipients`: **9.796 registros**
 
-### Nova Funcionalidade: "Migrar WABA"
+---
 
-Adicionar um botão no menu de ações de cada canal Meta que permite **trocar o WABA** sem perder o histórico:
+## Gargalo 1 — CRÍTICO: Índices ausentes no banco de dados
 
-```text
-┌─────────────────────────────────────────┐
-│  Canal: L&P Financeira (+55 21 9204...) │
-│  WABA: 925630689888926                  │
-├─────────────────────────────────────────┤
-│  ⋮ Menu                                 │
-│  ├── 🔄 Reconectar                      │
-│  ├── 🔧 Ver Configuração                │
-│  ├── 🤖 Vincular Chatbot                │
-│  ├── 🔀 Migrar WABA  ← NOVO             │
-│  └── 🗑️ Excluir                         │
-└─────────────────────────────────────────┘
+### Problema:
+A query mais executada do sistema (carregamento do chat) faz:
+```sql
+SELECT * FROM conversation_assignments 
+WHERE channel_id IN (...) AND status != 'archived' 
+ORDER BY updated_at DESC
+```
+Não existe nenhum índice composto em `conversation_assignments` para isso. O banco faz **full table scan** em 20.526 linhas a cada refresh. Com 1.000 usuários simultâneos, isso paralisa o banco.
+
+Da mesma forma, a `whatsapp_messages` (267.921 linhas) é consultada por `channel_id + direction + sender_phone` sem índice composto. Cada abertura de conversa faz **dois** full scans.
+
+A tabela `leads` (61.651 linhas) não tem índice em `phone`, que é o campo mais buscado do sistema (matching por telefone).
+
+### Solução:
+Criar **5 índices compostos** via migration:
+
+```sql
+-- 1. conversation_assignments: query principal do chat
+CREATE INDEX idx_conv_assignments_channel_status_updated 
+ON conversation_assignments(channel_id, status, updated_at DESC)
+WHERE status != 'archived';
+
+-- 2. conversation_assignments: busca por lead_id
+CREATE INDEX idx_conv_assignments_lead_id 
+ON conversation_assignments(lead_id) 
+WHERE lead_id IS NOT NULL;
+
+-- 3. conversation_assignments: sync periódico (channel + status + updated)
+CREATE INDEX idx_conv_assignments_channel_updated 
+ON conversation_assignments(channel_id, updated_at DESC);
+
+-- 4. whatsapp_messages: fetch de mensagens de conversa
+CREATE INDEX idx_whatsapp_messages_conv 
+ON whatsapp_messages(channel_id, sender_phone, created_at DESC);
+
+-- 5. leads: busca por telefone (mais crítico do sistema)
+CREATE INDEX idx_leads_phone 
+ON leads(phone);
 ```
 
-### Fluxo da Migração
+**Impacto estimado**: Redução de 80–95% no tempo das queries principais.
 
-1. **Usuário clica "Migrar WABA"**
-   - Abre modal solicitando:
-     - Novo WABA ID
-     - Novo Access Token
+---
 
-2. **Sistema valida o novo WABA**
-   - Busca números do novo WABA via Meta API
-   - Verifica se o número do canal existe no novo WABA
+## Gargalo 2 — CRÍTICO: N+1 queries no carregamento de conversas
 
-3. **Atualiza o canal existente**
-   - Atualiza `waba_id` com o novo ID
-   - Atualiza `access_token` com o novo token
-   - Atualiza `app_name` (Phone Number ID) se necessário
-   - Gera novo `webhook_verify_token`
+### Problema:
+O `AtendimentoV2.tsx` (4.324 linhas!) faz, ao abrir:
+1. Busca paginada de **todos os assignments** (N páginas)
+2. Busca paginada de **todos os leads** (N páginas)  
+3. Busca paginada de **todos os profiles** (N páginas)
+4. **Uma query por canal** para as últimas 1.500 mensagens
+5. Para cada conversa sem lastMessage: **2 queries adicionais** (inbound + outbound)
 
-4. **Re-registra no Meta**
-   - Chama `meta-register-phone` para ativar no novo WABA
-   - Chama `meta-subscribe-webhook` para inscrever webhook
+Se uma organização tem 5 canais e 500 conversas sem mensagem recente, isso gera **1.000 queries adicionais** no carregamento inicial. Com 100 usuários simultâneos = 100.000 queries.
 
-5. **Histórico preservado**
-   - O `channel_id` permanece o mesmo
-   - Todas as mensagens e conversas continuam vinculadas
-   - Cliente continua a conversa normalmente
+### Solução:
+Criar uma **Stored Function** no banco que retorna tudo em uma única chamada:
 
-## Arquivos a Modificar
+```sql
+CREATE OR REPLACE FUNCTION get_conversations_summary(
+  p_channel_ids uuid[],
+  p_organization_id uuid
+)
+RETURNS TABLE (
+  assignment_id uuid,
+  conversation_phone text,
+  channel_id uuid,
+  assigned_to uuid,
+  status text,
+  sector_id uuid,
+  lead_id uuid,
+  updated_at timestamptz,
+  last_message text,
+  last_message_at timestamptz,
+  last_inbound_at timestamptz,
+  unread_count int,
+  sender_name text,
+  lead_name text,
+  lead_tags text[],
+  assigned_to_name text
+) AS $$ ... $$ LANGUAGE plpgsql STABLE;
+```
 
-### 1. `src/pages/Conexoes.tsx`
-- Adicionar estado para modal de migração (`showMigrateWabaDialog`)
-- Criar função `handleMigrateWaba` que:
-  - Valida novas credenciais com Meta API
-  - Encontra o Phone Number ID correto no novo WABA
-  - Atualiza o canal no banco
-  - Re-registra e inscreve webhook
-- Adicionar item "Migrar WABA" no DropdownMenu de cada canal Meta
+Isso substitui **8–12 round-trips** por **1 única chamada RPC**.
 
-### 2. Componente do Modal de Migração
-Campos:
-- Novo WABA ID (obrigatório)
-- Novo Access Token (obrigatório)
+---
 
-Botões:
-- "Cancelar"
-- "Validar e Migrar" (busca números, valida, executa migração)
+## Gargalo 3 — ALTO: Duplicação de subscriptions Realtime
 
-## Detalhes Técnicos
+### Problema:
+Cada usuário logado cria:
+- `useWhatsAppNotifications`: 1 subscription em `whatsapp_messages` (global, sem filtro de org!)
+- `useUnreadMessagesCount`: 2 subscriptions (`conversation_assignments` + `whatsapp_messages`)  
+- `AtendimentoV2`: 1 subscription por canal (se 9 canais = 9 subscriptions)
+- Total: **12 subscriptions simultâneas por usuário**
 
-### Lógica de Migração (pseudocódigo)
+Com 1.000 usuários = **12.000 subscriptions ativas no Realtime**. O Supabase Realtime tem limites de conexões e isso causa latência e quedas.
+
+Além disso, `useWhatsAppNotifications` escuta **TODOS** os inserts em `whatsapp_messages` sem filtrar por `organization_id`, recebendo dados de outras organizações (ineficiência e risco de segurança).
+
+### Solução:
+1. **Consolidar** as 3 fontes de subscription em um único hook `useChatRealtime` que gerencia tudo
+2. **Filtrar** todas as subscriptions por `channel_id` (já suportado pelo Realtime)
+3. **Remover** a subscription global em `useWhatsAppNotifications` (redundante com AtendimentoV2)
+4. **Debounce** o `useUnreadMessagesCount` para 2s já existe, mas a subscription de `whatsapp_messages` deve ser eliminada (count pode vir do assignment)
+
+---
+
+## Gargalo 4 — ALTO: `AtendimentoV2.tsx` com 4.324 linhas é ingerenciável
+
+### Problema:
+Um único arquivo com **4.324 linhas** causa:
+- Re-renders desnecessários de componentes que não deveriam re-renderizar
+- Impossibilidade de usar `React.memo` de forma eficaz
+- Dificuldade de manutenção e introdução de bugs
+
+### Solução:
+Extrair a lógica de dados para hooks isolados:
+- `useConversations` (já existe em `hooks/useConversations.tsx` mas o AtendimentoV2 ainda usa sua própria versão duplicada!)
+- `useMessages(conversation)` — mensagens da conversa selecionada
+- `useChatRealtime(channels)` — subscription consolidada
+- `ConversationList` — componente separado com `React.memo`
+- `MessagePanel` — componente separado com `React.memo`
+
+---
+
+## Gargalo 5 — MÉDIO: Sync periódico a cada 30s re-lê 500 assignments
+
+### Problema:
+```typescript
+// a cada 30 segundos para cada usuário logado:
+const { data: assignments } = await supabase
+  .from("conversation_assignments")
+  .select(...)
+  .limit(500);
+```
+
+Com 100 usuários no chat = **100 queries por 30 segundos = 200 queries/minuto** só para sync. Isso é desnecessário pois o Realtime já deve cobrir essa função.
+
+### Solução:
+Substituir o polling de 30s por subscription Realtime filtrada por `channel_id` na tabela `conversation_assignments`. Quando uma atribuição muda, o Realtime notifica imediatamente, e **apenas** a linha que mudou chega ao cliente.
 
 ```typescript
-async function handleMigrateWaba(channel, newWabaId, newAccessToken) {
-  // 1. Buscar números do novo WABA
-  const phones = await fetchPhonesFromMeta(newWabaId, newAccessToken);
-  
-  // 2. Encontrar o número do canal no novo WABA
-  const matchingPhone = phones.find(p => 
-    normalizePhone(p.displayPhoneNumber) === normalizePhone(channel.phone)
-  );
-  
-  if (!matchingPhone) {
-    throw new Error("Número não encontrado no novo WABA");
-  }
-  
-  // 3. Atualizar canal (mantém mesmo channel_id!)
-  await supabase.from("channels").update({
-    waba_id: newWabaId,
-    access_token: newAccessToken,
-    app_name: matchingPhone.id, // Novo Phone Number ID
-    webhook_verify_token: generateNewToken(),
-    connected: false, // Será ativado após registro
-  }).eq("id", channel.id);
-  
-  // 4. Registrar número no Meta
-  await registerPhoneWithMeta(matchingPhone.id, newAccessToken);
-  
-  // 5. Inscrever webhook
-  await subscribeWebhook(newWabaId, matchingPhone.id, newAccessToken);
-  
-  // 6. Marcar como conectado
-  await supabase.from("channels").update({ connected: true }).eq("id", channel.id);
-}
+supabase
+  .channel('assignments-sync')
+  .on('postgres_changes', {
+    event: '*',
+    schema: 'public',
+    table: 'conversation_assignments',
+    filter: `channel_id=in.(${channelIds.join(',')})`
+  }, handleAssignmentChange)
+  .subscribe();
 ```
 
-### Validações de Segurança
+---
 
-- Verificar se o número realmente existe no novo WABA antes de migrar
-- Confirmar que o usuário tem permissão para modificar o canal
-- Manter backup das credenciais antigas caso precise reverter
+## Gargalo 6 — MÉDIO: Background fetch de mensagens ausentes faz queries individuais
 
-## Benefícios
+### Problema:
+Para conversas sem preview de mensagem, o sistema busca **2 queries por conversa** (inbound + outbound) em batches de 50. Se uma org tem 500 conversas antigas sem preview = **1.000 queries** no carregamento.
 
-1. **Zero downtime** - Cliente não percebe a troca
-2. **Histórico preservado** - Todas as mensagens e conversas mantidas
-3. **Fluxo simples** - Apenas inserir novo WABA ID e token
-4. **Automatizado** - Sistema encontra automaticamente o Phone Number ID correto
-5. **Contingência rápida** - Resposta imediata quando WABA é restrito
+### Solução:
+Incluir o `last_message` na função RPC `get_conversations_summary` (Gargalo 2), eliminando completamente esse batch fetch de background.
 
-## Estimativa
+---
 
-- **Complexidade**: Média
-- **Arquivos**: 1 (Conexoes.tsx)
-- **Componentes novos**: 1 modal
+## Gargalo 7 — MÉDIO: `meta-webhook` faz até 10+ queries sequenciais por mensagem
 
-## Interface Visual Proposta
+### Problema:
+Para cada mensagem recebida, o webhook faz sequencialmente:
+1. `findOrCreateLead` (3 queries: exact match + suffix match + create)
+2. `handleConversationAssignment` (até 4 fallbacks = 4 queries)
+3. `findSectorFromCampaign` (2-6 queries em loop)
+4. `getNextAvailableAttendant` (2 queries)
+5. `isWithinBusinessHours` (1 query)
+6. `isHoliday` (2 queries)
+7. `shouldSendWelcomeMessage` (2 queries)
 
-```text
-┌────────────────────────────────────────────────────┐
-│  🔀 Migrar WABA                                    │
-├────────────────────────────────────────────────────┤
-│                                                    │
-│  Canal: L&P Financeira                             │
-│  Número: +55 21 92041-8100                         │
-│  WABA Atual: 925630689888926                       │
-│                                                    │
-│  ─────────────────────────────────────────────     │
-│                                                    │
-│  Novo WABA ID *                                    │
-│  ┌────────────────────────────────────────┐        │
-│  │                                        │        │
-│  └────────────────────────────────────────┘        │
-│                                                    │
-│  Novo Access Token *                               │
-│  ┌────────────────────────────────────────┐ 👁️    │
-│  │ ••••••••••••••••••••••••••••••••       │        │
-│  └────────────────────────────────────────┘        │
-│                                                    │
-│  ⚠️ O número (+55 21 92041-8100) deve existir      │
-│     no novo WABA para a migração funcionar.        │
-│                                                    │
-│  ─────────────────────────────────────────────     │
-│                                                    │
-│            [Cancelar]    [Validar e Migrar]        │
-│                                                    │
-└────────────────────────────────────────────────────┘
-```
+**Total: 16–21 queries sequenciais por mensagem recebida.** Em um disparo de campanha com 1.000 respostas simultâneas, isso é 21.000 queries sequenciais no webhook.
 
-Após aprovação, implementarei esta funcionalidade mantendo a consistência com o código existente.
+### Solução:
+1. Criar uma função PostgreSQL `process_inbound_message` que executa toda a lógica em uma transação SQL
+2. Cachear configurações de horário e feriado em memória do edge function (30s de cache)
+3. Paralelizar as queries independentes com `Promise.all`
+
+---
+
+## Plano de Implementação (por prioridade de impacto)
+
+### Fase 1 — Banco de Dados (maior impacto, menor risco)
+- Criar os 5 índices compostos via migration
+- Criar a função RPC `get_conversations_summary`
+- Habilitar Realtime na tabela `conversation_assignments`
+
+### Fase 2 — Frontend: Chat
+- Consolidar subscriptions Realtime em um único hook
+- Substituir o sync polling de 30s por Realtime
+- Eliminar o background fetch de mensagens (usar RPC)
+- Extrair `useMessages` e `useChatRealtime` do AtendimentoV2
+
+### Fase 3 — Backend: Webhook
+- Paralelizar queries independentes no `meta-webhook`
+- Adicionar cache de configurações (business hours, welcome msg)
+- Criar função PostgreSQL para processamento atômico de conversas
+
+### Fase 4 — Frontend: Componentes
+- Separar `ConversationList` e `MessagePanel` em componentes isolados com `React.memo`
+- Adicionar `useDeferredValue` para a busca de conversas
+- Aplicar virtualização na lista de conversas (react-virtual) para listas muito grandes
+
+---
+
+## Capacidade estimada após otimizações
+
+| Cenário | Antes | Depois |
+|---|---|---|
+| Queries por carregamento de chat | 8–15 | 1 (RPC) |
+| Subscriptions Realtime por usuário | 12 | 3 |
+| Queries/min com 100 usuários (sync) | 200 | 0 (Realtime) |
+| Tempo de carregamento inicial | 3–8s | < 1s |
+| Capacidade estimada simultânea | ~50–100 | 1.000+ |
+
+---
+
+## Técnico: Detalhes de implementação
+
+### Arquivos que serão alterados:
+1. **Nova migration SQL** — 5 índices + 1 função RPC
+2. **`supabase/functions/meta-webhook/index.ts`** — paralelizar queries, cache de config
+3. **`src/hooks/useChatRealtime.tsx`** — novo hook consolidando subscriptions
+4. **`src/hooks/useConversations.tsx`** — substituir fetch por chamada RPC
+5. **`src/pages/AtendimentoV2.tsx`** — extrair hooks, remover sync polling, usar novo hook Realtime
+6. **`src/hooks/useUnreadMessagesCount.tsx`** — remover subscription redundante de `whatsapp_messages`
+
+A ordem é importante: banco primeiro (sem risco de regressão), depois frontend.
