@@ -8,13 +8,16 @@ const corsHeaders = {
 /**
  * cleanup-old-data
  *
- * POLICY (strictly enforced):
- * - Mensagens (whatsapp_messages) → NUNCA apagadas diretamente.
- *   Apenas mensagens de conversas arquivadas há >15 dias são removidas.
- * - Leads → NUNCA apagados.
- * - Logs técnicos (flow_sessions, conversation_memory, lead_activity_log) → limpos por prazo.
- * - Campanhas concluídas + recipients → limpos após 30 dias.
- * - Balance transactions → limpos após 90 dias.
+ * POLÍTICA PERMANENTE E INVIOLÁVEL:
+ * ✅ NUNCA apaga: leads, contatos, conversas (conversation_assignments),
+ *    mensagens (whatsapp_messages), notas de conversa (conversation_notes),
+ *    campanhas (campaigns) ou destinatários (campaign_recipients).
+ *
+ * ✅ APENAS limpa logs técnicos transitórios:
+ *    - conversation_memory (memória de bot expirada pelo próprio sistema)
+ *    - flow_sessions (sessões de fluxo inativas há >7 dias)
+ *    - lead_activity_log (log de atividades há >90 dias)
+ *    - balance_transactions (histórico financeiro há >180 dias)
  */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -28,157 +31,110 @@ Deno.serve(async (req) => {
 
     const now = new Date();
 
-    const cutoff15Days = new Date(now);
-    cutoff15Days.setDate(cutoff15Days.getDate() - 15);
-
-    const cutoff30Days = new Date(now);
-    cutoff30Days.setDate(cutoff30Days.getDate() - 30);
+    const cutoff7Days = new Date(now);
+    cutoff7Days.setDate(cutoff7Days.getDate() - 7);
 
     const cutoff90Days = new Date(now);
     cutoff90Days.setDate(cutoff90Days.getDate() - 90);
 
-    const cutoff7Days = new Date(now);
-    cutoff7Days.setDate(cutoff7Days.getDate() - 7);
+    const cutoff180Days = new Date(now);
+    cutoff180Days.setDate(cutoff180Days.getDate() - 180);
 
-    console.log(`[Cleanup] Starting. Cutoffs: 15d=${cutoff15Days.toISOString()}, 30d=${cutoff30Days.toISOString()}, 90d=${cutoff90Days.toISOString()}`);
+    console.log(`[Cleanup] Iniciando limpeza de logs técnicos.`);
+    console.log(`[Cleanup] Cutoffs: 7d=${cutoff7Days.toISOString()}, 90d=${cutoff90Days.toISOString()}, 180d=${cutoff180Days.toISOString()}`);
+    console.log(`[Cleanup] POLÍTICA: Campanhas, conversas, mensagens e leads NUNCA são removidos.`);
 
     const results = {
-      whatsapp_messages: 0,
-      conversation_notes: 0,
-      conversation_assignments: 0,
-      campaign_recipients: 0,
-      campaigns: 0,
-      conversation_memory: 0,
-      flow_sessions: 0,
-      lead_activity_log: 0,
-      balance_transactions: 0,
+      conversation_memory_expired: 0,
+      flow_sessions_inactive: 0,
+      lead_activity_log_old: 0,
+      balance_transactions_old: 0,
     };
 
-    // ─── 1. Limpar mensagens SOMENTE de conversas arquivadas há >15 dias ──────
-    // Leads e mensagens de conversas ativas NUNCA são tocados.
-    console.log(`[Cleanup] Fetching archived conversations older than 15 days...`);
-    const { data: archivedConversations, error: archiveError } = await supabase
-      .from("conversation_assignments")
-      .select("id, channel_id, conversation_phone")
-      .eq("status", "archived")
-      .lt("updated_at", cutoff15Days.toISOString());
-
-    if (archiveError) {
-      console.error("[Cleanup] Error fetching archived conversations:", archiveError);
-    } else {
-      console.log(`[Cleanup] Found ${archivedConversations?.length || 0} archived conversations`);
-
-      if (archivedConversations && archivedConversations.length > 0) {
-        // Process in batches of 20 to avoid overwhelming the DB
-        const BATCH_SIZE = 20;
-        for (let i = 0; i < archivedConversations.length; i += BATCH_SIZE) {
-          const batch = archivedConversations.slice(i, i + BATCH_SIZE);
-
-          await Promise.all(batch.map(async (conv) => {
-            const phoneSuffix = conv.conversation_phone?.slice(-8);
-            if (!phoneSuffix || !conv.channel_id) return;
-
-            const [inboundDel, outboundDel, notesDel] = await Promise.all([
-              // Delete inbound messages
-              supabase
-                .from("whatsapp_messages")
-                .delete({ count: "exact" })
-                .eq("channel_id", conv.channel_id)
-                .like("sender_phone", `%${phoneSuffix}`)
-                .lt("created_at", cutoff15Days.toISOString()),
-              // Delete outbound messages
-              supabase
-                .from("whatsapp_messages")
-                .delete({ count: "exact" })
-                .eq("channel_id", conv.channel_id)
-                .eq("direction", "outbound")
-                .like("metadata->>destination", `%${phoneSuffix}`)
-                .lt("created_at", cutoff15Days.toISOString()),
-              // Delete conversation notes
-              supabase
-                .from("conversation_notes")
-                .delete({ count: "exact" })
-                .eq("channel_id", conv.channel_id)
-                .like("contact_phone", `%${phoneSuffix}`)
-                .lt("created_at", cutoff15Days.toISOString()),
-            ]);
-
-            results.whatsapp_messages += (inboundDel.count || 0) + (outboundDel.count || 0);
-            results.conversation_notes += notesDel.count || 0;
-          }));
-        }
-
-        console.log(`[Cleanup] Deleted ${results.whatsapp_messages} messages, ${results.conversation_notes} notes`);
-
-        // Delete the archived assignments themselves
-        const archivedIds = archivedConversations.map(c => c.id);
-        const { count: assignCount } = await supabase
-          .from("conversation_assignments")
-          .delete({ count: "exact" })
-          .in("id", archivedIds);
-
-        results.conversation_assignments = assignCount || 0;
-        console.log(`[Cleanup] Deleted ${assignCount} archived conversation_assignments`);
-      }
-    }
-
-    // ─── 2. Limpar campaign_recipients de campanhas concluídas há >30 dias ──
-    const { count: recipCount } = await supabase
-      .from("campaign_recipients")
-      .delete({ count: "exact" })
-      .lt("created_at", cutoff30Days.toISOString());
-    results.campaign_recipients = recipCount || 0;
-
-    // ─── 3. Limpar campanhas concluídas há >30 dias ───────────────────────────
-    const { count: campCount } = await supabase
-      .from("campaigns")
-      .delete({ count: "exact" })
-      .eq("status", "completed")
-      .lt("completed_at", cutoff30Days.toISOString());
-    results.campaigns = campCount || 0;
-
-    // ─── 4. Limpar conversation_memory expirada ───────────────────────────────
-    const { count: memCount } = await supabase
+    // ─── 1. Limpar conversation_memory expirada (expiração definida pelo próprio sistema) ──
+    // Esses registros têm um campo expires_at que o bot define. Quando expiram, são inúteis.
+    const { count: memCount, error: memError } = await supabase
       .from("conversation_memory")
       .delete({ count: "exact" })
       .lt("expires_at", now.toISOString());
-    results.conversation_memory = memCount || 0;
 
-    // ─── 5. Limpar flow_sessions inativas há >7 dias ─────────────────────────
-    const { count: flowCount } = await supabase
+    if (memError) {
+      console.error("[Cleanup] Erro ao limpar conversation_memory:", memError);
+    } else {
+      results.conversation_memory_expired = memCount || 0;
+      console.log(`[Cleanup] conversation_memory expirada removida: ${memCount}`);
+    }
+
+    // ─── 2. Limpar flow_sessions de bots inativas há >7 dias ─────────────────────────────
+    // Sessões de flow bot que não têm atividade há 7+ dias são consideradas abandonadas.
+    const { count: flowCount, error: flowError } = await supabase
       .from("flow_sessions")
       .delete({ count: "exact" })
       .lt("updated_at", cutoff7Days.toISOString());
-    results.flow_sessions = flowCount || 0;
 
-    // ─── 6. Limpar lead_activity_log há >30 dias ─────────────────────────────
-    const { count: logCount } = await supabase
+    if (flowError) {
+      console.error("[Cleanup] Erro ao limpar flow_sessions:", flowError);
+    } else {
+      results.flow_sessions_inactive = flowCount || 0;
+      console.log(`[Cleanup] flow_sessions inativas removidas: ${flowCount}`);
+    }
+
+    // ─── 3. Limpar lead_activity_log há >90 dias ─────────────────────────────────────────
+    // Log técnico de atividades. Após 90 dias, não tem valor operacional.
+    const { count: logCount, error: logError } = await supabase
       .from("lead_activity_log")
       .delete({ count: "exact" })
-      .lt("created_at", cutoff30Days.toISOString());
-    results.lead_activity_log = logCount || 0;
+      .lt("created_at", cutoff90Days.toISOString());
 
-    // ─── 7. Limpar balance_transactions há >90 dias ───────────────────────────
-    const { count: txCount } = await supabase
+    if (logError) {
+      console.error("[Cleanup] Erro ao limpar lead_activity_log:", logError);
+    } else {
+      results.lead_activity_log_old = logCount || 0;
+      console.log(`[Cleanup] lead_activity_log antigo removido: ${logCount}`);
+    }
+
+    // ─── 4. Limpar balance_transactions há >180 dias ──────────────────────────────────────
+    // Histórico financeiro operacional. Mantemos 180 dias (6 meses) para auditoria.
+    const { count: txCount, error: txError } = await supabase
       .from("balance_transactions")
       .delete({ count: "exact" })
-      .lt("created_at", cutoff90Days.toISOString());
-    results.balance_transactions = txCount || 0;
+      .lt("created_at", cutoff180Days.toISOString());
+
+    if (txError) {
+      console.error("[Cleanup] Erro ao limpar balance_transactions:", txError);
+    } else {
+      results.balance_transactions_old = txCount || 0;
+      console.log(`[Cleanup] balance_transactions antigas removidas: ${txCount}`);
+    }
 
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
-    console.log(`[Cleanup] Done. Total deleted: ${totalDeleted}`, results);
+    console.log(`[Cleanup] Concluído. Total de registros técnicos removidos: ${totalDeleted}`, results);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Cleanup completed. Deleted ${totalDeleted} records.`,
+        message: `Limpeza de logs técnicos concluída. ${totalDeleted} registros removidos.`,
         details: results,
-        policy: "Messages/Leads are NEVER deleted. Only archived conversation messages (>15d) are removed.",
+        policy: {
+          never_deleted: [
+            "leads / contatos",
+            "whatsapp_messages (mensagens)",
+            "conversation_assignments (conversas)",
+            "conversation_notes (notas)",
+            "campaigns (campanhas)",
+            "campaign_recipients (destinatários de campanhas)",
+          ],
+          cleaned_technical_logs: {
+            conversation_memory: "Memória de bot expirada (campo expires_at)",
+            flow_sessions: "Sessões de flow bot inativas há >7 dias",
+            lead_activity_log: "Log de atividades de leads há >90 dias",
+            balance_transactions: "Transações financeiras há >180 dias",
+          },
+        },
         cutoffs: {
-          "15_days_archived_messages": cutoff15Days.toISOString(),
-          "30_days_campaigns": cutoff30Days.toISOString(),
           "7_days_flow_sessions": cutoff7Days.toISOString(),
-          "90_days_transactions": cutoff90Days.toISOString(),
+          "90_days_activity_log": cutoff90Days.toISOString(),
+          "180_days_transactions": cutoff180Days.toISOString(),
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -192,4 +148,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
