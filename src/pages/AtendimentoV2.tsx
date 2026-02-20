@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { 
   MessageSquare, 
   Send, 
@@ -962,15 +963,16 @@ const AtendimentoV2 = () => {
     fetchConversations();
   }, [channels, effectiveOrganizationId]);
 
-  // CRITICAL FIX: Periodic sync to ensure assignedTo is always up-to-date
-  // This prevents stale state where conversations show as unassigned when they're actually assigned in DB
+  // OPTIMIZATION: Realtime-driven assignment sync replaces polling
+  // The useChatRealtime hook below handles all assignment changes via Realtime,
+  // eliminating the need for the 30-second polling interval (was ~200 queries/min at 100 users)
+  // Keeping a single initial sync + one 3s debounce for race condition safety
   useEffect(() => {
     if (channels.length === 0) return;
     
-    const syncAssignments = async () => {
+    const syncAssignmentsOnce = async () => {
       const channelIds = channels.map(c => c.id);
       
-      // Optimized: Only sync recent assignments (last 500) to reduce load
       const { data: assignments } = await supabase
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
@@ -981,7 +983,6 @@ const AtendimentoV2 = () => {
       
       if (!assignments) return;
       
-      // Build a map of phone -> assignment for quick lookup
       const assignmentMap = new Map<string, typeof assignments[0]>();
       assignments.forEach(a => {
         const normalizedPhone = a.conversation_phone.replace(/\D/g, '');
@@ -989,7 +990,6 @@ const AtendimentoV2 = () => {
         assignmentMap.set(key, a);
       });
       
-      // Update any conversations that have stale assignedTo values
       setAllConversations(prev => {
         let hasChanges = false;
         const updated = prev.map(conv => {
@@ -998,7 +998,6 @@ const AtendimentoV2 = () => {
           const dbAssignment = assignmentMap.get(key);
           
           if (dbAssignment) {
-            // Check if local state differs from DB
             const needsUpdate = 
               conv.assignedTo !== dbAssignment.assigned_to ||
               conv.sectorId !== dbAssignment.sector_id ||
@@ -1029,19 +1028,11 @@ const AtendimentoV2 = () => {
       });
     };
     
-    // IMMEDIATE sync on mount - don't wait
-    syncAssignments();
-    
-    // Second sync after 3 seconds (catch any race conditions)
-    const secondTimer = setTimeout(syncAssignments, 3000);
-    
-    // Periodic sync every 30 seconds (reduced frequency for performance)
-    const intervalId = setInterval(syncAssignments, 30000);
-    
-    return () => {
-      clearTimeout(secondTimer);
-      clearInterval(intervalId);
-    };
+    // One immediate sync + one debounced for race conditions
+    syncAssignmentsOnce();
+    const timer = setTimeout(syncAssignmentsOnce, 3000);
+    return () => clearTimeout(timer);
+    // No interval - Realtime handles ongoing updates
   }, [channels]);
 
   // Helper function to get conversation key
@@ -1451,22 +1442,433 @@ const AtendimentoV2 = () => {
     playNotificationSoundRef.current = playNotificationSound;
   }, [showNotification, soundEnabled, playNotificationSound]);
 
-  // Real-time subscription
-  useEffect(() => {
-    if (channels.length === 0) return;
+  // OPTIMIZATION: Single consolidated Realtime subscription via useChatRealtime
+  // Replaces: N per-channel subscriptions + 1 global assignment subscription
+  // Reduces from ~12 subscriptions/user to 2 (saving ~83% of Realtime connections)
+  const channelIds = useMemo(() => channels.map(c => c.id), [channels]);
+  const channelIdSet = useMemo(() => new Set(channelIds), [channelIds]);
 
-    const channelSubscriptions = channels.map(ch =>
-      supabase
-        .channel(`atendimento-v2-${ch.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'whatsapp_messages',
-            filter: `channel_id=eq.${ch.id}`
-          },
-          (payload) => {
+  const handleNewMessageRealtime = useCallback((msg: {
+    channelId: string;
+    senderPhone: string;
+    content: string;
+    direction: string;
+    createdAt: string;
+    isRead: boolean;
+    senderName?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }) => {
+    let contactPhone: string;
+    let contactName: string | null = null;
+
+    if (msg.direction === "inbound") {
+      contactPhone = msg.senderPhone;
+      contactName = msg.senderName || null;
+    } else {
+      const metadata = msg.metadata as { destination?: string } | null;
+      contactPhone = metadata?.destination || '';
+      if (!contactPhone) return;
+    }
+
+    const normalizedContactPhone = contactPhone.replace(/\D/g, '');
+    const currentSelectedConv = selectedConversationRef.current;
+    const normalizedSelectedPhone = currentSelectedConv?.phone.replace(/\D/g, '') || '';
+    const selectedChannelId = currentSelectedConv?.channelId || '';
+    const msgConversationKey = `${msg.channelId}_${normalizedContactPhone}`;
+    const selectedConversationKey = `${selectedChannelId}_${normalizedSelectedPhone}`;
+
+    // Build a full Message-like object for compatibility
+    const newMsg = {
+      id: `rt_${Date.now()}`,
+      channel_id: msg.channelId,
+      message_id: `rt_${Date.now()}`,
+      sender_phone: msg.senderPhone,
+      sender_name: msg.senderName || null,
+      message_type: 'text',
+      content: msg.content,
+      media_url: null,
+      direction: msg.direction,
+      status: null,
+      created_at: msg.createdAt,
+      metadata: msg.metadata || null,
+    } as Message;
+
+    if (msg.direction === "inbound") {
+      showNotificationRef.current(newMsg);
+
+      setRecentlyUpdatedConversations(prev => {
+        const newSet = new Set(prev);
+        newSet.add(msgConversationKey);
+        return newSet;
+      });
+      setTimeout(() => {
+        setRecentlyUpdatedConversations(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(msgConversationKey);
+          return newSet;
+        });
+      }, 5000);
+
+      if (soundEnabledRef.current) {
+        playNotificationSoundRef.current();
+        toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
+          description: (msg.content || "").substring(0, 50) + ((msg.content?.length || 0) > 50 ? "..." : ""),
+          action: {
+            label: "Ver",
+            onClick: () => {
+              setAllConversations(convs => {
+                const targetConv = convs.find(c =>
+                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
+                if (targetConv) setSelectedConversation(targetConv);
+                return convs;
+              });
+            }
+          }
+        });
+      }
+    }
+
+    // Update messages panel if this is the active conversation
+    if (selectedConversationKey === msgConversationKey) {
+      setMessages(prev => {
+        const existingIndex = prev.findIndex(m =>
+          m.message_id === newMsg.message_id ||
+          m.id === newMsg.id ||
+          (msg.direction === "outbound" &&
+            m.direction === "outbound" &&
+            m.content === newMsg.content &&
+            m.id.startsWith('temp_') &&
+            Math.abs(new Date(m.created_at).getTime() - new Date(msg.createdAt).getTime()) < 10000)
+        );
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = { ...newMsg };
+          return updated;
+        }
+        return [...prev, newMsg];
+      });
+    }
+
+    // Update conversation list
+    if (msg.direction === "outbound") {
+      const metadata = msg.metadata as { sent_by_human?: boolean } | null;
+      const isSentByHuman = metadata?.sent_by_human === true;
+
+      setAllConversations(prev => {
+        const existing = prev.find(c =>
+          c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+        );
+        if (existing) {
+          return prev.map(c =>
+            c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+              ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt }
+              : c
+          ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+        } else if (isSentByHuman) {
+          const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
+          const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
+          const phoneWith55New = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
+          const phoneSuffix8 = normalizedContactPhone.slice(-8);
+          const newMatches = [
+            leadsMapRef.current.byPhone.get(normalizedContactPhone),
+            leadsMapRef.current.byPhone.get(phoneWithout55),
+            leadsMapRef.current.byPhone.get(phoneWith55New),
+            leadsMapRef.current.bySuffix.get(phoneSuffix8)
+          ].filter(Boolean);
+
+          let leadNameFromSystem: string | undefined;
+          let leadTagsFromSystem: string[] | null = null;
+          for (const m of newMatches) {
+            if (!m) continue;
+            if (!leadNameFromSystem && m.name) leadNameFromSystem = m.name;
+            if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && m.tags && m.tags.length > 0) leadTagsFromSystem = m.tags;
+            if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
+          }
+
+          supabase
+            .from('conversation_assignments')
+            .select('sector_id, assigned_to, status')
+            .eq('channel_id', msg.channelId)
+            .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+            .maybeSingle()
+            .then(async ({ data: assignment }) => {
+              let assignedToName: string | null = null;
+              if (assignment?.assigned_to) {
+                const { data: profile } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', assignment.assigned_to).single();
+                assignedToName = profile?.display_name || profile?.email || 'Atendente';
+              }
+              setAllConversations(currentPrev => {
+                const alreadyExists = currentPrev.some(c =>
+                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
+                if (alreadyExists) {
+                  let mappedStatus: Conversation["status"] | undefined;
+                  if (assignment?.status === "active") mappedStatus = "in_progress";
+                  else if (assignment?.status === "archived") mappedStatus = "archived";
+                  else if (assignment?.status === "resolved") mappedStatus = "resolved";
+                  else if (assignment?.status === "pending") mappedStatus = "pending";
+                  else if (assignment?.status === "in_progress") mappedStatus = "in_progress";
+                  return currentPrev.map(c =>
+                    c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                      ? { ...c, sectorId: assignment?.sector_id || null, assignedTo: assignment?.assigned_to || null, assignedToName, status: mappedStatus || c.status }
+                      : c
+                  );
+                }
+                let convStatus: Conversation["status"] = "in_progress";
+                if (assignment?.status === "archived") convStatus = "archived";
+                else if (assignment?.status === "resolved") convStatus = "resolved";
+                else if (assignment?.status === "pending") convStatus = "pending";
+                const newConv: Conversation = {
+                  phone: displayPhone, name: leadNameFromSystem || null,
+                  lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
+                  lastInboundTime: null, unreadCount: 0, channelId: msg.channelId,
+                  status: convStatus, assignedTo: assignment?.assigned_to || null,
+                  assignedToName, sectorId: assignment?.sector_id || null, tags: leadTagsFromSystem || null
+                };
+                return [newConv, ...currentPrev];
+              });
+            });
+          return prev;
+        }
+        return prev;
+      });
+    }
+
+    if (msg.direction === "inbound") {
+      const fetchAndUpdateConversation = async () => {
+        const { data: assignment } = await supabase
+          .from('conversation_assignments')
+          .select('id, sector_id, assigned_to, status')
+          .eq('channel_id', msg.channelId)
+          .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+          .maybeSingle();
+
+        let assignedToNameFromDb: string | null = null;
+        if (assignment?.assigned_to) {
+          const { data: profile } = await supabase
+            .from('profiles').select('display_name, email').eq('user_id', assignment.assigned_to).single();
+          assignedToNameFromDb = profile?.display_name || profile?.email || 'Atendente';
+        }
+
+        let mappedStatusFromDb: Conversation["status"] = "pending";
+        if (assignment?.status === "active" || assignment?.status === "in_progress") mappedStatusFromDb = "in_progress";
+        else if (assignment?.status === "archived") mappedStatusFromDb = "archived";
+        else if (assignment?.status === "resolved") mappedStatusFromDb = "resolved";
+
+        const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
+        const phoneWith55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
+        const phoneSuffix8 = normalizedContactPhone.slice(-8);
+        const matches = [
+          leadsMapRef.current.byPhone.get(normalizedContactPhone),
+          leadsMapRef.current.byPhone.get(phoneWithout55),
+          leadsMapRef.current.byPhone.get(phoneWith55),
+          leadsMapRef.current.bySuffix.get(phoneSuffix8)
+        ].filter(Boolean);
+
+        let leadNameFromSystem: string | undefined;
+        let leadTagsFromSystem: string[] | null = null;
+        for (const match of matches) {
+          if (!match) continue;
+          if (!leadNameFromSystem && match.name) leadNameFromSystem = match.name;
+          if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && match.tags && match.tags.length > 0) leadTagsFromSystem = match.tags;
+          if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
+        }
+
+        setAllConversations(prev => {
+          const existing = prev.find(c =>
+            c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+          );
+          if (existing) {
+            let newStatus = mappedStatusFromDb;
+            if (existing.status === "archived" && assignment) {
+              const hadPreviousAttendant = assignment.assigned_to !== null;
+              newStatus = hadPreviousAttendant ? "in_progress" : "pending";
+              if (existing.channelId) {
+                supabase.from("conversation_assignments")
+                  .update({ status: newStatus, updated_at: new Date().toISOString() })
+                  .eq("id", assignment.id).then(() => {});
+              }
+            }
+            const currentSelectedConvLocal = selectedConversationRef.current;
+            const isCurrentConversation = `${currentSelectedConvLocal?.channelId}_${currentSelectedConvLocal?.phone.replace(/\D/g, '')}` === msgConversationKey;
+            const updated = prev.map(c =>
+              c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                ? {
+                    ...c, id: assignment?.id || c.id,
+                    lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
+                    lastInboundTime: msg.createdAt,
+                    unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                    status: newStatus, assignedTo: assignment?.assigned_to ?? c.assignedTo,
+                    assignedToName: assignedToNameFromDb ?? c.assignedToName,
+                    sectorId: assignment?.sector_id ?? c.sectorId,
+                    name: leadNameFromSystem || c.name || contactName, tags: leadTagsFromSystem || c.tags
+                  }
+                : c
+            );
+            return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+          }
+
+          // New conversation
+          const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
+          supabase.from('conversation_assignments')
+            .select('id, sector_id, assigned_to, status')
+            .eq('channel_id', msg.channelId)
+            .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
+            .maybeSingle()
+            .then(async ({ data: newAssignment }) => {
+              let newAssignedToName: string | null = null;
+              if (newAssignment?.assigned_to) {
+                const { data: profile } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', newAssignment.assigned_to).single();
+                newAssignedToName = profile?.display_name || profile?.email || 'Atendente';
+              }
+              let mappedStatus: Conversation["status"] = "pending";
+              if (newAssignment?.status === "active" || newAssignment?.status === "in_progress") mappedStatus = "in_progress";
+              else if (newAssignment?.status === "archived") mappedStatus = "archived";
+              else if (newAssignment?.status === "resolved") mappedStatus = "resolved";
+
+              setAllConversations(currentPrev => {
+                const alreadyExists = currentPrev.some(c =>
+                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                );
+                if (alreadyExists) {
+                  return currentPrev.map(c =>
+                    c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                      ? { ...c, id: newAssignment?.id || c.id, sectorId: newAssignment?.sector_id || null, assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName, status: mappedStatus }
+                      : c
+                  );
+                }
+                const newConv: Conversation = {
+                  id: newAssignment?.id, phone: displayPhone,
+                  name: leadNameFromSystem || contactName, lastMessage: msg.content || "",
+                  lastMessageTime: msg.createdAt, lastInboundTime: msg.createdAt, unreadCount: 1,
+                  channelId: msg.channelId, status: mappedStatus,
+                  assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName,
+                  sectorId: newAssignment?.sector_id || null, tags: leadTagsFromSystem || null
+                };
+                return [newConv, ...currentPrev];
+              });
+            });
+          return prev;
+        });
+      };
+      fetchAndUpdateConversation();
+    }
+  }, []);
+
+  const handleAssignmentChangeRealtime = useCallback((assignment: {
+    id: string;
+    conversationPhone: string;
+    channelId: string | null;
+    assignedTo: string | null;
+    status: string | null;
+    sectorId: string | null;
+    leadId: string | null;
+    updatedAt: string;
+  }) => {
+    if (!assignment?.conversationPhone) return;
+    if (!assignment.channelId || !channelIdSet.has(assignment.channelId)) return;
+
+    const normalizedPhone = assignment.conversationPhone.replace(/\D/g, '');
+
+    const fetchAndApply = async () => {
+      let assignedToName: string | null = null;
+      if (assignment.assignedTo) {
+        const { data: profile } = await supabase
+          .from('profiles').select('display_name, email').eq('user_id', assignment.assignedTo).single();
+        assignedToName = profile?.display_name || profile?.email || 'Atendente';
+      }
+
+      let mappedStatus: Conversation["status"] = "in_progress";
+      if (assignment.status === "active") mappedStatus = "in_progress";
+      else if (assignment.status === "archived") mappedStatus = "archived";
+      else if (assignment.status === "resolved") mappedStatus = "resolved";
+      else if (assignment.status === "pending") mappedStatus = "pending";
+      else if (assignment.status === "in_progress") mappedStatus = "in_progress";
+
+      const convKey = `${assignment.channelId}_${normalizePhoneNumber(normalizedPhone)}`;
+      if (locallyCreatedConversationsRef.current.has(convKey)) {
+        setAllConversations(prev => prev.map(c => {
+          const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+          if (cKey === convKey) {
+            return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
+          }
+          return c;
+        }));
+        return;
+      }
+
+      setAllConversations(prev => {
+        let existing = assignment.id ? prev.find(c => c.id === assignment.id) : null;
+        if (!existing) {
+          existing = prev.find(c => {
+            const cNormalized = normalizePhoneNumber(c.phone);
+            const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
+            return cNormalized === assignmentNormalized && c.channelId === assignment.channelId;
+          });
+        }
+
+        if (existing) {
+          return prev.map(c => {
+            const isMatch = c.id === assignment.id ||
+              (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && c.channelId === assignment.channelId);
+            if (isMatch) {
+              return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
+            }
+            return c;
+          });
+        } else if (assignment.assignedTo && assignment.channelId) {
+          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
+          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+          const phoneSuffix8 = normalizedPhone.slice(-8);
+          const matches = [
+            leadsMapRef.current.byPhone.get(normalizedPhone),
+            leadsMapRef.current.byPhone.get(phoneWithout55),
+            leadsMapRef.current.byPhone.get(phoneWith55),
+            leadsMapRef.current.bySuffix.get(phoneSuffix8)
+          ].filter(Boolean);
+
+          let leadName: string | null = null;
+          let leadTags: string[] | null = null;
+          for (const m of matches) {
+            if (!m) continue;
+            if (!leadName && m.name) leadName = m.name;
+            if ((!leadTags || leadTags.length === 0) && m.tags && m.tags.length > 0) leadTags = m.tags;
+            if (leadName && leadTags && leadTags.length > 0) break;
+          }
+
+          const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
+          const newConv: Conversation = {
+            id: assignment.id, phone: displayPhone, name: leadName,
+            lastMessage: "Template enviado", lastMessageTime: new Date().toISOString(),
+            lastInboundTime: null, unreadCount: 0, channelId: assignment.channelId,
+            status: mappedStatus, assignedTo: assignment.assignedTo, assignedToName,
+            sectorId: assignment.sectorId || null, tags: leadTags
+          };
+          return [newConv, ...prev];
+        }
+        return prev;
+      });
+
+      setSelectedConversation(prev => {
+        if (!prev) return null;
+        const prevNormalized = prev.phone.replace(/\D/g, '');
+        if (prevNormalized === normalizedPhone && prev.channelId === assignment.channelId) {
+          return { ...prev, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || prev.sectorId, status: mappedStatus };
+        }
+        return prev;
+      });
+    };
+
+    fetchAndApply();
+  }, [channelIdSet]);
+
+  useChatRealtime(channelIds, {
+    onNewMessage: handleNewMessageRealtime,
+    onAssignmentChange: handleAssignmentChangeRealtime,
+  });
             const newMsg = payload.new as Message;
             
             let contactPhone: string;
@@ -1828,302 +2230,6 @@ const AtendimentoV2 = () => {
                     leadsMapRef.current.bySuffix.get(phoneSuffix8)
                   ].filter(Boolean);
                   
-                  let leadNameFromSystem: string | undefined;
-                  let leadTagsFromSystem: string[] | null = null;
-                  
-                  for (const m of newMatches) {
-                    if (!m) continue;
-                    if (!leadNameFromSystem && m.name) leadNameFromSystem = m.name;
-                    if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && m.tags && m.tags.length > 0) {
-                      leadTagsFromSystem = m.tags;
-                    }
-                    if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
-                  }
-                  
-                  // CRITICAL FIX: Buscar assignment ANTES de adicionar a conversa para garantir 
-                  // que conversas já distribuídas não apareçam em "Novos"
-                  supabase
-                    .from('conversation_assignments')
-                    .select('id, sector_id, assigned_to, status')
-                    .eq('channel_id', newMsg.channel_id)
-                    .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
-                    .maybeSingle()
-                    .then(async ({ data: assignment }) => {
-                      const sectorIdFromDb = assignment?.sector_id || null;
-                      const assignedToFromDb = assignment?.assigned_to || null;
-                      
-                      // Fetch assigned user's name
-                      let assignedToNameFromDb: string | null = null;
-                      if (assignedToFromDb) {
-                        const { data: profile } = await supabase
-                          .from('profiles')
-                          .select('display_name, email')
-                          .eq('user_id', assignedToFromDb)
-                          .single();
-                        assignedToNameFromDb = profile?.display_name || profile?.email || 'Atendente';
-                      }
-                      
-                      // Map DB status to frontend status
-                      let mappedStatus: Conversation["status"] = "pending";
-                      if (assignment?.status === "active" || assignment?.status === "in_progress") mappedStatus = "in_progress";
-                      else if (assignment?.status === "archived") mappedStatus = "archived";
-                      else if (assignment?.status === "resolved") mappedStatus = "resolved";
-                      
-                      setAllConversations(currentPrev => {
-                        // Verificar se a conversa já foi adicionada
-                        const alreadyExists = currentPrev.some(c => 
-                          c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                        );
-                        
-                        if (alreadyExists) {
-                          // Atualizar com dados do banco
-                          return currentPrev.map(c => 
-                            c.channelId === newMsg.channel_id && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                              ? { 
-                                  ...c, 
-                                  id: assignment?.id || c.id,
-                                  sectorId: sectorIdFromDb, 
-                                  assignedTo: assignedToFromDb,
-                                  assignedToName: assignedToNameFromDb,
-                                  status: mappedStatus
-                                }
-                              : c
-                          );
-                        }
-                        
-                        // Add new conversation with CORRECT assignment data from DB
-                        const newConv: Conversation = {
-                          id: assignment?.id,
-                          phone: displayPhone,
-                          name: leadNameFromSystem || contactName,
-                          lastMessage: newMsg.content || "",
-                          lastMessageTime: newMsg.created_at,
-                          lastInboundTime: newMsg.created_at,
-                          unreadCount: 1,
-                          channelId: newMsg.channel_id,
-                          status: mappedStatus,
-                          assignedTo: assignedToFromDb, // CRITICAL: Use DB value, not null
-                          assignedToName: assignedToNameFromDb,
-                          sectorId: sectorIdFromDb,
-                          tags: leadTagsFromSystem || null
-                        };
-                        
-                        return [newConv, ...currentPrev];
-                      });
-                    });
-                  
-                  // Don't add immediately - wait for the async fetch above to add with correct data
-                  return prev;
-                }
-              });
-            }
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'whatsapp_messages',
-            filter: `channel_id=eq.${ch.id}`
-          },
-          (payload) => {
-            const updatedMsg = payload.new as Message;
-            setMessages(prev => prev.map(m => 
-              m.message_id === updatedMsg.message_id || m.id === updatedMsg.id 
-                ? { ...m, status: updatedMsg.status }
-                : m
-            ));
-          }
-        )
-        .subscribe()
-    );
-
-    // Subscription para mudanças em conversation_assignments (atribuições)
-    // CRITICAL: Build a Set of channel IDs for fast lookup to prevent cross-org data leaks
-    const channelIdSet = new Set(channels.map(c => c.id));
-    
-    const assignmentSubscription = supabase
-      .channel('atendimento-v2-assignments')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'conversation_assignments'
-        },
-        async (payload) => {
-          const assignment = payload.new as { 
-            id: string;
-            conversation_phone: string; 
-            channel_id: string | null; 
-            assigned_to: string | null;
-            sector_id: string | null;
-            status: string | null;
-          };
-          
-          if (!assignment?.conversation_phone) return;
-          
-          // CRITICAL: Ignore assignments from other organizations
-          // Only process if the channel_id belongs to the current org's channels
-          if (!assignment.channel_id || !channelIdSet.has(assignment.channel_id)) {
-            return;
-          }
-          
-          const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
-          
-          // Buscar nome do atendente
-          let assignedToName: string | null = null;
-          if (assignment.assigned_to) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('display_name, email')
-              .eq('user_id', assignment.assigned_to)
-              .single();
-            
-            assignedToName = profile?.display_name || profile?.email || 'Atendente';
-          }
-          
-          // Map DB status to frontend status
-          let mappedStatus: Conversation["status"] = "in_progress";
-          if (assignment.status === "active") mappedStatus = "in_progress";
-          else if (assignment.status === "archived") mappedStatus = "archived";
-          else if (assignment.status === "resolved") mappedStatus = "resolved";
-          else if (assignment.status === "pending") mappedStatus = "pending";
-          else if (assignment.status === "in_progress") mappedStatus = "in_progress";
-          
-          // Check if this was locally created - skip realtime processing to avoid duplicates
-          const convKey = `${assignment.channel_id}_${normalizePhoneNumber(normalizedPhone)}`;
-          if (locallyCreatedConversationsRef.current.has(convKey)) {
-            console.log('Skipping realtime update for locally created conversation:', convKey);
-            // Still update existing with latest DB info (e.g., ID)
-            setAllConversations(prev => prev.map(c => {
-              const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
-              if (cKey === convKey) {
-                return { 
-                  ...c, 
-                  id: assignment.id, // Ensure we have the DB ID
-                  assignedTo: assignment.assigned_to,
-                  assignedToName: assignedToName,
-                  sectorId: assignment.sector_id || c.sectorId,
-                  status: mappedStatus
-                };
-              }
-              return c;
-            }));
-            return;
-          }
-          
-          // Check if conversation exists by ID first, then by phone+channel
-          setAllConversations(prev => {
-            // First try to find by ID (most reliable)
-            let existing = assignment.id ? prev.find(c => c.id === assignment.id) : null;
-            
-            // Fallback to phone+channel matching
-            if (!existing) {
-              existing = prev.find(c => {
-                const cNormalized = normalizePhoneNumber(c.phone);
-                const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
-                return cNormalized === assignmentNormalized && c.channelId === assignment.channel_id;
-              });
-            }
-            
-            if (existing) {
-              // Update existing conversation
-              return prev.map(c => {
-                const isMatch = c.id === assignment.id || 
-                  (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && c.channelId === assignment.channel_id);
-                if (isMatch) {
-                  return { 
-                    ...c, 
-                    id: assignment.id,
-                    assignedTo: assignment.assigned_to,
-                    assignedToName: assignedToName,
-                    sectorId: assignment.sector_id || c.sectorId,
-                    status: mappedStatus
-                  };
-                }
-                return c;
-              });
-            } else if (assignment.assigned_to && assignment.channel_id) {
-              // Conversation doesn't exist yet - create it for manual sends
-              // This is crucial for showing conversations in "Meus" when sending templates manually
-              
-              // Get lead info from cache
-              const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-              const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-              const phoneSuffix8 = normalizedPhone.slice(-8);
-              
-              const matches = [
-                leadsMapRef.current.byPhone.get(normalizedPhone),
-                leadsMapRef.current.byPhone.get(phoneWithout55),
-                leadsMapRef.current.byPhone.get(phoneWith55),
-                leadsMapRef.current.bySuffix.get(phoneSuffix8)
-              ].filter(Boolean);
-              
-              let leadName: string | null = null;
-              let leadTags: string[] | null = null;
-              
-              for (const m of matches) {
-                if (!m) continue;
-                if (!leadName && m.name) leadName = m.name;
-                if ((!leadTags || leadTags.length === 0) && m.tags && m.tags.length > 0) {
-                  leadTags = m.tags;
-                }
-                if (leadName && leadTags && leadTags.length > 0) break;
-              }
-              
-              const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
-              
-              // Create new conversation with ID
-              const newConv: Conversation = {
-                id: assignment.id,
-                phone: displayPhone,
-                name: leadName,
-                lastMessage: "Template enviado",
-                lastMessageTime: new Date().toISOString(),
-                lastInboundTime: null,
-                unreadCount: 0,
-                channelId: assignment.channel_id,
-                status: mappedStatus,
-                assignedTo: assignment.assigned_to,
-                assignedToName: assignedToName,
-                sectorId: assignment.sector_id || null,
-                tags: leadTags
-              };
-              
-              return [newConv, ...prev];
-            }
-            
-            return prev;
-          });
-          
-          // Atualizar conversa selecionada se for a mesma
-          setSelectedConversation(prev => {
-            if (!prev) return null;
-            const prevNormalized = prev.phone.replace(/\D/g, '');
-            if (prevNormalized === normalizedPhone && prev.channelId === assignment.channel_id) {
-              return { 
-                ...prev, 
-                assignedTo: assignment.assigned_to,
-                assignedToName: assignedToName,
-                sectorId: assignment.sector_id || prev.sectorId,
-                status: mappedStatus
-              };
-            }
-            return prev;
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channelSubscriptions.forEach(sub => supabase.removeChannel(sub));
-      supabase.removeChannel(assignmentSubscription);
-    };
-  }, [channels]);
-
-  // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
