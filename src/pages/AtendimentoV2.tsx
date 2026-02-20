@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
+import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
 import { 
   MessageSquare, 
   Send, 
@@ -222,6 +225,8 @@ const AtendimentoV2 = () => {
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
+  // Legacy messages state — kept for optimistic updates during send
+  // Primary source is useInfiniteMessages hook below
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -307,6 +312,14 @@ const AtendimentoV2 = () => {
   
   // Track conversations with recent new messages for visual highlight
   const [recentlyUpdatedConversations, setRecentlyUpdatedConversations] = useState<Set<string>>(new Set());
+
+  // ─── Infinite message loading ──────────────────────────────────────────────
+  // Replaces the old fetchMessagesAndNotes + setMessages pattern.
+  // Loads 40 messages per page; scrolling up fetches older pages automatically.
+  const infiniteMessages = useInfiniteMessages(
+    selectedConversation?.channelId ?? null,
+    selectedConversation?.phone ?? null
+  );
   
   // Track chatbot config for selected channel to show bot type indicator
   const [channelBotConfig, setChannelBotConfig] = useState<{
@@ -1210,8 +1223,9 @@ const AtendimentoV2 = () => {
     return () => clearTimeout(debounceTimer);
   }, [searchTerm, searchConversationsGlobal]);
 
-  // Fetch messages and notes for selected conversation
-  const fetchMessagesAndNotes = async () => {
+  // Fetch notes and handle side-effects when conversation changes.
+  // Messages are now managed by useInfiniteMessages above.
+  const fetchNotesAndSideEffects = useCallback(async () => {
     if (!selectedConversation) {
       setConversationNotes([]);
       return;
@@ -1221,53 +1235,31 @@ const AtendimentoV2 = () => {
     const conversationChannelId = selectedConversation.channelId;
     if (!conversationChannelId) return;
 
-    const phoneWithPlus = `+${normalizedPhone}`;
-    
-    const [inboundResult, outboundResult, notesResult] = await Promise.all([
-      supabase
-        .from("whatsapp_messages")
-        .select("*")
-        .eq("channel_id", conversationChannelId)
-        .eq("direction", "inbound")
-        .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("whatsapp_messages")
-        .select("*")
-        .eq("channel_id", conversationChannelId)
-        .eq("direction", "outbound")
-        .or(`metadata->>destination.eq.${normalizedPhone},metadata->>destination.eq.${phoneWithPlus}`)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("conversation_notes")
-        .select("id, content, created_at, created_by")
-        .eq("channel_id", conversationChannelId)
-        .eq("contact_phone", normalizedPhone)
-        .order("created_at", { ascending: true })
-    ]);
+    const notesResult = await supabase
+      .from("conversation_notes")
+      .select("id, content, created_at, created_by")
+      .eq("channel_id", conversationChannelId)
+      .eq("contact_phone", normalizedPhone)
+      .order("created_at", { ascending: true });
 
-    if (!inboundResult.error && !outboundResult.error) {
-      const allMessages = [
-        ...(inboundResult.data || []),
-        ...(outboundResult.data || [])
-      ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    if (!notesResult.error && notesResult.data) {
+      setConversationNotes(notesResult.data as ConversationNote[]);
+    } else {
+      setConversationNotes([]);
+    }
 
-      setMessages(allMessages as Message[]);
+    // Update lastInboundTime from the latest inbound message already loaded
+    const latestInbound = infiniteMessages.messages
+      .filter(m => m.direction === "inbound")
+      .at(-1);
 
-      // CRITICAL: Update lastInboundTime from actual messages to fix 24h window check
-      const inboundMessages = inboundResult.data || [];
-      if (inboundMessages.length > 0) {
-        const latestInbound = inboundMessages[inboundMessages.length - 1];
-        const conversationKey = getConversationKey(selectedConversation);
-        
-        // Update BOTH allConversations AND selectedConversation
-        const shouldUpdate = !selectedConversation.lastInboundTime || 
-          new Date(latestInbound.created_at) > new Date(selectedConversation.lastInboundTime);
-        
-        if (shouldUpdate) {
-          setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInbound.created_at } : null);
-        }
-        
+    if (latestInbound) {
+      const conversationKey = getConversationKey(selectedConversation);
+      const shouldUpdate = !selectedConversation.lastInboundTime ||
+        new Date(latestInbound.created_at) > new Date(selectedConversation.lastInboundTime);
+
+      if (shouldUpdate) {
+        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInbound.created_at } : null);
         setAllConversations(prev => prev.map(c => {
           const key = getConversationKey(c);
           if (key !== conversationKey) return c;
@@ -1277,30 +1269,27 @@ const AtendimentoV2 = () => {
           return c;
         }));
       }
-      
-      // Mark as read
-      const unreadMessageIds = allMessages
-        .filter((msg: { direction: string; is_read?: boolean; id: string }) => msg.direction === "inbound" && msg.is_read === false)
-        .map((msg: { id: string }) => msg.id);
-      
-      if (unreadMessageIds.length > 0) {
-        await supabase
-          .from("whatsapp_messages")
-          .update({ is_read: true })
-          .in("id", unreadMessageIds);
-        
-        const conversationKey = getConversationKey(selectedConversation);
-        setAllConversations(prev => prev.map(c => {
-          const key = getConversationKey(c);
-          return key === conversationKey ? { ...c, unreadCount: 0 } : c;
-        }));
-      }
     }
 
-    if (!notesResult.error && notesResult.data) {
-      setConversationNotes(notesResult.data as ConversationNote[]);
-    } else {
-      setConversationNotes([]);
+    // Mark unread messages as read (status update only — no new log records)
+    const unreadIds = infiniteMessages.messages
+      .filter(m => m.direction === "inbound" && m.is_read === false)
+      .map(m => m.id);
+
+    if (unreadIds.length > 0) {
+      await supabase
+        .from("whatsapp_messages")
+        .update({ is_read: true })
+        .in("id", unreadIds);
+
+      // Optimistically update status in cache
+      unreadIds.forEach(id => infiniteMessages.updateMessageStatus(id, "read"));
+
+      const conversationKey = getConversationKey(selectedConversation);
+      setAllConversations(prev => prev.map(c => {
+        const key = getConversationKey(c);
+        return key === conversationKey ? { ...c, unreadCount: 0 } : c;
+      }));
     }
 
     // Mark as in_progress when selected
@@ -1308,11 +1297,13 @@ const AtendimentoV2 = () => {
       const key = getConversationKey(selectedConversation);
       updateConversationStatus(key, "in_progress");
     }
-  };
+  }, [selectedConversation, infiniteMessages.messages]);
 
   useEffect(() => {
-    fetchMessagesAndNotes();
-  }, [selectedConversation]);
+    fetchNotesAndSideEffects();
+  }, [selectedConversation?.channelId, selectedConversation?.phone]);
+
+
 
   // Auto-select conversation when phone parameter is present in URL
   useEffect(() => {
@@ -1531,23 +1522,8 @@ const AtendimentoV2 = () => {
 
     // Update messages panel if this is the active conversation
     if (selectedConversationKey === msgConversationKey) {
-      setMessages(prev => {
-        const existingIndex = prev.findIndex(m =>
-          m.message_id === newMsg.message_id ||
-          m.id === newMsg.id ||
-          (msg.direction === "outbound" &&
-            m.direction === "outbound" &&
-            m.content === newMsg.content &&
-            m.id.startsWith('temp_') &&
-            Math.abs(new Date(m.created_at).getTime() - new Date(msg.createdAt).getTime()) < 10000)
-        );
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = { ...newMsg };
-          return updated;
-        }
-        return [...prev, newMsg];
-      });
+      // Use the hook's prependMessage to avoid state duplication
+      infiniteMessages.prependMessage(newMsg);
     }
 
     // Update conversation list
@@ -3745,92 +3721,21 @@ const AtendimentoV2 = () => {
                 </div>
               </div>
 
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4 max-w-3xl mx-auto">
-                  {(() => {
-                    let lastDate = "";
-                    return messages.map((message) => {
-                      const messageDate = format(new Date(message.created_at), "yyyy-MM-dd");
-                      const showDateSeparator = messageDate !== lastDate;
-                      lastDate = messageDate;
-                      
-                      const isOutbound = message.direction === "outbound";
-                      const isFailed = message.status === "failed";
-                      
-                      return (
-                        <div key={message.id}>
-                          {showDateSeparator && (
-                            <div className="flex items-center justify-center my-4">
-                              <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs">
-                                {isToday(new Date(message.created_at)) ? "Hoje" : isYesterday(new Date(message.created_at)) ? "Ontem" : format(new Date(message.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                              </div>
-                            </div>
-                          )}
-                          <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
-                            <div className={cn("max-w-[80%]", isFailed ? "space-y-2" : "")}>
-                              <div className={cn("rounded-2xl px-4 py-2 shadow-sm", isOutbound ? isFailed ? "bg-destructive/80 text-destructive-foreground" : "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
-                                {isFailed && (
-                                  <div className="flex items-center gap-1.5 mb-1 text-xs opacity-80">
-                                    <AlertTriangle className="w-3 h-3" /><span>Falha ao enviar</span>
-                                  </div>
-                                )}
-                                {renderMessageContent(message)}
-                                <div className={cn("flex items-center gap-1.5 mt-1 text-[10px]", isOutbound ? "justify-end text-primary-foreground/70" : "text-muted-foreground")}>
-                                  <span>{formatMessageTime(message.created_at)}</span>
-                                  {isOutbound && !isFailed && (
-                                    message.status === "read" ? <CheckCheck className="w-3.5 h-3.5 text-blue-400" /> :
-                                    message.status === "delivered" ? <CheckCheck className="w-3.5 h-3.5" /> :
-                                    message.status === "sending" ? <Clock className="w-3.5 h-3.5" /> :
-                                    <Check className="w-3.5 h-3.5" />
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Detailed error message panel */}
-                              {isFailed && message.error_message && (() => {
-                                const errorDetails = formatErrorDisplay(message.error_message);
-                                return (
-                                  <div className="rounded-xl bg-card border border-warning/30 p-3 text-sm">
-                                    <div className="flex items-start gap-2 text-warning mb-1.5">
-                                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                                      <div className="font-medium">
-                                        Atenção{errorDetails.code ? `: ${errorDetails.code}` : ""} - {errorDetails.title}
-                                      </div>
-                                    </div>
-                                    <p className="text-muted-foreground text-xs mb-2 pl-6">
-                                      {errorDetails.description}
-                                    </p>
-                                    <p className="text-muted-foreground text-xs pl-6">
-                                      {errorDetails.suggestion}
-                                    </p>
-                                    {errorDetails.link && (
-                                      <div className="mt-2 pt-2 border-t border-border pl-6">
-                                        <p className="text-xs text-muted-foreground">
-                                          Para saber mais acesse esse link:
-                                        </p>
-                                        <a 
-                                          href={errorDetails.link} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer" 
-                                          className="text-xs text-primary hover:underline break-all"
-                                        >
-                                          {errorDetails.link}
-                                        </a>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
+              {/* Messages — Infinite scroll with memoized bubbles */}
+              <InfiniteMessageList
+                messages={infiniteMessages.messages.length > 0 ? infiniteMessages.messages : messages}
+                isLoading={infiniteMessages.isLoading}
+                isFetchingNextPage={infiniteMessages.isFetchingNextPage}
+                hasNextPage={infiniteMessages.hasNextPage ?? false}
+                fetchNextPage={infiniteMessages.fetchNextPage}
+                onMediaPreview={(url, type, fileName) => setMediaPreview({
+                  isOpen: true,
+                  url,
+                  type: type as "image" | "video" | "document" | "file" | "sticker",
+                  fileName,
+                })}
+                templates={templates}
+              />
 
               {/* Message input */}
               <div className="p-3 border-t border-border space-y-2 shrink-0">
@@ -4032,7 +3937,7 @@ const AtendimentoV2 = () => {
 
       {selectedConversation && <ScheduleMessageDialog isOpen={showScheduleDialog} onClose={() => setShowScheduleDialog(false)} contactPhone={selectedConversation.phone} contactName={selectedConversation?.name} channelId={selectedConversation?.channelId || null} leadId={null} />}
 
-      {selectedConversation && <ConversationNotesDialog isOpen={showNotesDialog} onClose={() => setShowNotesDialog(false)} contactPhone={selectedConversation.phone} contactName={selectedConversation?.name} channelId={selectedConversation?.channelId} onNoteAdded={fetchMessagesAndNotes} />}
+      {selectedConversation && <ConversationNotesDialog isOpen={showNotesDialog} onClose={() => setShowNotesDialog(false)} contactPhone={selectedConversation.phone} contactName={selectedConversation?.name} channelId={selectedConversation?.channelId} onNoteAdded={fetchNotesAndSideEffects} />}
 
       {selectedConversation && <LeadDetailsDialog open={showLeadDetailsDialog} onOpenChange={setShowLeadDetailsDialog} phone={selectedConversation.phone} name={selectedConversation.name} />}
 
