@@ -138,7 +138,9 @@ export function useUnreadMessagesCount() {
     // Initial fetch
     fetchUnreadCount();
 
-    // Subscribe to realtime changes for conversation_assignments
+    // Only subscribe to conversation_assignments changes (eliminates the redundant
+    // whatsapp_messages subscription — saving 1 Realtime connection per user)
+    // The assignment status change is the authoritative signal for unread count updates
     const channel = supabase
       .channel("unread-messages-count")
       .on(
@@ -150,22 +152,6 @@ export function useUnreadMessagesCount() {
         },
         () => {
           debouncedFetch();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "whatsapp_messages",
-        },
-        (payload) => {
-          // Only trigger for relevant changes
-          if (payload.eventType === "INSERT" && (payload.new as any)?.direction === "inbound") {
-            debouncedFetch();
-          } else if (payload.eventType === "UPDATE") {
-            debouncedFetch();
-          }
         }
       )
       .subscribe();
