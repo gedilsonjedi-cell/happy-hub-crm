@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,7 +9,6 @@ const createNotificationSound = () => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     
     const playSound = () => {
-      // Resume audio context if suspended (browser autoplay policy)
       if (audioContext.state === 'suspended') {
         audioContext.resume();
       }
@@ -20,14 +19,11 @@ const createNotificationSound = () => {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
-      // Pleasant notification sound
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5 note
-      oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1); // Higher pitch
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.2); // Back to A5
-      
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.2);
       oscillator.type = 'sine';
       
-      // Volume envelope
       gainNode.gain.setValueAtTime(0, audioContext.currentTime);
       gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.05);
       gainNode.gain.linearRampToValueAtTime(0.2, audioContext.currentTime + 0.15);
@@ -48,6 +44,8 @@ export function useWhatsAppNotifications() {
   const { user } = useAuth();
   const playSound = useRef<() => void>(() => {});
   const isInitialized = useRef(false);
+  // Store the user's channel IDs to filter subscriptions properly
+  const [channelIds, setChannelIds] = useState<string[]>([]);
 
   // Initialize sound on first user interaction
   const initializeSound = useCallback(() => {
@@ -61,7 +59,6 @@ export function useWhatsAppNotifications() {
   useEffect(() => {
     const handleInteraction = () => {
       initializeSound();
-      // Remove listeners after first interaction
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
     };
@@ -75,31 +72,67 @@ export function useWhatsAppNotifications() {
     };
   }, [initializeSound]);
 
+  // Fetch user's channels once (to filter subscription by channel_id)
+  // This prevents receiving notifications from other organizations
   useEffect(() => {
     if (!user) return;
 
-    console.log('Setting up WhatsApp notifications listener');
+    const fetchChannels = async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    // Subscribe to new inbound messages
+      if (!profile?.organization_id) return;
+
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('organization_id', profile.organization_id);
+
+      if (channels && channels.length > 0) {
+        setChannelIds(channels.map(c => c.id));
+      }
+    };
+
+    fetchChannels();
+  }, [user]);
+
+  useEffect(() => {
+    // Only subscribe if we have the user's channels
+    // This avoids a global subscription that receives ALL org messages
+    if (!user || channelIds.length === 0) return;
+
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // Subscribe ONLY to the user's organization channels (filtered by channel_id)
+    // This replaces the unfiltered global subscription that was a security risk
+    const channelFilter = channelIds.join(',');
     const channel = supabase
-      .channel('whatsapp-notifications')
+      .channel(`whatsapp-notifications-${channelFilter.slice(0, 40)}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'whatsapp_messages',
-          filter: 'direction=eq.inbound'
+          filter: `channel_id=in.(${channelFilter})`,
         },
         (payload) => {
-          console.log('New WhatsApp message received:', payload);
-          
           const message = payload.new as {
             sender_name?: string;
             sender_phone: string;
             content?: string;
             message_type: string;
+            direction: string;
           };
+
+          // Only notify for inbound messages
+          if (message.direction !== 'inbound') return;
 
           // Play notification sound
           try {
@@ -110,7 +143,7 @@ export function useWhatsAppNotifications() {
 
           // Show toast notification
           const senderName = message.sender_name || message.sender_phone;
-          const messagePreview = message.content 
+          const messagePreview = message.content
             ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
             : message.message_type === 'image' ? '📷 Imagem'
             : message.message_type === 'audio' ? '🎵 Áudio'
@@ -125,17 +158,17 @@ export function useWhatsAppNotifications() {
               label: 'Ver',
               onClick: () => {
                 window.location.href = '/whatsapp-chat';
-              }
-            }
+              },
+            },
           });
 
-          // Also try to show browser notification if permitted
+          // Browser notification if permitted
           if ('Notification' in window && Notification.permission === 'granted') {
             try {
               new Notification(`Nova mensagem de ${senderName}`, {
                 body: messagePreview,
                 icon: '/favicon.ico',
-                tag: 'whatsapp-message'
+                tag: 'whatsapp-message',
               });
             } catch (error) {
               console.error('Error showing browser notification:', error);
@@ -143,22 +176,12 @@ export function useWhatsAppNotifications() {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('WhatsApp notifications subscription status:', status);
-      });
-
-    // Request browser notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().then(permission => {
-        console.log('Browser notification permission:', permission);
-      });
-    }
+      .subscribe();
 
     return () => {
-      console.log('Cleaning up WhatsApp notifications listener');
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, channelIds]);
 }
 
 // Provider component to be used at app level
