@@ -469,8 +469,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     direction: 'inbound',
     status: 'received',
     is_read: false,
-    lead_id: leadData?.leadId || null,
-    metadata: { timestamp, provider: 'meta', original_phone: senderPhone },
+    metadata: { timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null },
   }, { onConflict: 'message_id', ignoreDuplicates: true });
 
   if (insertError) console.error('Error storing message:', insertError);
