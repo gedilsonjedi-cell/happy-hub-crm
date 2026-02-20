@@ -387,7 +387,10 @@ const Cadastro = () => {
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-foreground">WhatsApp</Label>
+                    <Label htmlFor="phone" className="text-foreground flex items-center gap-2">
+                      WhatsApp
+                      <span className="text-xs bg-primary/20 text-primary font-semibold px-2 py-0.5 rounded-full">Obrigatório</span>
+                    </Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
@@ -398,8 +401,10 @@ const Cadastro = () => {
                         value={formData.phone}
                         onChange={handlePhoneChange}
                         autoFocus
+                        required
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">Usaremos para entrar em contato e suporte via WhatsApp</p>
                   </div>
 
                   <div className="space-y-3">
