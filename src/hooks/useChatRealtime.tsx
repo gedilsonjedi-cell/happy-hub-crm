@@ -134,15 +134,7 @@ export function useChatRealtime(
           });
         }
       )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.log(
-            `[useChatRealtime] Subscribed to ${channelIdsRef.current.length} channels`
-          );
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("[useChatRealtime] Channel error, will retry...");
-        }
-      });
+      .subscribe();
 
     subscriptionRef.current = channel;
   }, []);

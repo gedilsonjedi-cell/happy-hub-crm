@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-const PAGE_SIZE = 40;
+const PAGE_SIZE = 20;
 
 export interface MessagePage {
   messages: MessageRow[];
