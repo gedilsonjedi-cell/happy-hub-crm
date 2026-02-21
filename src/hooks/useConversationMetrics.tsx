@@ -215,13 +215,13 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
 
       const channelIds = channels.map(c => c.id);
 
-      // Calculate from whatsapp_messages
+      // Calculate from whatsapp_messages (reduced limit)
       const { data: messages } = await supabase
         .from("whatsapp_messages")
-        .select("direction, sender_phone, created_at, channel_id")
+        .select("direction, sender_phone, created_at")
         .in("channel_id", channelIds)
         .order("created_at", { ascending: true })
-        .limit(1000);
+        .limit(500);
 
       if (!messages || messages.length === 0) {
         setLoading(false);

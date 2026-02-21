@@ -115,7 +115,6 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       ]);
 
       if (assignmentsResult.error) {
-        console.error("Error fetching assignments:", assignmentsResult.error);
         setLoading(false);
         return;
       }
@@ -175,14 +174,14 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       });
       profilesMapRef.current = profilesMap;
 
-      // Optimized: fetch only recent messages (last 1500 per channel)
+      // Optimized: fetch only recent messages (last 500 per channel — reduced from 1500)
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(1500)
+          .limit(500)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);

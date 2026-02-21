@@ -89,8 +89,8 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       )
       .subscribe();
 
-    // Poll every 10 seconds as fallback (increased from 5 to reduce load)
-    const pollInterval = setInterval(fetchRunningCampaigns, 10000);
+    // Poll every 30 seconds as fallback (reduced frequency to save egress)
+    const pollInterval = setInterval(fetchRunningCampaigns, 30000);
 
     return () => {
       supabase.removeChannel(channel);

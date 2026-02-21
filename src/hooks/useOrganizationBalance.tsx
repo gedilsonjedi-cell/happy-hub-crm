@@ -70,7 +70,7 @@ export function useOrganizationBalance(organizationId?: string) {
       return data as OrganizationBalance | null;
     },
     enabled: !!effectiveOrgId,
-    staleTime: 30 * 1000, // Data stays fresh for 30 seconds
+    staleTime: 60 * 1000, // Data stays fresh for 60 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     refetchOnWindowFocus: false,
   });
@@ -78,8 +78,6 @@ export function useOrganizationBalance(organizationId?: string) {
   // Subscribe to realtime balance updates
   useEffect(() => {
     if (!effectiveOrgId) return;
-
-    console.log("Setting up realtime balance subscription for:", effectiveOrgId);
 
     const channel = supabase
       .channel("organization-balance-updates")
@@ -91,8 +89,7 @@ export function useOrganizationBalance(organizationId?: string) {
           table: "organization_balance",
           filter: `organization_id=eq.${effectiveOrgId}`,
         },
-        (payload) => {
-          console.log("Balance update received:", payload);
+        () => {
           queryClient.invalidateQueries({ queryKey: ["organization-balance", effectiveOrgId] });
         }
       )
@@ -104,18 +101,14 @@ export function useOrganizationBalance(organizationId?: string) {
           table: "balance_transactions",
           filter: `organization_id=eq.${effectiveOrgId}`,
         },
-        (payload) => {
-          console.log("New transaction received:", payload);
+        () => {
           queryClient.invalidateQueries({ queryKey: ["balance-transactions", effectiveOrgId] });
           queryClient.invalidateQueries({ queryKey: ["organization-balance", effectiveOrgId] });
         }
       )
-      .subscribe((status) => {
-        console.log("Balance subscription status:", status);
-      });
+      .subscribe();
 
     return () => {
-      console.log("Cleaning up balance subscription");
       supabase.removeChannel(channel);
     };
   }, [effectiveOrgId, queryClient]);

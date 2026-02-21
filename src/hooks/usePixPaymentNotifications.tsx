@@ -19,8 +19,6 @@ export function usePixPaymentNotifications() {
 
       if (!profile?.organization_id) return;
 
-      console.log("Setting up PIX payment notifications for organization:", profile.organization_id);
-
       const channel = supabase
         .channel("pix-payment-updates")
         .on(
@@ -32,8 +30,6 @@ export function usePixPaymentNotifications() {
             filter: `organization_id=eq.${profile.organization_id}`,
           },
           (payload) => {
-            console.log("PIX payment update received:", payload);
-            
             const newStatus = payload.new.status;
             const oldStatus = payload.old.status;
             const amount = payload.new.amount;
@@ -65,12 +61,9 @@ export function usePixPaymentNotifications() {
             }
           }
         )
-        .subscribe((status) => {
-          console.log("PIX payment subscription status:", status);
-        });
+        .subscribe();
 
       return () => {
-        console.log("Cleaning up PIX payment subscription");
         supabase.removeChannel(channel);
       };
     };

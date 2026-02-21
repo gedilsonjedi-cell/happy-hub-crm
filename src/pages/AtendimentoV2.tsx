@@ -387,14 +387,8 @@ const AtendimentoV2 = () => {
   // Fetch channels
   useEffect(() => {
     const fetchChannels = async () => {
-      console.log("[AtendimentoV2] fetchChannels called", { 
-        effectiveOrganizationId, 
-        userId: user?.id,
-        email: user?.email 
-      });
       
       if (!effectiveOrganizationId) {
-        console.log("[AtendimentoV2] No effectiveOrganizationId, skipping fetch");
         return;
       }
       
@@ -405,11 +399,6 @@ const AtendimentoV2 = () => {
         .in("provider", ["meta", "zapi"])
         .eq("connected", true);
 
-      console.log("[AtendimentoV2] Channels fetched", { 
-        count: data?.length, 
-        error: error?.message,
-        channels: data 
-      });
 
       if (!error && data) {
         // Only update channels if they actually changed (prevents unnecessary re-renders and re-fetches)
@@ -429,8 +418,6 @@ const AtendimentoV2 = () => {
       const orgChanged = prevOrgIdRef.current !== null && prevOrgIdRef.current !== effectiveOrganizationId;
       
       if (orgChanged) {
-        // Only clear state when the organization ACTUALLY changes (e.g. super admin switching client)
-        console.log("[AtendimentoV2] Org changed, clearing state", { from: prevOrgIdRef.current, to: effectiveOrganizationId });
         setChannels([]);
         setAllConversations([]);
         setSelectedConversation(null);
@@ -438,11 +425,6 @@ const AtendimentoV2 = () => {
       
       prevOrgIdRef.current = effectiveOrganizationId;
       fetchChannels();
-    } else {
-      console.log("[AtendimentoV2] Waiting for user or org", { 
-        hasUser: !!user, 
-        effectiveOrganizationId 
-      });
     }
   }, [user, effectiveOrganizationId]);
 
@@ -583,7 +565,6 @@ const AtendimentoV2 = () => {
           }
         }
         
-        console.log(`[AtendimentoV2] Fetched ${allLeads.length} leads total (paginated)`);
         return { data: allLeads, error: null };
       };
 
@@ -604,7 +585,6 @@ const AtendimentoV2 = () => {
           if (error || !data || data.length === 0) { hasMore = false; } 
           else { all.push(...data); from += PAGE_SIZE; hasMore = data.length === PAGE_SIZE; }
         }
-        console.log(`[AtendimentoV2] Fetched ${all.length} assignments total (paginated)`);
         return { data: all, error: null };
       };
 
@@ -731,15 +711,14 @@ const AtendimentoV2 = () => {
         profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
       });
 
-      // Optimized: fetch only recent messages (last 1500 per channel)
-      // Background recovery handles conversations not covered by this batch
+      // Optimized: fetch only recent messages (last 500 per channel — reduced from 1500)
       const lastMessagesPromises = channelIds.map(channelId => 
         supabase
           .from("whatsapp_messages")
           .select("channel_id, sender_phone, sender_name, content, created_at, direction, metadata, is_read")
           .eq("channel_id", channelId)
           .order("created_at", { ascending: false })
-          .limit(1500)
+          .limit(500)
       );
 
       const lastMessagesResults = await Promise.all(lastMessagesPromises);
@@ -904,12 +883,9 @@ const AtendimentoV2 = () => {
       setAllConversations(conversationsFromAssignments);
       setLoading(false);
 
-      // CRITICAL: For conversations without lastMessage (not covered by batch limit),
-      // fetch their last message individually in background batches
+      // For conversations without lastMessage, fetch their last message in background
       const emptyMessageConvs = conversationsFromAssignments.filter(c => !c.lastMessage && c.channelId);
       if (emptyMessageConvs.length > 0) {
-        console.log(`[AtendimentoV2] Fetching last messages for ${emptyMessageConvs.length} conversations without preview`);
-        
         const BATCH = 50;
         for (let i = 0; i < emptyMessageConvs.length; i += BATCH) {
           const batch = emptyMessageConvs.slice(i, i + BATCH);

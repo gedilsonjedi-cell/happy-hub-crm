@@ -38,8 +38,8 @@ export function useUnreadMessagesCount() {
         setOrganizationId(profileResult.data?.organization_id || null);
         setSectorIds(sectorsResult.data?.map(s => s.sector_id) || []);
         setIsReady(true);
-      } catch (err) {
-        console.error("Error fetching user data for unread count:", err);
+      } catch {
+        // silently fail
         if (mounted) setIsReady(true);
       }
     };
@@ -113,8 +113,8 @@ export function useUnreadMessagesCount() {
 
       // Count unique conversations
       setCount(filteredAssignments.length);
-    } catch (err) {
-      console.error("Error fetching unread count:", err);
+    } catch {
+      // silently fail
       setCount(0);
     }
   }, [userId, organizationId, isReady, isAdminOrSupervisor, canSeeSector]);
@@ -138,29 +138,15 @@ export function useUnreadMessagesCount() {
     // Initial fetch
     fetchUnreadCount();
 
-    // Only subscribe to conversation_assignments changes (eliminates the redundant
-    // whatsapp_messages subscription — saving 1 Realtime connection per user)
-    // The assignment status change is the authoritative signal for unread count updates
-    const channel = supabase
-      .channel("unread-messages-count")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversation_assignments",
-        },
-        () => {
-          debouncedFetch();
-        }
-      )
-      .subscribe();
+    // Poll unread count every 30 seconds instead of realtime subscription
+    // This eliminates 1 realtime connection per user
+    const pollInterval = setInterval(fetchUnreadCount, 30000);
 
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
-      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, [userId, organizationId, isReady, fetchUnreadCount, debouncedFetch]);
 
