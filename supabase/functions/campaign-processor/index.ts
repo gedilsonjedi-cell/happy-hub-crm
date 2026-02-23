@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
         const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
           body: {
             campaignId: campaign.id,
-            batchSize: isFullMode ? 200 : 1,
+            batchSize: isFullMode ? 99 : 1,
             processRetries: isRetryOnly
           }
         })

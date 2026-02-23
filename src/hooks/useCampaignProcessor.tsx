@@ -45,7 +45,7 @@ export function useCampaignProcessor({
 
     try {
       const isFullMode = (campaign.min_interval === 0 && campaign.max_interval === 0);
-      const currentBatchSize = isFullMode ? 200 : 1;
+      const currentBatchSize = isFullMode ? 99 : 1;
 
       const { data, error } = await supabase.functions.invoke('send-campaign-batch', {
         body: {
