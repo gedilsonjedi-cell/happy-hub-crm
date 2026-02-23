@@ -1046,7 +1046,7 @@ const AtendimentoV2 = () => {
         .in("channel_id", channelIds)
         .eq("status", "archived")
         .order("updated_at", { ascending: false })
-        .limit(500);
+        .limit(159);
       
       if (error || !archivedAssignments || archivedAssignments.length === 0) return;
       
