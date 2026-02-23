@@ -1032,6 +1032,79 @@ const AtendimentoV2 = () => {
     // No interval - Realtime handles ongoing updates
   }, [channels]);
 
+  // Fetch archived conversations when user opens the archived panel
+  useEffect(() => {
+    if (!showArchived || channels.length === 0) return;
+    
+    const fetchArchivedConversations = async () => {
+      const channelIds = channels.map(c => c.id);
+      
+      // Fetch archived assignments
+      const { data: archivedAssignments, error } = await supabase
+        .from("conversation_assignments")
+        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
+        .in("channel_id", channelIds)
+        .eq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .limit(500);
+      
+      if (error || !archivedAssignments || archivedAssignments.length === 0) return;
+      
+      // Fetch profiles for names
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, display_name, email");
+      
+      const profilesMap = new Map<string, string>();
+      profiles?.forEach(p => profilesMap.set(p.user_id, p.display_name || p.email || 'Atendente'));
+      
+      // Build archived conversations
+      const archivedConvs: Conversation[] = archivedAssignments.map(assignment => {
+        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
+        const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
+        
+        // Try to find lead info from existing leads map
+        let leadName: string | null = null;
+        const leadsRef = leadsMapRef.current;
+        if (leadsRef) {
+          const match = leadsRef.byPhone.get(normalizedPhone) || 
+                        leadsRef.bySuffix.get(normalizedPhone.slice(-9)) ||
+                        leadsRef.bySuffix.get(normalizedPhone.slice(-8));
+          if (match && match.name) leadName = match.name;
+        }
+        
+        return {
+          id: assignment.id,
+          phone: displayPhone,
+          name: leadName,
+          lastMessage: "",
+          lastMessageTime: assignment.updated_at,
+          lastInboundTime: null,
+          unreadCount: 0,
+          channelId: assignment.channel_id,
+          status: "archived" as Conversation["status"],
+          assignedTo: assignment.assigned_to,
+          assignedToName: assignment.assigned_to ? profilesMap.get(assignment.assigned_to) || null : null,
+          sectorId: assignment.sector_id,
+          tags: null
+        };
+      });
+      
+      // Merge archived into allConversations (avoid duplicates)
+      setAllConversations(prev => {
+        const existingKeys = new Set(prev.map(c => `${c.channelId}_${c.phone.replace(/\D/g, '')}`));
+        const newArchived = archivedConvs.filter(c => {
+          const key = `${c.channelId}_${c.phone.replace(/\D/g, '')}`;
+          return !existingKeys.has(key);
+        });
+        if (newArchived.length === 0) return prev;
+        return [...prev, ...newArchived];
+      });
+    };
+    
+    fetchArchivedConversations();
+  }, [showArchived, channels]);
+
   // Helper function to get conversation key
   const getConversationKey = (conv: Conversation) => {
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
