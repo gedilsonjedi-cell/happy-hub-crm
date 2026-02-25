@@ -1483,12 +1483,14 @@ const AtendimentoV2 = () => {
   const showNotificationRef = useRef(showNotification);
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
+  const prependMessageRef = useRef(infiniteMessages.prependMessage);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
-  }, [showNotification, soundEnabled, playNotificationSound]);
+    prependMessageRef.current = infiniteMessages.prependMessage;
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
@@ -1591,8 +1593,8 @@ const AtendimentoV2 = () => {
 
     // Update messages panel if this is the active conversation
     if (selectedConversationKey === msgConversationKey) {
-      // Use the hook's prependMessage to avoid state duplication
-      infiniteMessages.prependMessage(newMsg);
+      // Use the ref to always call the latest prependMessage (avoids stale closure)
+      prependMessageRef.current(newMsg);
     }
 
     // Update conversation list
