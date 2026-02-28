@@ -13,6 +13,8 @@ export interface SendMessagePayload {
   mediaUrl?: string;
   mediaCaption?: string;
   fileName?: string;
+  templateName?: string;
+  templateParams?: string[];
 }
 
 interface SendMessageResult {
@@ -48,7 +50,10 @@ export function useSendMessage(
         messageType: payload.messageType || "text",
       };
 
-      if (payload.messageType === "text" || !payload.messageType) {
+      if (payload.messageType === "template") {
+        body.templateName = payload.templateName;
+        body.templateParams = payload.templateParams;
+      } else if (payload.messageType === "text" || !payload.messageType) {
         body.message = payload.message;
       } else {
         body.mediaUrl = payload.mediaUrl;

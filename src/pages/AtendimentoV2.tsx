@@ -2482,6 +2482,8 @@ const AtendimentoV2 = () => {
         destination: selectedConversation.phone,
         message: `Template: ${templateName}`,
         messageType: "template",
+        templateName,
+        templateParams,
       },
       {
         onSuccess: (data) => {
