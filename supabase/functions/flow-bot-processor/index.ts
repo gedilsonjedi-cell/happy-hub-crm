@@ -19,6 +19,8 @@ interface FlowNode {
     action_type?: string;
     transfer_message?: string;
     webhook_url?: string;
+    media_url?: string;
+    media_type?: 'audio' | 'image' | 'video' | 'document';
   };
 }
 
@@ -39,6 +41,8 @@ interface FlowSession {
 interface FlowMessage {
   message: string;
   buttons?: { label: string; value: string }[];
+  media_url?: string;
+  media_type?: 'audio' | 'image' | 'video' | 'document';
 }
 
 serve(async (req) => {
@@ -60,6 +64,19 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Helper: create response AND send messages via Meta API
+    async function respondWithMessages(messages: FlowMessage[], extra?: Record<string, unknown>) {
+      // Send messages via Meta API (fire-and-forget safe — errors logged internally)
+      await sendFlowMessages(messages, channel_id, contact_phone, organization_id, supabase);
+      return new Response(JSON.stringify({
+        response_type: 'messages',
+        messages,
+        ...extra,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     // Load flow bot configuration
     const { data: flowBot, error: botError } = await supabase
@@ -178,13 +195,8 @@ serve(async (req) => {
 
       console.log(`New session: sending ${messages.length} message(s), stopping at node ${finalNodeId}`);
 
-      // Return all collected messages
-      return new Response(JSON.stringify({
-        response_type: 'messages',
-        messages: messages
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      // Send messages via Meta API and return
+      return respondWithMessages(messages);
     }
 
     // --- EXISTING SESSION: Process user input ---
@@ -238,12 +250,7 @@ serve(async (req) => {
       
       console.log(`Session reset: sending ${messages.length} message(s), stopping at node ${finalNodeId}`);
       
-      return new Response(JSON.stringify({
-        response_type: 'messages',
-        messages: messages
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return respondWithMessages(messages);
     }
 
     console.log('Current node type:', currentNode.node_type, 'data:', currentNode.data);
@@ -298,26 +305,16 @@ serve(async (req) => {
           flowBot.ai_fallback_message
         );
         
-        return new Response(JSON.stringify({
-          response_type: 'messages',
-          messages: [{
+        return respondWithMessages([{
             message: aiResponse,
             buttons: buttons.map(b => ({ label: b.label, value: b.value }))
-          }]
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+          }]);
       } else {
         // No AI fallback - just repeat the question with buttons
-        return new Response(JSON.stringify({
-          response_type: 'messages',
-          messages: [{
+        return respondWithMessages([{
             message: currentNode.data.message || 'Por favor, escolha uma opção:',
             buttons: buttons.map(b => ({ label: b.label, value: b.value }))
-          }]
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+          }]);
       }
     } else if (currentNode.node_type === 'collect_data') {
       // Validate and collect data
@@ -343,22 +340,12 @@ serve(async (req) => {
           `O usuário deveria ter informado um ${variableType}, mas digitou: "${message_text}". ${currentNode.data.validation_message || 'Peça educadamente para informar um valor válido.'}`
         );
         
-        return new Response(JSON.stringify({
-          response_type: 'messages',
-          messages: [{ message: aiResponse }]
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        return respondWithMessages([{ message: aiResponse }]);
       } else {
         // No AI - use validation message
-        return new Response(JSON.stringify({
-          response_type: 'messages',
-          messages: [{ 
+        return respondWithMessages([{ 
             message: currentNode.data.validation_message || 'Por favor, informe um valor válido.'
-          }]
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+          }]);
       }
     } else if (currentNode.node_type === 'message') {
       // For message nodes, any input advances to next
@@ -405,14 +392,7 @@ serve(async (req) => {
 
       console.log(`Advanced session: sending ${messages.length} message(s), final node ${finalNodeId}`);
 
-      return new Response(JSON.stringify({
-        response_type: 'messages',
-        messages: messages,
-        transfer: transfer,
-        collected_data: finalData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return respondWithMessages(messages, { transfer, collected_data: finalData });
     }
 
     // No next node - flow complete
@@ -490,10 +470,15 @@ async function walkFlowUntilInteractive(
 
       case 'message':
         // Message node: collect message and continue to next
-        if (currentNode.data.message) {
-          messages.push({
-            message: replaceVariables(currentNode.data.message, collectedData)
-          });
+        if (currentNode.data.message || currentNode.data.media_url) {
+          const msg: FlowMessage = {
+            message: replaceVariables(currentNode.data.message || '', collectedData)
+          };
+          if (currentNode.data.media_url) {
+            msg.media_url = currentNode.data.media_url;
+            msg.media_type = currentNode.data.media_type || 'audio';
+          }
+          messages.push(msg);
         }
         
         const messageEdge = edges.find(e => e.source_node_id === currentNodeId);
@@ -688,4 +673,145 @@ Seja breve, amigável e natural. Máximo 2-3 frases.`
     return `${prefix}\n\nPor favor, escolha uma das opções:\n${expectedOptions.map((o, i) => `${i + 1}. ${o}`).join('\n')}`;
   }
   return `${prefix}\n\n${originalQuestion}`;
+}
+
+/**
+ * Send flow bot messages via Meta Cloud API and persist in whatsapp_messages.
+ */
+async function sendFlowMessages(
+  messages: FlowMessage[],
+  channelId: string,
+  contactPhone: string,
+  organizationId: string,
+  supabase: ReturnType<typeof createClient>
+) {
+  if (!messages.length) return;
+
+  // Fetch channel details (access_token, app_name, phone)
+  const { data: channel } = await supabase
+    .from('channels')
+    .select('access_token, app_name, phone, provider')
+    .eq('id', channelId)
+    .single();
+
+  if (!channel?.access_token) {
+    console.error('No channel access token for sending flow bot messages');
+    return;
+  }
+
+  const phoneNumberId = channel.app_name || channel.phone?.replace(/\D/g, '');
+  const cleanDestination = contactPhone.replace(/\D/g, '');
+
+  for (const msg of messages) {
+    try {
+      // Send media message (audio, image, etc.)
+      if (msg.media_url && msg.media_type) {
+        const mediaBody: Record<string, unknown> = {
+          messaging_product: 'whatsapp',
+          to: cleanDestination,
+          type: msg.media_type,
+        };
+
+        // Build media object based on type
+        const mediaObj: Record<string, string> = { link: msg.media_url };
+        if (msg.message && msg.media_type !== 'audio') {
+          mediaObj.caption = msg.message;
+        }
+        mediaBody[msg.media_type] = mediaObj;
+
+        console.log('[FlowBot] Sending media:', msg.media_type, msg.media_url);
+        const mediaResp = await fetch(
+          `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${channel.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(mediaBody),
+          }
+        );
+        const mediaResult = await mediaResp.json();
+        const mediaWamId = mediaResult?.messages?.[0]?.id || `flow_media_${Date.now()}`;
+        console.log('[FlowBot] Media send result:', mediaResp.status, JSON.stringify(mediaResult));
+
+        // Persist media message
+        await supabase.from('whatsapp_messages').insert({
+          channel_id: channelId,
+          organization_id: organizationId,
+          message_id: mediaWamId,
+          sender_phone: channel.phone,
+          message_type: msg.media_type,
+          content: msg.message || `[${msg.media_type}]`,
+          media_url: msg.media_url,
+          direction: 'outbound',
+          status: mediaResp.ok ? 'sent' : 'failed',
+          metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
+        });
+
+        // If audio + text message, send text separately after audio
+        if (msg.media_type === 'audio' && msg.message) {
+          await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase);
+        }
+      } else if (msg.message) {
+        // Plain text message (or buttons formatted as text)
+        let textContent = msg.message;
+        if (msg.buttons?.length) {
+          textContent += '\n\n' + msg.buttons.map((b, i) => `${i + 1}. ${b.label}`).join('\n');
+        }
+        await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, textContent, channelId, organizationId, channel.phone, contactPhone, supabase);
+      }
+
+      // Small delay between messages for natural pacing
+      if (messages.length > 1) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (err) {
+      console.error('[FlowBot] Error sending message:', err);
+    }
+  }
+}
+
+async function sendTextMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  text: string,
+  channelId: string,
+  organizationId: string,
+  channelPhone: string,
+  contactPhone: string,
+  supabase: ReturnType<typeof createClient>
+) {
+  const resp = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text },
+      }),
+    }
+  );
+  const result = await resp.json();
+  const wamId = result?.messages?.[0]?.id || `flow_text_${Date.now()}`;
+  console.log('[FlowBot] Text send result:', resp.status, JSON.stringify(result));
+
+  await supabase.from('whatsapp_messages').insert({
+    channel_id: channelId,
+    organization_id: organizationId,
+    message_id: wamId,
+    sender_phone: channelPhone,
+    message_type: 'text',
+    content: text,
+    direction: 'outbound',
+    status: resp.ok ? 'sent' : 'failed',
+    metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
+  });
 }
