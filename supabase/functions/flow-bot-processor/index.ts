@@ -122,6 +122,29 @@ serve(async (req) => {
 
     // --- NEW SESSION: Start the flow ---
     if (!session) {
+      // Check if there's already a completed/transferred session for this contact+channel+bot
+      // If so, don't restart the flow — the bot already ran for this contact
+      const { data: finishedSession } = await supabase
+        .from('flow_sessions')
+        .select('id, status')
+        .eq('flow_bot_id', flow_bot_id)
+        .eq('channel_id', channel_id)
+        .eq('contact_phone', contact_phone)
+        .in('status', ['completed', 'transferred'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (finishedSession) {
+        console.log('Flow already completed/transferred for this contact, skipping:', finishedSession.id, finishedSession.status);
+        return new Response(JSON.stringify({ 
+          skip: true, 
+          reason: 'Flow already completed for this contact' 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       console.log('Creating new flow session...');
       
       // Find the CORRECT start node - the one that has edges going OUT
