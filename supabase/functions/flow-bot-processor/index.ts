@@ -675,6 +675,86 @@ Seja breve, amigável e natural. Máximo 2-3 frases.`
   return `${prefix}\n\n${originalQuestion}`;
 }
 
+function getAudioMimeCandidates(mediaUrl: string): { mimeType: string; fileName: string }[] {
+  const lowerUrl = mediaUrl.toLowerCase();
+
+  if (lowerUrl.includes('.ogg')) {
+    return [
+      { mimeType: 'audio/ogg; codecs=opus', fileName: 'audio.ogg' },
+      { mimeType: 'audio/ogg', fileName: 'audio.ogg' },
+      { mimeType: 'audio/opus', fileName: 'audio.opus' },
+      { mimeType: 'audio/mpeg', fileName: 'audio.mp3' },
+    ];
+  }
+
+  if (lowerUrl.includes('.mp3')) {
+    return [{ mimeType: 'audio/mpeg', fileName: 'audio.mp3' }];
+  }
+
+  if (lowerUrl.includes('.aac')) {
+    return [{ mimeType: 'audio/aac', fileName: 'audio.aac' }];
+  }
+
+  return [
+    { mimeType: 'audio/ogg; codecs=opus', fileName: 'audio.ogg' },
+    { mimeType: 'audio/ogg', fileName: 'audio.ogg' },
+    { mimeType: 'audio/mpeg', fileName: 'audio.mp3' },
+  ];
+}
+
+async function uploadAudioToMetaAndGetId(
+  phoneNumberId: string,
+  accessToken: string,
+  mediaUrl: string,
+): Promise<string | null> {
+  try {
+    const mediaResponse = await fetch(mediaUrl);
+    if (!mediaResponse.ok) {
+      console.error('[FlowBot] Failed to download audio for direct upload:', mediaResponse.status, mediaUrl);
+      return null;
+    }
+
+    const audioBuffer = await mediaResponse.arrayBuffer();
+    const mimeCandidates = getAudioMimeCandidates(mediaUrl);
+
+    for (const candidate of mimeCandidates) {
+      const formData = new FormData();
+      formData.append('messaging_product', 'whatsapp');
+      formData.append('type', candidate.mimeType);
+      formData.append('file', new Blob([audioBuffer], { type: candidate.mimeType }), candidate.fileName);
+
+      const uploadResp = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: formData,
+      });
+
+      const uploadText = await uploadResp.text();
+      console.log('[FlowBot] Audio media upload attempt:', candidate.mimeType, uploadResp.status, uploadText);
+
+      if (!uploadResp.ok) {
+        continue;
+      }
+
+      try {
+        const uploadJson = JSON.parse(uploadText);
+        if (uploadJson?.id) {
+          return uploadJson.id;
+        }
+      } catch {
+        // Ignore parse errors and continue fallback attempts
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[FlowBot] Error uploading audio directly to Meta:', error);
+    return null;
+  }
+}
+
 /**
  * Send flow bot messages via Meta Cloud API and persist in whatsapp_messages.
  */
@@ -713,10 +793,20 @@ async function sendFlowMessages(
         };
 
         // Build media object based on type
-        const mediaObj: Record<string, string> = { link: msg.media_url };
-        if (msg.message && msg.media_type !== 'audio') {
+        let mediaObj: Record<string, string> = { link: msg.media_url };
+
+        if (msg.media_type === 'audio') {
+          const mediaId = await uploadAudioToMetaAndGetId(phoneNumberId, channel.access_token, msg.media_url);
+          if (mediaId) {
+            mediaObj = { id: mediaId };
+            console.log('[FlowBot] Audio uploaded to Meta successfully, sending by media id.');
+          } else {
+            console.warn('[FlowBot] Audio direct upload failed, falling back to public link send.');
+          }
+        } else if (msg.message) {
           mediaObj.caption = msg.message;
         }
+
         mediaBody[msg.media_type] = mediaObj;
 
         console.log('[FlowBot] Sending media:', msg.media_type, msg.media_url);
