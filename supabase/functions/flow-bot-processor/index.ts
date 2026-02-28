@@ -749,8 +749,10 @@ async function sendFlowMessages(
           metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
         });
 
-        // If audio + text message, send text separately after audio
+        // If audio + text message, send text separately after audio with a 5s delay
         if (msg.media_type === 'audio' && msg.message) {
+          console.log('[FlowBot] Waiting 5s before sending text after audio...');
+          await new Promise(r => setTimeout(r, 5000));
           await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase);
         }
       } else if (msg.message) {
