@@ -189,14 +189,27 @@ export function useInfiniteMessages(
         (old: { pages: MessagePage[]; pageParams: unknown[] } | undefined) => {
           if (!old) return old;
           const firstPage = old.pages[0];
-          // Avoid duplicate
+          // Avoid exact duplicate
           if (firstPage?.messages.some((m) => m.id === msg.id)) return old;
+
+          // Remove optimistic (temp_*) messages that match this real message
+          // by checking direction + approximate timestamp (within 30s)
+          const msgTime = new Date(msg.created_at).getTime();
+          const cleanedMessages = (firstPage?.messages ?? []).filter((m) => {
+            if (!m.id.startsWith("temp_")) return true;
+            if (m.direction !== msg.direction) return true;
+            const timeDiff = Math.abs(new Date(m.created_at).getTime() - msgTime);
+            // Same direction, similar time, same content → it's the optimistic twin
+            if (timeDiff < 30000 && m.content === msg.content) return false;
+            return true;
+          });
+
           return {
             ...old,
             pages: [
               {
                 ...firstPage,
-                messages: [msg, ...(firstPage?.messages ?? [])],
+                messages: [msg, ...cleanedMessages],
               },
               ...old.pages.slice(1),
             ],

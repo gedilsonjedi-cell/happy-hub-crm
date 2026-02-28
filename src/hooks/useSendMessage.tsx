@@ -206,14 +206,21 @@ export function useSendMessage(
       );
     },
 
-    onSettled: (_data, _error, payload, _context) => {
-      // After confirmation (success or error), invalidate to pull real server state
-      // This removes the optimistic record and replaces with server truth
+    onSettled: (data, error, payload, _context) => {
+      // Only invalidate on actual failure — on success the optimistic message
+      // stays in cache (status "sent") until Realtime brings the real record,
+      // which deduplicates via prependMessage.
+      if (error || (data && !data.success)) {
+        // No need to invalidate for errors — the optimistic message is already
+        // marked as "failed" in onError/onSuccess handlers above.
+        return;
+      }
+      // For successful sends, do a late reconciliation (8s) so the DB webhook
+      // has time to write the record. This syncs real IDs/timestamps.
       const queryKey = ["messages", payload.channelId, payload.destination];
-      // Small delay to let the DB webhook write the record first
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey });
-      }, 2000);
+      }, 8000);
     },
   });
 
