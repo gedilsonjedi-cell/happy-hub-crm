@@ -148,6 +148,32 @@ const normalizePhoneNumber = (phone: string): string => {
   return normalized;
 };
 
+const getPhoneComparisonVariants = (phone: string): string[] => {
+  const normalized = normalizePhoneNumber(phone);
+  const variants = new Set<string>([normalized]);
+
+  if (normalized.startsWith('55') && normalized.length >= 12) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.add(`55${areaCode}${localNumber.slice(1)}`);
+    } else if (localNumber.length === 8) {
+      variants.add(`55${areaCode}9${localNumber}`);
+    }
+  }
+
+  return Array.from(variants);
+};
+
+const phonesMatch = (phoneA?: string | null, phoneB?: string | null): boolean => {
+  if (!phoneA || !phoneB) return false;
+
+  const variantsA = new Set(getPhoneComparisonVariants(phoneA));
+  return getPhoneComparisonVariants(phoneB).some((variant) => variantsA.has(variant));
+};
+
 interface Channel {
   id: string;
   name: string;
@@ -1532,12 +1558,13 @@ const AtendimentoV2 = () => {
       if (!contactPhone) return;
     }
 
-    const normalizedContactPhone = contactPhone.replace(/\D/g, '');
+    const normalizedContactPhone = normalizePhoneNumber(contactPhone);
     const currentSelectedConv = selectedConversationRef.current;
-    const normalizedSelectedPhone = currentSelectedConv?.phone.replace(/\D/g, '') || '';
-    const selectedChannelId = currentSelectedConv?.channelId || '';
     const msgConversationKey = `${msg.channelId}_${normalizedContactPhone}`;
-    const selectedConversationKey = `${selectedChannelId}_${normalizedSelectedPhone}`;
+    const isConversationMatch = (conv: Conversation) =>
+      conv.channelId === msg.channelId && phonesMatch(conv.phone, normalizedContactPhone);
+    const isActiveConversation =
+      !!currentSelectedConv && isConversationMatch(currentSelectedConv);
 
     // Build a full Message-like object for compatibility
     const newMsg = {
@@ -1579,9 +1606,7 @@ const AtendimentoV2 = () => {
             label: "Ver",
             onClick: () => {
               setAllConversations(convs => {
-                const targetConv = convs.find(c =>
-                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                );
+                const targetConv = convs.find(isConversationMatch);
                 if (targetConv) setSelectedConversation(targetConv);
                 return convs;
               });
@@ -1592,7 +1617,7 @@ const AtendimentoV2 = () => {
     }
 
     // Update messages panel if this is the active conversation
-    if (selectedConversationKey === msgConversationKey) {
+    if (isActiveConversation) {
       // Use the ref to always call the latest prependMessage (avoids stale closure)
       prependMessageRef.current(newMsg);
     }
@@ -1603,12 +1628,10 @@ const AtendimentoV2 = () => {
       const isSentByHuman = metadata?.sent_by_human === true;
 
       setAllConversations(prev => {
-        const existing = prev.find(c =>
-          c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
-        );
+        const existing = prev.find(isConversationMatch);
         if (existing) {
           return prev.map(c =>
-            c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+            isConversationMatch(c)
               ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt }
               : c
           ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
@@ -1647,9 +1670,7 @@ const AtendimentoV2 = () => {
                 assignedToName = profile?.display_name || profile?.email || 'Atendente';
               }
               setAllConversations(currentPrev => {
-                const alreadyExists = currentPrev.some(c =>
-                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                );
+                const alreadyExists = currentPrev.some(isConversationMatch);
                 if (alreadyExists) {
                   let mappedStatus: Conversation["status"] | undefined;
                   if (assignment?.status === "active") mappedStatus = "in_progress";
@@ -1658,7 +1679,7 @@ const AtendimentoV2 = () => {
                   else if (assignment?.status === "pending") mappedStatus = "pending";
                   else if (assignment?.status === "in_progress") mappedStatus = "in_progress";
                   return currentPrev.map(c =>
-                    c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                    isConversationMatch(c)
                       ? { ...c, sectorId: assignment?.sector_id || null, assignedTo: assignment?.assigned_to || null, assignedToName, status: mappedStatus || c.status }
                       : c
                   );
@@ -1724,9 +1745,7 @@ const AtendimentoV2 = () => {
         }
 
         setAllConversations(prev => {
-          const existing = prev.find(c =>
-            c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
-          );
+          const existing = prev.find(isConversationMatch);
           if (existing) {
             let newStatus = mappedStatusFromDb;
             if (existing.status === "archived" && assignment) {
@@ -1739,9 +1758,10 @@ const AtendimentoV2 = () => {
               }
             }
             const currentSelectedConvLocal = selectedConversationRef.current;
-            const isCurrentConversation = `${currentSelectedConvLocal?.channelId}_${currentSelectedConvLocal?.phone.replace(/\D/g, '')}` === msgConversationKey;
+            const isCurrentConversation =
+              !!currentSelectedConvLocal && isConversationMatch(currentSelectedConvLocal);
             const updated = prev.map(c =>
-              c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+              isConversationMatch(c)
                 ? {
                     ...c, id: assignment?.id || c.id,
                     lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
@@ -1777,12 +1797,10 @@ const AtendimentoV2 = () => {
               else if (newAssignment?.status === "resolved") mappedStatus = "resolved";
 
               setAllConversations(currentPrev => {
-                const alreadyExists = currentPrev.some(c =>
-                  c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
-                );
+                const alreadyExists = currentPrev.some(isConversationMatch);
                 if (alreadyExists) {
                   return currentPrev.map(c =>
-                    c.channelId === msg.channelId && c.phone.replace(/\D/g, '') === normalizedContactPhone
+                    isConversationMatch(c)
                       ? { ...c, id: newAssignment?.id || c.id, sectorId: newAssignment?.sector_id || null, assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName, status: mappedStatus }
                       : c
                   );
