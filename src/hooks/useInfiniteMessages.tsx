@@ -161,8 +161,9 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone,
-    staleTime: 30_000,
+    staleTime: 0,
     gcTime: 5 * 60_000,
+    refetchOnMount: "always",
   });
 
   // All pages combined in chronological order (oldest → newest)
