@@ -61,7 +61,7 @@ export default function MinhaAssinatura() {
       if (!effectiveOrganizationId) return null;
       const { data, error } = await supabase
         .from("organizations")
-        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at, max_users, max_channels, has_paid_first_subscription")
+        .select("id, subscription_status, subscription_paid_until, subscription_started_at, subscription_ends_at, max_users, max_channels, has_paid_first_subscription, custom_subscription_price")
         .eq("id", effectiveOrganizationId)
         .maybeSingle();
       if (error) throw error;
@@ -161,11 +161,13 @@ export default function MinhaAssinatura() {
     },
   });
 
-  // Calculate totals - check if first subscription
+  // Calculate totals - use custom price if set, otherwise standard pricing
+  const hasCustomPrice = !!organization?.custom_subscription_price;
+  const customPrice = hasCustomPrice ? Number(organization.custom_subscription_price) : null;
   const isFirstSubscription = !organization?.has_paid_first_subscription;
-  const basePrice = pricing?.base_price || 229.90;
-  const promotionalPrice = pricing?.promotional_price || 129.90;
-  const currentPrice = isFirstSubscription ? promotionalPrice : basePrice;
+  const basePrice = customPrice ?? (pricing?.base_price || 229.90);
+  const promotionalPrice = customPrice ?? (pricing?.promotional_price || 129.90);
+  const currentPrice = hasCustomPrice ? customPrice! : (isFirstSubscription ? promotionalPrice : basePrice);
   const addonsTotal = addons?.reduce((sum, addon) => sum + (addon.quantity * addon.price_per_unit), 0) || 0;
   const totalMonthly = currentPrice + addonsTotal;
 
@@ -223,16 +225,16 @@ export default function MinhaAssinatura() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-muted/50 rounded-lg p-4">
                 <p className="text-sm text-muted-foreground">
-                  {isFirstSubscription ? "Primeiro Mês (Promocional)" : "Valor Base"}
+                  {hasCustomPrice ? "Plano Personalizado" : (isFirstSubscription ? "Primeiro Mês (Promocional)" : "Valor Base")}
                 </p>
                 <p className="text-2xl font-bold">
                   R$ {currentPrice.toFixed(2).replace(".", ",")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {isFirstSubscription && (
+                  {!hasCustomPrice && isFirstSubscription && (
                     <span className="text-primary">Depois: R$ {basePrice.toFixed(2).replace(".", ",")}/mês</span>
                   )}
-                  {!isFirstSubscription && "por mês"}
+                  {(hasCustomPrice || !isFirstSubscription) && "por mês"}
                 </p>
               </div>
               
