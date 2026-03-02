@@ -249,24 +249,38 @@ async function processCampaignDispatch(
         const metaSendResult = await metaSendResponse.json();
 
         if (metaSendResult.success) {
-          if (campaign.chatbot_enabled && campaign.chatbot_id) {
-            const { data: existingAssignment } = await supabase
-              .from('conversation_assignments')
-              .select('id')
-              .eq('conversation_phone', formattedPhone)
-              .eq('channel_id', channel.id)
-              .single();
-            if (existingAssignment) {
-              await supabase.from('conversation_assignments').update({ 
-                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, updated_at: new Date().toISOString()
-              }).eq('id', existingAssignment.id);
-            } else {
-              // IMPORTANT: campaigns start as 'archived' — only become 'pending' when client replies
-              await supabase.from('conversation_assignments').insert({
-                conversation_phone: formattedPhone, channel_id: channel.id,
-                campaign_chatbot_id: campaign.chatbot_id, is_bot_handling: true, status: 'archived'
-              });
+          // Always upsert conversation_assignment with sector_id from campaign
+          const campaignSectorId = campaign.sector_id || null;
+          const { data: existingAssignment } = await supabase
+            .from('conversation_assignments')
+            .select('id')
+            .eq('conversation_phone', formattedPhone)
+            .eq('channel_id', channel.id)
+            .maybeSingle();
+
+          if (existingAssignment) {
+            const updatePayload: Record<string, unknown> = { 
+              sector_id: campaignSectorId,
+              updated_at: new Date().toISOString()
+            };
+            if (campaign.chatbot_enabled && campaign.chatbot_id) {
+              updatePayload.campaign_chatbot_id = campaign.chatbot_id;
+              updatePayload.is_bot_handling = true;
             }
+            await supabase.from('conversation_assignments').update(updatePayload).eq('id', existingAssignment.id);
+          } else {
+            // IMPORTANT: campaigns start as 'archived' — only become 'pending' when client replies
+            const insertPayload: Record<string, unknown> = {
+              conversation_phone: formattedPhone, 
+              channel_id: channel.id,
+              sector_id: campaignSectorId,
+              status: 'archived'
+            };
+            if (campaign.chatbot_enabled && campaign.chatbot_id) {
+              insertPayload.campaign_chatbot_id = campaign.chatbot_id;
+              insertPayload.is_bot_handling = true;
+            }
+            await supabase.from('conversation_assignments').insert(insertPayload);
           }
           return { success: true, phone: formattedPhone };
         } else {
