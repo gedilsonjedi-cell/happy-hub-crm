@@ -17,8 +17,10 @@ export function SubscriptionBlockScreen() {
   const [isPixDialogOpen, setIsPixDialogOpen] = useState(false);
   const [isRenewing, setIsRenewing] = useState(false);
 
-  // Calculate subscription cost (base price only for now)
-  const subscriptionCost = 229.90;
+  // Use custom price if set, otherwise default base price
+  const subscriptionCost = organization?.custom_subscription_price 
+    ? Number(organization.custom_subscription_price) 
+    : 229.90;
   const hasEnoughBalance = currentBalance >= subscriptionCost;
 
   const handleRenewWithBalance = async () => {
