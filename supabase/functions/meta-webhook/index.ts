@@ -314,10 +314,38 @@ async function getNextAvailableAttendant(
 }
 
 // =============================================
+// GLOBAL ROUND-ROBIN (for ad leads without sector — distributes to any online attendant)
+// =============================================
+async function getNextAvailableAttendantGlobal(
+  organizationId: string
+): Promise<{ userId: string } | null> {
+  const { data: availableAttendants } = await supabase
+    .from('attendant_availability')
+    .select('user_id, last_assignment_at')
+    .eq('organization_id', organizationId)
+    .eq('is_available', true)
+    .order('last_assignment_at', { ascending: true, nullsFirst: true });
+
+  if (!availableAttendants || availableAttendants.length === 0) return null;
+
+  const nextAttendant = availableAttendants[0];
+
+  // Update last_assignment_at (fire and forget)
+  supabase
+    .from('attendant_availability')
+    .update({ last_assignment_at: new Date().toISOString() })
+    .eq('user_id', nextAttendant.user_id)
+    .eq('organization_id', organizationId)
+    .then(() => {}).catch(() => {});
+
+  return { userId: nextAttendant.user_id };
+}
+
+// =============================================
 // CONVERSATION ASSIGNMENT (optimized upsert with round-robin)
 // =============================================
 async function handleConversationAssignment(
-  channelId: string, leadId: string, normalizedPhone: string, organizationId: string
+  channelId: string, leadId: string, normalizedPhone: string, organizationId: string, isFromAd: boolean = false
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
   const { data: existing } = await supabase
     .from('conversation_assignments')
@@ -341,6 +369,16 @@ async function handleConversationAssignment(
           assignedTo = attendant.userId;
           newStatus = 'in_progress';
           console.log(`[handleConversationAssignment] Round-robin assigned ${normalizedPhone} → ${assignedTo} (sector: ${existing.sector_id})`);
+        }
+      }
+
+      // If from ad and still no attendant, try global round-robin across ALL online attendants
+      if (!assignedTo && isFromAd) {
+        const attendant = await getNextAvailableAttendantGlobal(organizationId);
+        if (attendant) {
+          assignedTo = attendant.userId;
+          newStatus = 'in_progress';
+          console.log(`[handleConversationAssignment] Ad lead global round-robin: ${normalizedPhone} → ${assignedTo}`);
         }
       }
 
@@ -375,6 +413,16 @@ async function handleConversationAssignment(
       assignedTo = attendant.userId;
       finalStatus = 'in_progress';
       console.log(`[handleConversationAssignment] New conv round-robin: ${normalizedPhone} → ${assignedTo} (sector: ${sectorId})`);
+    }
+  }
+
+  // If from ad and still no attendant, try global round-robin
+  if (!assignedTo && isFromAd) {
+    const attendant = await getNextAvailableAttendantGlobal(organizationId);
+    if (attendant) {
+      assignedTo = attendant.userId;
+      finalStatus = 'in_progress';
+      console.log(`[handleConversationAssignment] Ad lead global round-robin (new): ${normalizedPhone} → ${assignedTo}`);
     }
   }
 
@@ -473,6 +521,25 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const normalizedPhone = normalizePhone(senderPhone);
   const organizationId = channel.organization_id as string;
 
+  // ── Extract Facebook/Instagram referral data (ads/click-to-WhatsApp) ──
+  const referral = msg.referral as Record<string, unknown> | undefined;
+  const referralData = referral ? {
+    source_url: referral.source_url as string || null,
+    source_type: referral.source_type as string || null,
+    source_id: referral.source_id as string || null,
+    headline: referral.headline as string || null,
+    body: referral.body as string || null,
+    media_type: referral.media_type as string || null,
+    image_url: referral.image_url as string || null,
+    video_url: referral.video_url as string || null,
+    thumbnail_url: referral.thumbnail_url as string || null,
+    ctwa_clid: referral.ctwa_clid as string || null,
+  } : null;
+
+  if (referralData) {
+    console.log(`[processMessage] Facebook/Instagram referral detected for ${normalizedPhone}:`, JSON.stringify(referralData));
+  }
+
   // Guard: ignore messages sent BY the channel itself (outbound echo/status events misrouted as inbound)
   // This prevents ghost "pending" conversations from delivery receipts
   const channelPhone = ((channel.phone as string) || '').replace(/\D/g, '');
@@ -525,7 +592,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     // Task B: Lead upsert + conversation assignment (sequential internally)
     (async () => {
       const { leadId } = await findOrCreateLead(organizationId, channel.user_id as string, senderPhone, contactName);
-      const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone, organizationId);
+      const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone, organizationId, !!referralData);
       return { leadId, assignment };
     })(),
 
@@ -550,7 +617,10 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     direction: 'inbound',
     status: 'received',
     is_read: false,
-    metadata: { timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null },
+    metadata: { 
+      timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
+      ...(referralData ? { referral: referralData } : {}),
+    },
   }, { onConflict: 'message_id', ignoreDuplicates: true });
 
   if (insertError) console.error('Error storing message:', insertError);
