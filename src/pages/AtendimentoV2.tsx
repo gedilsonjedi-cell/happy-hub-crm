@@ -3135,11 +3135,11 @@ const AtendimentoV2 = () => {
 
   return (
     <TopNavLayout noPadding>
-      <div className="h-full flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
         {/* Sidebar */}
         <div className={cn(
           "w-full lg:w-80 xl:w-96 bg-card border-r border-border flex flex-col min-h-0",
-          selectedConversation ? "hidden lg:flex" : "flex"
+          selectedConversation ? "hidden lg:flex" : "flex flex-1 lg:flex-none"
         )}>
           {/* Notification banner */}
           {!notificationsEnabled && (
@@ -3454,7 +3454,7 @@ const AtendimentoV2 = () => {
         </div>
 
         {/* Chat area */}
-        <div className={cn("flex-1 bg-card flex flex-col overflow-hidden", !selectedConversation ? "hidden lg:flex" : "flex")}>
+        <div className={cn("flex-1 min-h-0 bg-card flex flex-col overflow-hidden", !selectedConversation ? "hidden lg:flex" : "flex")}>
           {selectedConversation ? (
             <>
               {/* Chat header */}
