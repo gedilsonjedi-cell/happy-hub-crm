@@ -11,6 +11,9 @@ import {
   ZoomIn,
   Play,
   Phone,
+  Info,
+  ExternalLink,
+  Facebook,
 } from "lucide-react";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import type { MessageRow } from "@/hooks/useInfiniteMessages";
@@ -176,6 +179,78 @@ const MessageBubble = memo(function MessageBubble({
             <span className="font-medium">{templateName || "Template"}</span>
           </div>
           <p className="text-sm text-muted-foreground italic">Conteúdo do template indisponível</p>
+        </div>
+      );
+    }
+
+    // Referral / Ad tracking card
+    const referralMeta = (message.metadata as Record<string, unknown>)?.referral as Record<string, unknown> | undefined;
+    if (referralMeta) {
+      const source = (referralMeta.source_type as string)?.toUpperCase() || 'FACEBOOK';
+      const headline = referralMeta.headline as string | null;
+      const body = referralMeta.body as string | null;
+      const sourceUrl = referralMeta.source_url as string | null;
+      const imageUrl = referralMeta.image_url as string | null;
+      const videoUrl = referralMeta.video_url as string | null;
+      const thumbnailUrl = referralMeta.thumbnail_url as string | null;
+      const mediaType = referralMeta.media_type as string | null;
+
+      const originLabel = source === 'AD' ? 'FACEBOOK' : source;
+      const mediaPreviewUrl = imageUrl || thumbnailUrl || null;
+
+      return (
+        <div className="space-y-2">
+          {/* Regular message content */}
+          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+
+          {/* Tracking card */}
+          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/50 p-3 text-foreground shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2">
+              <span>Rastreamento</span>
+              <span className="ml-auto text-xs text-muted-foreground font-normal">
+                {format(new Date(message.created_at), "dd/MM/yyyy HH:mm")}
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2 text-xs leading-relaxed">
+              <Info className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <div className="space-y-1 min-w-0">
+                <p><strong>Origem:</strong> {originLabel}</p>
+                {headline && (
+                  <p><strong>Headline:</strong> {headline}</p>
+                )}
+                {body && (
+                  <p className="whitespace-pre-wrap">{body}</p>
+                )}
+                <p><strong>Meio:</strong> WHATSAPP BUSINESS APP</p>
+                {sourceUrl && (
+                  <p className="flex items-center gap-1">
+                    <strong>Acesso:</strong>{" "}
+                    <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline break-all inline-flex items-center gap-1"
+                    >
+                      {sourceUrl}
+                      <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {mediaPreviewUrl && (
+              <div className="mt-2 rounded-lg overflow-hidden">
+                <img
+                  src={mediaPreviewUrl}
+                  alt="Criativo do anúncio"
+                  loading="lazy"
+                  className="max-w-full max-h-40 object-cover rounded-lg"
+                />
+              </div>
+            )}
+          </div>
         </div>
       );
     }
