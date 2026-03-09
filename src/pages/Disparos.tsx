@@ -1779,10 +1779,17 @@ const Disparos = () => {
                             </DropdownMenuItem>
                           )}
                           {campaign.status === "running" && (
-                            <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
-                              <Pause className="w-4 h-4 mr-2" />
-                              Pausar
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
+                                <Pause className="w-4 h-4 mr-2" />
+                                Pausar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleForceSyncCampaign(campaign.id)}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Forçar sincronização
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           )}
                           {campaign.status === "paused" && (
                             <DropdownMenuItem onClick={() => handleResumeCampaign(campaign)}>
