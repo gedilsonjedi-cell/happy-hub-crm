@@ -853,6 +853,48 @@ const Disparos = () => {
     }
   };
 
+  const handleForceSyncCampaign = async (campaignId: string) => {
+    try {
+      toast.info("Sincronizando status de entrega...");
+
+      // 1. Re-subscribe webhooks for all channels of this campaign
+      const { data: campaignChannelsData } = await supabase
+        .from("campaign_channels")
+        .select("channel_id")
+        .eq("campaign_id", campaignId);
+
+      if (campaignChannelsData) {
+        const channelIds = campaignChannelsData.map(cc => cc.channel_id);
+        const { data: channelsList } = await supabase
+          .from("channels")
+          .select("id, app_name, access_token, waba_id, provider")
+          .in("id", channelIds)
+          .eq("provider", "meta");
+
+        if (channelsList) {
+          await Promise.all(channelsList.map(ch =>
+            supabase.functions.invoke("meta-subscribe-webhook", {
+              body: {
+                phoneNumberId: ch.app_name,
+                accessToken: ch.access_token,
+                wabaId: ch.waba_id,
+              }
+            })
+          ));
+        }
+      }
+
+      // 2. Force sync campaign counts from campaign_recipients
+      await supabase.rpc("force_sync_all_campaign_counts");
+
+      toast.success("Sincronização concluída! Webhooks re-inscritos.");
+      fetchData();
+    } catch (error) {
+      console.error("Error syncing campaign:", error);
+      toast.error("Erro ao sincronizar campanha");
+    }
+  };
+
   const handleViewDetails = async (campaignId: string) => {
     // Try to find in local state first
     let campaign = campaigns.find(c => c.id === campaignId);
@@ -1737,10 +1779,16 @@ const Disparos = () => {
                             </DropdownMenuItem>
                           )}
                           {campaign.status === "running" && (
-                            <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
-                              <Pause className="w-4 h-4 mr-2" />
-                              Pausar
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onClick={() => handlePauseCampaign(campaign.id)}>
+                                <Pause className="w-4 h-4 mr-2" />
+                                Pausar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleForceSyncCampaign(campaign.id)}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Forçar sincronização
+                              </DropdownMenuItem>
+                            </>
                           )}
                           {campaign.status === "paused" && (
                             <DropdownMenuItem onClick={() => handleResumeCampaign(campaign)}>

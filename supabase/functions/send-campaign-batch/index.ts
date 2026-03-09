@@ -255,6 +255,32 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Auto-subscribe webhooks for all campaign channels (fire and forget)
+    // This ensures delivery status updates (delivered, read) are received from Meta
+    // Prevents the issue where campaigns show "sent" but never "delivered"
+    if (campaign.sent_count === 0) {
+      for (const ch of connectedChannels) {
+        if (ch.provider === 'meta' && ch.access_token) {
+          fetch(`${supabaseUrl}/functions/v1/meta-subscribe-webhook`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              phoneNumberId: ch.app_name,
+              accessToken: ch.access_token,
+              wabaId: ch.waba_id,
+            }),
+          }).then(res => {
+            console.log(`[Batch] Auto-subscribed webhook for channel ${ch.name} (${ch.app_name}): ${res.status}`);
+          }).catch(err => {
+            console.error(`[Batch] Failed to auto-subscribe webhook for channel ${ch.name}:`, err);
+          });
+        }
+      }
+    }
+
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
