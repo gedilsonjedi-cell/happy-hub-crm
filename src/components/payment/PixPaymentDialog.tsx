@@ -152,8 +152,13 @@ export function PixPaymentDialog({
     setStep("processing");
     setLoading(true);
     
+    // Frontend timeout to prevent infinite hang
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("Tempo limite excedido. Tente novamente.")), 30000)
+    );
+
     try {
-      const { data, error } = await supabase.functions.invoke("mercadopago-pix", {
+      const pixPromise = supabase.functions.invoke("mercadopago-pix", {
         body: {
           amount,
           description: paymentType === "balance" 
@@ -165,6 +170,8 @@ export function PixPaymentDialog({
           paymentType,
         },
       });
+
+      const { data, error } = await Promise.race([pixPromise, timeoutPromise]);
 
       if (error) throw error;
 
