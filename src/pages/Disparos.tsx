@@ -1788,9 +1788,7 @@ const Disparos = () => {
                                 <RefreshCw className="w-4 h-4 mr-2" />
                                 Forçar sincronização
                               </DropdownMenuItem>
-                            </>
-                          )}
-                          )}
+                          )
                           {campaign.status === "paused" && (
                             <DropdownMenuItem onClick={() => handleResumeCampaign(campaign)}>
                               <Play className="w-4 h-4 mr-2" />
