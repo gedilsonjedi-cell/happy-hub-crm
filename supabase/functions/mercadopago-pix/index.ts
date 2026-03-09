@@ -55,15 +55,31 @@ serve(async (req) => {
 
     console.log("Creating PIX payment:", JSON.stringify(paymentData, null, 2));
 
-    const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
-        "X-Idempotency-Key": crypto.randomUUID(),
-      },
-      body: JSON.stringify(paymentData),
-    });
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+    let mpResponse: Response;
+    try {
+      mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+          "X-Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify(paymentData),
+        signal: controller.signal,
+      });
+    } catch (fetchErr: unknown) {
+      clearTimeout(timeoutId);
+      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+        throw new Error("Tempo limite excedido ao conectar com Mercado Pago. Tente novamente.");
+      }
+      throw fetchErr;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const mpResult = await mpResponse.json();
 
