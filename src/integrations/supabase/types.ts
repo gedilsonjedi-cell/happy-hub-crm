@@ -3231,6 +3231,22 @@ export type Database = {
         Args: { _amount: number; _organization_id: string }
         Returns: boolean
       }
+      claim_campaign_recipients: {
+        Args: {
+          p_batch_size?: number
+          p_campaign_id: string
+          p_include_retries?: boolean
+        }
+        Returns: {
+          id: string
+          is_retry: boolean
+          last_error_code: string
+          name: string
+          phone: string
+          retry_count: number
+          status: string
+        }[]
+      }
       credit_organization_balance: {
         Args: {
           _amount: number
@@ -3269,6 +3285,17 @@ export type Database = {
       }
       force_sync_all_campaign_counts: { Args: never; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
+      get_campaign_counts: {
+        Args: { p_campaign_id: string }
+        Returns: {
+          total_delivered: number
+          total_failed: number
+          total_pending: number
+          total_processing: number
+          total_sent: number
+          total_waiting_retry: number
+        }[]
+      }
       get_campaign_sector_for_phone: {
         Args: { _organization_id: string; _phone: string }
         Returns: string

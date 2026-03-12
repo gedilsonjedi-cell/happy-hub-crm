@@ -26,27 +26,15 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
-// RETRY SYSTEM for temporary Meta errors
-// Errors like #131049 (marketing limit) are temporary and can be retried after a delay
-
-// Configuration for retryable errors
-// Each error code has maxRetries and delayHours array (exponential backoff)
 const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {
-  '131049': { maxRetries: 3, delayHours: [12, 24, 48] },  // Marketing limit - wait longer
-  '135000': { maxRetries: 2, delayHours: [1, 2] },        // Generic error - quick retry
-  '131000': { maxRetries: 2, delayHours: [0.5, 1] },      // Internal Meta error
-  '130472': { maxRetries: 2, delayHours: [1, 3] },        // Rate limit
+  '131049': { maxRetries: 3, delayHours: [12, 24, 48] },
+  '135000': { maxRetries: 2, delayHours: [1, 2] },
+  '131000': { maxRetries: 2, delayHours: [0.5, 1] },
+  '130472': { maxRetries: 2, delayHours: [1, 3] },
 };
 
-// Errors that are permanent and should NOT be retried
 const PERMANENT_ERRORS = [
-  '131026', // Not on WhatsApp
-  '131042', // Payment issue
-  '131021', // Invalid number
-  '131047', // Blocked
-  '132001', // Template error
-  '132000', // Template not found
-  '100',    // Invalid parameter
+  '131026', '131042', '131021', '131047', '132001', '132000', '100',
 ];
 
 function getFirstName(fullName: string | undefined): string {
@@ -54,105 +42,64 @@ function getFirstName(fullName: string | undefined): string {
   return fullName.split(' ')[0];
 }
 
-// Lista de DDDs válidos do Brasil
 const VALID_BRAZILIAN_DDDS = [
-  '11', '12', '13', '14', '15', '16', '17', '18', '19', // São Paulo
-  '21', '22', '24', // Rio de Janeiro
-  '27', '28', // Espírito Santo
-  '31', '32', '33', '34', '35', '37', '38', // Minas Gerais
-  '41', '42', '43', '44', '45', '46', // Paraná
-  '47', '48', '49', // Santa Catarina
-  '51', '53', '54', '55', // Rio Grande do Sul
-  '61', // Distrito Federal
-  '62', '64', // Goiás
-  '63', // Tocantins
-  '65', '66', // Mato Grosso
-  '67', // Mato Grosso do Sul
-  '71', '73', '74', '75', '77', // Bahia
-  '79', // Sergipe
-  '81', '87', // Pernambuco
-  '82', // Alagoas
-  '83', // Paraíba
-  '84', // Rio Grande do Norte
-  '85', '88', // Ceará
-  '86', '89', // Piauí
-  '91', '93', '94', // Pará
-  '92', '97', // Amazonas
-  '95', // Roraima
-  '96', // Amapá
-  '98', '99', // Maranhão
-  '68', // Acre
-  '69', // Rondônia
+  '11', '12', '13', '14', '15', '16', '17', '18', '19',
+  '21', '22', '24', '27', '28',
+  '31', '32', '33', '34', '35', '37', '38',
+  '41', '42', '43', '44', '45', '46',
+  '47', '48', '49',
+  '51', '53', '54', '55',
+  '61', '62', '64', '63', '65', '66', '67',
+  '71', '73', '74', '75', '77', '79',
+  '81', '87', '82', '83', '84', '85', '88', '86', '89',
+  '91', '93', '94', '92', '97', '95', '96', '98', '99',
+  '68', '69',
 ];
 
 function formatPhoneNumber(phone: string): string {
   let cleaned = phone.replace(/\D/g, '');
+  if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
   
-  // Remove leading zero
-  if (cleaned.startsWith('0')) {
-    cleaned = cleaned.substring(1);
-  }
-  
-  // Remove 55 prefix temporarily for normalization
   let hasCountryCode = false;
   if (cleaned.startsWith('55') && cleaned.length >= 12) {
     hasCountryCode = true;
     cleaned = cleaned.substring(2);
   }
   
-  // Now 'cleaned' should be just DDD + number (10 or 11 digits)
-  
-  // If it's 10 digits, might be missing the 9 for mobile
   if (cleaned.length === 10) {
     const ddd = cleaned.slice(0, 2);
     const firstDigit = cleaned[2];
-    
-    // Check if it's a valid DDD and looks like a mobile (starts with 6, 7, 8, or 9)
     if (VALID_BRAZILIAN_DDDS.includes(ddd) && ['6', '7', '8', '9'].includes(firstDigit)) {
-      // Add the missing 9 prefix for mobile numbers
       cleaned = ddd + '9' + cleaned.slice(2);
-      console.log(`[FormatPhone] Added 9 to mobile: ${ddd}9${cleaned.slice(3)}`);
     }
   }
   
-  // Ensure country code is present
-  if (!cleaned.startsWith('55')) {
-    cleaned = '55' + cleaned;
-  }
-  
+  if (!cleaned.startsWith('55')) cleaned = '55' + cleaned;
   return cleaned;
 }
 
-// Extract Meta error code from error message
 function extractMetaErrorCode(errorMessage: string): string | null {
   const match = errorMessage?.match(/(\d{6})/);
   return match ? match[1] : null;
 }
 
-// Check if an error is retryable
 function isRetryableError(errorCode: string | null): boolean {
   if (!errorCode) return false;
   return !!RETRYABLE_ERRORS[errorCode] && !PERMANENT_ERRORS.includes(errorCode);
 }
 
-// Get retry configuration for an error
 function getRetryConfig(errorCode: string): { maxRetries: number; delayHours: number[] } | null {
   return RETRYABLE_ERRORS[errorCode] || null;
 }
 
-// Calculate next retry time based on retry count
 function calculateNextRetryTime(errorCode: string, retryCount: number): Date | null {
   const config = getRetryConfig(errorCode);
   if (!config) return null;
-  
   if (retryCount >= config.maxRetries) return null;
-  
   const delayHours = config.delayHours[retryCount] || config.delayHours[config.delayHours.length - 1];
   return new Date(Date.now() + delayHours * 3600 * 1000);
 }
 
-// Processa UM lote de mensagens e retorna imediatamente
-// O frontend chama repetidamente até terminar
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -186,9 +133,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check status - allow running or completed (for retry processing)
+    // Check status
     if (campaign.status !== 'running' && !(processRetries && campaign.status === 'completed')) {
-      // Check if there are pending retries
       const { count: pendingRetries } = await supabase
         .from('campaign_recipients')
         .select('*', { count: 'exact', head: true })
@@ -197,17 +143,10 @@ Deno.serve(async (req) => {
         .lte('next_retry_at', new Date().toISOString());
       
       if (pendingRetries && pendingRetries > 0) {
-        // There are retries ready to process
         console.log(`[Batch] Campaign ${campaign.name} has ${pendingRetries} retries ready`);
       } else {
         return new Response(
-          JSON.stringify({ 
-            success: true, 
-            status: campaign.status,
-            done: true,
-            message: `Campaign is ${campaign.status}`,
-            pendingRetries: 0
-          }),
+          JSON.stringify({ success: true, status: campaign.status, done: true, message: `Campaign is ${campaign.status}`, pendingRetries: 0 }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -236,47 +175,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify that at least one channel is connected AND has valid credentials
     const connectedChannels = channels.filter(c => c.connected && c.access_token);
     if (connectedChannels.length === 0) {
-      console.error('[Batch] No connected channels with valid credentials found');
-      await supabase.from('campaigns').update({ 
-        status: 'paused',
-        updated_at: new Date().toISOString()
-      }).eq('id', campaignId);
-      
+      await supabase.from('campaigns').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', campaignId);
       return new Response(
-        JSON.stringify({ 
-          error: 'Nenhum canal conectado com credenciais válidas. Verifique suas conexões.', 
-          done: true,
-          needsReconnection: true
-        }),
+        JSON.stringify({ error: 'Nenhum canal conectado com credenciais válidas.', done: true, needsReconnection: true }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Auto-subscribe webhooks for all campaign channels (fire and forget)
-    // This ensures delivery status updates (delivered, read) are received from Meta
-    // Prevents the issue where campaigns show "sent" but never "delivered"
+    // Auto-subscribe webhooks on first batch
     if (campaign.sent_count === 0) {
       for (const ch of connectedChannels) {
         if (ch.provider === 'meta' && ch.access_token) {
           fetch(`${supabaseUrl}/functions/v1/meta-subscribe-webhook`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              phoneNumberId: ch.app_name,
-              accessToken: ch.access_token,
-              wabaId: ch.waba_id,
-            }),
-          }).then(res => {
-            console.log(`[Batch] Auto-subscribed webhook for channel ${ch.name} (${ch.app_name}): ${res.status}`);
-          }).catch(err => {
-            console.error(`[Batch] Failed to auto-subscribe webhook for channel ${ch.name}:`, err);
-          });
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+            body: JSON.stringify({ phoneNumberId: ch.app_name, accessToken: ch.access_token, wabaId: ch.waba_id }),
+          }).catch(err => console.error(`[Batch] Webhook subscribe error:`, err));
         }
       }
     }
@@ -284,156 +200,85 @@ Deno.serve(async (req) => {
     const channelsMap = new Map(channels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
-    // First, check for recipients ready for retry (waiting_retry with next_retry_at <= now)
-    const { data: retryRecipients } = await supabase
-      .from('campaign_recipients')
-      .select('id, phone, name, status, retry_count, last_error_code')
-      .eq('campaign_id', campaignId)
-      .eq('status', 'waiting_retry')
-      .lte('next_retry_at', new Date().toISOString())
-      .order('next_retry_at', { ascending: true })
-      .limit(batchSize);
+    // ===== ATOMIC CLAIM: Use DB function to prevent race conditions =====
+    // This atomically marks recipients as 'processing' so concurrent calls can't grab the same ones
+    const { data: claimedRecipients, error: claimError } = await supabase
+      .rpc('claim_campaign_recipients', {
+        p_campaign_id: campaignId,
+        p_batch_size: batchSize,
+        p_include_retries: true
+      });
 
-    // Then get pending recipients (new sends)
-    const { data: pendingRecipients } = await supabase
-      .from('campaign_recipients')
-      .select('id, phone, name, status')
-      .eq('campaign_id', campaignId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(batchSize - (retryRecipients?.length || 0));
-    
-    // Combine retry and pending recipients, prioritizing retries
-    const allRecipients = [
-      ...(retryRecipients || []).map(r => ({ ...r, isRetry: true })),
-      ...(pendingRecipients || []).map(r => ({ ...r, isRetry: false, retry_count: 0 }))
-    ];
-    
-    // SAFETY CHECK: Log phone numbers we're about to process for debugging
-    const phonesToProcess = allRecipients.map(r => r.phone);
-    console.log(`[Batch] Processing phones (${retryRecipients?.length || 0} retries, ${pendingRecipients?.length || 0} pending): ${phonesToProcess.join(', ')}`);
-    
-    // DOUBLE CHECK: Verify no recipients in this batch have already been sent
-    let filteredRecipients = allRecipients;
-    if (phonesToProcess.length > 0) {
-      const { data: alreadySent } = await supabase
-        .from('campaign_recipients')
-        .select('phone')
-        .eq('campaign_id', campaignId)
-        .in('phone', phonesToProcess)
-        .in('status', ['sent', 'delivered']);
-      
-      if (alreadySent && alreadySent.length > 0) {
-        console.warn(`[Batch] SKIPPING already sent phones: ${alreadySent.map(r => r.phone).join(', ')}`);
-        const sentPhones = new Set(alreadySent.map(r => r.phone));
-        filteredRecipients = filteredRecipients.filter(r => !sentPhones.has(r.phone));
-      }
+    if (claimError) {
+      console.error('[Batch] Error claiming recipients:', claimError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to claim recipients', details: claimError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // If no recipients in campaign_recipients, try to get from leads table (legacy support)
-    let leads: Recipient[] = [];
-    if (filteredRecipients.length === 0 && (retryRecipients?.length || 0) === 0) {
-      const { data: legacyLeads } = await supabase
-        .from('leads')
-        .select('phone, name, email, city, state, document, notes')
-        .eq('organization_id', campaign.organization_id)
-        .limit(campaign.total_recipients);
-      
-      if (legacyLeads && legacyLeads.length > 0) {
-        leads = legacyLeads.slice(campaign.sent_count, campaign.sent_count + batchSize);
-      }
-    }
+    const recipientsToSend = (claimedRecipients || []).map((r: any) => ({
+      phone: r.phone,
+      name: r.name || undefined,
+      recipientId: r.id,
+      isRetry: r.is_retry,
+      retryCount: r.retry_count || 0
+    }));
 
-    // Build recipients to send
-    const recipientsToSend = filteredRecipients.length > 0 
-      ? filteredRecipients.map(r => ({ 
-          phone: r.phone, 
-          name: r.name || undefined, 
-          recipientId: r.id,
-          isRetry: r.isRetry,
-          retryCount: r.retry_count || 0
-        }))
-      : leads.map(l => ({ phone: l.phone, name: l.name, recipientId: null, isRetry: false, retryCount: 0 }));
+    console.log(`[Batch] Claimed ${recipientsToSend.length} recipients for campaign ${campaign.name}`);
+
+    // NO LEGACY FALLBACK - only send to campaign_recipients that were atomically claimed
+    // This prevents sending to people not in the selected base
 
     if (recipientsToSend.length === 0) {
-      // No pending or retry recipients - check if there are waiting retries for later
-      const { count: futureRetries } = await supabase
-        .from('campaign_recipients')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'waiting_retry')
-        .gt('next_retry_at', new Date().toISOString());
+      // Get accurate counts
+      const { data: counts } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
+      const c = counts?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
 
-      const hasFutureRetries = (futureRetries || 0) > 0;
+      const hasFutureRetries = (c.total_waiting_retry || 0) > 0;
+      const hasProcessing = (c.total_processing || 0) > 0;
+      const isComplete = !hasFutureRetries && !hasProcessing && (c.total_pending || 0) === 0;
 
-      // Count actual results
-      const { count: totalSent } = await supabase
-        .from('campaign_recipients')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'sent');
-
-      const { count: totalFailed } = await supabase
-        .from('campaign_recipients')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'failed');
-
-      const { count: totalWaitingRetry } = await supabase
-        .from('campaign_recipients')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'waiting_retry');
-
-      // Update campaign status
-      const newStatus = hasFutureRetries ? 'running' : 'completed';
+      const newStatus = isComplete ? 'completed' : 'running';
       await supabase.from('campaigns').update({
         status: newStatus,
-        completed_at: hasFutureRetries ? null : new Date().toISOString(),
-        sent_count: campaign.total_recipients,
-        delivered_count: totalSent || 0,
-        failed_count: totalFailed || 0
+        completed_at: isComplete ? new Date().toISOString() : null,
+        sent_count: Number(c.total_sent) || 0,
+        failed_count: Number(c.total_failed) || 0,
       }).eq('id', campaignId);
 
-      console.log(`[Batch] Campaign ${campaignId} ${hasFutureRetries ? 'waiting for retries' : 'completed'}: ${totalSent} delivered, ${totalFailed} failed, ${totalWaitingRetry} waiting retry`);
-
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          done: !hasFutureRetries, 
-          status: hasFutureRetries ? 'waiting_retry' : 'completed',
-          delivered: totalSent || 0,
-          failed: totalFailed || 0,
-          waitingRetry: totalWaitingRetry || 0,
+        JSON.stringify({
+          success: true, done: isComplete,
+          status: isComplete ? 'completed' : (hasFutureRetries ? 'waiting_retry' : 'running'),
+          sent: Number(c.total_sent) || 0,
+          delivered: Number(c.total_delivered) || 0,
+          failed: Number(c.total_failed) || 0,
           total: campaign.total_recipients,
-          pendingRetries: futureRetries || 0
+          pendingRetries: Number(c.total_waiting_retry) || 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     let sentThisBatch = 0;
-    let deliveredThisBatch = 0;
     let failedThisBatch = 0;
     let scheduledRetryThisBatch = 0;
 
     const manualVariables = campaign.manual_variables as Record<string, string> | null;
 
-    // Helper function to process a single recipient
     async function processRecipient(recipient: typeof recipientsToSend[0], idx: number) {
       const campaignChannel = campaignChannels[idx % campaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
-      const template = templatesMap.get(campaignChannel.template_id) as { 
-        id: string; name: string; variables?: string[] | null; variable_mappings?: Record<string, string> | null 
+      const template = templatesMap.get(campaignChannel.template_id) as {
+        id: string; name: string; variables?: string[] | null; variable_mappings?: Record<string, string> | null
       } | undefined;
 
       if (!channel || !template) {
-        if (recipient.recipientId) {
-          await supabase.from('campaign_recipients').update({
-            status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR'
-          }).eq('id', recipient.recipientId);
-        }
-        return { sent: true, delivered: false, failed: true, retry: false };
+        await supabase.from('campaign_recipients').update({
+          status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR'
+        }).eq('id', recipient.recipientId);
+        return { sent: true, failed: true, retry: false };
       }
 
       const formattedPhone = formatPhoneNumber(recipient.phone);
@@ -486,12 +331,11 @@ Deno.serve(async (req) => {
         const result = await response.json();
 
         if (result.success) {
-          if (recipient.recipientId) {
-            await supabase.from('campaign_recipients').update({
-              status: 'sent', sent_at: new Date().toISOString(), error_message: null, last_error_code: null, next_retry_at: null
-            }).eq('id', recipient.recipientId);
-          }
+          await supabase.from('campaign_recipients').update({
+            status: 'sent', sent_at: new Date().toISOString(), error_message: null, last_error_code: null, next_retry_at: null
+          }).eq('id', recipient.recipientId);
 
+          // Update conversation assignment
           const { data: existing } = await supabase.from('conversation_assignments').select('id')
             .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).single();
           if (existing) {
@@ -508,10 +352,10 @@ Deno.serve(async (req) => {
               status: 'archived', sector_id: campaign.sector_id || null
             });
           }
-          return { sent: !recipient.isRetry, delivered: true, failed: false, retry: false };
+          return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
           const errorCode = extractMetaErrorCode(result.error || '');
-          if (isRetryableError(errorCode) && recipient.recipientId) {
+          if (isRetryableError(errorCode)) {
             const currentRetryCount = recipient.retryCount || 0;
             const config = getRetryConfig(errorCode!);
             if (config && currentRetryCount < config.maxRetries) {
@@ -521,104 +365,67 @@ Deno.serve(async (req) => {
                 next_retry_at: nextRetryAt?.toISOString(), error_message: result.error || 'Erro temporário',
                 last_error_code: errorCode
               }).eq('id', recipient.recipientId);
-              return { sent: !recipient.isRetry, delivered: false, failed: false, retry: true };
+              return { sent: !recipient.isRetry, failed: false, retry: true };
             }
           }
-          if (recipient.recipientId) {
-            await supabase.from('campaign_recipients').update({
-              status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN'
-            }).eq('id', recipient.recipientId);
-          }
-          return { sent: !recipient.isRetry, delivered: false, failed: true, retry: false };
+          await supabase.from('campaign_recipients').update({
+            status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN'
+          }).eq('id', recipient.recipientId);
+          return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
-        if (recipient.recipientId) {
-          await supabase.from('campaign_recipients').update({
-            status: 'failed', error_message: String(error), last_error_code: 'EXCEPTION'
-          }).eq('id', recipient.recipientId);
-        }
-        return { sent: !recipient.isRetry, delivered: false, failed: true, retry: false };
+        await supabase.from('campaign_recipients').update({
+          status: 'failed', error_message: String(error), last_error_code: 'EXCEPTION'
+        }).eq('id', recipient.recipientId);
+        return { sent: !recipient.isRetry, failed: true, retry: false };
       }
     }
 
     // Process all recipients in PARALLEL
     const results = await Promise.all(
-      recipientsToSend.map((recipient, i) => processRecipient(recipient, campaign.sent_count + i))
+      recipientsToSend.map((recipient: any, i: number) => processRecipient(recipient, campaign.sent_count + i))
     );
 
     for (const r of results) {
       if (r.sent) sentThisBatch++;
-      if (r.delivered) deliveredThisBatch++;
       if (r.failed) failedThisBatch++;
       if (r.retry) scheduledRetryThisBatch++;
     }
 
-    // Check if there are remaining pending or retry recipients
-    const { count: remainingPending } = await supabase
-      .from('campaign_recipients')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', campaignId)
-      .eq('status', 'pending');
+    // Get accurate counts from DB
+    const { data: finalCounts } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
+    const fc = finalCounts?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
 
-    const { count: waitingRetryNow } = await supabase
-      .from('campaign_recipients')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', campaignId)
-      .eq('status', 'waiting_retry')
-      .lte('next_retry_at', new Date().toISOString());
+    const hasPending = (Number(fc.total_pending) || 0) > 0;
+    const hasProcessing = (Number(fc.total_processing) || 0) > 0;
+    const hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
+    const isComplete = !hasPending && !hasProcessing && !hasRetries;
 
-    const { count: waitingRetryLater } = await supabase
-      .from('campaign_recipients')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', campaignId)
-      .eq('status', 'waiting_retry')
-      .gt('next_retry_at', new Date().toISOString());
-
-    // Get current counts from trigger-updated values
-    const { data: updatedCampaign } = await supabase
-      .from('campaigns')
-      .select('sent_count, delivered_count, failed_count, total_recipients')
-      .eq('id', campaignId)
-      .single();
-
-    const currentSent = updatedCampaign?.sent_count || 0;
-    const currentDelivered = updatedCampaign?.delivered_count || 0;
-    const currentFailed = updatedCampaign?.failed_count || 0;
-    const totalRecipients = updatedCampaign?.total_recipients || campaign.total_recipients;
-
-    const noPendingOrReadyRetries = (remainingPending || 0) === 0 && (waitingRetryNow || 0) === 0;
-    const hasFutureRetries = (waitingRetryLater || 0) > 0;
-    const isComplete = noPendingOrReadyRetries && !hasFutureRetries;
-
-    // Determine campaign status
     let newStatus = 'running';
-    if (isComplete) {
-      newStatus = 'completed';
-    } else if (noPendingOrReadyRetries && hasFutureRetries) {
-      // All pending done, waiting for scheduled retries
-      newStatus = 'running'; // Keep running to continue processing
-    }
+    if (isComplete) newStatus = 'completed';
 
-    // Update campaign status
+    // Update campaign with accurate counts
     await supabase.from('campaigns').update({
       status: newStatus,
+      sent_count: Number(fc.total_sent) || 0,
+      failed_count: Number(fc.total_failed) || 0,
       completed_at: isComplete ? new Date().toISOString() : null
     }).eq('id', campaignId);
 
-    console.log(`[Batch] Campaign ${campaignId}: ${currentSent}/${totalRecipients} sent, ${currentDelivered} delivered, ${currentFailed} failed, ${scheduledRetryThisBatch} scheduled retries | Pending: ${remainingPending || 0}, Waiting retry: ${(waitingRetryNow || 0) + (waitingRetryLater || 0)}`);
+    console.log(`[Batch] Campaign ${campaign.name}: sent=${fc.total_sent}, failed=${fc.total_failed}, pending=${fc.total_pending}, retry=${fc.total_waiting_retry}, processing=${fc.total_processing}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         done: isComplete,
-        status: isComplete ? 'completed' : (hasFutureRetries && noPendingOrReadyRetries ? 'waiting_retry' : 'running'),
-        sent: currentSent,
-        delivered: currentDelivered,
-        failed: currentFailed,
-        total: totalRecipients,
+        status: isComplete ? 'completed' : (hasRetries && !hasPending ? 'waiting_retry' : 'running'),
+        sent: Number(fc.total_sent) || 0,
+        delivered: Number(fc.total_delivered) || 0,
+        failed: Number(fc.total_failed) || 0,
+        total: campaign.total_recipients,
         batchProcessed: sentThisBatch,
         scheduledRetries: scheduledRetryThisBatch,
-        pendingRetries: (waitingRetryNow || 0) + (waitingRetryLater || 0)
+        pendingRetries: Number(fc.total_waiting_retry) || 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
