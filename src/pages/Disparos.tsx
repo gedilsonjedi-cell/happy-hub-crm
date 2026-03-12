@@ -820,7 +820,7 @@ const Disparos = () => {
         return;
       }
 
-      toast.success("Campanha retomada!");
+      toast.warning("Campanha retomada! Se foi pausada automaticamente por sinalização de qualidade, a responsabilidade é sua. Monitore os indicadores do número.", { duration: 8000 });
       
       // Refresh data to trigger the campaign processor hook
       fetchData();
