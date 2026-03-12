@@ -9,7 +9,7 @@ export function useUnreadMessagesCount() {
   const [sectorIds, setSectorIds] = useState<string[]>([]);
   const [isReady, setIsReady] = useState(false);
   const lastFetchRef = useRef<number>(0);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch user data directly to avoid hook context issues
   useEffect(() => {
