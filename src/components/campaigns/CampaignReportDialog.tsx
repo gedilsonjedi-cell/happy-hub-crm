@@ -435,6 +435,30 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
 
         <ScrollArea className="flex-1 min-h-0" viewportClassName="max-h-[calc(95vh-120px)]">
           <div className="space-y-6">
+            {/* Campaign Channels Used */}
+            {campaignChannels.length > 0 && (
+              <div className="bg-muted/20 rounded-lg p-4 border border-border">
+                <div className="flex items-center gap-2 mb-3">
+                  <Smartphone className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-foreground text-sm">Canais utilizados no disparo</h3>
+                  <Badge variant="outline" className="text-xs">{campaignChannels.length}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {campaignChannels.map((ch) => (
+                    <div
+                      key={ch.id}
+                      className="flex items-center gap-2 bg-card rounded-lg px-3 py-2 border border-border"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-primary" />
+                      <div>
+                        <p className="text-xs font-medium text-foreground">{ch.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{ch.phone}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Conversion Funnel + Engagement Card */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Conversion Funnel */}
