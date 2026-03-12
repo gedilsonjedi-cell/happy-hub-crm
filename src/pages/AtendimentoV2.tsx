@@ -1332,9 +1332,9 @@ const AtendimentoV2 = () => {
     }
 
     // Update lastInboundTime from the latest inbound message already loaded
-    const latestInbound = infiniteMessages.messages
-      .filter(m => m.direction === "inbound")
-      .at(-1);
+    const inboundMessages = infiniteMessages.messages
+      .filter(m => m.direction === "inbound");
+    const latestInbound = inboundMessages.length > 0 ? inboundMessages[inboundMessages.length - 1] : undefined;
 
     if (latestInbound) {
       const conversationKey = getConversationKey(selectedConversation);
