@@ -25,22 +25,27 @@ export function useCampaignProcessor({
   enabled = true 
 }: UseCampaignProcessorOptions) {
   const processingRef = useRef<Set<string>>(new Set());
-  const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const timeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Lock to prevent concurrent batch calls for the same campaign
+  const activeBatchRef = useRef<Set<string>>(new Set());
 
   const getRandomInterval = (min: number, max: number) => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   };
 
   const processNextBatch = useCallback(async (campaign: Campaign) => {
-    if (processingRef.current.has(campaign.id)) {
+    // Prevent concurrent batch calls for same campaign (critical for full mode)
+    if (activeBatchRef.current.has(campaign.id)) {
       return;
     }
 
     if (campaign.status !== 'running') {
       processingRef.current.delete(campaign.id);
+      activeBatchRef.current.delete(campaign.id);
       return;
     }
 
+    activeBatchRef.current.add(campaign.id);
     processingRef.current.add(campaign.id);
 
     try {
@@ -54,8 +59,10 @@ export function useCampaignProcessor({
         }
       });
 
+      // Release the batch lock AFTER we get the response
+      activeBatchRef.current.delete(campaign.id);
+
       if (error) {
-        // Stop processing if campaign was deleted (404)
         if (error.message?.includes('404') || error.message?.includes('Campaign not found')) {
           processingRef.current.delete(campaign.id);
           timeoutsRef.current.delete(campaign.id);
@@ -70,7 +77,6 @@ export function useCampaignProcessor({
         return;
       }
 
-
       onUpdate();
 
       if (!data.done && (data.status === 'running' || data.status === 'waiting_retry')) {
@@ -79,7 +85,9 @@ export function useCampaignProcessor({
         if (data.status === 'waiting_retry') {
           waitTime = 60000;
         } else if (isFullMode) {
-          waitTime = 100;
+          // In full mode, wait a bit longer to allow the batch to fully complete
+          // and prevent overlapping requests
+          waitTime = 500;
         } else {
           const minInterval = campaign.min_interval || 5;
           const maxInterval = campaign.max_interval || 120;
@@ -95,7 +103,6 @@ export function useCampaignProcessor({
             .eq('id', campaign.id)
             .single()
             .then(({ data: updatedCampaign }) => {
-              // Continue processing if running OR if there are pending retries
               if (updatedCampaign && (updatedCampaign.status === 'running' || data.pendingRetries > 0)) {
                 processNextBatch(updatedCampaign as Campaign);
               }
@@ -108,7 +115,7 @@ export function useCampaignProcessor({
         onUpdate();
       }
     } catch (err) {
-      // Retry after 5 seconds
+      activeBatchRef.current.delete(campaign.id);
       const timeout = setTimeout(() => {
         processingRef.current.delete(campaign.id);
         processNextBatch(campaign);
@@ -124,7 +131,6 @@ export function useCampaignProcessor({
     const runningCampaigns = campaigns.filter(c => c.status === 'running');
 
     for (const campaign of runningCampaigns) {
-      // Only start if not already processing
       if (!processingRef.current.has(campaign.id) && !timeoutsRef.current.has(campaign.id)) {
         processNextBatch(campaign);
       }
@@ -139,10 +145,10 @@ export function useCampaignProcessor({
       }
       timeoutsRef.current.clear();
       processingRef.current.clear();
+      activeBatchRef.current.clear();
     };
   }, []);
 
-  // Expose method to manually trigger processing
   const startProcessing = useCallback((campaignId: string) => {
     const campaign = campaigns.find(c => c.id === campaignId);
     if (campaign) {
@@ -157,6 +163,7 @@ export function useCampaignProcessor({
       timeoutsRef.current.delete(campaignId);
     }
     processingRef.current.delete(campaignId);
+    activeBatchRef.current.delete(campaignId);
   }, []);
 
   return {
