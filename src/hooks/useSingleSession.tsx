@@ -27,7 +27,7 @@ export const useSingleSession = (
   const sessionToken = useRef<string>(getSessionToken());
   const isRegistering = useRef(false);
   const hasRegistered = useRef(false);
-  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLoggingOut = useRef(false);
   const lastValidationTime = useRef<number>(0);
 
