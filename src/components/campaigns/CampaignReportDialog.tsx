@@ -196,8 +196,31 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       setSearchTerm("");
       setStatusFilter("all");
       setClassificationFilter("all");
+      setCampaignChannels([]);
     }
   }, [open, campaign?.id]);
+
+  const fetchCampaignChannels = async () => {
+    if (!campaign) return;
+    try {
+      const { data: ccData } = await supabase
+        .from("campaign_channels")
+        .select("channel_id")
+        .eq("campaign_id", campaign.id);
+
+      if (ccData && ccData.length > 0) {
+        const channelIds = ccData.map(cc => cc.channel_id);
+        const { data: channelsData } = await supabase
+          .from("channels")
+          .select("id, name, phone")
+          .in("id", channelIds);
+
+        setCampaignChannels(channelsData || []);
+      }
+    } catch (error) {
+      console.error("Error fetching campaign channels:", error);
+    }
+  };
 
   const fetchRecipients = async () => {
     if (!campaign) return;
