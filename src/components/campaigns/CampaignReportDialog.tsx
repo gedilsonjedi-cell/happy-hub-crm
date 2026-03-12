@@ -157,6 +157,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   useEffect(() => {
     if (open && campaign) {
       fetchRecipients();
+      fetchCampaignChannels();
       
       // Set up realtime subscription for live updates
       const channel = supabase
