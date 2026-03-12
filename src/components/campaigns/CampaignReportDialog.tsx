@@ -152,6 +152,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const [previewPhone, setPreviewPhone] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
+  const [campaignChannels, setCampaignChannels] = useState<Array<{ id: string; name: string; phone: string }>>([]);
 
   useEffect(() => {
     if (open && campaign) {
