@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +51,7 @@ import {
   MessageCircle,
   Target,
   RotateCcw,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -151,10 +152,12 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const [previewPhone, setPreviewPhone] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
+  const [campaignChannels, setCampaignChannels] = useState<Array<{ id: string; name: string; phone: string }>>([]);
 
   useEffect(() => {
     if (open && campaign) {
       fetchRecipients();
+      fetchCampaignChannels();
       
       // Set up realtime subscription for live updates
       const channel = supabase
@@ -193,8 +196,31 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       setSearchTerm("");
       setStatusFilter("all");
       setClassificationFilter("all");
+      setCampaignChannels([]);
     }
   }, [open, campaign?.id]);
+
+  const fetchCampaignChannels = async () => {
+    if (!campaign) return;
+    try {
+      const { data: ccData } = await supabase
+        .from("campaign_channels")
+        .select("channel_id")
+        .eq("campaign_id", campaign.id);
+
+      if (ccData && ccData.length > 0) {
+        const channelIds = ccData.map(cc => cc.channel_id);
+        const { data: channelsData } = await supabase
+          .from("channels")
+          .select("id, name, phone")
+          .in("id", channelIds);
+
+        setCampaignChannels(channelsData || []);
+      }
+    } catch (error) {
+      console.error("Error fetching campaign channels:", error);
+    }
+  };
 
   const fetchRecipients = async () => {
     if (!campaign) return;
@@ -409,6 +435,30 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
 
         <ScrollArea className="flex-1 min-h-0" viewportClassName="max-h-[calc(95vh-120px)]">
           <div className="space-y-6">
+            {/* Campaign Channels Used */}
+            {campaignChannels.length > 0 && (
+              <div className="bg-muted/20 rounded-lg p-4 border border-border">
+                <div className="flex items-center gap-2 mb-3">
+                  <Smartphone className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-foreground text-sm">Canais utilizados no disparo</h3>
+                  <Badge variant="outline" className="text-xs">{campaignChannels.length}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {campaignChannels.map((ch) => (
+                    <div
+                      key={ch.id}
+                      className="flex items-center gap-2 bg-card rounded-lg px-3 py-2 border border-border"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-primary" />
+                      <div>
+                        <p className="text-xs font-medium text-foreground">{ch.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{ch.phone}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Conversion Funnel + Engagement Card */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Conversion Funnel */}

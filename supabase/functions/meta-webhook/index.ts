@@ -688,6 +688,39 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
 }
 
 // =============================================
+// AUTO-PAUSE CAMPAIGNS ON QUALITY SIGNALS
+// =============================================
+async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
+  // Find all running campaigns that use this channel
+  const { data: campaignChannelsData } = await supabase
+    .from('campaign_channels')
+    .select('campaign_id')
+    .eq('channel_id', channelId);
+
+  if (!campaignChannelsData || campaignChannelsData.length === 0) return;
+
+  const campaignIds = campaignChannelsData.map(cc => cc.campaign_id);
+
+  // Pause all running campaigns for these channels
+  const { data: pausedCampaigns, error } = await supabase
+    .from('campaigns')
+    .update({
+      status: 'paused',
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', campaignIds)
+    .eq('status', 'running')
+    .select('id, name');
+
+  if (pausedCampaigns && pausedCampaigns.length > 0) {
+    console.log(`[Webhook] ⚠️ AUTO-PAUSED ${pausedCampaigns.length} campaign(s) due to quality signal: ${reason}`);
+    for (const c of pausedCampaigns) {
+      console.log(`[Webhook]   → Paused campaign: ${c.name} (${c.id})`);
+    }
+  }
+}
+
+// =============================================
 // BATCH STATUS UPDATES (avoids per-update queries)
 // =============================================
 async function processStatusUpdates(statuses: Record<string, unknown>[]) {
@@ -703,6 +736,48 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     grouped.get(dbStatus)!.push(msgId);
   }
 
+  // ─── QUALITY SIGNAL DETECTION ───────────────────────────────────────
+  // Check for errors that indicate quality/template issues that should pause campaigns
+  for (const s of statuses) {
+    if (s.status !== 'failed') continue;
+    const errors = s.errors as Record<string, unknown>[] | undefined;
+    if (!errors || errors.length === 0) continue;
+
+    for (const err of errors) {
+      const code = String(err.code || '');
+      const title = String(err.title || '').toLowerCase();
+
+      // Quality-related error codes that should trigger auto-pause:
+      // 131049 - Marketing message rate limit (phone quality too low)
+      // 131031 - Account restricted / flagged
+      // 368 - Temporarily blocked for policy violation
+      // 131056 - Template paused due to quality
+      // 132015 - Template paused
+      // 131057 - Account flagged
+      const qualityErrorCodes = ['131049', '131031', '368', '131056', '132015', '131057'];
+      const qualityKeywords = ['quality', 'flagged', 'paused', 'restricted', 'spam', 'blocked for policy'];
+
+      const isQualityIssue = qualityErrorCodes.includes(code) ||
+        qualityKeywords.some(kw => title.includes(kw));
+
+      if (isQualityIssue) {
+        // Find which channel this message belongs to
+        const { data: msg } = await supabase
+          .from('whatsapp_messages')
+          .select('channel_id')
+          .eq('message_id', s.id as string)
+          .maybeSingle();
+
+        if (msg?.channel_id) {
+          const reason = `Error ${code}: ${err.title || 'Quality signal detected'}`;
+          console.log(`[Webhook] 🚨 Quality signal detected! Code: ${code}, Title: ${err.title}`);
+          await checkAndPauseOnQualitySignal(msg.channel_id, reason);
+        }
+        break; // One pause per status batch is enough
+      }
+    }
+  }
+
   // Execute one update per status group in whatsapp_messages
   await Promise.all(
     Array.from(grouped.entries()).map(([status, ids]) =>
@@ -714,14 +789,11 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   );
 
   // ─── SYNC CAMPAIGN RECIPIENTS ─────────────────────────────────────────
-  // For delivered, read, failed statuses: update campaign_recipients table
-  // so that campaign dashboard shows correct metrics
   const relevantStatuses = ['delivered', 'read', 'failed'];
   const relevantGroups = Array.from(grouped.entries()).filter(([status]) => relevantStatuses.includes(status));
 
   if (relevantGroups.length === 0) return;
 
-  // Fetch whatsapp_messages metadata to get campaignId and destination phone
   const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
   const { data: messages } = await supabase
     .from('whatsapp_messages')
@@ -731,7 +803,6 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
 
   if (!messages || messages.length === 0) return;
 
-  // Update campaign_recipients for each message that has a campaignId
   const updatePromises: Promise<unknown>[] = [];
   for (const msg of messages) {
     const campaignId = (msg.metadata as Record<string, unknown>)?.campaignId as string | null;
@@ -742,9 +813,8 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     const suffix8 = cleanPhone.slice(-8);
     const suffix11 = cleanPhone.slice(-11);
 
-    const recipientStatus = msg.status; // delivered, read, or failed
+    const recipientStatus = msg.status;
 
-    // Map whatsapp status to campaign_recipient fields
     if (recipientStatus === 'delivered') {
       updatePromises.push(
         supabase.from('campaign_recipients').update({
@@ -753,7 +823,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
           updated_at: new Date().toISOString()
         })
         .eq('campaign_id', campaignId)
-        .eq('status', 'sent') // only update if still 'sent'
+        .eq('status', 'sent')
         .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
       );
     } else if (recipientStatus === 'read') {
@@ -764,11 +834,10 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
           updated_at: new Date().toISOString()
         })
         .eq('campaign_id', campaignId)
-        .in('status', ['sent', 'delivered']) // update if sent or delivered
+        .in('status', ['sent', 'delivered'])
         .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
       );
     } else if (recipientStatus === 'failed') {
-      // Extract error from status details if available
       const errorDetails = statuses.find(s => s.id === msg.message_id);
       const errorMsg = (errorDetails?.errors as Record<string, unknown>[])?.[0]?.title as string || 'Falha reportada pela Meta';
       const errorCode = String((errorDetails?.errors as Record<string, unknown>[])?.[0]?.code || 'WEBHOOK_FAILED');
