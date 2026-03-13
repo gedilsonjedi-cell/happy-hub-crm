@@ -512,6 +512,7 @@ export type Database = {
           min_interval: number | null
           name: string
           organization_id: string | null
+          quality_pause_acknowledged: boolean
           scheduled_at: string | null
           sector_id: string | null
           sent_count: number
@@ -538,6 +539,7 @@ export type Database = {
           min_interval?: number | null
           name: string
           organization_id?: string | null
+          quality_pause_acknowledged?: boolean
           scheduled_at?: string | null
           sector_id?: string | null
           sent_count?: number
@@ -564,6 +566,7 @@ export type Database = {
           min_interval?: number | null
           name?: string
           organization_id?: string | null
+          quality_pause_acknowledged?: boolean
           scheduled_at?: string | null
           sector_id?: string | null
           sent_count?: number

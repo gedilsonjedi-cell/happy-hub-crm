@@ -1,0 +1,1 @@
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS quality_pause_acknowledged boolean NOT NULL DEFAULT false;
