@@ -809,10 +809,14 @@ const Disparos = () => {
 
   const handleResumeCampaign = async (campaign: Campaign) => {
     try {
-      // Update status to running
+      // Update status to running AND acknowledge quality risk so webhook won't re-pause
       const { error: updateError } = await supabase
         .from("campaigns")
-        .update({ status: "running", updated_at: new Date().toISOString() })
+        .update({ 
+          status: "running", 
+          quality_pause_acknowledged: true,
+          updated_at: new Date().toISOString() 
+        })
         .eq("id", campaign.id);
 
       if (updateError) {

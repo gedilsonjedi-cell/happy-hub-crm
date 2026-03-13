@@ -702,6 +702,7 @@ async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
   const campaignIds = campaignChannelsData.map(cc => cc.campaign_id);
 
   // Pause all running campaigns for these channels
+  // SKIP campaigns where the user already acknowledged the quality risk
   const { data: pausedCampaigns, error } = await supabase
     .from('campaigns')
     .update({
@@ -710,6 +711,7 @@ async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
     })
     .in('id', campaignIds)
     .eq('status', 'running')
+    .eq('quality_pause_acknowledged', false)
     .select('id, name');
 
   if (pausedCampaigns && pausedCampaigns.length > 0) {
