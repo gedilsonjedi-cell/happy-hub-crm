@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
     const manualVariables = campaign.manual_variables as Record<string, string> | null;
 
     async function processRecipient(recipient: typeof recipientsToSend[0], idx: number) {
-      const campaignChannel = campaignChannels[idx % campaignChannels.length] as { channel_id: string; template_id: string };
+      const campaignChannel = activeCampaignChannels[idx % activeCampaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id) as {
         id: string; name: string; variables?: string[] | null; variable_mappings?: Record<string, string> | null
