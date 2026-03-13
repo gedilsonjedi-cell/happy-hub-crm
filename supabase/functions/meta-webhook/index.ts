@@ -707,9 +707,8 @@ async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
     .from('campaigns')
     .update({
       status: 'paused',
-      // Mark as acknowledged at the moment of quality-pause so any manual resume path
-      // (UI, cron fallback, or direct status update) won't be auto-paused again.
-      quality_pause_acknowledged: true,
+      // Keep as false here: only explicit user resume should acknowledge risk.
+      quality_pause_acknowledged: false,
       updated_at: new Date().toISOString(),
     })
     .in('id', campaignIds)

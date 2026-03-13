@@ -175,18 +175,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    const connectedChannels = channels.filter(c => c.connected && c.access_token);
-    if (connectedChannels.length === 0) {
+    // IMPORTANT: avoid blocking dispatch only because `connected` flag is stale.
+    // If channel has credentials, we can still attempt sending.
+    const dispatchableChannels = channels.filter(c => !!c.access_token);
+    if (dispatchableChannels.length === 0) {
       await supabase.from('campaigns').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', campaignId);
       return new Response(
-        JSON.stringify({ error: 'Nenhum canal conectado com credenciais válidas.', done: true, needsReconnection: true }),
+        JSON.stringify({ error: 'Nenhum canal com credenciais válidas para envio.', done: true, needsReconnection: true }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const dispatchableChannelIds = new Set(dispatchableChannels.map(c => c.id));
+    const activeCampaignChannels = campaignChannels.filter((cc: { channel_id: string; template_id: string }) =>
+      dispatchableChannelIds.has(cc.channel_id)
+    );
+
+    if (activeCampaignChannels.length === 0) {
+      await supabase.from('campaigns').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', campaignId);
+      return new Response(
+        JSON.stringify({ error: 'Nenhum dos canais da campanha está disponível para envio.', done: true, needsReconnection: true }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Auto-subscribe webhooks on first batch
     if (campaign.sent_count === 0) {
-      for (const ch of connectedChannels) {
+      for (const ch of dispatchableChannels) {
         if (ch.provider === 'meta' && ch.access_token) {
           fetch(`${supabaseUrl}/functions/v1/meta-subscribe-webhook`, {
             method: 'POST',
@@ -197,7 +212,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const channelsMap = new Map(channels.map(c => [c.id, c]));
+    const channelsMap = new Map(dispatchableChannels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
 
     // ===== ATOMIC CLAIM: Use DB function to prevent race conditions =====
@@ -268,7 +283,7 @@ Deno.serve(async (req) => {
     const manualVariables = campaign.manual_variables as Record<string, string> | null;
 
     async function processRecipient(recipient: typeof recipientsToSend[0], idx: number) {
-      const campaignChannel = campaignChannels[idx % campaignChannels.length] as { channel_id: string; template_id: string };
+      const campaignChannel = activeCampaignChannels[idx % activeCampaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
       const template = templatesMap.get(campaignChannel.template_id) as {
         id: string; name: string; variables?: string[] | null; variable_mappings?: Record<string, string> | null
