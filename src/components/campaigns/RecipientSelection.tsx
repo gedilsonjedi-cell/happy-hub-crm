@@ -354,6 +354,14 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   if (sourceType === "contacts") {
     return (
       <div className="space-y-4">
+        {sectorId && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
+            <span className="text-sm text-foreground">
+              Exibindo apenas contatos vinculados ao departamento selecionado
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-foreground text-base font-semibold">
