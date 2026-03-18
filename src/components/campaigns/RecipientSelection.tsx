@@ -42,9 +42,10 @@ interface Lead {
 
 interface RecipientSelectionProps {
   onSelectionChange: (recipients: { phones: string[]; source: RecipientSourceType }) => void;
+  sectorId?: string;
 }
 
-export function RecipientSelection({ onSelectionChange }: RecipientSelectionProps) {
+export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSelectionProps) {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [sourceType, setSourceType] = useState<RecipientSourceType>(null);
