@@ -70,7 +70,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     if (sourceType === "contacts" && user && effectiveOrganizationId) {
       fetchLeads();
     }
-  }, [sourceType, user, effectiveOrganizationId]);
+  }, [sourceType, user, effectiveOrganizationId, sectorId]);
 
   // Filter leads based on filter type
   useEffect(() => {
