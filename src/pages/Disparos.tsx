@@ -1066,7 +1066,10 @@ const Disparos = () => {
 
               {/* Recipient Selection */}
               <div className="space-y-3">
-                <RecipientSelection onSelectionChange={setRecipientData} />
+                <RecipientSelection 
+                  onSelectionChange={setRecipientData} 
+                  sectorId={formData.department && formData.department !== "none" ? formData.department : undefined}
+                />
               </div>
 
               {/* Random Cadence Dispatch */}

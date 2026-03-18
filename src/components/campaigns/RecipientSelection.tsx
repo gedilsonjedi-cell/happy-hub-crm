@@ -42,9 +42,10 @@ interface Lead {
 
 interface RecipientSelectionProps {
   onSelectionChange: (recipients: { phones: string[]; source: RecipientSourceType }) => void;
+  sectorId?: string;
 }
 
-export function RecipientSelection({ onSelectionChange }: RecipientSelectionProps) {
+export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSelectionProps) {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [sourceType, setSourceType] = useState<RecipientSourceType>(null);
@@ -69,7 +70,7 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
     if (sourceType === "contacts" && user && effectiveOrganizationId) {
       fetchLeads();
     }
-  }, [sourceType, user, effectiveOrganizationId]);
+  }, [sourceType, user, effectiveOrganizationId, sectorId]);
 
   // Filter leads based on filter type
   useEffect(() => {
@@ -179,23 +180,88 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
     if (!effectiveOrganizationId) return;
     
     setLoadingLeads(true);
-    const { data, error } = await supabase
-      .from("leads")
-      .select("id, name, phone, tags, created_at")
-      .eq("organization_id", effectiveOrganizationId)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setLeads(data);
-      setFilteredLeads(data);
+    
+    // If a sector is selected, only fetch leads that belong to that sector
+    // Leads are linked to sectors via conversation_assignments (by phone + sector_id)
+    if (sectorId) {
+      // First get all phones assigned to this sector
+      const { data: sectorAssignments, error: assignError } = await supabase
+        .from("conversation_assignments")
+        .select("conversation_phone")
+        .eq("sector_id", sectorId);
       
-      // Extract unique tags
-      const tags = new Set<string>();
-      data.forEach(lead => {
-        lead.tags?.forEach(tag => tags.add(tag));
-      });
-      setAvailableTags(Array.from(tags));
+      if (assignError) {
+        console.error("Error fetching sector assignments:", assignError);
+        setLoadingLeads(false);
+        return;
+      }
+      
+      const sectorPhones = sectorAssignments?.map(a => a.conversation_phone) || [];
+      
+      if (sectorPhones.length === 0) {
+        setLeads([]);
+        setFilteredLeads([]);
+        setAvailableTags([]);
+        setLoadingLeads(false);
+        return;
+      }
+      
+      // Fetch leads whose phones match the sector assignments
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, name, phone, tags, created_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .in("phone", sectorPhones)
+        .order("created_at", { ascending: false });
+      
+      if (!error && data) {
+        // Also try matching with formatted phones (some leads may have different formats)
+        const normalizedSectorPhones = new Set(sectorPhones.map(p => p.replace(/\D/g, '')));
+        
+        // Additionally fetch all leads to cross-match by normalized phone
+        const { data: allLeads } = await supabase
+          .from("leads")
+          .select("id, name, phone, tags, created_at")
+          .eq("organization_id", effectiveOrganizationId)
+          .order("created_at", { ascending: false });
+        
+        const matchedLeads = (allLeads || []).filter(lead => {
+          const normalizedLeadPhone = lead.phone.replace(/\D/g, '');
+          // Check direct match or with/without country code
+          return normalizedSectorPhones.has(normalizedLeadPhone) ||
+            normalizedSectorPhones.has('55' + normalizedLeadPhone) ||
+            (normalizedLeadPhone.startsWith('55') && normalizedSectorPhones.has(normalizedLeadPhone.substring(2)));
+        });
+        
+        setLeads(matchedLeads);
+        setFilteredLeads(matchedLeads);
+        
+        const tags = new Set<string>();
+        matchedLeads.forEach(lead => {
+          lead.tags?.forEach(tag => tags.add(tag));
+        });
+        setAvailableTags(Array.from(tags));
+      }
+    } else {
+      // No sector filter - fetch all leads
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, name, phone, tags, created_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setLeads(data);
+        setFilteredLeads(data);
+        
+        const tags = new Set<string>();
+        data.forEach(lead => {
+          lead.tags?.forEach(tag => tags.add(tag));
+        });
+        setAvailableTags(Array.from(tags));
+      }
     }
+    
     setLoadingLeads(false);
   };
 
@@ -288,6 +354,14 @@ export function RecipientSelection({ onSelectionChange }: RecipientSelectionProp
   if (sourceType === "contacts") {
     return (
       <div className="space-y-4">
+        {sectorId && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
+            <span className="text-sm text-foreground">
+              Exibindo apenas contatos vinculados ao departamento selecionado
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-foreground text-base font-semibold">
