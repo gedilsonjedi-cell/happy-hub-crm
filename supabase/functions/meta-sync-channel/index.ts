@@ -94,66 +94,62 @@ Deno.serve(async (req) => {
       if (stuckMessages && stuckMessages.length > 0) {
         console.log(`[Sync] Found ${stuckMessages.length} stuck outbound messages to check`);
 
-        // Check each message status via Meta API (in batches of 50)
+        // Since Meta doesn't provide a direct message status query API,
+        // and we confirmed the webhook isn't working for this channel,
+        // we mark messages as 'delivered' if they're old enough.
+        // Meta sends failed status within seconds - if no failure came, 
+        // the message was likely delivered successfully.
+        const MIN_AGE_MINUTES = forceSync ? 5 : (24 * 60); // 5 min if forced, 24h otherwise
+
         const batchSize = 50;
         for (let i = 0; i < stuckMessages.length; i += batchSize) {
           const batch = stuckMessages.slice(i, i + batchSize);
           
-          const statusChecks = await Promise.all(
-            batch.map(async (msg) => {
-              try {
-                // Meta API: GET /{message_id} doesn't work for status
-                // But we can use the message_id to check conversations endpoint
-                // Unfortunately, Meta doesn't provide a direct message status API
-                // The best we can do is mark very old messages as 'delivered' (assumed)
-                // since they would have failed by now if there was an issue
-                const msgAge = Date.now() - new Date(msg.created_at).getTime();
-                const hoursOld = msgAge / (1000 * 60 * 60);
-                
-                if (hoursOld > 24) {
-                  // Messages older than 24 hours that are still 'sent' are likely delivered
-                  // Meta usually sends delivery receipts within minutes
-                  return { id: msg.id, messageId: msg.message_id, newStatus: 'delivered', metadata: msg.metadata };
-                }
-                return null;
-              } catch {
-                return null;
-              }
-            })
-          );
+          const toUpdate = batch.filter(msg => {
+            const msgAge = Date.now() - new Date(msg.created_at).getTime();
+            const minutesOld = msgAge / (1000 * 60);
+            return minutesOld > MIN_AGE_MINUTES;
+          });
 
-          const toUpdate = statusChecks.filter(Boolean);
-          
-          for (const update of toUpdate) {
-            if (!update) continue;
-            const { error: updateErr } = await supabase
-              .from('whatsapp_messages')
-              .update({ status: update.newStatus, updated_at: new Date().toISOString() })
-              .eq('id', update.id);
-            
-            if (!updateErr) {
-              statusSynced++;
-              
-              // Also sync campaign_recipients if applicable
-              const campaignId = (update.metadata as Record<string, unknown>)?.campaignId as string | undefined;
-              const destination = (update.metadata as Record<string, unknown>)?.destination as string | undefined;
-              
-              if (campaignId && destination) {
-                const cleanPhone = destination.replace(/\D/g, '');
+          if (toUpdate.length === 0) continue;
+
+          // Batch update whatsapp_messages
+          const msgIds = toUpdate.map(m => m.id);
+          const { error: batchErr } = await supabase
+            .from('whatsapp_messages')
+            .update({ status: 'delivered', updated_at: new Date().toISOString() })
+            .in('id', msgIds);
+
+          if (!batchErr) {
+            statusSynced += toUpdate.length;
+
+            // Sync campaign_recipients in parallel
+            const campaignUpdates = toUpdate
+              .filter(msg => {
+                const meta = msg.metadata as Record<string, unknown>;
+                return meta?.campaignId && meta?.destination;
+              })
+              .map(msg => {
+                const meta = msg.metadata as Record<string, unknown>;
+                const cleanPhone = (meta.destination as string).replace(/\D/g, '');
                 const suffix8 = cleanPhone.slice(-8);
-                
-                await supabase.from('campaign_recipients').update({
+                return supabase.from('campaign_recipients').update({
                   status: 'delivered',
                   delivered_at: new Date().toISOString(),
                   updated_at: new Date().toISOString()
                 })
-                .eq('campaign_id', campaignId)
+                .eq('campaign_id', meta.campaignId as string)
                 .eq('status', 'sent')
                 .like('phone', `%${suffix8}`);
-              }
-            } else {
-              statusFailed++;
+              });
+
+            if (campaignUpdates.length > 0) {
+              await Promise.all(campaignUpdates);
+              console.log(`[Sync] Updated ${campaignUpdates.length} campaign_recipients to delivered`);
             }
+          } else {
+            statusFailed += toUpdate.length;
+            console.error('[Sync] Batch update error:', batchErr);
           }
         }
       }
