@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { channelId, syncInbound = true, syncStatuses = true, limit = 200 } = await req.json();
+    const { channelId, syncInbound = true, syncStatuses = true, forceSync = true, limit = 200 } = await req.json();
 
     if (!channelId) {
       return new Response(JSON.stringify({ error: 'channelId required' }), {
