@@ -21,7 +21,8 @@ function normalizePhone(phone: string): string {
  * Sync channel: 
  * 1. Re-subscribe webhook for the channel's WABA
  * 2. Check all outbound messages stuck at 'sent' and try to get their real status
- * 3. Fetch recent conversations from Meta to capture any missed inbound messages
+ * 3. Reactivate conversations for recipients who read messages (so attendants can respond)
+ * 4. Health check
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { channelId, syncInbound = true, syncStatuses = true, forceSync = true, limit = 200 } = await req.json();
+    const { channelId, syncInbound = true, syncStatuses = true, forceSync = true, limit = 200, reactivateRead = false } = await req.json();
 
     if (!channelId) {
       return new Response(JSON.stringify({ error: 'channelId required' }), {
@@ -77,7 +78,6 @@ Deno.serve(async (req) => {
 
     // ─── STEP 2: Sync outbound message statuses ─────────────────────
     if (syncStatuses) {
-      // Find outbound messages stuck at 'sent' for more than 5 minutes
       const { data: stuckMessages } = await supabase
         .from('whatsapp_messages')
         .select('id, message_id, metadata, created_at')
@@ -94,12 +94,7 @@ Deno.serve(async (req) => {
       if (stuckMessages && stuckMessages.length > 0) {
         console.log(`[Sync] Found ${stuckMessages.length} stuck outbound messages to check`);
 
-        // Since Meta doesn't provide a direct message status query API,
-        // and we confirmed the webhook isn't working for this channel,
-        // we mark messages as 'delivered' if they're old enough.
-        // Meta sends failed status within seconds - if no failure came, 
-        // the message was likely delivered successfully.
-        const MIN_AGE_MINUTES = forceSync ? 5 : (24 * 60); // 5 min if forced, 24h otherwise
+        const MIN_AGE_MINUTES = forceSync ? 5 : (24 * 60);
 
         const batchSize = 50;
         for (let i = 0; i < stuckMessages.length; i += batchSize) {
@@ -113,7 +108,6 @@ Deno.serve(async (req) => {
 
           if (toUpdate.length === 0) continue;
 
-          // Batch update whatsapp_messages
           const msgIds = toUpdate.map(m => m.id);
           const { error: batchErr } = await supabase
             .from('whatsapp_messages')
@@ -161,60 +155,106 @@ Deno.serve(async (req) => {
       };
     }
 
-    // ─── STEP 3: Fetch recent conversations from Meta API ───────────
-    if (syncInbound) {
-      let inboundSynced = 0;
-      
+    // ─── STEP 3: Reactivate conversations for recipients who READ ───
+    if (reactivateRead) {
+      let reactivated = 0;
+      let alreadyActive = 0;
+
       try {
-        // Use the Conversations API to get recent conversations
-        // GET /{phone_number_id}/conversations - but this is analytics only
-        // Instead, check conversation_assignments for this channel and look for 
-        // phones that might have replied
-        
-        // Alternative approach: Use the phone_number_id to fetch messages
-        // Meta doesn't have a "list messages" API, but we can check 
-        // if there are conversation_assignments with no inbound messages
-        
-        // Find all conversation_assignments for this channel that have been active recently
-        const { data: assignments } = await supabase
-          .from('conversation_assignments')
-          .select('id, conversation_phone, status, updated_at')
-          .eq('channel_id', channelId)
-          .order('updated_at', { ascending: false })
-          .limit(limit);
-        
-        if (assignments && assignments.length > 0) {
-          // Check for phones that have assignments but no inbound messages
-          const phones = assignments.map(a => a.conversation_phone);
+        // Get all campaign_recipients with 'read' status for campaigns using this channel
+        const { data: campaignChannels } = await supabase
+          .from('campaign_channels')
+          .select('campaign_id')
+          .eq('channel_id', channelId);
+
+        if (campaignChannels && campaignChannels.length > 0) {
+          const campaignIds = campaignChannels.map(cc => cc.campaign_id);
           
-          // Get inbound message counts per phone
-          const { data: inboundCounts } = await supabase
-            .from('whatsapp_messages')
-            .select('sender_phone')
-            .eq('channel_id', channelId)
-            .eq('direction', 'inbound')
-            .in('sender_phone', phones);
-          
-          const phonesWithInbound = new Set((inboundCounts || []).map(m => m.sender_phone));
-          const phonesWithoutInbound = phones.filter(p => !phonesWithInbound.has(p));
-          
-          results.conversationCheck = {
-            totalAssignments: assignments.length,
-            withInbound: phonesWithInbound.size,
-            withoutInbound: phonesWithoutInbound.length,
-            missingInboundPhones: phonesWithoutInbound.slice(0, 20) // Show first 20
-          };
+          // Fetch recipients who read the message
+          const { data: readRecipients } = await supabase
+            .from('campaign_recipients')
+            .select('phone, name, campaign_id')
+            .in('campaign_id', campaignIds)
+            .eq('status', 'read')
+            .limit(1000);
+
+          if (readRecipients && readRecipients.length > 0) {
+            console.log(`[Sync] Found ${readRecipients.length} recipients who read the campaign message`);
+
+            // Process in batches
+            for (const recipient of readRecipients) {
+              const normalizedPhone = normalizePhone(recipient.phone);
+
+              // Check if conversation_assignment exists
+              const { data: existing } = await supabase
+                .from('conversation_assignments')
+                .select('id, status')
+                .eq('channel_id', channelId)
+                .eq('conversation_phone', normalizedPhone)
+                .maybeSingle();
+
+              if (existing) {
+                if (existing.status === 'archived') {
+                  // Reactivate to 'pending' so attendants see it
+                  await supabase
+                    .from('conversation_assignments')
+                    .update({ status: 'pending', updated_at: new Date().toISOString() })
+                    .eq('id', existing.id);
+                  reactivated++;
+                } else {
+                  alreadyActive++;
+                }
+              } else {
+                // Create new conversation assignment
+                // Find or create lead first
+                const suffix8 = normalizedPhone.slice(-8);
+                const { data: leadData } = await supabase
+                  .from('leads')
+                  .select('id')
+                  .eq('organization_id', channel.organization_id)
+                  .or(`phone.eq.${normalizedPhone},phone.ilike.%${suffix8}`)
+                  .limit(1);
+
+                const leadId = leadData?.[0]?.id || null;
+
+                // Get sector from campaign
+                const { data: campaign } = await supabase
+                  .from('campaigns')
+                  .select('sector_id')
+                  .eq('id', recipient.campaign_id)
+                  .maybeSingle();
+
+                await supabase
+                  .from('conversation_assignments')
+                  .insert({
+                    channel_id: channelId,
+                    conversation_phone: normalizedPhone,
+                    lead_id: leadId,
+                    status: 'pending',
+                    sector_id: campaign?.sector_id || null,
+                  });
+                reactivated++;
+              }
+            }
+          }
         }
-        
-        results.inboundSync = { synced: inboundSynced };
+
+        results.reactivation = {
+          reactivated,
+          alreadyActive,
+          message: reactivated > 0 
+            ? `${reactivated} conversas foram reativadas como "Novos" para os atendentes verem`
+            : 'Nenhuma conversa precisou ser reativada'
+        };
+
+        console.log(`[Sync] Reactivation: ${reactivated} reactivated, ${alreadyActive} already active`);
       } catch (e) {
-        console.error('[Sync] Inbound sync error:', e);
-        results.inboundSync = { error: String(e) };
+        console.error('[Sync] Reactivation error:', e);
+        results.reactivation = { error: String(e) };
       }
     }
 
     // ─── STEP 4: Check webhook health ───────────────────────────────
-    // Count messages by status to give a health overview
     const { data: healthData } = await supabase
       .from('whatsapp_messages')
       .select('direction, status')
@@ -240,32 +280,13 @@ Deno.serve(async (req) => {
       diagnosis: webhookHealthy 
         ? 'Webhooks are working normally'
         : outboundSent > 0 
-          ? 'WARNING: No delivery confirmations or inbound messages received. The webhook URL may not be configured in the Meta App settings for this WABA.'
+          ? 'WARNING: No delivery confirmations or inbound messages received.'
           : 'No outbound messages in last 24h'
     };
-
-    if (!webhookHealthy && outboundSent > 0) {
-      console.log(`[Sync] ⚠️ Channel ${channel.phone} (${channelId}) has ${outboundSent} sent messages but NO webhook callbacks in 24h!`);
-      console.log(`[Sync] WABA: ${channel.waba_id}, PhoneNumberId: ${channel.app_name}`);
-      console.log(`[Sync] The webhook URL needs to be configured in Meta App Dashboard for WABA ${channel.waba_id}`);
-      console.log(`[Sync] Webhook URL should be: ${supabaseUrl}/functions/v1/meta-webhook`);
-    }
 
     return new Response(JSON.stringify({
       success: true,
       ...results,
-      instructions: !webhookHealthy && outboundSent > 0 ? {
-        problem: 'O webhook da Meta não está configurado para este número/WABA',
-        webhookUrl: `${supabaseUrl}/functions/v1/meta-webhook`,
-        wabaId: channel.waba_id,
-        steps: [
-          '1. Acesse o Meta Business Manager > App Dashboard',
-          '2. Vá em Webhooks > WhatsApp Business Account',
-          '3. Configure a URL de callback',
-          '4. Use o verify_token do canal para validação',
-          '5. Inscreva os campos: messages, messaging_handovers, messaging_postbacks'
-        ]
-      } : undefined
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
