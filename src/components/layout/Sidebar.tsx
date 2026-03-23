@@ -311,6 +311,9 @@ export function Sidebar() {
             {/* Personalização submenu */}
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
 
+            {/* Apps submenu */}
+            {renderSubmenu(appsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
+
             {/* Bottom menu items */}
             {bottomMenuItems.map((item) => renderMenuItem(item))}
           </nav>
