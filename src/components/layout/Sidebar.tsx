@@ -99,6 +99,7 @@ export function Sidebar() {
   const [crmOpen, setCrmOpen] = useState(true);
   const [disparosOpen, setDisparosOpen] = useState(true);
   const [personalizacaoOpen, setPersonalizacaoOpen] = useState(true);
+  const [appsOpen, setAppsOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
   const unreadCount = useUnreadMessagesCount();
