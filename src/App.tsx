@@ -49,6 +49,8 @@ import Blog from "./pages/Blog";
 import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 import AtendimentoV2 from "./pages/AtendimentoV2";
+import Links from "./pages/Links";
+import RedirectPage from "./pages/RedirectPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
