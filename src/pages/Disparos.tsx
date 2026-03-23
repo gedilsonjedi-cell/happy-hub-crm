@@ -111,6 +111,7 @@ interface Campaign {
   failed_count: number;
   scheduled_at?: string | null;
   created_at: string;
+  updated_at: string;
   started_at?: string | null;
   completed_at?: string | null;
   min_interval?: number;
