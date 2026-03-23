@@ -99,10 +99,15 @@ const Links = () => {
       return;
     }
 
+    if (!organizationId || !user?.id) {
+      toast.error("Erro de autenticação. Recarregue a página.");
+      return;
+    }
+
     setSaving(true);
     const { error } = await supabase.from("redirect_links").insert({
       organization_id: organizationId,
-      created_by: user?.id,
+      created_by: user.id,
       slug: slug.trim().toLowerCase(),
       name: name.trim(),
       destinations: validDestinations as any,
