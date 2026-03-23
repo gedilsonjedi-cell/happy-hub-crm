@@ -68,8 +68,11 @@ const crmSubmenu = [
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
-  { icon: Link2, label: "Links", path: "/links", permission: "canAccessDisparos" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos" },
+];
+
+const appsSubmenu = [
+  { icon: Link2, label: "Links", path: "/links", permission: null },
 ];
 
 const personalizacaoSubmenu = [
