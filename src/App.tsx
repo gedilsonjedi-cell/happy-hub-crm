@@ -49,6 +49,8 @@ import Blog from "./pages/Blog";
 import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 import AtendimentoV2 from "./pages/AtendimentoV2";
+import Links from "./pages/Links";
+import RedirectPage from "./pages/RedirectPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -151,6 +153,7 @@ const App = () => (
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/indique-ganhe/:code" element={<ReferralRedirect />} />
+          <Route path="/r/:slug" element={<RedirectPage />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
@@ -180,6 +183,7 @@ const App = () => (
           <Route path="/personalizacao/campos" element={<ProtectedRoute><CamposPersonalizados /></ProtectedRoute>} />
           <Route path="/personalizacao/respostas-rapidas" element={<ProtectedRoute><RespostasRapidas /></ProtectedRoute>} />
           <Route path="/integracoes" element={<ProtectedRoute><Integracoes /></ProtectedRoute>} />
+          <Route path="/links" element={<ProtectedRoute><Links /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />

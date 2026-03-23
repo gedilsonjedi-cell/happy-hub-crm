@@ -2504,6 +2504,53 @@ export type Database = {
           },
         ]
       }
+      redirect_links: {
+        Row: {
+          click_count: number | null
+          created_at: string | null
+          created_by: string
+          destinations: Json
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          click_count?: number | null
+          created_at?: string | null
+          created_by: string
+          destinations?: Json
+          id?: string
+          is_active?: boolean | null
+          name: string
+          organization_id: string
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          click_count?: number | null
+          created_at?: string | null
+          created_by?: string
+          destinations?: Json
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          organization_id?: string
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referral_codes: {
         Row: {
           code: string
