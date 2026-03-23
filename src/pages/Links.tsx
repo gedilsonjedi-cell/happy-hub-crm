@@ -32,7 +32,8 @@ interface RedirectLink {
 
 const Links = () => {
   const { user } = useAuth();
-  const { organizationId } = useUserRole();
+  const { isSuperAdmin } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const [links, setLinks] = useState<RedirectLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
