@@ -107,6 +107,7 @@ export function Sidebar() {
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
+  const isAppsActive = appsSubmenu.some(item => location.pathname === item.path);
 
   // Close mobile menu on route change (always close to prevent stuck overlay)
   useEffect(() => {
