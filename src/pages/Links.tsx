@@ -44,16 +44,7 @@ const Links = () => {
   const [destinations, setDestinations] = useState<Destination[]>([{ phone: "", message: "" }]);
   const [saving, setSaving] = useState(false);
 
-  // Use published domain instead of preview URL
-  const getPublishedDomain = () => {
-    const origin = window.location.origin;
-    // If we're on a preview URL, use the published domain
-    if (origin.includes('-preview--') || origin.includes('localhost')) {
-      return 'https://happy-hub-crm.lovable.app';
-    }
-    return origin;
-  };
-  const baseUrl = getPublishedDomain();
+  const baseUrl = "https://optimuscrm.com.br";
 
   useEffect(() => {
     if (organizationId) fetchLinks();
