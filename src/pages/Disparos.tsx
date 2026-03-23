@@ -315,9 +315,23 @@ const Disparos = () => {
             setAllCampaigns((prev) =>
               prev.map((c) => {
                 if (c.id !== newCampaign.id) return c;
-                // Always use the latest values from the database trigger
-                // The sync_campaign_counts trigger is the source of truth
-                return { ...c, ...newCampaign };
+
+                const currentUpdatedAt = c.updated_at ? new Date(c.updated_at).getTime() : 0;
+                const nextUpdatedAt = newCampaign.updated_at ? new Date(newCampaign.updated_at).getTime() : 0;
+
+                if (nextUpdatedAt < currentUpdatedAt) {
+                  return c;
+                }
+
+                const mergedCampaign = { ...c, ...newCampaign };
+
+                if (newCampaign.status === "running") {
+                  mergedCampaign.sent_count = Math.max(c.sent_count ?? 0, newCampaign.sent_count ?? 0);
+                  mergedCampaign.delivered_count = Math.max(c.delivered_count ?? 0, newCampaign.delivered_count ?? 0);
+                  mergedCampaign.failed_count = Math.max(c.failed_count ?? 0, newCampaign.failed_count ?? 0);
+                }
+
+                return mergedCampaign;
               })
             );
           } else if (payload.eventType === 'INSERT') {

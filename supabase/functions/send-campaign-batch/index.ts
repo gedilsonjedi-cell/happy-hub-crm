@@ -252,14 +252,15 @@ Deno.serve(async (req) => {
 
       const hasFutureRetries = (c.total_waiting_retry || 0) > 0;
       const hasProcessing = (c.total_processing || 0) > 0;
-      const isComplete = !hasFutureRetries && !hasProcessing && (c.total_pending || 0) === 0;
+      const isComplete = !hasProcessing && (c.total_pending || 0) === 0;
 
       const newStatus = isComplete ? 'completed' : 'running';
       await supabase.from('campaigns').update({
         status: newStatus,
         completed_at: isComplete ? new Date().toISOString() : null,
         sent_count: Number(c.total_sent) || 0,
-        failed_count: Number(c.total_failed) || 0,
+        delivered_count: Number(c.total_delivered) || 0,
+        failed_count: (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0),
       }).eq('id', campaignId);
 
       return new Response(
@@ -268,7 +269,7 @@ Deno.serve(async (req) => {
           status: isComplete ? 'completed' : (hasFutureRetries ? 'waiting_retry' : 'running'),
           sent: Number(c.total_sent) || 0,
           delivered: Number(c.total_delivered) || 0,
-          failed: Number(c.total_failed) || 0,
+          failed: (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0),
           total: campaign.total_recipients,
           pendingRetries: Number(c.total_waiting_retry) || 0
         }),
@@ -414,7 +415,7 @@ Deno.serve(async (req) => {
     const hasPending = (Number(fc.total_pending) || 0) > 0;
     const hasProcessing = (Number(fc.total_processing) || 0) > 0;
     const hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
-    const isComplete = !hasPending && !hasProcessing && !hasRetries;
+    const isComplete = !hasPending && !hasProcessing;
 
     let newStatus = 'running';
     if (isComplete) newStatus = 'completed';
@@ -423,7 +424,8 @@ Deno.serve(async (req) => {
     await supabase.from('campaigns').update({
       status: newStatus,
       sent_count: Number(fc.total_sent) || 0,
-      failed_count: Number(fc.total_failed) || 0,
+      delivered_count: Number(fc.total_delivered) || 0,
+      failed_count: (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0),
       completed_at: isComplete ? new Date().toISOString() : null
     }).eq('id', campaignId);
 
@@ -436,7 +438,7 @@ Deno.serve(async (req) => {
         status: isComplete ? 'completed' : (hasRetries && !hasPending ? 'waiting_retry' : 'running'),
         sent: Number(fc.total_sent) || 0,
         delivered: Number(fc.total_delivered) || 0,
-        failed: Number(fc.total_failed) || 0,
+        failed: (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0),
         total: campaign.total_recipients,
         batchProcessed: sentThisBatch,
         scheduledRetries: scheduledRetryThisBatch,
