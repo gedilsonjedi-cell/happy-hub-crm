@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle } from "lucide-react";
@@ -31,7 +32,8 @@ interface RedirectLink {
 
 const Links = () => {
   const { user } = useAuth();
-  const { organizationId } = useUserRole();
+  const { isSuperAdmin } = useUserRole();
+  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
   const [links, setLinks] = useState<RedirectLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -49,10 +51,16 @@ const Links = () => {
   }, [organizationId]);
 
   const fetchLinks = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from("redirect_links")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       setLinks(data.map((l: any) => ({
