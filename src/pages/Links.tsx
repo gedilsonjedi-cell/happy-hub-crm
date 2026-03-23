@@ -51,10 +51,16 @@ const Links = () => {
   }, [organizationId]);
 
   const fetchLinks = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from("redirect_links")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       setLinks(data.map((l: any) => ({
