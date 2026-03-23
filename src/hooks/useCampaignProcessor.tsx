@@ -79,7 +79,7 @@ export function useCampaignProcessor({
 
       onUpdate();
 
-      if (!data.done && (data.status === 'running' || data.status === 'waiting_retry')) {
+      if (!data.done && data.status === 'running') {
         let waitTime: number;
         
         if (data.status === 'waiting_retry') {
@@ -103,7 +103,7 @@ export function useCampaignProcessor({
             .eq('id', campaign.id)
             .single()
             .then(({ data: updatedCampaign }) => {
-              if (updatedCampaign && (updatedCampaign.status === 'running' || data.pendingRetries > 0)) {
+                if (updatedCampaign && updatedCampaign.status === 'running') {
                 processNextBatch(updatedCampaign as Campaign);
               }
             });
