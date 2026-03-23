@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Zap,
   Gift,
+  Blocks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -67,8 +68,11 @@ const crmSubmenu = [
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
-  { icon: Link2, label: "Links", path: "/links", permission: "canAccessDisparos" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos" },
+];
+
+const appsSubmenu = [
+  { icon: Link2, label: "Links", path: "/links", permission: null },
 ];
 
 const personalizacaoSubmenu = [
@@ -95,6 +99,7 @@ export function Sidebar() {
   const [crmOpen, setCrmOpen] = useState(true);
   const [disparosOpen, setDisparosOpen] = useState(true);
   const [personalizacaoOpen, setPersonalizacaoOpen] = useState(true);
+  const [appsOpen, setAppsOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
   const unreadCount = useUnreadMessagesCount();
@@ -102,6 +107,7 @@ export function Sidebar() {
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
+  const isAppsActive = appsSubmenu.some(item => location.pathname === item.path);
 
   // Close mobile menu on route change (always close to prevent stuck overlay)
   useEffect(() => {
@@ -304,6 +310,9 @@ export function Sidebar() {
 
             {/* Personalização submenu */}
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
+
+            {/* Apps submenu */}
+            {renderSubmenu(appsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
 
             {/* Bottom menu items */}
             {bottomMenuItems.map((item) => renderMenuItem(item))}
