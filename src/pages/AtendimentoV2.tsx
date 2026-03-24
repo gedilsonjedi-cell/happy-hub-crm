@@ -350,6 +350,19 @@ const AtendimentoV2 = () => {
     selectedConversation?.channelId ?? null,
     selectedConversation?.phone ?? null
   );
+  const selectedConversationCacheKey = `${selectedConversation?.channelId ?? "no-channel"}:${selectedConversation?.phone ?? "no-phone"}`;
+
+  useEffect(() => {
+    setMessages([]);
+
+    return () => {
+      infiniteMessages.invalidate();
+    };
+  }, [selectedConversationCacheKey]);
+
+  useEffect(() => {
+    setMessages(infiniteMessages.messages as Message[]);
+  }, [infiniteMessages.messages]);
 
   // ─── useMutation: optimistic send with TanStack Query ─────────────────────
   const sendMessageMutation = useSendMessage((restoredText) => setNewMessage(restoredText));
