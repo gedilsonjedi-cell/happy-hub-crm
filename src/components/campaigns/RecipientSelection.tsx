@@ -181,85 +181,23 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     
     setLoadingLeads(true);
     
-    // If a sector is selected, only fetch leads that belong to that sector
-    // Leads are linked to sectors via conversation_assignments (by phone + sector_id)
-    if (sectorId) {
-      // First get all phones assigned to this sector
-      const { data: sectorAssignments, error: assignError } = await supabase
-        .from("conversation_assignments")
-        .select("conversation_phone")
-        .eq("sector_id", sectorId);
-      
-      if (assignError) {
-        console.error("Error fetching sector assignments:", assignError);
-        setLoadingLeads(false);
-        return;
-      }
-      
-      const sectorPhones = sectorAssignments?.map(a => a.conversation_phone) || [];
-      
-      if (sectorPhones.length === 0) {
-        setLeads([]);
-        setFilteredLeads([]);
-        setAvailableTags([]);
-        setLoadingLeads(false);
-        return;
-      }
-      
-      // Fetch leads whose phones match the sector assignments
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id, name, phone, tags, created_at")
-        .eq("organization_id", effectiveOrganizationId)
-        .in("phone", sectorPhones)
-        .order("created_at", { ascending: false });
-      
-      if (!error && data) {
-        // Also try matching with formatted phones (some leads may have different formats)
-        const normalizedSectorPhones = new Set(sectorPhones.map(p => p.replace(/\D/g, '')));
-        
-        // Additionally fetch all leads to cross-match by normalized phone
-        const { data: allLeads } = await supabase
-          .from("leads")
-          .select("id, name, phone, tags, created_at")
-          .eq("organization_id", effectiveOrganizationId)
-          .order("created_at", { ascending: false });
-        
-        const matchedLeads = (allLeads || []).filter(lead => {
-          const normalizedLeadPhone = lead.phone.replace(/\D/g, '');
-          // Check direct match or with/without country code
-          return normalizedSectorPhones.has(normalizedLeadPhone) ||
-            normalizedSectorPhones.has('55' + normalizedLeadPhone) ||
-            (normalizedLeadPhone.startsWith('55') && normalizedSectorPhones.has(normalizedLeadPhone.substring(2)));
-        });
-        
-        setLeads(matchedLeads);
-        setFilteredLeads(matchedLeads);
-        
-        const tags = new Set<string>();
-        matchedLeads.forEach(lead => {
-          lead.tags?.forEach(tag => tags.add(tag));
-        });
-        setAvailableTags(Array.from(tags));
-      }
-    } else {
-      // No sector filter - fetch all leads
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id, name, phone, tags, created_at")
-        .eq("organization_id", effectiveOrganizationId)
-        .order("created_at", { ascending: false });
+    // Tags are global — always fetch ALL leads regardless of sector.
+    // The sector is applied at dispatch time (campaign creation), not as a lead filter.
+    const { data, error } = await supabase
+      .from("leads")
+      .select("id, name, phone, tags, created_at")
+      .eq("organization_id", effectiveOrganizationId)
+      .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        setLeads(data);
-        setFilteredLeads(data);
-        
-        const tags = new Set<string>();
-        data.forEach(lead => {
-          lead.tags?.forEach(tag => tags.add(tag));
-        });
-        setAvailableTags(Array.from(tags));
-      }
+    if (!error && data) {
+      setLeads(data);
+      setFilteredLeads(data);
+      
+      const tags = new Set<string>();
+      data.forEach(lead => {
+        lead.tags?.forEach(tag => tags.add(tag));
+      });
+      setAvailableTags(Array.from(tags));
     }
     
     setLoadingLeads(false);
