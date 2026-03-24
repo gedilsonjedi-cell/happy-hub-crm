@@ -3558,7 +3558,8 @@ const AtendimentoV2 = () => {
 
               {/* Messages — Infinite scroll with memoized bubbles */}
               <InfiniteMessageList
-                messages={infiniteMessages.messages.length > 0 ? infiniteMessages.messages : messages}
+                key={selectedConversationCacheKey}
+                messages={messages}
                 isLoading={infiniteMessages.isLoading}
                 isFetchingNextPage={infiniteMessages.isFetchingNextPage}
                 hasNextPage={infiniteMessages.hasNextPage ?? false}

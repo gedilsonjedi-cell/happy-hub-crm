@@ -86,16 +86,6 @@ async function fetchMessagePage(
     .map(p => `metadata->>destination.eq.${p}`)
     .join(",");
 
-  console.log("[useInfiniteMessages] Fetching messages", {
-    channelId,
-    conversationPhone,
-    normalizedPhone,
-    phoneVariants,
-    inboundPhoneFilter,
-    outboundPhoneFilter,
-    cursorFilter,
-  });
-
   const [inboundResult, outboundResult] = await Promise.all([
     supabase
       .from("whatsapp_messages")
@@ -117,20 +107,6 @@ async function fetchMessagePage(
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
   ]);
-
-  if (inboundResult.error) {
-    console.error("[useInfiniteMessages] Inbound error:", inboundResult.error);
-  }
-  if (outboundResult.error) {
-    console.error("[useInfiniteMessages] Outbound error:", outboundResult.error);
-  }
-
-  console.log("[useInfiniteMessages] Results", {
-    inboundCount: inboundResult.data?.length ?? 0,
-    outboundCount: outboundResult.data?.length ?? 0,
-    inboundError: inboundResult.error,
-    outboundError: outboundResult.error,
-  });
 
   const inbound = (inboundResult.data || []) as MessageRow[];
   const outbound = (outboundResult.data || []) as MessageRow[];
