@@ -1299,6 +1299,64 @@ const AtendimentoV2 = () => {
       setGlobalSearchResults(results);
       setIsSearchingGlobal(false);
 
+      // Fetch last messages for search results in background
+      const convsMissingMsg = results.filter(c => !c.lastMessage && c.channelId);
+      if (convsMissingMsg.length > 0) {
+        const msgResults = await Promise.all(convsMissingMsg.map(async (conv) => {
+          const phone = conv.phone.replace(/\D/g, '');
+          const phoneSuffix = phone.slice(-8);
+          
+          const [inboundRes, outboundRes] = await Promise.all([
+            supabase
+              .from("whatsapp_messages")
+              .select("content, created_at, direction, sender_name")
+              .eq("channel_id", conv.channelId!)
+              .eq("direction", "inbound")
+              .ilike("sender_phone", `%${phoneSuffix}`)
+              .order("created_at", { ascending: false })
+              .limit(1),
+            supabase
+              .from("whatsapp_messages")
+              .select("content, created_at, direction, metadata")
+              .eq("channel_id", conv.channelId!)
+              .eq("direction", "outbound")
+              .ilike("metadata->>destination", `%${phoneSuffix}`)
+              .order("created_at", { ascending: false })
+              .limit(1)
+          ]);
+          
+          const inMsg = inboundRes.data?.[0];
+          const outMsg = outboundRes.data?.[0];
+          
+          let lastMsg: { content: string | null; created_at: string; direction: string; sender_name?: string | null } | null = null;
+          if (inMsg && outMsg) {
+            lastMsg = new Date(inMsg.created_at) > new Date(outMsg.created_at) ? inMsg : outMsg;
+          } else {
+            lastMsg = inMsg || outMsg || null;
+          }
+          
+          return { phone: conv.phone, channelId: conv.channelId, lastMsg };
+        }));
+
+        setGlobalSearchResults(prev => {
+          let changed = false;
+          const updated = prev.map(c => {
+            const result = msgResults.find(r => r.phone === c.phone && r.channelId === c.channelId && r.lastMsg);
+            if (result && result.lastMsg && !c.lastMessage) {
+              changed = true;
+              return {
+                ...c,
+                lastMessage: result.lastMsg.content || "",
+                lastMessageTime: result.lastMsg.created_at,
+                lastInboundTime: result.lastMsg.direction === 'inbound' ? result.lastMsg.created_at : c.lastInboundTime,
+              };
+            }
+            return c;
+          });
+          return changed ? updated : prev;
+        });
+      }
+
     } catch (error) {
       console.error("Error searching conversations:", error);
       setGlobalSearchResults([]);
