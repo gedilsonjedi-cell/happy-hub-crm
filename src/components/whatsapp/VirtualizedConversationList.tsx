@@ -92,26 +92,23 @@ export function VirtualizedConversationList({
       return (
         <div
           style={style}
-          className="px-2 py-3"
+          className="px-2 cursor-pointer"
+          onClick={() => onSelect(conv)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') onSelect(conv);
+          }}
         >
-          <div
-            className="cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              console.log("[VirtualizedList] Row clicked:", conv.phone, conv.channelId);
-              onSelect(conv);
-            }}
-          >
-            <ConversationItem
-              conversation={conv}
-              isSelected={isSelected}
-              isRecentlyUpdated={isRecentlyUpdated}
-              sectorName={sectorInfo?.name}
-              tagColors={tagColors}
-              onSelect={onSelect}
-              formatDate={formatDate}
-            />
-          </div>
+          <ConversationItem
+            conversation={conv}
+            isSelected={isSelected}
+            isRecentlyUpdated={isRecentlyUpdated}
+            sectorName={sectorInfo?.name}
+            tagColors={tagColors}
+            onSelect={onSelect}
+            formatDate={formatDate}
+          />
         </div>
       );
     },
