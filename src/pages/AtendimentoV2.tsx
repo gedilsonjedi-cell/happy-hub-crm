@@ -3596,7 +3596,10 @@ const AtendimentoV2 = () => {
                   recentlyUpdatedConversations={recentlyUpdatedConversations}
                   sectors={sectors}
                   tagColors={tagColors}
-                  onSelect={(conv) => setSelectedConversation(conv as Conversation)}
+                  onSelect={(conv) => {
+                    console.log("[AtendimentoV2] Conversation clicked:", conv.phone, conv.channelId, conv.name);
+                    setSelectedConversation(conv as Conversation);
+                  }}
                   formatDate={formatConversationDate}
                   getConversationKey={getConversationKey}
                   height={conversationListHeight}
