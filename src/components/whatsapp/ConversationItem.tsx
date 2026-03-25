@@ -50,8 +50,16 @@ export const ConversationItem = memo(function ConversationItem({
   const initials = getInitials(conversation.name);
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(conversation)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(conversation);
+        }
+      }}
       className={cn(
         "w-full p-3 text-left transition-all rounded-lg hover:bg-muted/40",
         isSelected && "bg-primary/10 border border-primary/20",
@@ -156,7 +164,7 @@ export const ConversationItem = memo(function ConversationItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 },
 // Custom comparison: only re-render if relevant data changed

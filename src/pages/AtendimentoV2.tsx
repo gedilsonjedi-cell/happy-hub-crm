@@ -1150,6 +1150,13 @@ const AtendimentoV2 = () => {
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
   };
 
+  const handleSelectConversation = useCallback((conversation: Conversation) => {
+    setSelectedConversation(conversation);
+
+    const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
+    setSelectedChannel(matchingChannel);
+  }, [channels]);
+
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
     setConversationStatuses(prev => ({ ...prev, [conversationKey]: newStatus }));
@@ -1532,7 +1539,7 @@ const AtendimentoV2 = () => {
         .from("leads")
         .select("tags")
         .eq("phone", normalizedPhone)
-        .single();
+        .maybeSingle();
 
       if (data?.tags) {
         setContactTags(data.tags);
@@ -3596,10 +3603,7 @@ const AtendimentoV2 = () => {
                   recentlyUpdatedConversations={recentlyUpdatedConversations}
                   sectors={sectors}
                   tagColors={tagColors}
-                  onSelect={(conv) => {
-                    console.log("[AtendimentoV2] Conversation clicked:", conv.phone, conv.channelId, conv.name);
-                    setSelectedConversation(conv as Conversation);
-                  }}
+                  onSelect={handleSelectConversation}
                   formatDate={formatConversationDate}
                   getConversationKey={getConversationKey}
                   height={conversationListHeight}
