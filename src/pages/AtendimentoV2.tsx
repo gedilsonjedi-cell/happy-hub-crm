@@ -51,7 +51,8 @@ import {
   X,
   UserCheck,
   ZoomIn,
-  History
+  History,
+  Download
 } from "lucide-react";
 import { TopNavLayout } from "@/components/layout/TopNavLayout";
 import { Button } from "@/components/ui/button";
