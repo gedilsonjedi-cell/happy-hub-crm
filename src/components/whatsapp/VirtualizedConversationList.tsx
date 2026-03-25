@@ -90,7 +90,19 @@ export function VirtualizedConversationList({
       const sectorInfo = sectors.find((s) => s.id === conv.sectorId);
 
       return (
-        <div style={style} className="px-2 py-3">
+        <div
+          style={style}
+          className="px-2 py-3 cursor-pointer"
+          onClick={() => onSelect(conv)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onSelect(conv);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
           <ConversationItem
             conversation={conv}
             isSelected={isSelected}
@@ -128,6 +140,10 @@ export function VirtualizedConversationList({
       itemSize={ITEM_HEIGHT}
       width="100%"
       overscanCount={5}
+      itemKey={(index) => {
+        if (index >= conversations.length) return "load-more";
+        return getConversationKey(conversations[index]);
+      }}
     >
       {Row}
     </List>
