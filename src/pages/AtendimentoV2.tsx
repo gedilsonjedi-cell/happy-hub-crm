@@ -3656,6 +3656,7 @@ const AtendimentoV2 = () => {
                         <DropdownMenuItem onClick={() => setShowPipelineStageDialog(true)}><GitBranch className="w-4 h-4 mr-2" />Mover no pipeline</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setShowFollowUpDialog(true)}><CalendarClock className="w-4 h-4 mr-2" />Iniciar follow-up</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setShowAssignAttendantDialog(true)}><UserCheck className="w-4 h-4 mr-2" />Atribuir atendente</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportConversation(selectedConversation)}><Download className="w-4 h-4 mr-2" />Exportar conversa</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleAddToBlacklist(selectedConversation)} className="text-destructive">
                           <Ban className="w-4 h-4 mr-2" />Bloquear contato
