@@ -2108,6 +2108,118 @@ const AtendimentoV2 = () => {
     }
   };
 
+  // Export conversation as text file
+  const handleExportConversation = async (conversation: Conversation) => {
+    if (!conversation) return;
+    
+    try {
+      toast.info("Exportando conversa...");
+      
+      const channelId = conversation.channelId;
+      const phone = conversation.phone.replace(/\D/g, "");
+      
+      // Fetch ALL messages for this conversation (no pagination limit)
+      let allMessages: Array<{
+        sender_phone: string;
+        sender_name: string | null;
+        content: string | null;
+        message_type: string;
+        direction: string;
+        created_at: string;
+        media_url: string | null;
+      }> = [];
+      
+      const pageSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("whatsapp_messages")
+          .select("sender_phone, sender_name, content, message_type, direction, created_at, media_url")
+          .eq("channel_id", channelId)
+          .or(`sender_phone.ilike.%${phone.slice(-8)}%,metadata->>destination.ilike.%${phone.slice(-8)}%`)
+          .order("created_at", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allMessages = [...allMessages, ...data];
+          offset += pageSize;
+          hasMore = data.length === pageSize;
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      if (allMessages.length === 0) {
+        toast.warning("Nenhuma mensagem encontrada para exportar");
+        return;
+      }
+      
+      // Build text content
+      const contactName = conversation.name || conversation.phone;
+      let textContent = `=== Exportação de Conversa ===\n`;
+      textContent += `Contato: ${contactName} (${conversation.phone})\n`;
+      textContent += `Data da exportação: ${format(new Date(), "dd/MM/yyyy HH:mm:ss")}\n`;
+      textContent += `Total de mensagens: ${allMessages.length}\n`;
+      textContent += `${"=".repeat(40)}\n\n`;
+      
+      let lastDate = "";
+      
+      for (const msg of allMessages) {
+        const msgDate = format(new Date(msg.created_at), "dd/MM/yyyy");
+        const msgTime = format(new Date(msg.created_at), "HH:mm:ss");
+        
+        if (msgDate !== lastDate) {
+          textContent += `\n--- ${msgDate} ---\n\n`;
+          lastDate = msgDate;
+        }
+        
+        const sender = msg.direction === "inbound" 
+          ? (msg.sender_name || contactName)
+          : "Atendente";
+        
+        let messageContent = msg.content || "";
+        
+        if (msg.message_type === "image") {
+          messageContent = `[Imagem]${msg.media_url ? ` ${msg.media_url}` : ""}${messageContent ? ` - ${messageContent}` : ""}`;
+        } else if (msg.message_type === "video") {
+          messageContent = `[Vídeo]${msg.media_url ? ` ${msg.media_url}` : ""}${messageContent ? ` - ${messageContent}` : ""}`;
+        } else if (msg.message_type === "audio" || msg.message_type === "ptt") {
+          messageContent = `[Áudio]${msg.media_url ? ` ${msg.media_url}` : ""}`;
+        } else if (msg.message_type === "document") {
+          messageContent = `[Documento]${msg.media_url ? ` ${msg.media_url}` : ""}${messageContent ? ` - ${messageContent}` : ""}`;
+        } else if (msg.message_type === "sticker") {
+          messageContent = `[Sticker]`;
+        } else if (msg.message_type === "location") {
+          messageContent = `[Localização]${messageContent ? ` - ${messageContent}` : ""}`;
+        } else if (msg.message_type === "template") {
+          messageContent = `[Template] ${messageContent}`;
+        }
+        
+        textContent += `[${msgTime}] ${sender}: ${messageContent}\n`;
+      }
+      
+      // Download as .txt file
+      const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `conversa_${contactName.replace(/[^a-zA-Z0-9]/g, "_")}_${format(new Date(), "yyyy-MM-dd")}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Conversa exportada com ${allMessages.length} mensagens`);
+    } catch (error) {
+      console.error("Error exporting conversation:", error);
+      toast.error("Erro ao exportar conversa");
+    }
+  };
+
   // Add to blacklist
   const handleAddToBlacklist = async (conversation: Conversation) => {
     if (!user) {
