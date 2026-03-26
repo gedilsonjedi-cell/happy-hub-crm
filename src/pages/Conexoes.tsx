@@ -1682,10 +1682,12 @@ const Conexoes = () => {
                       "text-xs",
                       channel.provider === 'zapi'
                         ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                        : "bg-blue-500/10 text-blue-500 border-blue-500/30"
+                        : channel.provider === 'gupshup'
+                          ? "bg-orange-500/10 text-orange-500 border-orange-500/30"
+                          : "bg-blue-500/10 text-blue-500 border-blue-500/30"
                     )}
                   >
-                    {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
+                    {channel.provider === 'zapi' ? 'Z-API' : channel.provider === 'gupshup' ? 'Gupshup' : 'Meta Cloud API'}
                   </Badge>
                   {/* Status badge - Shows Conectado, Pendente, or Desconectado */}
                   {isCheckingStatus[channel.id] ? (

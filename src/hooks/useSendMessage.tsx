@@ -42,7 +42,11 @@ export function useSendMessage(
     { tempId: string; queryKey: unknown[] }
   >({
     mutationFn: async (payload) => {
-      const sendFunction = payload.channelProvider === "zapi" ? "zapi-send" : "meta-send";
+      const sendFunction = payload.channelProvider === "zapi" 
+        ? "zapi-send" 
+        : payload.channelProvider === "gupshup" 
+          ? "gupshup-send" 
+          : "meta-send";
 
       const body: Record<string, unknown> = {
         channelId: payload.channelId,
