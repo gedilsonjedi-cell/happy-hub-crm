@@ -517,7 +517,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
       responseMessage = chatbotConfig.away_message;
     }
 
-    // Send the response via Meta Cloud API
+    // Send the response via the appropriate provider
     if (responseMessage) {
       const { data: channel } = await supabase
         .from('channels')
@@ -527,34 +527,94 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
 
       if (channel?.access_token) {
         const cleanDestination = senderPhone.replace(/\D/g, '');
-        const phoneNumberId = channel.app_name || channel.phone.replace(/\D/g, '');
-        
-        const metaPayload = {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanDestination,
-          type: 'text',
-          text: { body: responseMessage }
-        };
-        
-        console.log('[v6] Sending message via Meta API');
-        
-        const metaResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
-          {
+        let msgId = `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        let sendSuccess = false;
+
+        if (channel.provider === 'gupshup') {
+          // Send via Gupshup API
+          const sourcePhone = channel.phone.replace(/\D/g, '');
+          const appName = channel.app_name || '';
+          const formData = new URLSearchParams();
+          formData.append('channel', 'whatsapp');
+          formData.append('source', sourcePhone);
+          formData.append('src.name', appName);
+          formData.append('destination', cleanDestination);
+          formData.append('message', JSON.stringify({ type: 'text', text: responseMessage }));
+
+          console.log('[v6] Sending message via Gupshup API');
+          const gupshupResponse = await fetch('https://api.gupshup.io/wa/api/v1/msg', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${channel.access_token}`,
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'apikey': channel.access_token,
             },
-            body: JSON.stringify(metaPayload)
+            body: formData.toString(),
+          });
+
+          const gupshupText = await gupshupResponse.text();
+          console.log('[v6] Gupshup API response:', gupshupText);
+          
+          try {
+            const gupshupData = JSON.parse(gupshupText);
+            if (gupshupData.messageId) {
+              msgId = gupshupData.messageId;
+              sendSuccess = true;
+            }
+          } catch {
+            console.error('Failed to parse Gupshup response');
           }
-        );
+        } else if (channel.provider === 'zapi') {
+          // Send via Z-API
+          const instanceId = channel.app_name || '';
+          const zapiToken = channel.access_token;
+          
+          console.log('[v6] Sending message via Z-API');
+          const zapiResponse = await fetch(
+            `https://api.z-api.io/instances/${instanceId}/token/${zapiToken}/send-text`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: cleanDestination, message: responseMessage }),
+            }
+          );
 
-        const metaData = await metaResponse.json();
-        console.log('[v6] Meta API response:', JSON.stringify(metaData));
+          const zapiData = await zapiResponse.json();
+          console.log('[v6] Z-API response:', JSON.stringify(zapiData));
+          if (zapiData.messageId || zapiData.zapiMessageId) {
+            msgId = zapiData.messageId || zapiData.zapiMessageId;
+            sendSuccess = true;
+          }
+        } else {
+          // Send via Meta Cloud API (default)
+          const phoneNumberId = channel.app_name || channel.phone.replace(/\D/g, '');
+          const metaPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: cleanDestination,
+            type: 'text',
+            text: { body: responseMessage }
+          };
+          
+          console.log('[v6] Sending message via Meta API');
+          const metaResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${channel.access_token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(metaPayload)
+            }
+          );
 
-        const msgId = metaData.messages?.[0]?.id || `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const metaData = await metaResponse.json();
+          console.log('[v6] Meta API response:', JSON.stringify(metaData));
+          if (metaData.messages?.[0]?.id) {
+            msgId = metaData.messages[0].id;
+            sendSuccess = true;
+          }
+        }
 
         await supabase
           .from('whatsapp_messages')
@@ -566,12 +626,12 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
             message_type: 'text',
             content: responseMessage,
             direction: 'outbound',
-            status: metaData.messages?.[0]?.id ? 'sent' : 'failed',
+            status: sendSuccess ? 'sent' : 'failed',
             metadata: { 
               destination: cleanDestination, 
               is_bot: true,
               transferred: shouldTransfer,
-              meta_response: metaData
+              provider: channel.provider
             }
           });
       }
