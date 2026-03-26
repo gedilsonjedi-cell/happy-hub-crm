@@ -609,6 +609,7 @@ const Conexoes = () => {
     } finally {
       setIsConnecting(false);
     }
+  };
 
   // Sync existing channels with Meta API data
   const handleSyncChannels = async () => {
