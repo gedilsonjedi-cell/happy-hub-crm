@@ -2267,6 +2267,8 @@ const Conexoes = () => {
                   Configure esta URL como Callback URL no painel do Gupshup
                 </p>
               </div>
+
+              <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancelar
                 </Button>
