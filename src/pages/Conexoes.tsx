@@ -1428,7 +1428,7 @@ const Conexoes = () => {
       </div>
 
       {/* Z-API Info Card */}
-      {(
+      
         <div className="bg-card rounded-lg border border-emerald-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
@@ -1463,10 +1463,10 @@ const Conexoes = () => {
             </Button>
           </div>
         </div>
-      )}
+      
 
       {/* Gupshup Info Card */}
-      {(
+      
         <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
@@ -1501,7 +1501,7 @@ const Conexoes = () => {
             </Button>
           </div>
         </div>
-      )}
+      
 
       {/* Setup Guide with Video Tutorial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
