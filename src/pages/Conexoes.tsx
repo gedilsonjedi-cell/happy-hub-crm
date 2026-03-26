@@ -2133,7 +2133,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleConnectZapi} 
-                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone || !selectedOrgId}
+                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone || (isSuperAdmin && !selectedOrgId)}
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {isConnecting ? (
@@ -2246,7 +2246,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleConnectGupshup} 
-                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || !selectedOrgId}
+                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || (isSuperAdmin && !selectedOrgId)}
                   className="gap-2 bg-orange-600 hover:bg-orange-700"
                 >
                   {isConnecting ? (
