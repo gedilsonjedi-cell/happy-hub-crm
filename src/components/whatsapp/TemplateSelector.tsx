@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { 
   FileText, 
   Search, 
