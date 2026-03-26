@@ -2166,6 +2166,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
+              {isSuperAdmin && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
@@ -2184,6 +2185,7 @@ const Conexoes = () => {
                   Selecione para qual cliente esta conexão será destinada
                 </p>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-foreground">Nome do Canal</Label>
