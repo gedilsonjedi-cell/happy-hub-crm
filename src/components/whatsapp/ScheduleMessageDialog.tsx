@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Calendar, Clock, Loader2, Send, FileText, Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ export const ScheduleMessageDialog = ({
   channelId,
   leadId
 }: ScheduleMessageDialogProps) => {
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -100,12 +102,13 @@ export const ScheduleMessageDialog = ({
     const templateIds = channelTemplates?.map(ct => ct.template_id) || [];
 
     if (templateIds.length === 0) {
-      // If no channel-specific templates, fetch all approved templates
-      const { data, error } = await supabase
+      // If no channel-specific templates, fetch all approved templates for this org
+      const query = supabase
         .from("message_templates")
         .select("*")
-        .eq("status", "approved")
-        .order("name");
+        .eq("status", "approved");
+      if (effectiveOrganizationId) query.eq("organization_id", effectiveOrganizationId);
+      const { data, error } = await query.order("name");
 
       if (!error && data) {
         setTemplates(data);
