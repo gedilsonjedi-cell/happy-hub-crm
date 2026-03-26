@@ -72,6 +72,7 @@ export const ManualSendDialog = ({
   onPhoneUsed,
   onTemplateSent
 }: ManualSendDialogProps) => {
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,12 +130,13 @@ export const ManualSendDialog = ({
     const templateIds = channelTemplates?.map(ct => ct.template_id) || [];
 
     if (templateIds.length === 0) {
-      // If no channel-specific templates, fetch all approved templates
-      const { data, error } = await supabase
+      // If no channel-specific templates, fetch all approved templates for this org
+      const query = supabase
         .from("message_templates")
         .select("*")
-        .eq("status", "approved")
-        .order("name");
+        .eq("status", "approved");
+      if (effectiveOrganizationId) query.eq("organization_id", effectiveOrganizationId);
+      const { data, error } = await query.order("name");
 
       if (!error && data) {
         setTemplates(data);
