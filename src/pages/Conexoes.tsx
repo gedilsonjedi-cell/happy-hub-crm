@@ -1427,8 +1427,8 @@ const Conexoes = () => {
         </div>
       </div>
 
-      {/* Z-API Info Card - Only visible to Super Admin */}
-      {isSuperAdmin && (
+      {/* Z-API Info Card */}
+      {(
         <div className="bg-card rounded-lg border border-emerald-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
@@ -1439,9 +1439,6 @@ const Conexoes = () => {
                 <h3 className="text-lg font-semibold text-foreground">Z-API</h3>
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
                   Não Oficial
-                </Badge>
-                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
-                  Super Admin
                 </Badge>
               </div>
               <p className="text-muted-foreground text-sm mb-3">
@@ -1468,8 +1465,8 @@ const Conexoes = () => {
         </div>
       )}
 
-      {/* Gupshup Info Card - Only visible to Super Admin */}
-      {isSuperAdmin && (
+      {/* Gupshup Info Card */}
+      {(
         <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
@@ -1480,9 +1477,6 @@ const Conexoes = () => {
                 <h3 className="text-lg font-semibold text-foreground">Gupshup</h3>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
                   Oficial
-                </Badge>
-                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
-                  Super Admin
                 </Badge>
               </div>
               <p className="text-muted-foreground text-sm mb-3">
