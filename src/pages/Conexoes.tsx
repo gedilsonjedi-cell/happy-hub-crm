@@ -1427,8 +1427,8 @@ const Conexoes = () => {
         </div>
       </div>
 
-      {/* Z-API Info Card - Only visible to Super Admin */}
-      {isSuperAdmin && (
+      {/* Z-API Info Card */}
+      
         <div className="bg-card rounded-lg border border-emerald-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
@@ -1439,9 +1439,6 @@ const Conexoes = () => {
                 <h3 className="text-lg font-semibold text-foreground">Z-API</h3>
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
                   Não Oficial
-                </Badge>
-                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
-                  Super Admin
                 </Badge>
               </div>
               <p className="text-muted-foreground text-sm mb-3">
@@ -1466,10 +1463,10 @@ const Conexoes = () => {
             </Button>
           </div>
         </div>
-      )}
+      
 
-      {/* Gupshup Info Card - Only visible to Super Admin */}
-      {isSuperAdmin && (
+      {/* Gupshup Info Card */}
+      
         <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
@@ -1480,9 +1477,6 @@ const Conexoes = () => {
                 <h3 className="text-lg font-semibold text-foreground">Gupshup</h3>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
                   Oficial
-                </Badge>
-                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
-                  Super Admin
                 </Badge>
               </div>
               <p className="text-muted-foreground text-sm mb-3">
@@ -1507,7 +1501,7 @@ const Conexoes = () => {
             </Button>
           </div>
         </div>
-      )}
+      
 
       {/* Setup Guide with Video Tutorial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -2057,6 +2051,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
+              {isSuperAdmin && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
@@ -2075,6 +2070,7 @@ const Conexoes = () => {
                   Selecione para qual cliente esta conexão será destinada
                 </p>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-foreground">Nome do Canal</Label>
@@ -2137,7 +2133,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleConnectZapi} 
-                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone || !selectedOrgId}
+                  disabled={isConnecting || !zapiFormData.instanceId || !zapiFormData.token || !zapiFormData.name || !zapiFormData.phone || (isSuperAdmin && !selectedOrgId)}
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
                 >
                   {isConnecting ? (
@@ -2170,6 +2166,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
+              {isSuperAdmin && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
@@ -2188,6 +2185,7 @@ const Conexoes = () => {
                   Selecione para qual cliente esta conexão será destinada
                 </p>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-foreground">Nome do Canal</Label>
@@ -2250,7 +2248,7 @@ const Conexoes = () => {
                 </Button>
                 <Button 
                   onClick={handleConnectGupshup} 
-                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || !selectedOrgId}
+                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || (isSuperAdmin && !selectedOrgId)}
                   className="gap-2 bg-orange-600 hover:bg-orange-700"
                 >
                   {isConnecting ? (
