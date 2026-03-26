@@ -2141,6 +2141,119 @@ const Conexoes = () => {
             </div>
           )}
 
+          {/* Gupshup Form - Only for Super Admin */}
+          {connectionType === 'gupshup' && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                <p className="text-sm text-orange-400">
+                  <strong>Atenção:</strong> Esta é uma conexão via Gupshup BSP. 
+                  Configure o app no{" "}
+                  <a href="https://www.gupshup.io/developer/home" target="_blank" className="underline">
+                    painel Gupshup
+                  </a>.
+                </p>
+              </div>
+
+              {/* Organization selector for Super Admin */}
+              <div className="space-y-2">
+                <Label className="text-foreground">Organização *</Label>
+                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+                  <SelectTrigger className="bg-muted/30 border-border">
+                    <SelectValue placeholder="Selecione a organização" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border z-[100]">
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Selecione para qual cliente esta conexão será destinada
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Nome do Canal</Label>
+                <Input 
+                  placeholder="Ex: WhatsApp Vendas" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.name}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Número de Telefone</Label>
+                <Input 
+                  placeholder="Ex: 5511999999999" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.phone}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">App Name</Label>
+                <Input 
+                  placeholder="Nome do app no Gupshup" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.appName}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, appName: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Encontre no painel Gupshup em seus apps
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">API Key</Label>
+                <div className="relative">
+                  <Input 
+                    type={showAccessToken ? "text" : "password"}
+                    placeholder="API Key do Gupshup"
+                    className="bg-muted/30 border-border pr-10"
+                    value={gupshupFormData.apiKey}
+                    onChange={(e) => setGupshupFormData({ ...gupshupFormData, apiKey: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                  >
+                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleConnectGupshup} 
+                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || !selectedOrgId}
+                  className="gap-2 bg-orange-600 hover:bg-orange-700"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Conectando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Conectar Gupshup
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Meta Cloud API Form */}
           {connectionType === 'meta' && step === 'credentials' && (
             <div className="space-y-4 py-2">
