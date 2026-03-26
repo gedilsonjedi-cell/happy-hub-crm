@@ -1262,6 +1262,11 @@ const Conexoes = () => {
 
   // Subscribe channel to webhook manually
   const handleSubscribeWebhook = async (channel: Channel) => {
+    if (channel.provider !== 'meta') {
+      toast.info("A inscrição de webhook é necessária apenas para canais Meta Cloud API");
+      return;
+    }
+
     if (!channel.access_token) {
       toast.error("Canal não possui Access Token");
       return;
