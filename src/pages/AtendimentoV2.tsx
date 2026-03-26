@@ -436,7 +436,7 @@ const AtendimentoV2 = () => {
         .from("channels")
         .select("id, name, phone, provider")
         .eq("organization_id", effectiveOrganizationId)
-        .in("provider", ["meta", "zapi"])
+        .in("provider", ["meta", "zapi", "gupshup"])
         .eq("connected", true);
 
 
@@ -2687,7 +2687,7 @@ const AtendimentoV2 = () => {
       {
         channelId: conversationChannelId,
         channelPhone: conversationChannel?.phone || "",
-        channelProvider: "meta",
+        channelProvider: conversationChannel?.provider || "meta",
         destination: selectedConversation.phone,
         message: `Template: ${templateName}`,
         messageType: "template",

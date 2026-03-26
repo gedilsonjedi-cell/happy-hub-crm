@@ -310,7 +310,7 @@ const WhatsAppChat = () => {
         .from("channels")
         .select("id, name, phone, provider")
         .eq("organization_id", effectiveOrganizationId)
-        .in("provider", ["meta", "zapi"])
+        .in("provider", ["meta", "zapi", "gupshup"])
         .eq("connected", true);
 
       if (!error && data) {
