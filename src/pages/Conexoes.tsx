@@ -339,6 +339,12 @@ const Conexoes = () => {
       name: "",
       phone: "",
     });
+    setGupshupFormData({
+      apiKey: "",
+      appName: "",
+      name: "",
+      phone: "",
+    });
     setConnectionType(null);
     setShowAccessToken(false);
     setStep('credentials');
