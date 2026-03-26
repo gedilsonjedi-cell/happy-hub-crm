@@ -128,7 +128,7 @@ const Conexoes = () => {
   const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; flow_bot_id: string | null; bot_type: string | null; is_enabled: boolean } | null>(null);
   
   // Connection type selection
-  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | null>(null);
+  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | 'gupshup' | null>(null);
   
   // Step-based flow
   const [step, setStep] = useState<'credentials' | 'select-numbers'>('credentials');
@@ -167,6 +167,14 @@ const Conexoes = () => {
   const [zapiFormData, setZapiFormData] = useState({
     instanceId: "",
     token: "",
+    name: "",
+    phone: "",
+  });
+
+  // Gupshup form data
+  const [gupshupFormData, setGupshupFormData] = useState({
+    apiKey: "",
+    appName: "",
     name: "",
     phone: "",
   });
@@ -328,6 +336,12 @@ const Conexoes = () => {
     setZapiFormData({
       instanceId: "",
       token: "",
+      name: "",
+      phone: "",
+    });
+    setGupshupFormData({
+      apiKey: "",
+      appName: "",
       name: "",
       phone: "",
     });
@@ -531,6 +545,67 @@ const Conexoes = () => {
     } catch (err) {
       console.error('Z-API connect error:', err);
       toast.error("Erro ao conectar Z-API");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  // Handle Gupshup connection
+  const handleConnectGupshup = async () => {
+    if (!gupshupFormData.apiKey.trim() || !gupshupFormData.appName.trim() || !gupshupFormData.name.trim() || !gupshupFormData.phone.trim()) {
+      toast.error("Preencha todos os campos");
+      return;
+    }
+
+    if (isSuperAdmin && !selectedOrgId) {
+      toast.error("Selecione a organização para esta conexão");
+      return;
+    }
+
+    setIsConnecting(true);
+
+    try {
+      let targetOrgId: string | null = null;
+      
+      if (isSuperAdmin && selectedOrgId) {
+        targetOrgId = selectedOrgId;
+      } else {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+        targetOrgId = profileData?.organization_id || null;
+      }
+
+      let formattedPhone = gupshupFormData.phone.replace(/\D/g, '');
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+
+      const { error } = await supabase.from("channels").insert({
+        user_id: user?.id,
+        organization_id: targetOrgId,
+        name: gupshupFormData.name.trim(),
+        phone: formattedPhone,
+        provider: "gupshup",
+        app_name: gupshupFormData.appName.trim(),
+        access_token: gupshupFormData.apiKey.trim(),
+        connected: true,
+      });
+
+      if (error) {
+        console.error('Error inserting Gupshup channel:', error);
+        toast.error("Erro ao criar canal Gupshup");
+      } else {
+        toast.success("Canal Gupshup criado com sucesso!");
+        setIsDialogOpen(false);
+        resetForm();
+        await fetchChannels();
+      }
+    } catch (err) {
+      console.error('Gupshup connect error:', err);
+      toast.error("Erro ao conectar Gupshup");
     } finally {
       setIsConnecting(false);
     }
@@ -1393,6 +1468,47 @@ const Conexoes = () => {
         </div>
       )}
 
+      {/* Gupshup Info Card - Only visible to Super Admin */}
+      {isSuperAdmin && (
+        <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+              <Zap className="w-6 h-6 text-orange-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-semibold text-foreground">Gupshup</h3>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
+                  Oficial
+                </Badge>
+                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
+                  Super Admin
+                </Badge>
+              </div>
+              <p className="text-muted-foreground text-sm mb-3">
+                Conexão via Gupshup BSP para WhatsApp Business API. Provedor oficial certificado pela Meta.
+              </p>
+              <a 
+                href="https://www.gupshup.io/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-orange-500 text-sm hover:underline"
+              >
+                Acessar Gupshup
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <Button 
+              variant="outline" 
+              className="border-orange-500/30 text-orange-500 hover:bg-orange-500/10"
+              onClick={() => { resetForm(); setConnectionType('gupshup'); setIsDialogOpen(true); }}
+            >
+              Conectar Gupshup
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Setup Guide with Video Tutorial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Instructions */}
@@ -1869,6 +1985,21 @@ const Conexoes = () => {
                     </Button>
                   </div>
                 )}
+
+                {/* Gupshup channels use the simple connected check */}
+                {channel.provider === 'gupshup' && !channel.connected && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleToggleConnection(channel)}
+                    >
+                      <Power className="w-3 h-3" />
+                      Ativar Canal
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1893,17 +2024,21 @@ const Conexoes = () => {
             <DialogTitle className="text-foreground">
               {connectionType === 'zapi' 
                 ? 'Conectar via Z-API'
-                : step === 'credentials' 
-                  ? 'Conectar WhatsApp Business' 
-                  : 'Selecionar Números'
+                : connectionType === 'gupshup'
+                  ? 'Conectar via Gupshup'
+                  : step === 'credentials' 
+                    ? 'Conectar WhatsApp Business' 
+                    : 'Selecionar Números'
               }
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {connectionType === 'zapi'
                 ? 'Configure a conexão Z-API para este cliente'
-                : step === 'credentials' 
-                  ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
-                  : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+                : connectionType === 'gupshup'
+                  ? 'Configure a conexão Gupshup para este cliente'
+                  : step === 'credentials' 
+                    ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                    : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
               }
             </DialogDescription>
           </DialogHeader>
@@ -2014,6 +2149,119 @@ const Conexoes = () => {
                     <>
                       <CheckCircle2 className="w-4 h-4" />
                       Conectar Z-API
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Gupshup Form - Only for Super Admin */}
+          {connectionType === 'gupshup' && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                <p className="text-sm text-orange-400">
+                  <strong>Atenção:</strong> Esta é uma conexão via Gupshup BSP. 
+                  Configure o app no{" "}
+                  <a href="https://www.gupshup.io/developer/home" target="_blank" className="underline">
+                    painel Gupshup
+                  </a>.
+                </p>
+              </div>
+
+              {/* Organization selector for Super Admin */}
+              <div className="space-y-2">
+                <Label className="text-foreground">Organização *</Label>
+                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+                  <SelectTrigger className="bg-muted/30 border-border">
+                    <SelectValue placeholder="Selecione a organização" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border z-[100]">
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Selecione para qual cliente esta conexão será destinada
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Nome do Canal</Label>
+                <Input 
+                  placeholder="Ex: WhatsApp Vendas" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.name}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Número de Telefone</Label>
+                <Input 
+                  placeholder="Ex: 5511999999999" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.phone}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">App Name</Label>
+                <Input 
+                  placeholder="Nome do app no Gupshup" 
+                  className="bg-muted/30 border-border"
+                  value={gupshupFormData.appName}
+                  onChange={(e) => setGupshupFormData({ ...gupshupFormData, appName: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Encontre no painel Gupshup em seus apps
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">API Key</Label>
+                <div className="relative">
+                  <Input 
+                    type={showAccessToken ? "text" : "password"}
+                    placeholder="API Key do Gupshup"
+                    className="bg-muted/30 border-border pr-10"
+                    value={gupshupFormData.apiKey}
+                    onChange={(e) => setGupshupFormData({ ...gupshupFormData, apiKey: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                  >
+                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleConnectGupshup} 
+                  disabled={isConnecting || !gupshupFormData.apiKey || !gupshupFormData.appName || !gupshupFormData.name || !gupshupFormData.phone || !selectedOrgId}
+                  className="gap-2 bg-orange-600 hover:bg-orange-700"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Conectando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Conectar Gupshup
                     </>
                   )}
                 </Button>
