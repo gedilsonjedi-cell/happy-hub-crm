@@ -128,7 +128,7 @@ const Conexoes = () => {
   const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; flow_bot_id: string | null; bot_type: string | null; is_enabled: boolean } | null>(null);
   
   // Connection type selection
-  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | null>(null);
+  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | 'gupshup' | null>(null);
   
   // Step-based flow
   const [step, setStep] = useState<'credentials' | 'select-numbers'>('credentials');
