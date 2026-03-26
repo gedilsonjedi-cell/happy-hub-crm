@@ -170,6 +170,14 @@ const Conexoes = () => {
     name: "",
     phone: "",
   });
+
+  // Gupshup form data
+  const [gupshupFormData, setGupshupFormData] = useState({
+    apiKey: "",
+    appName: "",
+    name: "",
+    phone: "",
+  });
   
   const [formData, setFormData] = useState({
     wabaId: "",
