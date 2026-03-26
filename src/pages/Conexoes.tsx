@@ -550,6 +550,66 @@ const Conexoes = () => {
     }
   };
 
+  // Handle Gupshup connection
+  const handleConnectGupshup = async () => {
+    if (!gupshupFormData.apiKey.trim() || !gupshupFormData.appName.trim() || !gupshupFormData.name.trim() || !gupshupFormData.phone.trim()) {
+      toast.error("Preencha todos os campos");
+      return;
+    }
+
+    if (isSuperAdmin && !selectedOrgId) {
+      toast.error("Selecione a organização para esta conexão");
+      return;
+    }
+
+    setIsConnecting(true);
+
+    try {
+      let targetOrgId: string | null = null;
+      
+      if (isSuperAdmin && selectedOrgId) {
+        targetOrgId = selectedOrgId;
+      } else {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+        targetOrgId = profileData?.organization_id || null;
+      }
+
+      let formattedPhone = gupshupFormData.phone.replace(/\D/g, '');
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+
+      const { error } = await supabase.from("channels").insert({
+        user_id: user?.id,
+        organization_id: targetOrgId,
+        name: gupshupFormData.name.trim(),
+        phone: formattedPhone,
+        provider: "gupshup",
+        app_name: gupshupFormData.appName.trim(),
+        access_token: gupshupFormData.apiKey.trim(),
+        connected: true,
+      });
+
+      if (error) {
+        console.error('Error inserting Gupshup channel:', error);
+        toast.error("Erro ao criar canal Gupshup");
+      } else {
+        toast.success("Canal Gupshup criado com sucesso!");
+        setIsDialogOpen(false);
+        resetForm();
+        await fetchChannels();
+      }
+    } catch (err) {
+      console.error('Gupshup connect error:', err);
+      toast.error("Erro ao conectar Gupshup");
+    } finally {
+      setIsConnecting(false);
+    }
+
   // Sync existing channels with Meta API data
   const handleSyncChannels = async () => {
     if (!syncFormData.wabaId.trim() || !syncFormData.accessToken.trim()) {
