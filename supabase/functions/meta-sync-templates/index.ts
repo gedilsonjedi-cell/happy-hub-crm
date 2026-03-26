@@ -146,10 +146,11 @@ Deno.serve(async (req) => {
 
     if (!channels || channels.length === 0) {
       return new Response(JSON.stringify({ 
+        success: false,
         error: 'No connected Meta channels found',
-        message: 'Nenhum canal Meta conectado com WABA configurado'
+        message: 'Nenhum canal Meta conectado com WABA configurado. A sincronização só funciona com canais Meta Cloud API.'
       }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
