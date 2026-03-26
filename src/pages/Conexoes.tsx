@@ -2244,7 +2244,29 @@ const Conexoes = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                <Label className="text-foreground text-xs font-semibold">URL do Webhook (configure no Gupshup)</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-xs text-muted-foreground break-all flex-1">
+                    {`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/gupshup-webhook`}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/gupshup-webhook`);
+                      toast.success("URL do webhook copiada!");
+                    }}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Configure esta URL como Callback URL no painel do Gupshup
+                </p>
+              </div>
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancelar
                 </Button>
