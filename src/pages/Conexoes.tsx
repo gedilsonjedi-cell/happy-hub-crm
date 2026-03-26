@@ -1682,10 +1682,12 @@ const Conexoes = () => {
                       "text-xs",
                       channel.provider === 'zapi'
                         ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                        : "bg-blue-500/10 text-blue-500 border-blue-500/30"
+                        : channel.provider === 'gupshup'
+                          ? "bg-orange-500/10 text-orange-500 border-orange-500/30"
+                          : "bg-blue-500/10 text-blue-500 border-blue-500/30"
                     )}
                   >
-                    {channel.provider === 'zapi' ? 'Z-API' : 'Meta Cloud API'}
+                    {channel.provider === 'zapi' ? 'Z-API' : channel.provider === 'gupshup' ? 'Gupshup' : 'Meta Cloud API'}
                   </Badge>
                   {/* Status badge - Shows Conectado, Pendente, or Desconectado */}
                   {isCheckingStatus[channel.id] ? (
@@ -2240,6 +2242,30 @@ const Conexoes = () => {
                     {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </Button>
                 </div>
+              </div>
+
+              <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                <Label className="text-foreground text-xs font-semibold">URL do Webhook (configure no Gupshup)</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-xs text-muted-foreground break-all flex-1">
+                    {`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/gupshup-webhook`}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/gupshup-webhook`);
+                      toast.success("URL do webhook copiada!");
+                    }}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Configure esta URL como Callback URL no painel do Gupshup
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
