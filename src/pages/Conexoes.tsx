@@ -1985,6 +1985,21 @@ const Conexoes = () => {
                     </Button>
                   </div>
                 )}
+
+                {/* Gupshup channels use the simple connected check */}
+                {channel.provider === 'gupshup' && !channel.connected && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => handleToggleConnection(channel)}
+                    >
+                      <Power className="w-3 h-3" />
+                      Ativar Canal
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
