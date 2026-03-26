@@ -1468,6 +1468,47 @@ const Conexoes = () => {
         </div>
       )}
 
+      {/* Gupshup Info Card - Only visible to Super Admin */}
+      {isSuperAdmin && (
+        <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+              <Zap className="w-6 h-6 text-orange-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-semibold text-foreground">Gupshup</h3>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
+                  Oficial
+                </Badge>
+                <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-xs">
+                  Super Admin
+                </Badge>
+              </div>
+              <p className="text-muted-foreground text-sm mb-3">
+                Conexão via Gupshup BSP para WhatsApp Business API. Provedor oficial certificado pela Meta.
+              </p>
+              <a 
+                href="https://www.gupshup.io/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-orange-500 text-sm hover:underline"
+              >
+                Acessar Gupshup
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <Button 
+              variant="outline" 
+              className="border-orange-500/30 text-orange-500 hover:bg-orange-500/10"
+              onClick={() => { resetForm(); setConnectionType('gupshup'); setIsDialogOpen(true); }}
+            >
+              Conectar Gupshup
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Setup Guide with Video Tutorial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Instructions */}
