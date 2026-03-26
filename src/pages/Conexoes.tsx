@@ -2009,17 +2009,21 @@ const Conexoes = () => {
             <DialogTitle className="text-foreground">
               {connectionType === 'zapi' 
                 ? 'Conectar via Z-API'
-                : step === 'credentials' 
-                  ? 'Conectar WhatsApp Business' 
-                  : 'Selecionar Números'
+                : connectionType === 'gupshup'
+                  ? 'Conectar via Gupshup'
+                  : step === 'credentials' 
+                    ? 'Conectar WhatsApp Business' 
+                    : 'Selecionar Números'
               }
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {connectionType === 'zapi'
                 ? 'Configure a conexão Z-API para este cliente'
-                : step === 'credentials' 
-                  ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
-                  : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+                : connectionType === 'gupshup'
+                  ? 'Configure a conexão Gupshup para este cliente'
+                  : step === 'credentials' 
+                    ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                    : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
               }
             </DialogDescription>
           </DialogHeader>
