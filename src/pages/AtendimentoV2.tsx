@@ -1150,47 +1150,46 @@ const AtendimentoV2 = () => {
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
   };
 
+  const markConversationAsRead = useCallback((conversation: { channelId: string | null; phone: string }) => {
+    const conversationKey = `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
+
+    setAllConversations(prev => prev.map(c => (
+      getConversationKey(c) === conversationKey ? { ...c, unreadCount: 0 } : c
+    )));
+
+    setSelectedConversation(prev => {
+      if (!prev) return prev;
+      const isSameConversation = prev.channelId === conversation.channelId && phonesMatch(prev.phone, conversation.phone);
+      return isSameConversation ? { ...prev, unreadCount: 0 } : prev;
+    });
+
+    if (!conversation.channelId) return;
+
+    const normalizedPhone = conversation.phone.replace(/\D/g, '');
+    const phoneVariants = new Set<string>(getPhoneComparisonVariants(normalizedPhone));
+    Array.from(phoneVariants).forEach(variant => phoneVariants.add(`+${variant}`));
+    const phoneFilter = Array.from(phoneVariants)
+      .map(phone => `sender_phone.eq.${phone}`)
+      .join(',');
+
+    supabase
+      .from("whatsapp_messages")
+      .update({ is_read: true })
+      .eq("channel_id", conversation.channelId)
+      .eq("direction", "inbound")
+      .eq("is_read", false)
+      .or(phoneFilter)
+      .then(() => {});
+  }, []);
+
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     setSelectedConversation(conversation);
 
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
 
-    // Immediately zero unread count in local state
-    if (conversation.unreadCount > 0) {
-      const convKey = `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
-      setAllConversations(prev => prev.map(c => {
-        const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
-        return key === convKey ? { ...c, unreadCount: 0 } : c;
-      }));
-
-      // Mark all unread inbound messages as read in DB (broad query by channel+phone)
-      if (conversation.channelId) {
-        const normalizedPhone = conversation.phone.replace(/\D/g, '');
-        const phoneVariants = [normalizedPhone, `+${normalizedPhone}`];
-        // Brazilian number variants
-        if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 10) {
-          const withoutCountry = normalizedPhone.slice(2);
-          const areaCode = withoutCountry.slice(0, 2);
-          const localNumber = withoutCountry.slice(2);
-          if (localNumber.length === 9 && localNumber.startsWith("9")) {
-            phoneVariants.push(`55${areaCode}${localNumber.slice(1)}`, `+55${areaCode}${localNumber.slice(1)}`);
-          } else if (localNumber.length === 8) {
-            phoneVariants.push(`55${areaCode}9${localNumber}`, `+55${areaCode}9${localNumber}`);
-          }
-        }
-        const phoneFilter = phoneVariants.map(p => `sender_phone.eq.${p}`).join(",");
-        supabase
-          .from("whatsapp_messages")
-          .update({ is_read: true })
-          .eq("channel_id", conversation.channelId)
-          .eq("direction", "inbound")
-          .eq("is_read", false)
-          .or(phoneFilter)
-          .then(() => {});
-      }
-    }
-  }, [channels]);
+    markConversationAsRead(conversation);
+  }, [channels, markConversationAsRead]);
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
@@ -1737,14 +1736,7 @@ const AtendimentoV2 = () => {
 
       // If inbound and user is viewing this conversation, mark as read immediately in DB
       if (msg.direction === "inbound") {
-        supabase
-          .from("whatsapp_messages")
-          .update({ is_read: true })
-          .eq("channel_id", msg.channelId)
-          .eq("sender_phone", msg.senderPhone)
-          .eq("direction", "inbound")
-          .eq("is_read", false)
-          .then(() => {});
+        markConversationAsRead({ channelId: msg.channelId, phone: normalizedContactPhone });
       }
     }
 
@@ -1758,7 +1750,7 @@ const AtendimentoV2 = () => {
         if (existing) {
           return prev.map(c =>
             isConversationMatch(c)
-              ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt }
+              ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt, unreadCount: 0 }
               : c
           ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
         } else if (isSentByHuman) {
@@ -2445,6 +2437,8 @@ const AtendimentoV2 = () => {
         onSuccess: async (data) => {
           if (!data.success) return; // onSuccess in hook already handles error state
 
+          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+
           // Auto-assign when sending first message
           if (!selectedConversation.assignedTo && user?.id) {
             const { error: assignError } = await supabase
@@ -2530,6 +2524,7 @@ const AtendimentoV2 = () => {
       {
         onSuccess: async (data) => {
           if (!data.success) return;
+          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
           if (mediaData.mediaType === 'ptt') {
             toast.success("Áudio enviado!");
           } else {
@@ -2743,7 +2738,10 @@ const AtendimentoV2 = () => {
       },
       {
         onSuccess: (data) => {
-          if (data.success) toast.success("Template enviado!");
+          if (data.success) {
+            markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+            toast.success("Template enviado!");
+          }
         },
       }
     );
