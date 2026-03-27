@@ -72,7 +72,8 @@ async function fetchMessagePage(
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
   // Cursor = oldest created_at from previous page (we paginate backwards)
-  const cursorFilter = cursor ? cursor : new Date().toISOString();
+  // For the first page (no cursor), add 2-minute buffer to account for client/server clock skew
+  const cursorFilter = cursor ? cursor : new Date(Date.now() + 120_000).toISOString();
 
   // Essential fields only — reduces JSON payload significantly
   const essentialSelect =
