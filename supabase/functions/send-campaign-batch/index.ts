@@ -252,7 +252,10 @@ Deno.serve(async (req) => {
 
       const hasFutureRetries = (c.total_waiting_retry || 0) > 0;
       const hasProcessing = (c.total_processing || 0) > 0;
-      const isComplete = !hasProcessing && (c.total_pending || 0) === 0;
+      const totalProcessed = (Number(c.total_sent) || 0) + (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0);
+      // Only mark complete if ALL recipients have been processed (sent, failed, or retrying)
+      // AND no pending/processing remain. Double-check against total_recipients to prevent premature completion.
+      const isComplete = !hasProcessing && (c.total_pending || 0) === 0 && totalProcessed >= campaign.total_recipients;
 
       const newStatus = isComplete ? 'completed' : 'running';
       await supabase.from('campaigns').update({
@@ -415,7 +418,9 @@ Deno.serve(async (req) => {
     const hasPending = (Number(fc.total_pending) || 0) > 0;
     const hasProcessing = (Number(fc.total_processing) || 0) > 0;
     const hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
-    const isComplete = !hasPending && !hasProcessing;
+    const totalProcessed = (Number(fc.total_sent) || 0) + (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0);
+    // Only mark complete if ALL recipients accounted for AND none pending/processing
+    const isComplete = !hasPending && !hasProcessing && totalProcessed >= campaign.total_recipients;
 
     let newStatus = 'running';
     if (isComplete) newStatus = 'completed';
