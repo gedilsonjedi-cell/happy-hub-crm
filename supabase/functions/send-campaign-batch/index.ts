@@ -26,12 +26,16 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
+// Errors that get scheduled for later retry with delay
 const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {
   '131049': { maxRetries: 3, delayHours: [12, 24, 48] },
-  '135000': { maxRetries: 2, delayHours: [1, 2] },
   '131000': { maxRetries: 2, delayHours: [0.5, 1] },
   '130472': { maxRetries: 2, delayHours: [1, 3] },
 };
+
+// Errors caused by Meta throttling - recipient goes back to 'pending' immediately
+// so the normal dispatch cycle picks it up seconds later
+const THROTTLE_ERRORS = ['135000'];
 
 const PERMANENT_ERRORS = [
   '131026', '131042', '131021', '131047', '132001', '132000', '100',
@@ -85,7 +89,11 @@ function extractMetaErrorCode(errorMessage: string): string | null {
 
 function isRetryableError(errorCode: string | null): boolean {
   if (!errorCode) return false;
-  return !!RETRYABLE_ERRORS[errorCode] && !PERMANENT_ERRORS.includes(errorCode);
+  return (!!RETRYABLE_ERRORS[errorCode] || THROTTLE_ERRORS.includes(errorCode)) && !PERMANENT_ERRORS.includes(errorCode);
+}
+
+function isThrottleError(errorCode: string | null): boolean {
+  return !!errorCode && THROTTLE_ERRORS.includes(errorCode);
 }
 
 function getRetryConfig(errorCode: string): { maxRetries: number; delayHours: number[] } | null {
@@ -374,6 +382,28 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
           const errorCode = extractMetaErrorCode(result.error || '');
+          
+          // Throttle errors (135000): put back as pending so normal dispatch retries in seconds
+          if (isThrottleError(errorCode)) {
+            const currentRetryCount = recipient.retryCount || 0;
+            const MAX_THROTTLE_RETRIES = 5;
+            if (currentRetryCount < MAX_THROTTLE_RETRIES) {
+              console.log(`[Batch] Throttle error for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_THROTTLE_RETRIES})`);
+              await supabase.from('campaign_recipients').update({
+                status: 'pending', retry_count: currentRetryCount + 1,
+                next_retry_at: null, error_message: null, last_error_code: null
+              }).eq('id', recipient.recipientId);
+              return { sent: false, failed: false, retry: false };
+            }
+            // Max throttle retries exhausted - mark as failed
+            await supabase.from('campaign_recipients').update({
+              status: 'failed', error_message: 'Meta throttle persistente após ' + MAX_THROTTLE_RETRIES + ' tentativas',
+              last_error_code: errorCode
+            }).eq('id', recipient.recipientId);
+            return { sent: false, failed: true, retry: false };
+          }
+          
+          // Standard retryable errors: schedule for later
           if (isRetryableError(errorCode)) {
             const currentRetryCount = recipient.retryCount || 0;
             const config = getRetryConfig(errorCode!);
