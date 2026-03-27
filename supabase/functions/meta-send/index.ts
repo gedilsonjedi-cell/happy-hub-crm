@@ -735,7 +735,7 @@ Deno.serve(async (req) => {
         metadata: { 
           destination: cleanDestination, 
           templateName, 
-          templateParams: sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams : templateParams,
+          templateParams,
           templateLanguage,
           templateContent,
           templateButtons,
@@ -744,8 +744,7 @@ Deno.serve(async (req) => {
           cost: pricePerMessage,
           provider: 'meta',
           sent_by_human: userId !== 'service_role',
-          campaignId: campaignId || null,
-          hadUnsupportedTemplateParams
+          campaignId: campaignId || null
         }
       });
     
