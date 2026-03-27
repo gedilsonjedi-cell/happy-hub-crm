@@ -1734,6 +1734,18 @@ const AtendimentoV2 = () => {
     if (isActiveConversation) {
       // Use the ref to always call the latest prependMessage (avoids stale closure)
       prependMessageRef.current(newMsg);
+
+      // If inbound and user is viewing this conversation, mark as read immediately in DB
+      if (msg.direction === "inbound") {
+        supabase
+          .from("whatsapp_messages")
+          .update({ is_read: true })
+          .eq("channel_id", msg.channelId)
+          .eq("sender_phone", msg.senderPhone)
+          .eq("direction", "inbound")
+          .eq("is_read", false)
+          .then(() => {});
+      }
     }
 
     // Update conversation list
