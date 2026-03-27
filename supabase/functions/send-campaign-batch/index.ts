@@ -26,12 +26,16 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
+// Errors that get scheduled for later retry with delay
 const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {
   '131049': { maxRetries: 3, delayHours: [12, 24, 48] },
-  '135000': { maxRetries: 2, delayHours: [1, 2] },
   '131000': { maxRetries: 2, delayHours: [0.5, 1] },
   '130472': { maxRetries: 2, delayHours: [1, 3] },
 };
+
+// Errors caused by Meta throttling - recipient goes back to 'pending' immediately
+// so the normal dispatch cycle picks it up seconds later
+const THROTTLE_ERRORS = ['135000'];
 
 const PERMANENT_ERRORS = [
   '131026', '131042', '131021', '131047', '132001', '132000', '100',
