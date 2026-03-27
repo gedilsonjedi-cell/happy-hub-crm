@@ -158,9 +158,14 @@ export const ManualSendDialog = ({
   };
 
   const formatPhoneNumber = (value: string) => {
-    // Remove all non-digits
     const digits = value.replace(/\D/g, "");
     return digits;
+  };
+
+  const hasUnsupportedTemplateContent = (value: string) => {
+    return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
+      || /[\u00A0\u200B-\u200D\uFEFF]/.test(value)
+      || /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(value);
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,10 +206,15 @@ export const ManualSendDialog = ({
       variableValues[`var_${index}`] || ""
     ) || [];
 
-    // Check if all variables are filled
     const hasEmptyVars = params.some(p => !p.trim());
     if (hasEmptyVars && (selectedTemplate.variables?.length || 0) > 0) {
       toast.error("Preencha todas as variáveis do template");
+      return;
+    }
+
+    const invalidParam = params.find((param) => hasUnsupportedTemplateContent(param));
+    if (invalidParam) {
+      toast.error("As variáveis do template não podem conter emoji, link do WhatsApp ou caracteres invisíveis");
       return;
     }
 
