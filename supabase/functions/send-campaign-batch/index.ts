@@ -382,6 +382,28 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
           const errorCode = extractMetaErrorCode(result.error || '');
+          
+          // Throttle errors (135000): put back as pending so normal dispatch retries in seconds
+          if (isThrottleError(errorCode)) {
+            const currentRetryCount = recipient.retryCount || 0;
+            const MAX_THROTTLE_RETRIES = 5;
+            if (currentRetryCount < MAX_THROTTLE_RETRIES) {
+              console.log(`[Batch] Throttle error for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_THROTTLE_RETRIES})`);
+              await supabase.from('campaign_recipients').update({
+                status: 'pending', retry_count: currentRetryCount + 1,
+                next_retry_at: null, error_message: null, last_error_code: null
+              }).eq('id', recipient.recipientId);
+              return { sent: false, failed: false, retry: false };
+            }
+            // Max throttle retries exhausted - mark as failed
+            await supabase.from('campaign_recipients').update({
+              status: 'failed', error_message: 'Meta throttle persistente após ' + MAX_THROTTLE_RETRIES + ' tentativas',
+              last_error_code: errorCode
+            }).eq('id', recipient.recipientId);
+            return { sent: false, failed: true, retry: false };
+          }
+          
+          // Standard retryable errors: schedule for later
           if (isRetryableError(errorCode)) {
             const currentRetryCount = recipient.retryCount || 0;
             const config = getRetryConfig(errorCode!);
