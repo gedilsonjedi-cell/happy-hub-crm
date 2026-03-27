@@ -89,7 +89,11 @@ function extractMetaErrorCode(errorMessage: string): string | null {
 
 function isRetryableError(errorCode: string | null): boolean {
   if (!errorCode) return false;
-  return !!RETRYABLE_ERRORS[errorCode] && !PERMANENT_ERRORS.includes(errorCode);
+  return (!!RETRYABLE_ERRORS[errorCode] || THROTTLE_ERRORS.includes(errorCode)) && !PERMANENT_ERRORS.includes(errorCode);
+}
+
+function isThrottleError(errorCode: string | null): boolean {
+  return !!errorCode && THROTTLE_ERRORS.includes(errorCode);
 }
 
 function getRetryConfig(errorCode: string): { maxRetries: number; delayHours: number[] } | null {
