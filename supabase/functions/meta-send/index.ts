@@ -24,6 +24,23 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function sanitizeTemplateParam(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, ' ')
+    .replace(/(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/gi, '')
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1024);
+}
+
+function hasUnsupportedTemplateContent(value: string): boolean {
+  return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
+    || /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu.test(value)
+    || /[\u00A0\u200B-\u200D\uFEFF]/.test(value);
+}
+
 // Mime type fallback order for audio retries
 const AUDIO_MIME_FALLBACKS: { mimeType: string; filename: string }[] = [
   { mimeType: 'audio/ogg', filename: 'audio.ogg' },
@@ -410,11 +427,23 @@ Deno.serve(async (req) => {
       
       // Send template message
       const components: unknown[] = [];
-      
+      const sanitizedTemplateParams = templateParams?.map((param: string) => sanitizeTemplateParam(String(param ?? ''))) || [];
+      const hadUnsupportedTemplateParams = templateParams?.some((param: string) => hasUnsupportedTemplateContent(String(param ?? ''))) || false;
+
       if (templateParams && templateParams.length > 0) {
+        if (sanitizedTemplateParams.some((param) => !param)) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Uma ou mais variáveis do template contêm apenas conteúdo não suportado pela Meta. Remova emojis, links do WhatsApp e caracteres invisíveis.'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         components.push({
           type: 'body',
-          parameters: templateParams.map((param: string) => ({
+          parameters: sanitizedTemplateParams.map((param: string) => ({
             type: 'text',
             text: param
           }))
@@ -643,7 +672,7 @@ Deno.serve(async (req) => {
           metadata: { 
             destination: cleanDestination, 
             templateName, 
-            templateParams,
+            templateParams: sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams : templateParams,
             templateLanguage,
             templateContent,
             templateButtons,
@@ -654,7 +683,8 @@ Deno.serve(async (req) => {
             campaignId: campaignId || null,
             originalError: errorMessage,
             errorCode: errorCode,
-            retryAttempts: MAX_RETRIES + 1
+            retryAttempts: MAX_RETRIES + 1,
+            hadUnsupportedTemplateParams
           }
         });
       
@@ -706,7 +736,7 @@ Deno.serve(async (req) => {
         metadata: { 
           destination: cleanDestination, 
           templateName, 
-          templateParams,
+          templateParams: sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams : templateParams,
           templateLanguage,
           templateContent,
           templateButtons,
@@ -715,7 +745,8 @@ Deno.serve(async (req) => {
           cost: pricePerMessage,
           provider: 'meta',
           sent_by_human: userId !== 'service_role',
-          campaignId: campaignId || null
+          campaignId: campaignId || null,
+          hadUnsupportedTemplateParams
         }
       });
     
