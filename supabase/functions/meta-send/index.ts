@@ -409,6 +409,14 @@ Deno.serve(async (req) => {
     // Fetch template content and buttons for metadata storage
     let templateContent: string | null = null;
     let templateButtons: unknown[] | null = null;
+    const sanitizedTemplateParams = Array.isArray(templateParams)
+      ? templateParams
+          .filter((param) => param != null && String(param).trim() !== '')
+          .map((param) => sanitizeTemplateParam(String(param)))
+      : [];
+    const hadUnsupportedTemplateParams = Array.isArray(templateParams)
+      ? templateParams.some((param) => hasUnsupportedTemplateContent(String(param ?? '')))
+      : false;
     
     if (templateName) {
       // Fetch template from database to store content in metadata
@@ -427,8 +435,6 @@ Deno.serve(async (req) => {
       
       // Send template message
       const components: unknown[] = [];
-      const sanitizedTemplateParams = templateParams?.map((param: string) => sanitizeTemplateParam(String(param ?? ''))) || [];
-      const hadUnsupportedTemplateParams = templateParams?.some((param: string) => hasUnsupportedTemplateContent(String(param ?? ''))) || false;
 
       if (templateParams && templateParams.length > 0) {
         if (sanitizedTemplateParams.some((param) => !param)) {
