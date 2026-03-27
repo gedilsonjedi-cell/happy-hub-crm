@@ -2738,7 +2738,10 @@ const AtendimentoV2 = () => {
       },
       {
         onSuccess: (data) => {
-          if (data.success) toast.success("Template enviado!");
+          if (data.success) {
+            markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+            toast.success("Template enviado!");
+          }
         },
       }
     );
