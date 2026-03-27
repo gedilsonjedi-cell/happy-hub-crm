@@ -1155,6 +1155,41 @@ const AtendimentoV2 = () => {
 
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
+
+    // Immediately zero unread count in local state
+    if (conversation.unreadCount > 0) {
+      const convKey = `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
+      setAllConversations(prev => prev.map(c => {
+        const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
+        return key === convKey ? { ...c, unreadCount: 0 } : c;
+      }));
+
+      // Mark all unread inbound messages as read in DB (broad query by channel+phone)
+      if (conversation.channelId) {
+        const normalizedPhone = conversation.phone.replace(/\D/g, '');
+        const phoneVariants = [normalizedPhone, `+${normalizedPhone}`];
+        // Brazilian number variants
+        if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 10) {
+          const withoutCountry = normalizedPhone.slice(2);
+          const areaCode = withoutCountry.slice(0, 2);
+          const localNumber = withoutCountry.slice(2);
+          if (localNumber.length === 9 && localNumber.startsWith("9")) {
+            phoneVariants.push(`55${areaCode}${localNumber.slice(1)}`, `+55${areaCode}${localNumber.slice(1)}`);
+          } else if (localNumber.length === 8) {
+            phoneVariants.push(`55${areaCode}9${localNumber}`, `+55${areaCode}9${localNumber}`);
+          }
+        }
+        const phoneFilter = phoneVariants.map(p => `sender_phone.eq.${p}`).join(",");
+        supabase
+          .from("whatsapp_messages")
+          .update({ is_read: true })
+          .eq("channel_id", conversation.channelId)
+          .eq("direction", "inbound")
+          .eq("is_read", false)
+          .or(phoneFilter)
+          .then(() => {});
+      }
+    }
   }, [channels]);
 
   // Update conversation status in DB
