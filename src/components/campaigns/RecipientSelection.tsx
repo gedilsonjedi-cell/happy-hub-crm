@@ -503,7 +503,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <div>
               <p>Cole os números separados por vírgula, ponto e vírgula ou um por linha.</p>
-              <p className="mt-1">Os contatos serão salvos automaticamente como <strong>LeadWhats-00001</strong>, etc. Quando o cliente responder, o nome do WhatsApp será capturado.</p>
+              <p className="mt-1">Se o contato já existir no CRM, o <strong>nome real</strong> será utilizado. Caso contrário, será salvo como <strong>LeadWhats-00001</strong>, etc. Quando o cliente responder, o nome do WhatsApp será capturado.</p>
             </div>
           </div>
         </div>
