@@ -24,6 +24,65 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+interface MetaTemplateDefinition {
+  languageCode: string | null;
+  status?: string | null;
+  components?: unknown[] | null;
+}
+
+async function fetchMetaTemplateDefinition(
+  wabaId: string | null | undefined,
+  accessToken: string,
+  templateName: string,
+): Promise<MetaTemplateDefinition | null> {
+  if (!wabaId || !templateName) return null;
+
+  const fetchPage = async (pageUrl: string) => {
+    const response = await fetch(pageUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.warn('[Meta-Send] Failed to fetch template definition:', response.status, await response.text());
+      return null;
+    }
+
+    return await response.json() as {
+      data?: Array<{ name?: string; language?: string; status?: string; components?: unknown[] }>;
+      paging?: { next?: string };
+    };
+  };
+
+  const initialUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
+  initialUrl.searchParams.set('fields', 'name,language,status,components');
+  initialUrl.searchParams.set('limit', '100');
+  initialUrl.searchParams.set('name', templateName);
+
+  let page = await fetchPage(initialUrl.toString());
+  let nextPageUrl = page?.paging?.next;
+  let attempts = 0;
+
+  while (page && attempts < 3) {
+    const match = page.data?.find((template) => template.name === templateName);
+    if (match) {
+      return {
+        languageCode: match.language ?? null,
+        status: match.status ?? null,
+        components: match.components ?? null,
+      };
+    }
+
+    if (!nextPageUrl) break;
+    attempts += 1;
+    page = await fetchPage(nextPageUrl);
+    nextPageUrl = page?.paging?.next;
+  }
+
+  return null;
+}
+
 function sanitizeTemplateParam(value: string): string {
   return value
     .normalize('NFKC')
@@ -419,6 +478,20 @@ Deno.serve(async (req) => {
       : false;
     
     if (templateName) {
+      const metaTemplateDefinition = await fetchMetaTemplateDefinition(
+        channel.waba_id,
+        accessToken,
+        templateName,
+      );
+      const resolvedTemplateLanguage = metaTemplateDefinition?.languageCode || templateLanguage || 'pt_BR';
+
+      console.log('[Meta-Send] Resolved template metadata:', {
+        templateName,
+        requestedLanguage: templateLanguage,
+        resolvedLanguage: resolvedTemplateLanguage,
+        metaStatus: metaTemplateDefinition?.status ?? null,
+      });
+
       // Fetch template from database to store content in metadata
       const { data: templateData } = await serviceRoleClient
         .from('message_templates')
@@ -461,7 +534,7 @@ Deno.serve(async (req) => {
         type: 'template',
         template: {
           name: templateName,
-          language: { code: templateLanguage },
+          language: { code: resolvedTemplateLanguage },
           ...(components.length > 0 && { components })
         }
       };
