@@ -351,7 +351,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             channelId: channel.id, destination: formattedPhone, templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
-            templateLanguage: 'pt_BR', campaignId: campaignId
+            campaignId: campaignId
           }),
         });
 

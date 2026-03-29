@@ -30,6 +30,11 @@ interface MetaTemplateDefinition {
   components?: unknown[] | null;
 }
 
+interface MetaTemplateComponent {
+  type?: string;
+  text?: string;
+}
+
 async function fetchMetaTemplateDefinition(
   wabaId: string | null | undefined,
   accessToken: string,
@@ -98,6 +103,23 @@ function hasUnsupportedTemplateContent(value: string): boolean {
   return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
     || /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu.test(value)
     || /[\u00A0\u200B-\u200D\uFEFF]/.test(value);
+}
+
+function getExpectedBodyParamCount(components: unknown[] | null | undefined): number | null {
+  if (!Array.isArray(components)) return null;
+
+  const bodyComponent = components.find((component) => {
+    const typedComponent = component as MetaTemplateComponent;
+    return typedComponent?.type?.toUpperCase() === 'BODY';
+  }) as MetaTemplateComponent | undefined;
+
+  if (!bodyComponent?.text) return 0;
+
+  const matches = [...bodyComponent.text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)];
+  if (matches.length === 0) return 0;
+
+  const placeholderIndexes = new Set(matches.map((match) => Number(match[1])));
+  return placeholderIndexes.size;
 }
 
 // Mime type fallback order for audio retries
@@ -469,9 +491,7 @@ Deno.serve(async (req) => {
     let templateContent: string | null = null;
     let templateButtons: unknown[] | null = null;
     const sanitizedTemplateParams = Array.isArray(templateParams)
-      ? templateParams
-          .filter((param) => param != null && String(param).trim() !== '')
-          .map((param) => sanitizeTemplateParam(String(param)))
+      ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
     const hadUnsupportedTemplateParams = Array.isArray(templateParams)
       ? templateParams.some((param) => hasUnsupportedTemplateContent(String(param ?? '')))
@@ -484,12 +504,16 @@ Deno.serve(async (req) => {
         templateName,
       );
       const resolvedTemplateLanguage = metaTemplateDefinition?.languageCode || templateLanguage || 'pt_BR';
+      const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
+      const hasProvidedTemplateParams = Array.isArray(templateParams);
 
       console.log('[Meta-Send] Resolved template metadata:', {
         templateName,
         requestedLanguage: templateLanguage,
         resolvedLanguage: resolvedTemplateLanguage,
         metaStatus: metaTemplateDefinition?.status ?? null,
+        expectedBodyParamCount,
+        providedTemplateParamCount: sanitizedTemplateParams.length,
       });
 
       // Fetch template from database to store content in metadata
@@ -509,7 +533,30 @@ Deno.serve(async (req) => {
       // Send template message
       const components: unknown[] = [];
 
-      if (templateParams && templateParams.length > 0) {
+      if ((expectedBodyParamCount ?? 0) > 0 && !hasProvidedTemplateParams) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `O template ${templateName} exige ${expectedBodyParamCount} variável(is), mas nenhuma foi enviada.`
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (hasProvidedTemplateParams && (expectedBodyParamCount ?? sanitizedTemplateParams.length) > 0) {
+        if (
+          expectedBodyParamCount !== null
+          && sanitizedTemplateParams.length !== expectedBodyParamCount
+        ) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: `O template ${templateName} exige ${expectedBodyParamCount} variável(is), mas recebeu ${sanitizedTemplateParams.length}.`
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         if (sanitizedTemplateParams.some((param) => !param)) {
           return new Response(
             JSON.stringify({
@@ -526,6 +573,13 @@ Deno.serve(async (req) => {
             type: 'text',
             text: param
           }))
+        });
+      }
+
+      if ((expectedBodyParamCount ?? 0) === 0 && sanitizedTemplateParams.length > 0) {
+        console.warn('[Meta-Send] Ignoring unexpected template params for template without BODY placeholders', {
+          templateName,
+          providedTemplateParamCount: sanitizedTemplateParams.length,
         });
       }
 
