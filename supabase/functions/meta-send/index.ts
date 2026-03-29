@@ -122,6 +122,70 @@ function getExpectedBodyParamCount(components: unknown[] | null | undefined): nu
   return placeholderIndexes.size;
 }
 
+interface MetaHeaderInfo {
+  format: string | null; // TEXT, IMAGE, VIDEO, DOCUMENT
+  hasVariable: boolean;
+  exampleUrl: string | null;
+}
+
+function getHeaderInfo(components: unknown[] | null | undefined): MetaHeaderInfo | null {
+  if (!Array.isArray(components)) return null;
+
+  const headerComponent = components.find((component: any) => {
+    return component?.type?.toUpperCase() === 'HEADER';
+  }) as any | undefined;
+
+  if (!headerComponent) return null;
+
+  const format = headerComponent.format?.toUpperCase() || 'TEXT';
+  
+  // Check for variable in header text
+  const hasTextVariable = format === 'TEXT' && headerComponent.text && /\{\{\s*\d+\s*\}\}/.test(headerComponent.text);
+  
+  // For media headers (IMAGE, VIDEO, DOCUMENT), check if there's an example
+  const isMediaHeader = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(format);
+  let exampleUrl: string | null = null;
+  
+  if (isMediaHeader && headerComponent.example?.header_handle) {
+    exampleUrl = Array.isArray(headerComponent.example.header_handle) 
+      ? headerComponent.example.header_handle[0] 
+      : headerComponent.example.header_handle;
+  }
+
+  return {
+    format,
+    hasVariable: hasTextVariable || isMediaHeader,
+    exampleUrl,
+  };
+}
+
+function getButtonComponents(components: unknown[] | null | undefined): unknown[] {
+  if (!Array.isArray(components)) return [];
+
+  const buttonsComponent = components.find((component: any) => {
+    return component?.type?.toUpperCase() === 'BUTTONS';
+  }) as any | undefined;
+
+  if (!buttonsComponent?.buttons) return [];
+
+  // Check for URL buttons with variables
+  const urlButtonsWithVars: unknown[] = [];
+  buttonsComponent.buttons.forEach((button: any, index: number) => {
+    if (button.type === 'URL' && button.url && /\{\{\s*\d+\s*\}\}/.test(button.url)) {
+      // Has dynamic URL variable — needs example or param
+      const exampleValue = button.example?.[0] || '';
+      urlButtonsWithVars.push({
+        type: 'button',
+        sub_type: 'url',
+        index,
+        parameters: [{ type: 'text', text: exampleValue }]
+      });
+    }
+  });
+
+  return urlButtonsWithVars;
+}
+
 // Mime type fallback order for audio retries
 const AUDIO_MIME_FALLBACKS: { mimeType: string; filename: string }[] = [
   { mimeType: 'audio/ogg', filename: 'audio.ogg' },
@@ -507,6 +571,9 @@ Deno.serve(async (req) => {
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
+      const headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
+      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
+
       console.log('[Meta-Send] Resolved template metadata:', {
         templateName,
         requestedLanguage: templateLanguage,
@@ -514,6 +581,9 @@ Deno.serve(async (req) => {
         metaStatus: metaTemplateDefinition?.status ?? null,
         expectedBodyParamCount,
         providedTemplateParamCount: sanitizedTemplateParams.length,
+        headerInfo,
+        buttonComponentsCount: buttonComponents.length,
+        metaComponents: JSON.stringify(metaTemplateDefinition?.components ?? []),
       });
 
       // Fetch template from database to store content in metadata
@@ -532,6 +602,29 @@ Deno.serve(async (req) => {
       
       // Send template message
       const components: unknown[] = [];
+
+      // Add HEADER component if template requires media header
+      if (headerInfo && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.format || '')) {
+        const headerMediaType = headerInfo.format!.toLowerCase();
+        if (headerInfo.exampleUrl) {
+          // Use the example handle URL from Meta's template definition
+          components.push({
+            type: 'header',
+            parameters: [{
+              type: headerMediaType,
+              [headerMediaType]: { link: headerInfo.exampleUrl }
+            }]
+          });
+        }
+        // If no example URL, Meta should use the template's default — no header component needed
+      } else if (headerInfo && headerInfo.format === 'TEXT' && headerInfo.hasVariable) {
+        // TEXT header with variable — use first template param or empty
+        const headerText = sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams[0] : '';
+        components.push({
+          type: 'header',
+          parameters: [{ type: 'text', text: headerText }]
+        });
+      }
 
       if ((expectedBodyParamCount ?? 0) > 0 && !hasProvidedTemplateParams) {
         return new Response(
@@ -581,6 +674,11 @@ Deno.serve(async (req) => {
           templateName,
           providedTemplateParamCount: sanitizedTemplateParams.length,
         });
+      }
+
+      // Add BUTTON components with dynamic URLs
+      if (buttonComponents.length > 0) {
+        components.push(...buttonComponents);
       }
 
       messagePayload = {
