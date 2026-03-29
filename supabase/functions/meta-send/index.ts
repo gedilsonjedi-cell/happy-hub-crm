@@ -571,6 +571,9 @@ Deno.serve(async (req) => {
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
+      const headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
+      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
+
       console.log('[Meta-Send] Resolved template metadata:', {
         templateName,
         requestedLanguage: templateLanguage,
@@ -578,6 +581,9 @@ Deno.serve(async (req) => {
         metaStatus: metaTemplateDefinition?.status ?? null,
         expectedBodyParamCount,
         providedTemplateParamCount: sanitizedTemplateParams.length,
+        headerInfo,
+        buttonComponentsCount: buttonComponents.length,
+        metaComponents: JSON.stringify(metaTemplateDefinition?.components ?? []),
       });
 
       // Fetch template from database to store content in metadata
@@ -596,6 +602,29 @@ Deno.serve(async (req) => {
       
       // Send template message
       const components: unknown[] = [];
+
+      // Add HEADER component if template requires media header
+      if (headerInfo && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.format || '')) {
+        const headerMediaType = headerInfo.format!.toLowerCase();
+        if (headerInfo.exampleUrl) {
+          // Use the example handle URL from Meta's template definition
+          components.push({
+            type: 'header',
+            parameters: [{
+              type: headerMediaType,
+              [headerMediaType]: { link: headerInfo.exampleUrl }
+            }]
+          });
+        }
+        // If no example URL, Meta should use the template's default — no header component needed
+      } else if (headerInfo && headerInfo.format === 'TEXT' && headerInfo.hasVariable) {
+        // TEXT header with variable — use first template param or empty
+        const headerText = sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams[0] : '';
+        components.push({
+          type: 'header',
+          parameters: [{ type: 'text', text: headerText }]
+        });
+      }
 
       if ((expectedBodyParamCount ?? 0) > 0 && !hasProvidedTemplateParams) {
         return new Response(
@@ -645,6 +674,11 @@ Deno.serve(async (req) => {
           templateName,
           providedTemplateParamCount: sanitizedTemplateParams.length,
         });
+      }
+
+      // Add BUTTON components with dynamic URLs
+      if (buttonComponents.length > 0) {
+        components.push(...buttonComponents);
       }
 
       messagePayload = {
