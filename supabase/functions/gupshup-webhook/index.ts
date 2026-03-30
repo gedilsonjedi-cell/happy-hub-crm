@@ -679,9 +679,7 @@ async function processInboundMessage(
   }
 
   // Store message
-  const { error: insertError } = await supabase
-    .from('whatsapp_messages')
-    .insert({
+  const { error: insertError } = await dualWriteMessage({
       channel_id: channelId,
       organization_id: organizationId,
       message_id: messageId,

@@ -903,9 +903,7 @@ Deno.serve(async (req) => {
       }
 
       // Store message with normalized phone
-      const { error: insertError } = await supabase
-        .from('whatsapp_messages')
-        .insert({
+      const { error: insertError } = await dualWriteMessage({
           channel_id: channel.id,
           organization_id: channel.organization_id,
           message_id: messageId,
