@@ -10,6 +10,25 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// External DB for high-volume tables (whatsapp_messages, leads)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
+/** Dual-write to whatsapp_messages */
+function dualWriteMessage(data: Record<string, unknown>) {
+  const ops = [supabase.from('whatsapp_messages').insert(data)];
+  if (externalSupabase) ops.push(externalSupabase.from('whatsapp_messages').insert(data));
+  return Promise.all(ops).then(([primary]) => primary);
+}
+
+/** Dual-update whatsapp_messages */
+function dualUpdateMessage(filter: { column: string; op: string; value: string }, updateData: Record<string, unknown>) {
+  const op = supabase.from('whatsapp_messages').update(updateData).eq(filter.column, filter.value);
+  if (externalSupabase) externalSupabase.from('whatsapp_messages').update(updateData).eq(filter.column, filter.value).then(() => {}).catch(() => {});
+  return op;
+}
+
 // ===========================================
 // PHONE NORMALIZATION
 // ===========================================
