@@ -10,6 +10,36 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// External DB for high-volume tables (whatsapp_messages, leads)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
+/** Write to whatsapp_messages on both internal and external DB */
+async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
+  const op = upsert
+    ? supabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+    : supabase.from('whatsapp_messages').insert(data);
+  const results = [op];
+  if (externalSupabase) {
+    const extOp = upsert
+      ? externalSupabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+      : externalSupabase.from('whatsapp_messages').insert(data);
+    results.push(extOp);
+  }
+  const [primary] = await Promise.all(results);
+  return primary;
+}
+
+/** Update whatsapp_messages on both DBs */
+async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
+  const op = supabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
+  if (externalSupabase) {
+    externalSupabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values).then(() => {}).catch(() => {});
+  }
+  return op;
+}
+
 // =============================================
 // IN-MEMORY CONFIG CACHE (with jitter to avoid stampedes)
 // =============================================
