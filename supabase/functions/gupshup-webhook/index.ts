@@ -512,10 +512,10 @@ Deno.serve(async (req) => {
           const mappedStatus = statusMap[statusType] || statusType;
 
           // Update message status
-          const { error: updateError } = await supabase
-            .from('whatsapp_messages')
-            .update({ status: mappedStatus })
-            .eq('message_id', gsMessageId);
+          const { error: updateError } = await dualUpdateMessage(
+            { column: 'message_id', op: 'eq', value: gsMessageId },
+            { status: mappedStatus }
+          );
 
           if (updateError) {
             console.log('Could not update status for message:', gsMessageId, updateError);
