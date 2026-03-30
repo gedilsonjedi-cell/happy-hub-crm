@@ -2096,8 +2096,8 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Gupshup channels use the simple connected check */}
-                {channel.provider === 'gupshup' && !channel.connected && (
+                {/* Gupshup/Infobip channels use the simple connected check */}
+                {(channel.provider === 'gupshup' || channel.provider === 'infobip') && !channel.connected && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <Button 
                       variant="default" 
@@ -2108,6 +2108,18 @@ const Conexoes = () => {
                       <Power className="w-3 h-3" />
                       Ativar Canal
                     </Button>
+                  </div>
+                )}
+
+                {/* Infobip connected status */}
+                {channel.provider === 'infobip' && channel.connected && (
+                  <div className="mt-3 pt-3 border-t border-border space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full animate-pulse bg-emerald-500" />
+                      <span className="text-xs text-muted-foreground">
+                        Pronto para enviar e receber
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
