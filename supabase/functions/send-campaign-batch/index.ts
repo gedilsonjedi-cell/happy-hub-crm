@@ -316,7 +316,9 @@ Deno.serve(async (req) => {
           const mapping = template.variable_mappings?.[varName] || 'manual';
           let value = '';
           if (mapping === 'contact_first_name') {
-            value = getFirstName(recipient.name) || '';
+            value = getFirstName(recipient.name) || recipient.name || 'Cliente';
+          } else if (mapping === 'contact_name' || mapping === 'contact_full_name') {
+            value = recipient.name || 'Cliente';
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || '');
@@ -340,6 +342,8 @@ Deno.serve(async (req) => {
             }
           }
           if (value.match(/^(VAR_\d+|p\d+)$/i)) value = '';
+          // Ensure no empty params - use fallback to prevent Meta rejection
+          if (!value.trim()) value = 'Cliente';
           templateParams.push(value);
         }
       }
