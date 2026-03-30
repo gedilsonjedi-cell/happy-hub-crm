@@ -1,6 +1,10 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { fetchExternalMessages, type ExternalMessageRow } from "@/lib/externalDb";
+import {
+  fetchExternalMessages,
+  fetchInternalMessages,
+  type ExternalMessageRow,
+} from "@/lib/externalDb";
 
 const PAGE_SIZE = 20;
 
@@ -52,13 +56,27 @@ async function fetchMessagePage(
   const normalizedPhone = conversationPhone.replace(/\D/g, "");
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
-  // Delegate to external DB proxy edge function
-  const result = await fetchExternalMessages({
+  const requestParams = {
     channelId,
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
+  };
+
+  // Primary source: external DB proxy
+  // Fallback: internal table read when external data is not available for this thread.
+  let result = await fetchExternalMessages(requestParams).catch(async () => {
+    return fetchInternalMessages(requestParams);
   });
+
+  if (!result.messages.length) {
+    const internalResult = await fetchInternalMessages(requestParams).catch(
+      () => null
+    );
+    if (internalResult && internalResult.messages.length) {
+      result = internalResult;
+    }
+  }
 
   return {
     messages: result.messages,
