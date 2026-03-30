@@ -221,10 +221,15 @@ async function handleDeliveryReport(result: Record<string, unknown>) {
 
 async function handleInboundMessage(result: Record<string, unknown>) {
   const messageId = result.messageId as string || `infobip_in_${Date.now()}`;
-  const from = result.from as string;
-  const to = result.to as string;
+  // Infobip MO format uses "sender"/"destination" instead of "from"/"to"
+  const from = (result.sender as string) || (result.from as string);
+  const to = (result.destination as string) || (result.to as string);
   const receivedAt = result.receivedAt as string || new Date().toISOString();
-  const message = result.message as Record<string, unknown> || result.content as Record<string, unknown>;
+  
+  // Content can be: a single object (result.message), or an array (result.content)
+  const contentArray = result.content as Record<string, unknown>[] | null;
+  const messageObj = result.message as Record<string, unknown> | null;
+  const message = messageObj || (Array.isArray(contentArray) && contentArray.length > 0 ? contentArray[0] : null);
 
   if (!from || !to) {
     console.error('[Infobip-Webhook] Missing from/to in inbound message');
@@ -252,6 +257,15 @@ async function handleInboundMessage(result: Record<string, unknown>) {
     switch (msgType) {
       case 'TEXT':
         content = (message.text as string) || '';
+        messageType = 'text';
+        break;
+      case 'BUTTON_REPLY':
+        // Interactive button reply
+        content = (message.text as string) || (message.payload as string) || '[Botão]';
+        messageType = 'text';
+        break;
+      case 'LIST_REPLY':
+        content = (message.text as string) || (message.title as string) || '[Lista]';
         messageType = 'text';
         break;
       case 'IMAGE':
@@ -291,7 +305,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
         messageType = 'sticker';
         break;
       default:
-        content = (message.text as string) || `[${msgType}]`;
+        content = (message.text as string) || (message.payload as string) || `[${msgType}]`;
         messageType = 'text';
     }
   }
