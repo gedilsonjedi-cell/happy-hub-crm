@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.webhook-dispatcher]
 verify_jwt = false
+
+[functions.migrate-to-external]
+verify_jwt = false
