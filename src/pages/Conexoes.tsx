@@ -1579,8 +1579,42 @@ const Conexoes = () => {
             >
               Conectar Gupshup
             </Button>
-          </div>
         </div>
+
+        {/* Infobip Card */}
+        <div className="flex items-start gap-4 p-5 bg-muted/20 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
+          <div className="w-12 h-12 rounded-lg bg-sky-500/10 flex items-center justify-center flex-shrink-0">
+            <Smartphone className="w-6 h-6 text-sky-500" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-semibold text-foreground">Infobip</h3>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
+                Oficial
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-sm mb-3">
+              Conexão via Infobip para WhatsApp Business API. Provedor global certificado pela Meta.
+            </p>
+            <a 
+              href="https://www.infobip.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sky-500 text-sm hover:underline"
+            >
+              Acessar Infobip
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+          <Button 
+            variant="outline" 
+            className="border-sky-500/30 text-sky-500 hover:bg-sky-500/10"
+            onClick={() => { resetForm(); setConnectionType('infobip'); setIsDialogOpen(true); }}
+          >
+            Conectar Infobip
+          </Button>
+        </div>
+      </div>
       
 
       {/* Setup Guide with Video Tutorial */}
