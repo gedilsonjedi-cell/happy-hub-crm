@@ -655,7 +655,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        if (sanitizedTemplateParams.some((param) => !param)) {
+        // Only reject if original params had content that was fully stripped by sanitization
+        // (e.g., params that were only emojis/WhatsApp links). Allow legitimately empty params.
+        if (hadUnsupportedTemplateParams && sanitizedTemplateParams.some((param) => !param)) {
           return new Response(
             JSON.stringify({
               success: false,
