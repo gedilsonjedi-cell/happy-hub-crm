@@ -20,6 +20,11 @@ const RETRYABLE_ERROR_CODES = [
   100,    // Invalid parameter (sometimes transient)
 ];
 
+// External DB for high-volume tables (whatsapp_messages)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
