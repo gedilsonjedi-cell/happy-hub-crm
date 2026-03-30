@@ -178,6 +178,15 @@ const Conexoes = () => {
     name: "",
     phone: "",
   });
+
+  // Infobip form data
+  const [infobipFormData, setInfobipFormData] = useState({
+    apiKey: "",
+    baseUrl: "",
+    senderPhone: "",
+    name: "",
+    phone: "",
+  });
   
   const [formData, setFormData] = useState({
     wabaId: "",
