@@ -50,7 +50,7 @@ async function getChannelByPhoneNumberId(phoneNumberId: string) {
 }
 
 // =============================================
-// SIGNATURE VERIFICATION (async, non-blocking)
+// SIGNATURE VERIFICATION (blocking - rejects unauthorized requests)
 // =============================================
 async function verifyMetaSignature(body: string, signature: string | null, appSecret: string): Promise<boolean> {
   if (!signature || !appSecret) return false;
@@ -894,19 +894,24 @@ Deno.serve(async (req) => {
 
   // Webhook event (POST)
   if (req.method === 'POST') {
+    const bodyText = await req.text();
+
+    // Signature verification (BLOCKING - rejects unauthorized requests)
+    const appSecret = Deno.env.get('META_APP_SECRET');
+    if (appSecret) {
+      const signature = req.headers.get('x-hub-signature-256');
+      const isValid = await verifyMetaSignature(bodyText, signature, appSecret);
+      if (!isValid) {
+        console.error('[Webhook] REJECTED: Invalid Meta signature from', req.headers.get('x-forwarded-for') || 'unknown');
+        return new Response('Unauthorized', { status: 401 });
+      }
+    } else {
+      console.warn('[Webhook] META_APP_SECRET not configured - signature verification skipped');
+    }
+
     // Return 200 immediately to Meta — process async to prevent timeouts under load
     const responsePromise = (async () => {
       try {
-        const bodyText = await req.text();
-
-        // Signature verification (non-blocking, logs warning only)
-        const appSecret = Deno.env.get('META_APP_SECRET');
-        if (appSecret) {
-          const signature = req.headers.get('x-hub-signature-256');
-          verifyMetaSignature(bodyText, signature, appSecret).then((valid) => {
-            if (!valid) console.warn('Invalid Meta signature');
-          });
-        }
 
         const body = JSON.parse(bodyText);
         const entry = body.entry?.[0];
