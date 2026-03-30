@@ -10,6 +10,25 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// External DB for high-volume tables (whatsapp_messages, leads)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
+/** Dual-write to whatsapp_messages */
+function dualWriteMessage(data: Record<string, unknown>) {
+  const ops = [supabase.from('whatsapp_messages').insert(data)];
+  if (externalSupabase) ops.push(externalSupabase.from('whatsapp_messages').insert(data));
+  return Promise.all(ops).then(([primary]) => primary);
+}
+
+/** Dual-write lead to external */
+function dualWriteLead(data: Record<string, unknown>) {
+  const ops = [supabase.from('leads').insert(data).select('id').single()];
+  if (externalSupabase) externalSupabase.from('leads').upsert(data, { onConflict: 'id' }).then(() => {}).catch(() => {});
+  return ops[0];
+}
+
 // ===========================================
 // PHONE NORMALIZATION (Single source of truth)
 // ===========================================
@@ -884,9 +903,7 @@ Deno.serve(async (req) => {
       }
 
       // Store message with normalized phone
-      const { error: insertError } = await supabase
-        .from('whatsapp_messages')
-        .insert({
+      const { error: insertError } = await dualWriteMessage({
           channel_id: channel.id,
           organization_id: channel.organization_id,
           message_id: messageId,

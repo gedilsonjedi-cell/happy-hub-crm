@@ -20,6 +20,11 @@ const RETRYABLE_ERROR_CODES = [
   100,    // Invalid parameter (sometimes transient)
 ];
 
+// External DB for high-volume tables (whatsapp_messages)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -887,9 +892,7 @@ Deno.serve(async (req) => {
       const storedContent = templateName ? `Template: ${templateName}` : (message || (mediaUrl ? `[${effectiveMediaType || 'file'}]` : ''));
       
       const failedMessageId = `failed_${Date.now()}`;
-      await serviceRoleClient
-        .from('whatsapp_messages')
-        .insert({
+      const failedData = {
           channel_id: channelId,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
@@ -916,7 +919,9 @@ Deno.serve(async (req) => {
             errorCode: errorCode,
             retryAttempts: MAX_RETRIES + 1
           }
-        });
+        };
+      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
+      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
       
       return new Response(
         JSON.stringify({ 
@@ -950,10 +955,8 @@ Deno.serve(async (req) => {
       storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
     }
 
-    // Store outbound message in database
-    await serviceRoleClient
-      .from('whatsapp_messages')
-      .insert({
+    // Store outbound message in database (dual-write)
+    const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
         message_id: messageId,
@@ -977,7 +980,9 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role',
           campaignId: campaignId || null
         }
-      });
+      };
+    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
+    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
     
     // NOTE: Conversation assignment is now created BEFORE the send attempt (line ~375)
     // This ensures conversations persist even when Meta API fails

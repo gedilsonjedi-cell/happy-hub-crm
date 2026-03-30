@@ -10,6 +10,36 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// External DB for high-volume tables (whatsapp_messages, leads)
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+
+/** Write to whatsapp_messages on both internal and external DB */
+async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
+  const op = upsert
+    ? supabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+    : supabase.from('whatsapp_messages').insert(data);
+  const results = [op];
+  if (externalSupabase) {
+    const extOp = upsert
+      ? externalSupabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+      : externalSupabase.from('whatsapp_messages').insert(data);
+    results.push(extOp);
+  }
+  const [primary] = await Promise.all(results);
+  return primary;
+}
+
+/** Update whatsapp_messages on both DBs */
+async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
+  const op = supabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
+  if (externalSupabase) {
+    externalSupabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values).then(() => {}).catch(() => {});
+  }
+  return op;
+}
+
 // =============================================
 // IN-MEMORY CONFIG CACHE (with jitter to avoid stampedes)
 // =============================================
@@ -605,7 +635,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   // ── PHASE 3: Persist message ──────────────────────────────────────
   const finalMediaUrl = storedMediaUrl || (mediaId ? mediaId : null);
 
-  const { error: insertError } = await supabase.from('whatsapp_messages').upsert({
+  const { error: insertError } = await dualWriteMessage({
     channel_id: channel.id,
     organization_id: organizationId,
     message_id: messageId,
@@ -621,7 +651,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
       ...(referralData ? { referral: referralData } : {}),
     },
-  }, { onConflict: 'message_id', ignoreDuplicates: true });
+  }, true);
 
   if (insertError) console.error('Error storing message:', insertError);
 
@@ -635,7 +665,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       awayMessageToSend
     ).then((sent) => {
       if (sent) {
-        supabase.from('whatsapp_messages').insert({
+        dualWriteMessage({
           channel_id: channel.id,
           message_id: `away_${normalizedPhone}_${Date.now()}`,
           sender_phone: channel.phone,
@@ -664,7 +694,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
         // Mark as sent + store outbound record in parallel
         Promise.all([
           markWelcomeSent(organizationId, normalizedPhone),
-          supabase.from('whatsapp_messages').insert({
+          dualWriteMessage({
             channel_id: channel.id,
             message_id: `welcome_${normalizedPhone}_${Date.now()}`,
             sender_phone: channel.phone,
@@ -782,13 +812,13 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     }
   }
 
-  // Execute one update per status group in whatsapp_messages
+  // Execute one update per status group in whatsapp_messages (dual-write)
   await Promise.all(
     Array.from(grouped.entries()).map(([status, ids]) =>
-      supabase
-        .from('whatsapp_messages')
-        .update({ status, updated_at: new Date().toISOString() })
-        .in('message_id', ids)
+      dualUpdateMessages(
+        { column: 'message_id', values: ids },
+        { status, updated_at: new Date().toISOString() }
+      )
     )
   );
 
