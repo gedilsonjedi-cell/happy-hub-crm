@@ -60,6 +60,81 @@ export async function fetchExternalMessages(params: {
   });
 }
 
+/**
+ * Fallback local fetch used when external history is unavailable for a conversation.
+ * Keeps the same shape as external-db-proxy.
+ */
+export async function fetchInternalMessages(params: {
+  channelId: string;
+  phoneVariants: string[];
+  cursor: string | null;
+  pageSize?: number;
+}): Promise<ExternalMessagePage> {
+  const pageSize = params.pageSize ?? 20;
+  const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
+
+  const selectFields =
+    "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+
+  const inboundPhoneFilter = params.phoneVariants
+    .map((phone) => `sender_phone.eq.${phone}`)
+    .join(",");
+
+  const outboundPhoneFilter = params.phoneVariants
+    .map((phone) => `metadata->>destination.eq.${phone}`)
+    .join(",");
+
+  const [inboundResult, outboundResult] = await Promise.all([
+    supabase
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("channel_id", params.channelId)
+      .eq("direction", "inbound")
+      .or(inboundPhoneFilter)
+      .lt("created_at", cursorFilter)
+      .order("created_at", { ascending: false })
+      .limit(pageSize),
+    supabase
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("channel_id", params.channelId)
+      .eq("direction", "outbound")
+      .or(outboundPhoneFilter)
+      .lt("created_at", cursorFilter)
+      .order("created_at", { ascending: false })
+      .limit(pageSize),
+  ]);
+
+  if (inboundResult.error) {
+    throw new Error(`Internal messages fetch error (inbound): ${inboundResult.error.message}`);
+  }
+
+  if (outboundResult.error) {
+    throw new Error(`Internal messages fetch error (outbound): ${outboundResult.error.message}`);
+  }
+
+  const merged = [...(inboundResult.data ?? []), ...(outboundResult.data ?? [])].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  const seen = new Set<string>();
+  const unique = merged.filter((msg) => {
+    if (seen.has(msg.id)) return false;
+    seen.add(msg.id);
+    return true;
+  });
+
+  const page = unique.slice(0, pageSize);
+  const hasMore = unique.length >= pageSize;
+  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
+
+  return {
+    messages: page as ExternalMessageRow[],
+    nextCursor,
+    hasMore,
+  };
+}
+
 // ── Leads ─────────────────────────────────────────────────────────
 
 export async function fetchExternalLeads(params: {
