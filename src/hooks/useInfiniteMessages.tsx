@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback } from "react";
+import { fetchExternalMessages, type ExternalMessageRow } from "@/lib/externalDb";
 
 const PAGE_SIZE = 20;
 
@@ -10,22 +10,7 @@ export interface MessagePage {
   hasMore: boolean;
 }
 
-export interface MessageRow {
-  id: string;
-  channel_id: string | null;
-  message_id: string;
-  sender_phone: string;
-  sender_name: string | null;
-  message_type: string;
-  content: string | null;
-  media_url: string | null;
-  direction: string;
-  status: string | null;
-  created_at: string;
-  metadata: Record<string, unknown> | null;
-  error_message?: string | null;
-  is_read?: boolean;
-}
+export type MessageRow = ExternalMessageRow;
 
 /**
  * Generate phone number variants to handle Brazilian number format differences.
@@ -41,18 +26,16 @@ function getPhoneVariants(phone: string): string[] {
 
   // Brazilian numbers: if starts with 55 (country code)
   if (normalized.startsWith("55") && normalized.length >= 10) {
-    const withoutCountry = normalized.slice(2); // e.g. "83986640756" or "8386640756"
-    const areaCode = withoutCountry.slice(0, 2); // "83"
-    const localNumber = withoutCountry.slice(2);  // "986640756" or "86640756"
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
 
     if (localNumber.length === 9 && localNumber.startsWith("9")) {
-      // Has 9 prefix → also try without it
-      const without9 = areaCode + localNumber.slice(1); // "8386640756"
+      const without9 = areaCode + localNumber.slice(1);
       variants.add(`55${without9}`);
       variants.add(`+55${without9}`);
     } else if (localNumber.length === 8) {
-      // Missing 9 prefix → also try with it
-      const with9 = areaCode + "9" + localNumber; // "83986640756"
+      const with9 = areaCode + "9" + localNumber;
       variants.add(`55${with9}`);
       variants.add(`+55${with9}`);
     }
@@ -67,72 +50,21 @@ async function fetchMessagePage(
   cursor: string | null
 ): Promise<MessagePage> {
   const normalizedPhone = conversationPhone.replace(/\D/g, "");
-  
-  // Generate all phone variants (with/without 9 digit for BR numbers)
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
-  // Cursor = oldest created_at from previous page (we paginate backwards)
-  // For the first page (no cursor), add 2-minute buffer to account for client/server clock skew
-  const cursorFilter = cursor ? cursor : new Date(Date.now() + 120_000).toISOString();
-
-  // Essential fields only — reduces JSON payload significantly
-  const essentialSelect =
-    "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
-
-  // Build OR filter for all phone variants
-  const inboundPhoneFilter = phoneVariants
-    .map(p => `sender_phone.eq.${p}`)
-    .join(",");
-  const outboundPhoneFilter = phoneVariants
-    .map(p => `metadata->>destination.eq.${p}`)
-    .join(",");
-
-  const [inboundResult, outboundResult] = await Promise.all([
-    supabase
-      .from("whatsapp_messages")
-      .select(essentialSelect)
-      .eq("channel_id", channelId)
-      .eq("direction", "inbound")
-      .or(inboundPhoneFilter)
-      .lt("created_at", cursorFilter)
-      .order("created_at", { ascending: false })
-      .limit(PAGE_SIZE),
-
-    supabase
-      .from("whatsapp_messages")
-      .select(essentialSelect)
-      .eq("channel_id", channelId)
-      .eq("direction", "outbound")
-      .or(outboundPhoneFilter)
-      .lt("created_at", cursorFilter)
-      .order("created_at", { ascending: false })
-      .limit(PAGE_SIZE),
-  ]);
-
-  const inbound = (inboundResult.data || []) as MessageRow[];
-  const outbound = (outboundResult.data || []) as MessageRow[];
-
-  // Merge and sort descending (newest first within this page)
-  const merged = [...inbound, ...outbound].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  // De-duplicate by id
-  const seen = new Set<string>();
-  const unique = merged.filter((m) => {
-    if (seen.has(m.id)) return false;
-    seen.add(m.id);
-    return true;
+  // Delegate to external DB proxy edge function
+  const result = await fetchExternalMessages({
+    channelId,
+    phoneVariants,
+    cursor,
+    pageSize: PAGE_SIZE,
   });
 
-  // Take PAGE_SIZE most recent
-  const page = unique.slice(0, PAGE_SIZE);
-  const hasMore = unique.length >= PAGE_SIZE;
-  const nextCursor = hasMore && page.length > 0
-    ? page[page.length - 1].created_at
-    : null;
-
-  return { messages: page, nextCursor, hasMore };
+  return {
+    messages: result.messages,
+    nextCursor: result.nextCursor,
+    hasMore: result.hasMore,
+  };
 }
 
 /**
