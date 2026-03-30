@@ -280,6 +280,7 @@ const AtendimentoV2 = () => {
     components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
   }>>(new Map());
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedConversationStableKey, setSelectedConversationStableKey] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingMessage] = [false]; // Kept for legacy references; replaced by isSendingMessage from useMutation
@@ -461,6 +462,7 @@ const AtendimentoV2 = () => {
         setChannels([]);
         setAllConversations([]);
         setSelectedConversation(null);
+        setSelectedConversationStableKey(null);
       }
       
       prevOrgIdRef.current = effectiveOrganizationId;
@@ -1150,6 +1152,31 @@ const AtendimentoV2 = () => {
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
   };
 
+  // Keep a stable key to recover selection after async list refreshes/re-renders
+  useEffect(() => {
+    if (selectedConversation) {
+      setSelectedConversationStableKey(getConversationKey(selectedConversation));
+    }
+  }, [selectedConversation?.channelId, selectedConversation?.phone]);
+
+  // Recover selected conversation when state is temporarily reset by async updates
+  useEffect(() => {
+    if (!selectedConversationStableKey) return;
+
+    const currentKey = selectedConversation ? getConversationKey(selectedConversation) : null;
+    if (currentKey === selectedConversationStableKey) return;
+
+    const recovered = [...allConversations, ...globalSearchResults].find(
+      (conv) => getConversationKey(conv) === selectedConversationStableKey
+    );
+
+    if (recovered) {
+      setSelectedConversation(recovered);
+      const matchingChannel = channels.find((channel) => channel.id === recovered.channelId) || null;
+      setSelectedChannel(matchingChannel);
+    }
+  }, [allConversations, globalSearchResults, channels, selectedConversation, selectedConversationStableKey]);
+
   const markConversationAsRead = useCallback((conversation: { channelId: string | null; phone: string }) => {
     const conversationKey = `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
 
@@ -1184,6 +1211,7 @@ const AtendimentoV2 = () => {
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     setSelectedConversation(conversation);
+    setSelectedConversationStableKey(getConversationKey(conversation));
 
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
@@ -2080,6 +2108,7 @@ const AtendimentoV2 = () => {
     
     if (selectedConversation && getConversationKey(selectedConversation) === key) {
       setSelectedConversation(null);
+      setSelectedConversationStableKey(null);
     }
   };
 
@@ -3531,6 +3560,7 @@ const AtendimentoV2 = () => {
                           )}
                           onClick={() => {
                             setSelectedConversation(conv);
+                            setSelectedConversationStableKey(getConversationKey(conv));
                           }}
                         >
                           <div className="flex items-start gap-3">
@@ -3716,7 +3746,10 @@ const AtendimentoV2 = () => {
                 
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8 shrink-0" onClick={() => setSelectedConversation(null)}>
+                    <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8 shrink-0" onClick={() => {
+                      setSelectedConversation(null);
+                      setSelectedConversationStableKey(null);
+                    }}>
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <button onClick={() => setShowLeadDetailsDialog(true)} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0">
