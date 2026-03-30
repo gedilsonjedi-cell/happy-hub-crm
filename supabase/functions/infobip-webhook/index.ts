@@ -145,16 +145,6 @@ Deno.serve(async (req) => {
 });
 
 async function processInfobipEvent(result: Record<string, unknown>) {
-  const messageId = result.messageId as string;
-  const from = result.from as string;
-  const to = result.to as string;
-  const receivedAt = result.receivedAt as string || new Date().toISOString();
-  const integrationType = result.integrationType as string;
-
-  // Determine if this is an inbound message or a delivery report
-  // Inbound messages have integrationType: 'WHATSAPP' and direction inferred from from/to
-  // Delivery reports have different structure
-  
   // Check if it's a delivery report (status update)
   if (result.status) {
     await handleDeliveryReport(result);
@@ -162,7 +152,8 @@ async function processInfobipEvent(result: Record<string, unknown>) {
   }
 
   // Check if it's an inbound message
-  if (result.message || result.content) {
+  // Infobip uses "sender"/"destination" OR "from"/"to"
+  if (result.message || result.content || result.sender) {
     await handleInboundMessage(result);
     return;
   }
