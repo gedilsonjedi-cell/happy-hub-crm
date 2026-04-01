@@ -467,13 +467,25 @@ export function DispatchReportSender() {
     return diff > 0 ? `🔼 +${diff}%` : diff < 0 ? `🔻 ${diff}%` : "➡️ Estável";
   };
 
-  const getQualityLabel = (blocks: number, total: number) => {
-    if (total === 0) return { label: "Sem dados", emoji: "⚪" };
-    const rate = blocks / total;
-    if (rate <= 0.01) return { label: "Excelente", emoji: "🟢" };
-    if (rate <= 0.03) return { label: "Boa", emoji: "🟡" };
-    if (rate <= 0.07) return { label: "Média", emoji: "🟠" };
-    return { label: "Baixa", emoji: "🔴" };
+  const getQualityLabel = (data: DayData) => {
+    const { blocks, restrictions, failed, totalDispatches, delivered } = data;
+    if (totalDispatches === 0) return { label: "Sem dados", emoji: "⚪", detail: "Nenhum disparo registrado" };
+    
+    const restrictionRate = (restrictions || blocks) / totalDispatches;
+    const failureRate = failed / totalDispatches;
+    const deliveryRate = delivered / totalDispatches;
+    
+    // Use the worst indicator to determine quality
+    if (restrictionRate > 0.05 || failureRate > 0.15) {
+      return { label: "Crítica", emoji: "🔴", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições detectadas` };
+    }
+    if (restrictionRate > 0.03 || failureRate > 0.10) {
+      return { label: "Baixa", emoji: "🟠", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições` };
+    }
+    if (restrictionRate > 0.01 || failureRate > 0.05) {
+      return { label: "Moderada", emoji: "🟡", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restrições` };
+    }
+    return { label: "Excelente", emoji: "🟢", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudável` };
   };
 
   const generateInsight = (data: DayData, prev?: DayData) => {
