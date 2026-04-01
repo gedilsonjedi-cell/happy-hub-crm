@@ -72,30 +72,38 @@ export function DispatchReportSender() {
     const start = `${date}T00:00:00.000Z`;
     const end = `${date}T23:59:59.999Z`;
 
-    // Fetch outbound messages
-    const { data: outbound } = await supabase
-      .from("whatsapp_messages")
-      .select("metadata, status")
-      .in("channel_id", channelIds)
-      .eq("direction", "outbound")
-      .gte("created_at", start)
-      .lte("created_at", end)
-      .limit(5000);
+    // Paginate to get ALL outbound and inbound messages for the day
+    const PAGE_SIZE = 1000;
+    const paginateQuery = async (direction: string, cols: string) => {
+      let all: any[] = [];
+      let from = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data } = await supabase
+          .from("whatsapp_messages")
+          .select(cols)
+          .in("channel_id", channelIds)
+          .eq("direction", direction)
+          .gte("created_at", start)
+          .lte("created_at", end)
+          .range(from, from + PAGE_SIZE - 1);
+        const rows = data || [];
+        all = all.concat(rows);
+        hasMore = rows.length === PAGE_SIZE;
+        from += PAGE_SIZE;
+      }
+      return all;
+    };
 
-    // Fetch inbound messages (responses)
-    const { data: inbound } = await supabase
-      .from("whatsapp_messages")
-      .select("id")
-      .in("channel_id", channelIds)
-      .eq("direction", "inbound")
-      .gte("created_at", start)
-      .lte("created_at", end)
-      .limit(5000);
+    const [outbound, inbound] = await Promise.all([
+      paginateQuery("outbound", "metadata, status"),
+      paginateQuery("inbound", "id"),
+    ]);
 
     const result = emptyDay();
-    result.responses = inbound?.length || 0;
+    result.responses = inbound.length;
 
-    (outbound || []).forEach((msg) => {
+    outbound.forEach((msg: any) => {
       const metadata = msg.metadata as Record<string, unknown> | null;
       const costUSD = Number(metadata?.cost || 0);
       const costBRL = costUSD * USD_TO_BRL_RATE;
