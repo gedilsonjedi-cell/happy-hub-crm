@@ -217,6 +217,9 @@ export default function Relatorios() {
               </CardContent>
             </Card>
           </TabsContent>
+          <TabsContent value="enviar">
+            <DispatchReportSender />
+          </TabsContent>
         </Tabs>
       </div>
     </MainLayout>
