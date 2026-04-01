@@ -655,6 +655,34 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
 
   if (insertError) console.error('Error storing message:', insertError);
 
+  // ── PHASE 3.5: Track button clicks for campaign recipients ─────────
+  if (messageType === 'button' || messageType === 'interactive') {
+    const buttonText = content; // Already extracted by extractContent
+    const suffix8 = normalizedPhone.slice(-8);
+    
+    // Find campaign_recipient that was sent/delivered/read to this phone (most recent campaign)
+    supabase
+      .from('campaign_recipients')
+      .update({
+        button_clicked: buttonText,
+        button_clicked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .is('button_clicked', null)
+      .in('status', ['sent', 'delivered', 'read'])
+      .or(`phone.like.%${suffix8}`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ error: btnError, count }) => {
+        if (btnError) {
+          console.error('[Webhook] Error updating button_clicked:', btnError);
+        } else {
+          console.log(`[Webhook] 🔘 Button click tracked: "${buttonText}" from ${normalizedPhone}`);
+        }
+      })
+      .catch(console.error);
+  }
+
   // ── PHASE 4: Post-processing actions (fire and forget where possible) ─
   if (awayMessageToSend && channel.access_token) {
     // Send away message (await for reliability, then store record)
