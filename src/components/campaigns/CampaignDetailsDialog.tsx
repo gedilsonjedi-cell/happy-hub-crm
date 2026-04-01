@@ -96,17 +96,55 @@ function categorizeError(error: string): { category: string; icon: typeof AlertC
   return { category: 'Erro de API', icon: AlertTriangle };
 }
 
+interface ButtonClickData {
+  total: number;
+  byButton: Record<string, number>;
+}
+
 export function CampaignDetailsDialog({ campaign, open, onOpenChange }: CampaignDetailsDialogProps) {
   const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
   const [loadingErrors, setLoadingErrors] = useState(false);
+  const [buttonClicks, setButtonClicks] = useState<ButtonClickData>({ total: 0, byButton: {} });
+  const [loadingClicks, setLoadingClicks] = useState(false);
 
   useEffect(() => {
-    if (open && campaign && campaign.failed_count > 0) {
-      fetchFailedMessages();
+    if (open && campaign) {
+      fetchButtonClicks();
+      if (campaign.failed_count > 0) {
+        fetchFailedMessages();
+      } else {
+        setFailedMessages([]);
+      }
     } else {
       setFailedMessages([]);
+      setButtonClicks({ total: 0, byButton: {} });
     }
   }, [open, campaign?.id]);
+
+  const fetchButtonClicks = async () => {
+    if (!campaign) return;
+    setLoadingClicks(true);
+    try {
+      const { data } = await supabase
+        .from('campaign_recipients')
+        .select('button_clicked')
+        .eq('campaign_id', campaign.id)
+        .not('button_clicked', 'is', null);
+
+      if (data) {
+        const byButton: Record<string, number> = {};
+        data.forEach(r => {
+          const btn = r.button_clicked || 'Desconhecido';
+          byButton[btn] = (byButton[btn] || 0) + 1;
+        });
+        setButtonClicks({ total: data.length, byButton });
+      }
+    } catch (err) {
+      console.error('Error fetching button clicks:', err);
+    } finally {
+      setLoadingClicks(false);
+    }
+  };
 
   const fetchFailedMessages = async () => {
     if (!campaign) return;
@@ -305,6 +343,62 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
             <Progress value={failureRate} className="h-1.5 mt-2 bg-muted [&>div]:bg-destructive" />
           </div>
         </div>
+
+        {/* Button Click Metrics */}
+        {(buttonClicks.total > 0 || loadingClicks) && (
+          <>
+            <Separator className="my-4" />
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                Cliques nos Botões
+                {loadingClicks && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+              </h3>
+
+              {/* Total */}
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground font-medium">Total de Cliques</span>
+                  <span className="text-2xl font-bold text-primary">{buttonClicks.total}</span>
+                </div>
+                {campaign.delivered_count > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Taxa de interação: {Math.round((buttonClicks.total / campaign.delivered_count) * 100)}% das entregues
+                  </p>
+                )}
+              </div>
+
+              {/* Per-button breakdown */}
+              {Object.keys(buttonClicks.byButton).length > 0 && (
+                <div className="grid gap-2">
+                  {Object.entries(buttonClicks.byButton)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([buttonName, count], idx) => (
+                      <div key={buttonName} className="bg-muted/20 rounded-lg p-3 border border-border flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span className="text-sm text-foreground font-medium">{buttonName}</span>
+                            <p className="text-xs text-muted-foreground">
+                              Botão {idx + 1}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-foreground">{count}</span>
+                          <p className="text-xs text-muted-foreground">
+                            {buttonClicks.total > 0 ? Math.round((count / buttonClicks.total) * 100) : 0}% dos cliques
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         <Separator className="my-4" />
 
