@@ -3407,6 +3407,7 @@ export type Database = {
           updated_count: number
         }[]
       }
+      unaccent: { Args: { "": string }; Returns: string }
       update_session_activity: { Args: never; Returns: boolean }
       user_can_access_campaign: {
         Args: { campaign_sector_id: string }
