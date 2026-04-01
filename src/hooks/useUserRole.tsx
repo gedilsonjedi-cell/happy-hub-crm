@@ -26,19 +26,20 @@ interface UserRoleState {
   organizationId: string | null;
 }
 
-export function useUserRole(): UserRoleState {
+export function useUserRole(userIdOverride?: string | null): UserRoleState {
   const { user } = useAuth();
+  const resolvedUserId = userIdOverride ?? user?.id ?? null;
 
   // Fetch role using React Query with aggressive caching
   const { data: roleData, isLoading: roleLoading, isFetching: roleFetching } = useQuery({
-    queryKey: ["user-role", user?.id],
+    queryKey: ["user-role", resolvedUserId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!resolvedUserId) return null;
       
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", user.id)
+        .eq("user_id", resolvedUserId)
         .maybeSingle();
 
       if (error) {
@@ -49,7 +50,7 @@ export function useUserRole(): UserRoleState {
       console.log("[useUserRole] Role fetch result:", { roleData: data });
       return data?.role as AppRole | null;
     },
-    enabled: !!user?.id,
+    enabled: !!resolvedUserId,
     staleTime: 5 * 60 * 1000, // Data stays fresh for 5 minutes
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     refetchOnWindowFocus: false,
@@ -59,14 +60,14 @@ export function useUserRole(): UserRoleState {
 
   // Fetch organization using React Query with aggressive caching
   const { data: organizationId, isLoading: orgLoading, isFetching: orgFetching } = useQuery({
-    queryKey: ["user-organization", user?.id],
+    queryKey: ["user-organization", resolvedUserId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!resolvedUserId) return null;
       
       const { data, error } = await supabase
         .from("profiles")
         .select("organization_id")
-        .eq("user_id", user.id)
+        .eq("user_id", resolvedUserId)
         .maybeSingle();
 
       if (error) {
@@ -77,7 +78,7 @@ export function useUserRole(): UserRoleState {
       console.log("[useUserRole] Profile fetch result:", { profileData: data });
       return data?.organization_id ?? null;
     },
-    enabled: !!user?.id,
+    enabled: !!resolvedUserId,
     staleTime: 5 * 60 * 1000, // Data stays fresh for 5 minutes
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     refetchOnWindowFocus: false,

@@ -14,15 +14,16 @@ import { Navigate } from "react-router-dom";
 const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
 
 export default function Relatorios() {
-  const { user } = useAuth();
-  const { isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { user, loading: authLoading } = useAuth();
+  const { isSuperAdmin, loading: roleLoading } = useUserRole(user?.id);
   const { summary, byType, counts, loading } = useDispatchCosts();
   const [activeTab, setActiveTab] = useState("atendimento");
 
-  const userEmail = user?.email?.toLowerCase() || "";
-  const hasAccess = ALLOWED_EMAILS.includes(userEmail) || isSuperAdmin;
+  const userEmail = user?.email?.trim().toLowerCase() || "";
+  const isEmailAllowed = ALLOWED_EMAILS.includes(userEmail);
+  const hasAccess = isEmailAllowed || isSuperAdmin;
 
-  if (roleLoading) {
+  if (authLoading || (!!user?.id && !isEmailAllowed && roleLoading)) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
@@ -30,6 +31,10 @@ export default function Relatorios() {
         </div>
       </MainLayout>
     );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
   }
 
   if (!hasAccess) {
