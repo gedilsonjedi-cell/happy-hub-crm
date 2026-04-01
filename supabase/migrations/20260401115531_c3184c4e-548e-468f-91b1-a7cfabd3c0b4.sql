@@ -1,0 +1,1 @@
+ALTER TABLE public.organizations ADD COLUMN report_phone text DEFAULT NULL;
