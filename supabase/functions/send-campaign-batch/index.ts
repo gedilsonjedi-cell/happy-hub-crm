@@ -427,6 +427,17 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
+        // Network/runtime exceptions are transient - retry up to 3 times
+        const currentRetryCount = recipient.retryCount || 0;
+        const MAX_EXCEPTION_RETRIES = 3;
+        if (currentRetryCount < MAX_EXCEPTION_RETRIES) {
+          console.log(`[Batch] Exception for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_EXCEPTION_RETRIES}): ${String(error)}`);
+          await supabase.from('campaign_recipients').update({
+            status: 'pending', retry_count: currentRetryCount + 1,
+            error_message: null, last_error_code: null
+          }).eq('id', recipient.recipientId);
+          return { sent: false, failed: false, retry: false };
+        }
         await supabase.from('campaign_recipients').update({
           status: 'failed', error_message: String(error), last_error_code: 'EXCEPTION'
         }).eq('id', recipient.recipientId);
