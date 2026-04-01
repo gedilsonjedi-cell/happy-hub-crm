@@ -30,6 +30,28 @@ const emptyDay = (): DayData => ({
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
 });
 
+const padMonthValue = (value: number) => String(value).padStart(2, "0");
+
+const formatMonthInputValue = (date: Date) => `${date.getFullYear()}-${padMonthValue(date.getMonth() + 1)}`;
+
+const getMonthRange = (monthValue: string) => {
+  const now = new Date();
+  const currentMonthValue = formatMonthInputValue(now);
+  const [year, month] = monthValue.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).toISOString().split("T")[0];
+  const monthStart = `${monthValue}-01T00:00:00.000Z`;
+  const monthEndFull = `${lastDay}T23:59:59.999Z`;
+  const isCurrentMonth = monthValue === currentMonthValue;
+
+  return {
+    isCurrentMonth,
+    monthStart,
+    monthEnd: isCurrentMonth ? now.toISOString() : monthEndFull,
+    daysInMonth: Number(lastDay.split("-")[2]),
+    daysElapsed: isCurrentMonth ? now.getDate() : Number(lastDay.split("-")[2]),
+  };
+};
+
 export function DispatchReportSender() {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [reportPhone, setReportPhone] = useState("");
@@ -37,12 +59,14 @@ export function DispatchReportSender() {
   const [loading, setLoading] = useState(true);
   const [reportType, setReportType] = useState<"daily" | "monthly">("daily");
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedMonth, setSelectedMonth] = useState(() => formatMonthInputValue(new Date()));
   const [dayData, setDayData] = useState<DayData>(emptyDay());
   const [prevDayData, setPrevDayData] = useState<DayData>(emptyDay());
   const [monthData, setMonthData] = useState<{ weeks: DayData[]; total: DayData }>({ weeks: [], total: emptyDay() });
   const [loadingData, setLoadingData] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
+  const currentMonthStr = formatMonthInputValue(new Date());
 
   useEffect(() => {
     if (!effectiveOrganizationId) return;
@@ -197,21 +221,17 @@ export function DispatchReportSender() {
     const load = async () => {
       setLoadingData(true);
       const channelIds = await getChannelIds();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const firstDay = new Date(year, month, 1);
-      const today = new Date();
-      const monthStart = firstDay.toISOString();
-      const monthEnd = today.toISOString();
+      const monthRange = getMonthRange(selectedMonth);
+      const monthStartDate = new Date(monthRange.monthStart);
+      const monthEndDate = new Date(monthRange.monthEnd);
 
       // 1) Get campaign-level totals (accurate, no row limit issue)
       const { data: campaigns } = await supabase
         .from("campaigns")
         .select("total_recipients, sent_count, delivered_count, failed_count, created_at")
         .eq("organization_id", effectiveOrganizationId)
-        .gte("created_at", monthStart)
-        .lte("created_at", monthEnd);
+        .gte("created_at", monthRange.monthStart)
+        .lte("created_at", monthRange.monthEnd);
 
       const campaignTotals = {
         sent: (campaigns || []).reduce((s, c) => s + (c.sent_count ?? 0), 0),
@@ -221,8 +241,8 @@ export function DispatchReportSender() {
       };
 
       // 2) Paginate outbound messages for cost/type breakdown & inbound for responses
-      const startISO = `${firstDay.toISOString().split("T")[0]}T00:00:00.000Z`;
-      const endISO = `${today.toISOString().split("T")[0]}T23:59:59.999Z`;
+      const startISO = monthRange.monthStart;
+      const endISO = monthRange.monthEnd;
 
       const [allOutbound, allInbound] = await Promise.all([
         fetchAllRows("whatsapp_messages", channelIds, "outbound", startISO, endISO, "metadata, status, created_at"),
@@ -232,15 +252,17 @@ export function DispatchReportSender() {
       // 3) Build weekly breakdown from paginated data
       const weeks: DayData[] = [];
       const total = emptyDay();
-      let weekStart = new Date(firstDay);
+      let weekStart = new Date(monthStartDate);
 
-      while (weekStart <= today) {
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        if (weekEnd > today) weekEnd.setTime(today.getTime());
+      while (weekStart.getTime() <= monthEndDate.getTime()) {
+        let weekEnd = new Date(weekStart);
+        weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+        if (weekEnd.getTime() > monthEndDate.getTime()) {
+          weekEnd = new Date(monthEndDate);
+        }
 
         const wStart = weekStart.getTime();
-        const wEnd = new Date(weekEnd.toISOString().split("T")[0] + "T23:59:59.999Z").getTime();
+        const wEnd = weekEnd.getTime();
 
         const week = emptyDay();
 
@@ -285,7 +307,7 @@ export function DispatchReportSender() {
         total.service.cost += week.service.cost;
 
         weekStart = new Date(weekEnd);
-        weekStart.setDate(weekStart.getDate() + 1);
+        weekStart.setUTCDate(weekStart.getUTCDate() + 1);
       }
 
       // Use the HIGHER value between campaigns table and counted messages
@@ -306,7 +328,7 @@ export function DispatchReportSender() {
       setLoadingData(false);
     };
     load();
-  }, [effectiveOrganizationId, reportType, getChannelIds, fetchAllRows]);
+  }, [effectiveOrganizationId, reportType, selectedMonth, getChannelIds, fetchAllRows]);
 
   const handleSavePhone = async () => {
     if (!effectiveOrganizationId) return;
@@ -375,8 +397,6 @@ export function DispatchReportSender() {
   };
 
   const selectedDateFormatted = new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR");
-  const now = new Date();
-  const monthStr = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   const buildDailyReport = () => {
     const d = dayData;
@@ -434,8 +454,11 @@ export function DispatchReportSender() {
 
   const buildMonthlyReport = () => {
     const t = monthData.total;
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysPassed = now.getDate();
+    const monthRange = getMonthRange(selectedMonth);
+    const monthReference = new Date(`${selectedMonth}-01T12:00:00`);
+    const monthStr = monthReference.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const daysInMonth = monthRange.daysInMonth;
+    const daysPassed = monthRange.daysElapsed;
     const avgDaily = daysPassed > 0 ? Math.round(t.totalDispatches / daysPassed) : 0;
     const avgDailyResponses = daysPassed > 0 ? Math.round(t.responses / daysPassed) : 0;
     const q = getQualityLabel(t.blocks, t.totalDispatches);
@@ -477,7 +500,7 @@ export function DispatchReportSender() {
       }
     }
 
-    if (avgDaily > 0) {
+    if (avgDaily > 0 && monthRange.isCurrentMonth) {
       const projection = avgDaily * daysInMonth;
       insights.push(`📊 Projeção para o mês: ~${projection} disparos | ~${fmt(t.totalCost / daysPassed * daysInMonth)} investimento.`);
     }
@@ -609,6 +632,19 @@ export function DispatchReportSender() {
                 value={selectedDate}
                 max={todayStr}
                 onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+          )}
+
+          {reportType === "monthly" && (
+            <div className="space-y-2">
+              <Label htmlFor="report-month">Mês do relatório</Label>
+              <Input
+                id="report-month"
+                type="month"
+                value={selectedMonth}
+                max={currentMonthStr}
+                onChange={(e) => setSelectedMonth(e.target.value)}
               />
             </div>
           )}
