@@ -31,7 +31,12 @@ const emptyDay = (): DayData => ({
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
 });
 
-const RESTRICTION_PATTERNS = ["block", "restrict", "spam", "rate", "131026", "131047", "131042", "3835016"];
+const RESTRICTION_PATTERNS = ["block", "restrict", "spam", "rate limit", "undeliverable", "locked", "131026", "131031", "131047", "131042", "131048", "3835016"];
+
+const checkRestriction = (errorMessage: string | null, errorCode: string | null): boolean => {
+  const combined = `${(errorMessage || "").toLowerCase()} ${(errorCode || "").toLowerCase()}`;
+  return RESTRICTION_PATTERNS.some(p => combined.includes(p));
+};
 
 const padMonthValue = (value: number) => String(value).padStart(2, "0");
 
@@ -155,8 +160,7 @@ export function DispatchReportSender() {
             const isDelivered = ["delivered", "read", "clicked"].includes(st);
             const isSent = ["sent", "delivered", "read", "clicked"].includes(st);
             const isFailed = st === "failed";
-            const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-            const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errMsg.includes(p));
+            const isRestriction = isFailed && checkRestriction(r.error_message, r.last_error_code);
 
             if (isSent || isFailed) result.totalDispatches += 1;
             if (isDelivered) result.delivered += 1;
@@ -400,8 +404,7 @@ export function DispatchReportSender() {
           const isSent = ["sent", "delivered", "read", "clicked"].includes(st);
           const isDelivered = ["delivered", "read", "clicked"].includes(st);
           const isFailed = st === "failed";
-          const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-          const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errMsg.includes(p));
+          const isRestriction = isFailed && checkRestriction(r.error_message, r.last_error_code);
 
           if (isSent || isFailed) week.totalDispatches += 1;
           if (isDelivered) week.delivered += 1;
