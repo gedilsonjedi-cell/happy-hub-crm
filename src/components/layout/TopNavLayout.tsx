@@ -115,7 +115,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Loja", path: "/loja", icon: ShoppingCart },
       ]
     },
-    ...(["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"].includes(user?.email?.toLowerCase() || "") || isSuperAdmin
+    ...(["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"].includes(user?.email?.trim().toLowerCase() || "") || isSuperAdmin
       ? [{ label: "Relatórios", path: "/relatorios", icon: BarChart3 }]
       : []),
     {

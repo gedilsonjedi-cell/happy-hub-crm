@@ -71,7 +71,7 @@ const RELATORIOS_ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
-  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos", emailRestricted: true },
+  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: null, emailRestricted: true },
 ];
 
 const appsSubmenu = [
@@ -106,7 +106,7 @@ export function Sidebar() {
   const location = useLocation();
   const userRole = useUserRole();
   const { user } = useAuth();
-  const userEmail = user?.email?.toLowerCase() || "";
+  const userEmail = user?.email?.trim().toLowerCase() || "";
 
   const filteredDisparosSubmenu = useMemo(() => {
     const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin;
