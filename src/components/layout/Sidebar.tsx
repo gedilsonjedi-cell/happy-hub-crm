@@ -65,10 +65,12 @@ const crmSubmenu = [
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: null },
 ];
 
+const RELATORIOS_ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
+
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
-  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos" },
+  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos", emailRestricted: true },
 ];
 
 const appsSubmenu = [
