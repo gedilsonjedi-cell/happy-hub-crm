@@ -543,52 +543,30 @@ export function DispatchReportSender() {
   const buildDailyReport = () => {
     const d = dayData;
     const q = getQualityLabel(d);
-    const costPerResponse = d.responses > 0 ? fmt(d.totalCost / d.responses) : "—";
     const insights = generateInsight(d, prevDayData);
-    const prevDateFormatted = (() => {
-      const p = new Date(selectedDate + "T12:00:00");
-      p.setDate(p.getDate() - 1);
-      return p.toLocaleDateString("pt-BR");
-    })();
+    const engagementRate = pct(d.responses, d.totalDispatches);
+
+    // Count clicks (status "clicked")
+    // clicks are already included in delivered count logic, but we need a separate count
+    // For now, clicks = responses as proxy (users who interacted)
+    const clickCount = d.responses;
 
     return [
       `━━━━━━━━━━━━━━━━━━━━━`,
-      `📊 *RELATÓRIO DIÁRIO DE DISPAROS*`,
+      `📊 *RELATÓRIO DIÁRIO*`,
       `📅 ${selectedDateFormatted}`,
       `━━━━━━━━━━━━━━━━━━━━━`,
       ``,
-      `📨 *VOLUME*`,
-      `   Total de disparos: *${d.totalDispatches}*`,
-      `   Entregues: *${d.delivered}*`,
-      `   Falhas: *${d.failed}*`,
+      `📨 *Total de disparos:* ${d.totalDispatches}`,
+      `👆 *Clicks/Respostas:* ${clickCount}`,
+      `📈 *Taxa de engajamento:* ${engagementRate}`,
       ``,
-      `📈 *PERFORMANCE*`,
-      `   Taxa de entrega: *${pct(d.delivered, d.totalDispatches)}*`,
-      `   Respostas recebidas: *${d.responses}*`,
-      `   Taxa de resposta: *${pct(d.responses, d.totalDispatches)}*`,
-      ``,
-      `💰 *CUSTOS*`,
-      `   Investimento do dia: *${fmt(d.totalCost)}*`,
-      `   Custo por resposta: *${costPerResponse}*`,
-      ``,
-      `📋 *POR CATEGORIA*`,
-      `   • Marketing: ${d.marketing.count} envios — ${fmt(d.marketing.cost)}`,
-      `   • Utilidade: ${d.utility.count} envios — ${fmt(d.utility.cost)}`,
-      `   • Serviço: ${d.service.count} envios — ${fmt(d.service.cost)}`,
-      ``,
-      `${q.emoji} *SAÚDE DA CONTA*`,
+      `${q.emoji} *PERFORMANCE DA BASE*`,
       `   Status: *${q.label}*`,
       `   ${q.detail}`,
-      `   Restrições/Bloqueios: *${d.restrictions || d.blocks}*`,
-      `   Taxa de falha: *${pct(d.failed, d.totalDispatches)}*`,
-      ...(d.restrictions > 0 || d.blocks > 0 ? [`   ⚠️ _Números restritos podem indicar problemas na base ou conta_`] : []),
+      ...(d.restrictions > 0 || d.blocks > 0 ? [`   ⚠️ ${d.restrictions || d.blocks} restrições detectadas`] : []),
       ``,
-      `🔄 *COMPARATIVO (vs ${prevDateFormatted})*`,
-      `   Disparos: ${variation(d.totalDispatches, prevDayData.totalDispatches)}`,
-      `   Respostas: ${variation(d.responses, prevDayData.responses)}`,
-      `   Entregues: ${variation(d.delivered, prevDayData.delivered)}`,
-      ``,
-      `💡 *INSIGHT*`,
+      `💡 *INSIGHTS*`,
       ...insights.map(i => `   ${i}`),
       ``,
       `━━━━━━━━━━━━━━━━━━━━━`,
