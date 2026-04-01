@@ -823,15 +823,19 @@ export function DispatchReportSender() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Tabs value={reportType} onValueChange={(v) => setReportType(v as "daily" | "monthly")}>
+          <Tabs value={reportType} onValueChange={(v) => setReportType(v as "daily" | "weekly" | "monthly")}>
             <TabsList className="w-full">
               <TabsTrigger value="daily" className="flex-1 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                Relatório Diário
+                Diário
+              </TabsTrigger>
+              <TabsTrigger value="weekly" className="flex-1 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Semanal
               </TabsTrigger>
               <TabsTrigger value="monthly" className="flex-1 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
-                Relatório Mensal
+                Mensal
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -846,6 +850,32 @@ export function DispatchReportSender() {
                 max={todayStr}
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
+            </div>
+          )}
+
+          {reportType === "weekly" && (
+            <div className="space-y-2">
+              <Label htmlFor="report-week">Início da semana (segunda-feira)</Label>
+              <Input
+                id="report-week"
+                type="date"
+                value={selectedWeekStart}
+                max={todayStr}
+                onChange={(e) => {
+                  // Snap to Monday
+                  const d = new Date(e.target.value + "T12:00:00");
+                  const day = d.getDay();
+                  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+                  setSelectedWeekStart(d.toISOString().split("T")[0]);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Semana de {new Date(selectedWeekStart + "T12:00:00").toLocaleDateString("pt-BR")} a {(() => {
+                  const end = new Date(selectedWeekStart + "T12:00:00");
+                  end.setDate(end.getDate() + 6);
+                  return end.toLocaleDateString("pt-BR");
+                })()}
+              </p>
             </div>
           )}
 
@@ -869,7 +899,7 @@ export function DispatchReportSender() {
             </div>
           ) : (
             <div className="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono border border-border max-h-[500px] overflow-y-auto">
-              {reportType === "daily" ? buildDailyReport() : buildMonthlyReport()}
+              {reportType === "daily" ? buildDailyReport() : reportType === "weekly" ? buildWeeklyReport() : buildMonthlyReport()}
             </div>
           )}
 
