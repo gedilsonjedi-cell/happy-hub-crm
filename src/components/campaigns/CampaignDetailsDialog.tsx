@@ -96,17 +96,55 @@ function categorizeError(error: string): { category: string; icon: typeof AlertC
   return { category: 'Erro de API', icon: AlertTriangle };
 }
 
+interface ButtonClickData {
+  total: number;
+  byButton: Record<string, number>;
+}
+
 export function CampaignDetailsDialog({ campaign, open, onOpenChange }: CampaignDetailsDialogProps) {
   const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
   const [loadingErrors, setLoadingErrors] = useState(false);
+  const [buttonClicks, setButtonClicks] = useState<ButtonClickData>({ total: 0, byButton: {} });
+  const [loadingClicks, setLoadingClicks] = useState(false);
 
   useEffect(() => {
-    if (open && campaign && campaign.failed_count > 0) {
-      fetchFailedMessages();
+    if (open && campaign) {
+      fetchButtonClicks();
+      if (campaign.failed_count > 0) {
+        fetchFailedMessages();
+      } else {
+        setFailedMessages([]);
+      }
     } else {
       setFailedMessages([]);
+      setButtonClicks({ total: 0, byButton: {} });
     }
   }, [open, campaign?.id]);
+
+  const fetchButtonClicks = async () => {
+    if (!campaign) return;
+    setLoadingClicks(true);
+    try {
+      const { data } = await supabase
+        .from('campaign_recipients')
+        .select('button_clicked')
+        .eq('campaign_id', campaign.id)
+        .not('button_clicked', 'is', null);
+
+      if (data) {
+        const byButton: Record<string, number> = {};
+        data.forEach(r => {
+          const btn = r.button_clicked || 'Desconhecido';
+          byButton[btn] = (byButton[btn] || 0) + 1;
+        });
+        setButtonClicks({ total: data.length, byButton });
+      }
+    } catch (err) {
+      console.error('Error fetching button clicks:', err);
+    } finally {
+      setLoadingClicks(false);
+    }
+  };
 
   const fetchFailedMessages = async () => {
     if (!campaign) return;
