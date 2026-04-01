@@ -334,7 +334,7 @@ export function DispatchReportSender() {
               if (st === "failed") {
                 recipientFailed += 1;
                 const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-                if (errMsg.includes("block") || errMsg.includes("restrict") || errMsg.includes("131026") || errMsg.includes("spam")) {
+                if (RESTRICTION_PATTERNS.some(p => errMsg.includes(p))) {
                   recipientBlocks += 1;
                 }
               }
