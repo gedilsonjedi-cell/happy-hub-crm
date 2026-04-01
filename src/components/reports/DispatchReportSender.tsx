@@ -195,8 +195,68 @@ export function DispatchReportSender() {
     };
     load();
   }, [selectedDate, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
+  // Load weekly data
+  useEffect(() => {
+    if (!effectiveOrganizationId || reportType !== "weekly") return;
+    const load = async () => {
+      setLoadingData(true);
+      const channelIds = await getChannelIds();
+      const weekStartDate = new Date(selectedWeekStart + "T00:00:00");
+      
+      // Fetch each day of the week + previous week for comparison
+      const dayPromises: Promise<DayData>[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(weekStartDate);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split("T")[0];
+        // Don't fetch future days
+        if (d > new Date()) break;
+        dayPromises.push(fetchDayMetrics(dateStr, channelIds));
+      }
 
-  // Load monthly data
+      // Previous week
+      const prevWeekStart = new Date(weekStartDate);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const prevDayPromises: Promise<DayData>[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(prevWeekStart);
+        d.setDate(d.getDate() + i);
+        prevDayPromises.push(fetchDayMetrics(d.toISOString().split("T")[0], channelIds));
+      }
+
+      const [days, prevDays] = await Promise.all([
+        Promise.all(dayPromises),
+        Promise.all(prevDayPromises),
+      ]);
+
+      const sumDays = (arr: DayData[]): DayData => {
+        const t = emptyDay();
+        arr.forEach(d => {
+          t.totalDispatches += d.totalDispatches;
+          t.delivered += d.delivered;
+          t.failed += d.failed;
+          t.totalCost += d.totalCost;
+          t.responses += d.responses;
+          t.blocks += d.blocks;
+          t.restrictions += d.restrictions;
+          t.marketing.count += d.marketing.count;
+          t.marketing.cost += d.marketing.cost;
+          t.utility.count += d.utility.count;
+          t.utility.cost += d.utility.cost;
+          t.service.count += d.service.count;
+          t.service.cost += d.service.cost;
+        });
+        t.totalCost = Math.round(t.totalCost * 100) / 100;
+        return t;
+      };
+
+      setWeeklyData({ days, total: sumDays(days), prevWeekTotal: sumDays(prevDays) });
+      setLoadingData(false);
+    };
+    load();
+  }, [selectedWeekStart, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
+
+
   // Helper: paginate all rows from a query (bypasses 1000-row limit)
   const fetchAllRows = useCallback(async (
     table: "whatsapp_messages",
