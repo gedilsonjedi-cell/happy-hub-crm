@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
-import { Phone, Send, Save, FileText, Calendar, TrendingUp, Loader2 } from "lucide-react";
+import { Phone, Send, Save, FileText, Calendar, TrendingUp, Loader2, BarChart3 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const USD_TO_BRL_RATE = 6.0;
@@ -18,17 +18,20 @@ interface DayData {
   totalCost: number;
   responses: number;
   blocks: number;
+  restrictions: number; // broader: includes 131026, 131047, 131042, spam, restrict, rate limit
   marketing: { count: number; cost: number; delivered: number; failed: number };
   utility: { count: number; cost: number; delivered: number; failed: number };
   service: { count: number; cost: number; delivered: number; failed: number };
 }
 
 const emptyDay = (): DayData => ({
-  totalDispatches: 0, delivered: 0, failed: 0, totalCost: 0, responses: 0, blocks: 0,
+  totalDispatches: 0, delivered: 0, failed: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
   marketing: { count: 0, cost: 0, delivered: 0, failed: 0 },
   utility: { count: 0, cost: 0, delivered: 0, failed: 0 },
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
 });
+
+const RESTRICTION_PATTERNS = ["block", "restrict", "spam", "rate", "131026", "131047", "131042", "3835016"];
 
 const padMonthValue = (value: number) => String(value).padStart(2, "0");
 
@@ -57,11 +60,19 @@ export function DispatchReportSender() {
   const [reportPhone, setReportPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [reportType, setReportType] = useState<"daily" | "monthly">("daily");
+  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly">("daily");
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedMonth, setSelectedMonth] = useState(() => formatMonthInputValue(new Date()));
   const [dayData, setDayData] = useState<DayData>(emptyDay());
   const [prevDayData, setPrevDayData] = useState<DayData>(emptyDay());
+  const [weeklyData, setWeeklyData] = useState<{ days: DayData[]; total: DayData; prevWeekTotal: DayData }>({ days: [], total: emptyDay(), prevWeekTotal: emptyDay() });
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    return monday.toISOString().split("T")[0];
+  });
   const [monthData, setMonthData] = useState<{ weeks: DayData[]; total: DayData }>({ weeks: [], total: emptyDay() });
   const [loadingData, setLoadingData] = useState(false);
 
@@ -136,13 +147,14 @@ export function DispatchReportSender() {
 
       const isDelivered = ["delivered", "read"].includes(status);
       const isFailed = ["failed", "error"].includes(status);
-      const isBlocked = status === "failed" && (metadata?.error_code === "131026" || String(metadata?.error_message || "").toLowerCase().includes("block"));
+      const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
+      const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errorStr.includes(p));
 
       result.totalDispatches += 1;
       result.totalCost += costBRL;
       if (isDelivered) result.delivered += 1;
       if (isFailed) result.failed += 1;
-      if (isBlocked) result.blocks += 1;
+      if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
 
       const bucket = dispatchType === "marketing" ? result.marketing : dispatchType === "utility" ? result.utility : result.service;
       bucket.count += 1;
@@ -183,8 +195,68 @@ export function DispatchReportSender() {
     };
     load();
   }, [selectedDate, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
+  // Load weekly data
+  useEffect(() => {
+    if (!effectiveOrganizationId || reportType !== "weekly") return;
+    const load = async () => {
+      setLoadingData(true);
+      const channelIds = await getChannelIds();
+      const weekStartDate = new Date(selectedWeekStart + "T00:00:00");
+      
+      // Fetch each day of the week + previous week for comparison
+      const dayPromises: Promise<DayData>[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(weekStartDate);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split("T")[0];
+        // Don't fetch future days
+        if (d > new Date()) break;
+        dayPromises.push(fetchDayMetrics(dateStr, channelIds));
+      }
 
-  // Load monthly data
+      // Previous week
+      const prevWeekStart = new Date(weekStartDate);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const prevDayPromises: Promise<DayData>[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(prevWeekStart);
+        d.setDate(d.getDate() + i);
+        prevDayPromises.push(fetchDayMetrics(d.toISOString().split("T")[0], channelIds));
+      }
+
+      const [days, prevDays] = await Promise.all([
+        Promise.all(dayPromises),
+        Promise.all(prevDayPromises),
+      ]);
+
+      const sumDays = (arr: DayData[]): DayData => {
+        const t = emptyDay();
+        arr.forEach(d => {
+          t.totalDispatches += d.totalDispatches;
+          t.delivered += d.delivered;
+          t.failed += d.failed;
+          t.totalCost += d.totalCost;
+          t.responses += d.responses;
+          t.blocks += d.blocks;
+          t.restrictions += d.restrictions;
+          t.marketing.count += d.marketing.count;
+          t.marketing.cost += d.marketing.cost;
+          t.utility.count += d.utility.count;
+          t.utility.cost += d.utility.cost;
+          t.service.count += d.service.count;
+          t.service.cost += d.service.cost;
+        });
+        t.totalCost = Math.round(t.totalCost * 100) / 100;
+        return t;
+      };
+
+      setWeeklyData({ days, total: sumDays(days), prevWeekTotal: sumDays(prevDays) });
+      setLoadingData(false);
+    };
+    load();
+  }, [selectedWeekStart, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
+
+
   // Helper: paginate all rows from a query (bypasses 1000-row limit)
   const fetchAllRows = useCallback(async (
     table: "whatsapp_messages",
@@ -262,7 +334,7 @@ export function DispatchReportSender() {
               if (st === "failed") {
                 recipientFailed += 1;
                 const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-                if (errMsg.includes("block") || errMsg.includes("restrict") || errMsg.includes("131026") || errMsg.includes("spam")) {
+                if (RESTRICTION_PATTERNS.some(p => errMsg.includes(p))) {
                   recipientBlocks += 1;
                 }
               }
@@ -317,8 +389,11 @@ export function DispatchReportSender() {
           week.totalDispatches += 1;
           week.totalCost += costBRL;
           if (["delivered", "read"].includes(status)) week.delivered += 1;
-          if (["failed", "error"].includes(status)) week.failed += 1;
-          if (status === "failed" && String(metadata?.error_message || "").toLowerCase().includes("block")) week.blocks += 1;
+          if (["failed", "error"].includes(status)) {
+            week.failed += 1;
+            const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
+            if (RESTRICTION_PATTERNS.some(p => errorStr.includes(p))) { week.blocks += 1; week.restrictions += 1; }
+          }
 
           const dt = (metadata?.dispatch_type as string) || "service";
           const b = dt === "marketing" ? week.marketing : dt === "utility" ? week.utility : week.service;
@@ -340,6 +415,7 @@ export function DispatchReportSender() {
         total.totalCost += week.totalCost;
         total.responses += week.responses;
         total.blocks += week.blocks;
+        total.restrictions += week.restrictions;
         total.marketing.count += week.marketing.count;
         total.marketing.cost += week.marketing.cost;
         total.utility.count += week.utility.count;
@@ -391,13 +467,25 @@ export function DispatchReportSender() {
     return diff > 0 ? `🔼 +${diff}%` : diff < 0 ? `🔻 ${diff}%` : "➡️ Estável";
   };
 
-  const getQualityLabel = (blocks: number, total: number) => {
-    if (total === 0) return { label: "Sem dados", emoji: "⚪" };
-    const rate = blocks / total;
-    if (rate <= 0.01) return { label: "Excelente", emoji: "🟢" };
-    if (rate <= 0.03) return { label: "Boa", emoji: "🟡" };
-    if (rate <= 0.07) return { label: "Média", emoji: "🟠" };
-    return { label: "Baixa", emoji: "🔴" };
+  const getQualityLabel = (data: DayData) => {
+    const { blocks, restrictions, failed, totalDispatches, delivered } = data;
+    if (totalDispatches === 0) return { label: "Sem dados", emoji: "⚪", detail: "Nenhum disparo registrado" };
+    
+    const restrictionRate = (restrictions || blocks) / totalDispatches;
+    const failureRate = failed / totalDispatches;
+    const deliveryRate = delivered / totalDispatches;
+    
+    // Use the worst indicator to determine quality
+    if (restrictionRate > 0.05 || failureRate > 0.15) {
+      return { label: "Crítica", emoji: "🔴", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições detectadas` };
+    }
+    if (restrictionRate > 0.03 || failureRate > 0.10) {
+      return { label: "Baixa", emoji: "🟠", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições` };
+    }
+    if (restrictionRate > 0.01 || failureRate > 0.05) {
+      return { label: "Moderada", emoji: "🟡", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restrições` };
+    }
+    return { label: "Excelente", emoji: "🟢", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudável` };
   };
 
   const generateInsight = (data: DayData, prev?: DayData) => {
@@ -442,7 +530,7 @@ export function DispatchReportSender() {
 
   const buildDailyReport = () => {
     const d = dayData;
-    const q = getQualityLabel(d.blocks, d.totalDispatches);
+    const q = getQualityLabel(d);
     const costPerResponse = d.responses > 0 ? fmt(d.totalCost / d.responses) : "—";
     const insights = generateInsight(d, prevDayData);
     const prevDateFormatted = (() => {
@@ -476,10 +564,12 @@ export function DispatchReportSender() {
       `   • Utilidade: ${d.utility.count} envios — ${fmt(d.utility.cost)}`,
       `   • Serviço: ${d.service.count} envios — ${fmt(d.service.cost)}`,
       ``,
-      `${q.emoji} *STATUS DA CONTA*`,
-      `   Qualidade: *${q.label}*`,
-      `   Bloqueios: *${d.blocks}*`,
-      ...(d.blocks > 0 ? [`   ⚠️ _Atenção ao volume de bloqueios_`] : []),
+      `${q.emoji} *SAÚDE DA CONTA*`,
+      `   Status: *${q.label}*`,
+      `   ${q.detail}`,
+      `   Restrições/Bloqueios: *${d.restrictions || d.blocks}*`,
+      `   Taxa de falha: *${pct(d.failed, d.totalDispatches)}*`,
+      ...(d.restrictions > 0 || d.blocks > 0 ? [`   ⚠️ _Números restritos podem indicar problemas na base ou conta_`] : []),
       ``,
       `🔄 *COMPARATIVO (vs ${prevDateFormatted})*`,
       `   Disparos: ${variation(d.totalDispatches, prevDayData.totalDispatches)}`,
@@ -503,7 +593,7 @@ export function DispatchReportSender() {
     const daysPassed = monthRange.daysElapsed;
     const avgDaily = daysPassed > 0 ? Math.round(t.totalDispatches / daysPassed) : 0;
     const avgDailyResponses = daysPassed > 0 ? Math.round(t.responses / daysPassed) : 0;
-    const q = getQualityLabel(t.blocks, t.totalDispatches);
+    const q = getQualityLabel(t);
 
     // Weekly evolution
     const weekLines = monthData.weeks.map((w, i) => {
@@ -567,7 +657,8 @@ export function DispatchReportSender() {
       `📈 *PERFORMANCE*`,
       `   Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
       `   Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
-      `   Taxa de bloqueio: *${pct(t.blocks, t.totalDispatches)}*`,
+      `   Taxa de restrições: *${pct(t.restrictions || t.blocks, t.totalDispatches)}*`,
+      `   Taxa de falha total: *${pct(t.failed, t.totalDispatches)}*`,
       ``,
       `💰 *INVESTIMENTO*`,
       `   Total: *${fmt(t.totalCost)}*`,
@@ -578,12 +669,92 @@ export function DispatchReportSender() {
       `📊 *EVOLUÇÃO SEMANAL*`,
       ...weekLines,
       ``,
-      `${q.emoji} *QUALIDADE DA BASE*`,
-      `   Saúde da conta: *${q.label}*`,
-      `   Bloqueios no mês: *${t.blocks}*`,
+      `${q.emoji} *SAÚDE DA CONTA*`,
+      `   Status: *${q.label}*`,
+      `   ${q.detail}`,
+      `   Restrições no mês: *${t.restrictions || t.blocks}*`,
+      `   Falhas totais: *${t.failed}*`,
       `   Taxa de resposta geral: *${pct(t.responses, t.totalDispatches)}*`,
       ``,
       `💡 *INSIGHTS ESTRATÉGICOS*`,
+      ...insights.map(i => `   ${i}`),
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `_Optimus CRM • Relatório automático_`,
+    ].join("\n");
+  };
+
+  const buildWeeklyReport = () => {
+    const t = weeklyData.total;
+    const prev = weeklyData.prevWeekTotal;
+    const q = getQualityLabel(t);
+    const weekStartDate = new Date(selectedWeekStart + "T12:00:00");
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    const weekLabel = `${weekStartDate.toLocaleDateString("pt-BR")} a ${weekEndDate.toLocaleDateString("pt-BR")}`;
+    const costPerResponse = t.responses > 0 ? fmt(t.totalCost / t.responses) : "—";
+    const insights = generateInsight(t);
+
+    // Day-by-day breakdown
+    const dayNames = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+    const dayLines = weeklyData.days.map((d, i) => {
+      const dayDate = new Date(weekStartDate);
+      dayDate.setDate(dayDate.getDate() + i);
+      return `   ${dayNames[i]} (${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}): ${d.totalDispatches} envios | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ⚠️ ${d.restrictions} restrições` : ""}`;
+    });
+
+    // Best/worst day
+    let bestDay = 0, worstDay = 0;
+    weeklyData.days.forEach((d, i) => {
+      if (d.responses > weeklyData.days[bestDay].responses) bestDay = i;
+      if (d.totalDispatches > 0 && (weeklyData.days[worstDay].totalDispatches === 0 || d.delivered / d.totalDispatches < weeklyData.days[worstDay].delivered / weeklyData.days[worstDay].totalDispatches)) worstDay = i;
+    });
+
+    return [
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `📊 *RELATÓRIO SEMANAL DE PERFORMANCE*`,
+      `📅 ${weekLabel}`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      ``,
+      `📨 *RESUMO DA SEMANA*`,
+      `   Total de disparos: *${t.totalDispatches}*`,
+      `   Entregues: *${t.delivered}*`,
+      `   Respostas: *${t.responses}*`,
+      `   Falhas: *${t.failed}*`,
+      ``,
+      `📈 *PERFORMANCE*`,
+      `   Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      `   Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
+      `   Custo por resposta: *${costPerResponse}*`,
+      ``,
+      `💰 *INVESTIMENTO*`,
+      `   Total: *${fmt(t.totalCost)}*`,
+      `   • Marketing: ${t.marketing.count} envios — ${fmt(t.marketing.cost)}`,
+      `   • Utilidade: ${t.utility.count} envios — ${fmt(t.utility.cost)}`,
+      `   • Serviço: ${t.service.count} envios — ${fmt(t.service.cost)}`,
+      ``,
+      `📅 *DETALHAMENTO DIÁRIO*`,
+      ...dayLines,
+      ``,
+      ...(weeklyData.days.length > 1 ? [
+        `🏆 *DESTAQUES*`,
+        `   Melhor dia (respostas): *${dayNames[bestDay]}* — ${weeklyData.days[bestDay].responses} respostas`,
+        `   Dia com menor entrega: *${dayNames[worstDay]}* — ${pct(weeklyData.days[worstDay].delivered, weeklyData.days[worstDay].totalDispatches)}`,
+        ``,
+      ] : []),
+      `🔄 *COMPARATIVO (vs semana anterior)*`,
+      `   Disparos: ${variation(t.totalDispatches, prev.totalDispatches)}`,
+      `   Respostas: ${variation(t.responses, prev.responses)}`,
+      `   Entregues: ${variation(t.delivered, prev.delivered)}`,
+      `   Falhas: ${variation(t.failed, prev.failed)}`,
+      ``,
+      `${q.emoji} *SAÚDE DA CONTA*`,
+      `   Status: *${q.label}*`,
+      `   ${q.detail}`,
+      `   Restrições na semana: *${t.restrictions || t.blocks}*`,
+      `   Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
+      ``,
+      `💡 *INSIGHTS*`,
       ...insights.map(i => `   ${i}`),
       ``,
       `━━━━━━━━━━━━━━━━━━━━━`,
@@ -597,7 +768,7 @@ export function DispatchReportSender() {
       toast.error("Cadastre um número de telefone primeiro");
       return;
     }
-    const message = reportType === "daily" ? buildDailyReport() : buildMonthlyReport();
+    const message = reportType === "daily" ? buildDailyReport() : reportType === "weekly" ? buildWeeklyReport() : buildMonthlyReport();
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };
@@ -652,15 +823,19 @@ export function DispatchReportSender() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Tabs value={reportType} onValueChange={(v) => setReportType(v as "daily" | "monthly")}>
+          <Tabs value={reportType} onValueChange={(v) => setReportType(v as "daily" | "weekly" | "monthly")}>
             <TabsList className="w-full">
               <TabsTrigger value="daily" className="flex-1 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                Relatório Diário
+                Diário
+              </TabsTrigger>
+              <TabsTrigger value="weekly" className="flex-1 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Semanal
               </TabsTrigger>
               <TabsTrigger value="monthly" className="flex-1 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
-                Relatório Mensal
+                Mensal
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -675,6 +850,32 @@ export function DispatchReportSender() {
                 max={todayStr}
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
+            </div>
+          )}
+
+          {reportType === "weekly" && (
+            <div className="space-y-2">
+              <Label htmlFor="report-week">Início da semana (segunda-feira)</Label>
+              <Input
+                id="report-week"
+                type="date"
+                value={selectedWeekStart}
+                max={todayStr}
+                onChange={(e) => {
+                  // Snap to Monday
+                  const d = new Date(e.target.value + "T12:00:00");
+                  const day = d.getDay();
+                  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+                  setSelectedWeekStart(d.toISOString().split("T")[0]);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Semana de {new Date(selectedWeekStart + "T12:00:00").toLocaleDateString("pt-BR")} a {(() => {
+                  const end = new Date(selectedWeekStart + "T12:00:00");
+                  end.setDate(end.getDate() + 6);
+                  return end.toLocaleDateString("pt-BR");
+                })()}
+              </p>
             </div>
           )}
 
@@ -698,7 +899,7 @@ export function DispatchReportSender() {
             </div>
           ) : (
             <div className="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono border border-border max-h-[500px] overflow-y-auto">
-              {reportType === "daily" ? buildDailyReport() : buildMonthlyReport()}
+              {reportType === "daily" ? buildDailyReport() : reportType === "weekly" ? buildWeeklyReport() : buildMonthlyReport()}
             </div>
           )}
 
