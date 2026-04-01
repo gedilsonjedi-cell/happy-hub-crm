@@ -160,8 +160,7 @@ export function DispatchReportSender() {
             const isDelivered = ["delivered", "read", "clicked"].includes(st);
             const isSent = ["sent", "delivered", "read", "clicked"].includes(st);
             const isFailed = st === "failed";
-            const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-            const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errMsg.includes(p));
+            const isRestriction = isFailed && checkRestriction(r.error_message, r.last_error_code);
 
             if (isSent || isFailed) result.totalDispatches += 1;
             if (isDelivered) result.delivered += 1;
