@@ -105,6 +105,16 @@ export function Sidebar() {
   const [appsOpen, setAppsOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
+  const { user } = useAuth();
+  const userEmail = user?.email?.toLowerCase() || "";
+
+  const filteredDisparosSubmenu = useMemo(() => {
+    const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin;
+    return disparosSubmenu.filter(item => {
+      if ((item as any).emailRestricted && !canAccessRelatorios) return false;
+      return true;
+    });
+  }, [userEmail, userRole.isSuperAdmin]);
   const unreadCount = useUnreadMessagesCount();
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
