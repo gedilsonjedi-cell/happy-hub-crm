@@ -18,17 +18,20 @@ interface DayData {
   totalCost: number;
   responses: number;
   blocks: number;
+  restrictions: number; // broader: includes 131026, 131047, 131042, spam, restrict, rate limit
   marketing: { count: number; cost: number; delivered: number; failed: number };
   utility: { count: number; cost: number; delivered: number; failed: number };
   service: { count: number; cost: number; delivered: number; failed: number };
 }
 
 const emptyDay = (): DayData => ({
-  totalDispatches: 0, delivered: 0, failed: 0, totalCost: 0, responses: 0, blocks: 0,
+  totalDispatches: 0, delivered: 0, failed: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
   marketing: { count: 0, cost: 0, delivered: 0, failed: 0 },
   utility: { count: 0, cost: 0, delivered: 0, failed: 0 },
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
 });
+
+const RESTRICTION_PATTERNS = ["block", "restrict", "spam", "rate", "131026", "131047", "131042", "3835016"];
 
 const padMonthValue = (value: number) => String(value).padStart(2, "0");
 
