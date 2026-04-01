@@ -530,7 +530,7 @@ export function DispatchReportSender() {
 
   const buildDailyReport = () => {
     const d = dayData;
-    const q = getQualityLabel(d.blocks, d.totalDispatches);
+    const q = getQualityLabel(d);
     const costPerResponse = d.responses > 0 ? fmt(d.totalCost / d.responses) : "—";
     const insights = generateInsight(d, prevDayData);
     const prevDateFormatted = (() => {
