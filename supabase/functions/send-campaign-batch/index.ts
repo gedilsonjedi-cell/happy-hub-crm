@@ -222,13 +222,84 @@ Deno.serve(async (req) => {
 
     const channelsMap = new Map(dispatchableChannels.map(c => [c.id, c]));
     const templatesMap = new Map(templates.map(t => [t.id, t]));
+    const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0;
+    const standardTickSize = Math.max(activeCampaignChannels.length, 1);
+    const effectiveBatchSize = isFullMode
+      ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
+      : standardTickSize;
+    const recoverableFailedCodes = ['EXCEPTION', 'UNKNOWN', '135000'];
+    const nowIso = () => new Date().toISOString();
+
+    const getCounts = async () => {
+      const { data } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
+      return data?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
+    };
+
+    const persistCampaignState = async (
+      counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
+      status: 'running' | 'completed'
+    ) => {
+      await supabase.from('campaigns').update({
+        status,
+        sent_count: Number(counts.total_sent) || 0,
+        delivered_count: Number(counts.total_delivered) || 0,
+        failed_count: (Number(counts.total_failed) || 0) + (Number(counts.total_waiting_retry) || 0),
+        completed_at: status === 'completed' ? nowIso() : null,
+        updated_at: nowIso()
+      }).eq('id', campaignId);
+    };
+
+    const recoverFailedRecipients = async () => {
+      const { count, error: recoverableError } = await supabase
+        .from('campaign_recipients')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'failed')
+        .in('last_error_code', recoverableFailedCodes);
+
+      if (recoverableError) {
+        console.error('[Batch] Error checking recoverable failed recipients:', recoverableError);
+        return 0;
+      }
+
+      if (!count) {
+        return 0;
+      }
+
+      const { error: requeueError } = await supabase
+        .from('campaign_recipients')
+        .update({
+          status: 'pending',
+          sent_at: null,
+          delivered_at: null,
+          read_at: null,
+          retry_count: 0,
+          error_message: null,
+          last_error_code: null,
+          next_retry_at: null,
+          updated_at: nowIso()
+        })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'failed')
+        .in('last_error_code', recoverableFailedCodes);
+
+      if (requeueError) {
+        console.error('[Batch] Error requeueing recoverable failed recipients:', requeueError);
+        return 0;
+      }
+
+      console.log(`[Batch] Requeued ${count} recoverable failed recipients for campaign ${campaign.name}`);
+      return count;
+    };
+
+    console.log(`[Batch] Campaign ${campaign.name} using tick size ${effectiveBatchSize} (${isFullMode ? 'FULL MODE' : `${standardTickSize} selected channel(s)`})`);
 
     // ===== ATOMIC CLAIM: Use DB function to prevent race conditions =====
     // This atomically marks recipients as 'processing' so concurrent calls can't grab the same ones
     const { data: claimedRecipients, error: claimError } = await supabase
       .rpc('claim_campaign_recipients', {
         p_campaign_id: campaignId,
-        p_batch_size: batchSize,
+        p_batch_size: effectiveBatchSize,
         p_include_retries: true
       });
 
@@ -254,30 +325,42 @@ Deno.serve(async (req) => {
     // This prevents sending to people not in the selected base
 
     if (recipientsToSend.length === 0) {
-      // Get accurate counts
-      const { data: counts } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
-      const c = counts?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
+      const recoveredFailed = await recoverFailedRecipients();
+      if (recoveredFailed > 0) {
+        const recoveredCounts = await getCounts();
+        await persistCampaignState(recoveredCounts, 'running');
 
-      const hasFutureRetries = (c.total_waiting_retry || 0) > 0;
-      const hasProcessing = (c.total_processing || 0) > 0;
-      const totalProcessed = (Number(c.total_sent) || 0) + (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0);
-      // Only mark complete if ALL recipients have been processed (sent, failed, or retrying)
-      // AND no pending/processing remain. Double-check against total_recipients to prevent premature completion.
-      const isComplete = !hasProcessing && (c.total_pending || 0) === 0 && totalProcessed >= campaign.total_recipients;
+        return new Response(
+          JSON.stringify({
+            success: true,
+            done: false,
+            status: 'running',
+            sent: Number(recoveredCounts.total_sent) || 0,
+            delivered: Number(recoveredCounts.total_delivered) || 0,
+            failed: (Number(recoveredCounts.total_failed) || 0) + (Number(recoveredCounts.total_waiting_retry) || 0),
+            total: campaign.total_recipients,
+            recoveredFailed,
+            pendingRetries: Number(recoveredCounts.total_waiting_retry) || 0
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const c = await getCounts();
+      const hasFutureRetries = (Number(c.total_waiting_retry) || 0) > 0;
+      const hasPending = (Number(c.total_pending) || 0) > 0;
+      const hasProcessing = (Number(c.total_processing) || 0) > 0;
+      const totalTerminal = (Number(c.total_sent) || 0) + (Number(c.total_failed) || 0);
+      const isComplete = !hasPending && !hasProcessing && !hasFutureRetries && totalTerminal >= campaign.total_recipients;
 
       const newStatus = isComplete ? 'completed' : 'running';
-      await supabase.from('campaigns').update({
-        status: newStatus,
-        completed_at: isComplete ? new Date().toISOString() : null,
-        sent_count: Number(c.total_sent) || 0,
-        delivered_count: Number(c.total_delivered) || 0,
-        failed_count: (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0),
-      }).eq('id', campaignId);
+      await persistCampaignState(c, newStatus);
 
       return new Response(
         JSON.stringify({
-          success: true, done: isComplete,
-          status: isComplete ? 'completed' : (hasFutureRetries ? 'waiting_retry' : 'running'),
+          success: true,
+          done: isComplete,
+          status: isComplete ? 'completed' : (hasFutureRetries && !hasPending ? 'waiting_retry' : 'running'),
           sent: Number(c.total_sent) || 0,
           delivered: Number(c.total_delivered) || 0,
           failed: (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0),
@@ -427,21 +510,44 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
-        // Network/runtime exceptions are transient - retry up to 3 times
         const currentRetryCount = recipient.retryCount || 0;
-        const MAX_EXCEPTION_RETRIES = 3;
-        if (currentRetryCount < MAX_EXCEPTION_RETRIES) {
-          console.log(`[Batch] Exception for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_EXCEPTION_RETRIES}): ${String(error)}`);
+        const errorMessage = String(error);
+        const isRateLimitException = /RateLimitError|rate limit exceeded/i.test(errorMessage);
+
+        if (isRateLimitException) {
+          const nextRetryAt = new Date(Date.now() + 60_000).toISOString();
+          console.log(`[Batch] Invocation rate limit for ${formattedPhone}, scheduling retry at ${nextRetryAt}`);
           await supabase.from('campaign_recipients').update({
-            status: 'pending', retry_count: currentRetryCount + 1,
-            error_message: null, last_error_code: null
+            status: 'waiting_retry',
+            retry_count: currentRetryCount + 1,
+            next_retry_at: nextRetryAt,
+            error_message: errorMessage,
+            last_error_code: 'EXCEPTION'
+          }).eq('id', recipient.recipientId);
+          return { sent: false, failed: false, retry: true };
+        }
+
+        const MAX_EXCEPTION_RETRIES = 10;
+        if (currentRetryCount < MAX_EXCEPTION_RETRIES) {
+          console.log(`[Batch] Exception for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_EXCEPTION_RETRIES}): ${errorMessage}`);
+          await supabase.from('campaign_recipients').update({
+            status: 'pending',
+            retry_count: currentRetryCount + 1,
+            next_retry_at: null,
+            error_message: null,
+            last_error_code: null
           }).eq('id', recipient.recipientId);
           return { sent: false, failed: false, retry: false };
         }
+
         await supabase.from('campaign_recipients').update({
-          status: 'failed', error_message: String(error), last_error_code: 'EXCEPTION'
+          status: 'waiting_retry',
+          retry_count: currentRetryCount + 1,
+          next_retry_at: new Date(Date.now() + 300_000).toISOString(),
+          error_message: errorMessage,
+          last_error_code: 'EXCEPTION'
         }).eq('id', recipient.recipientId);
-        return { sent: !recipient.isRetry, failed: true, retry: false };
+        return { sent: false, failed: false, retry: true };
       }
     }
 
@@ -457,27 +563,45 @@ Deno.serve(async (req) => {
     }
 
     // Get accurate counts from DB
-    const { data: finalCounts } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
-    const fc = finalCounts?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
+    let fc = await getCounts();
+    let hasPending = (Number(fc.total_pending) || 0) > 0;
+    let hasProcessing = (Number(fc.total_processing) || 0) > 0;
+    let hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
 
-    const hasPending = (Number(fc.total_pending) || 0) > 0;
-    const hasProcessing = (Number(fc.total_processing) || 0) > 0;
-    const hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
-    const totalProcessed = (Number(fc.total_sent) || 0) + (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0);
-    // Only mark complete if ALL recipients accounted for AND none pending/processing
-    const isComplete = !hasPending && !hasProcessing && totalProcessed >= campaign.total_recipients;
+    if (!hasPending && !hasProcessing) {
+      const recoveredFailed = await recoverFailedRecipients();
+      if (recoveredFailed > 0) {
+        const recoveredCounts = await getCounts();
+        await persistCampaignState(recoveredCounts, 'running');
 
-    let newStatus = 'running';
-    if (isComplete) newStatus = 'completed';
+        return new Response(
+          JSON.stringify({
+            success: true,
+            done: false,
+            status: 'running',
+            sent: Number(recoveredCounts.total_sent) || 0,
+            delivered: Number(recoveredCounts.total_delivered) || 0,
+            failed: (Number(recoveredCounts.total_failed) || 0) + (Number(recoveredCounts.total_waiting_retry) || 0),
+            total: campaign.total_recipients,
+            batchProcessed: sentThisBatch,
+            scheduledRetries: scheduledRetryThisBatch,
+            recoveredFailed,
+            pendingRetries: Number(recoveredCounts.total_waiting_retry) || 0
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
-    // Update campaign with accurate counts
-    await supabase.from('campaigns').update({
-      status: newStatus,
-      sent_count: Number(fc.total_sent) || 0,
-      delivered_count: Number(fc.total_delivered) || 0,
-      failed_count: (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0),
-      completed_at: isComplete ? new Date().toISOString() : null
-    }).eq('id', campaignId);
+    fc = await getCounts();
+    hasPending = (Number(fc.total_pending) || 0) > 0;
+    hasProcessing = (Number(fc.total_processing) || 0) > 0;
+    hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
+    const totalTerminal = (Number(fc.total_sent) || 0) + (Number(fc.total_failed) || 0);
+    const isComplete = !hasPending && !hasProcessing && !hasRetries && totalTerminal >= campaign.total_recipients;
+
+    const newStatus = isComplete ? 'completed' : 'running';
+    await persistCampaignState(fc, newStatus);
 
     console.log(`[Batch] Campaign ${campaign.name}: sent=${fc.total_sent}, failed=${fc.total_failed}, pending=${fc.total_pending}, retry=${fc.total_waiting_retry}, processing=${fc.total_processing}`);
 

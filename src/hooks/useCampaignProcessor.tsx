@@ -50,18 +50,14 @@ export function useCampaignProcessor({
 
     try {
       const isFullMode = (campaign.min_interval === 0 && campaign.max_interval === 0);
-      // Standard mode: send ALL remaining recipients in one batch per interval tick
-      // Full mode: same as before (99 per tick with 500ms delay)
-      const currentBatchSize = isFullMode ? 99 : campaign.total_recipients;
+      const requestBody = isFullMode
+        ? { campaignId: campaign.id, batchSize: 99 }
+        : { campaignId: campaign.id };
 
       const { data, error } = await supabase.functions.invoke('send-campaign-batch', {
-        body: {
-          campaignId: campaign.id,
-          batchSize: currentBatchSize
-        }
+        body: requestBody
       });
 
-      // Release the batch lock AFTER we get the response
       activeBatchRef.current.delete(campaign.id);
 
       if (error) {
@@ -81,36 +77,33 @@ export function useCampaignProcessor({
 
       onUpdate();
 
-      if (!data.done && data.status === 'running') {
+      if (!data.done && (data.status === 'running' || data.status === 'waiting_retry')) {
         let waitTime: number;
-        
+
         if (data.status === 'waiting_retry') {
           waitTime = 60000;
         } else if (isFullMode) {
-          // In full mode, wait a bit longer to allow the batch to fully complete
-          // and prevent overlapping requests
           waitTime = 500;
         } else {
           const minInterval = campaign.min_interval || 5;
           const maxInterval = campaign.max_interval || 120;
           waitTime = getRandomInterval(minInterval, maxInterval) * 1000;
         }
-        
+
         const timeout = setTimeout(() => {
           processingRef.current.delete(campaign.id);
-          // Re-fetch campaign status before processing
           supabase
             .from('campaigns')
             .select('id, name, status, sent_count, total_recipients, min_interval, max_interval')
             .eq('id', campaign.id)
             .single()
             .then(({ data: updatedCampaign }) => {
-                if (updatedCampaign && updatedCampaign.status === 'running') {
+              if (updatedCampaign && updatedCampaign.status === 'running') {
                 processNextBatch(updatedCampaign as Campaign);
               }
             });
         }, waitTime);
-        
+
         timeoutsRef.current.set(campaign.id, timeout);
       } else {
         processingRef.current.delete(campaign.id);
