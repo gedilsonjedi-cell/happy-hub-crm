@@ -319,7 +319,7 @@ export function Sidebar() {
             {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
 
             {/* Disparos submenu */}
-            {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
+            {renderSubmenu(filteredDisparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
 
             {/* Personalização submenu */}
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
