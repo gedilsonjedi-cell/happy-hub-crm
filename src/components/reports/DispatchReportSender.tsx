@@ -591,7 +591,7 @@ export function DispatchReportSender() {
     const daysPassed = monthRange.daysElapsed;
     const avgDaily = daysPassed > 0 ? Math.round(t.totalDispatches / daysPassed) : 0;
     const avgDailyResponses = daysPassed > 0 ? Math.round(t.responses / daysPassed) : 0;
-    const q = getQualityLabel(t.blocks, t.totalDispatches);
+    const q = getQualityLabel(t);
 
     // Weekly evolution
     const weekLines = monthData.weeks.map((w, i) => {
