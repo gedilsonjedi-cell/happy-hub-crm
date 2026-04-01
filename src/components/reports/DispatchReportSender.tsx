@@ -684,13 +684,91 @@ export function DispatchReportSender() {
     ].join("\n");
   };
 
+  const buildWeeklyReport = () => {
+    const t = weeklyData.total;
+    const prev = weeklyData.prevWeekTotal;
+    const q = getQualityLabel(t);
+    const weekStartDate = new Date(selectedWeekStart + "T12:00:00");
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    const weekLabel = `${weekStartDate.toLocaleDateString("pt-BR")} a ${weekEndDate.toLocaleDateString("pt-BR")}`;
+    const costPerResponse = t.responses > 0 ? fmt(t.totalCost / t.responses) : "—";
+    const insights = generateInsight(t);
+
+    // Day-by-day breakdown
+    const dayNames = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+    const dayLines = weeklyData.days.map((d, i) => {
+      const dayDate = new Date(weekStartDate);
+      dayDate.setDate(dayDate.getDate() + i);
+      return `   ${dayNames[i]} (${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}): ${d.totalDispatches} envios | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ⚠️ ${d.restrictions} restrições` : ""}`;
+    });
+
+    // Best/worst day
+    let bestDay = 0, worstDay = 0;
+    weeklyData.days.forEach((d, i) => {
+      if (d.responses > weeklyData.days[bestDay].responses) bestDay = i;
+      if (d.totalDispatches > 0 && (weeklyData.days[worstDay].totalDispatches === 0 || d.delivered / d.totalDispatches < weeklyData.days[worstDay].delivered / weeklyData.days[worstDay].totalDispatches)) worstDay = i;
+    });
+
+    return [
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `📊 *RELATÓRIO SEMANAL DE PERFORMANCE*`,
+      `📅 ${weekLabel}`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      ``,
+      `📨 *RESUMO DA SEMANA*`,
+      `   Total de disparos: *${t.totalDispatches}*`,
+      `   Entregues: *${t.delivered}*`,
+      `   Respostas: *${t.responses}*`,
+      `   Falhas: *${t.failed}*`,
+      ``,
+      `📈 *PERFORMANCE*`,
+      `   Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      `   Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
+      `   Custo por resposta: *${costPerResponse}*`,
+      ``,
+      `💰 *INVESTIMENTO*`,
+      `   Total: *${fmt(t.totalCost)}*`,
+      `   • Marketing: ${t.marketing.count} envios — ${fmt(t.marketing.cost)}`,
+      `   • Utilidade: ${t.utility.count} envios — ${fmt(t.utility.cost)}`,
+      `   • Serviço: ${t.service.count} envios — ${fmt(t.service.cost)}`,
+      ``,
+      `📅 *DETALHAMENTO DIÁRIO*`,
+      ...dayLines,
+      ``,
+      ...(weeklyData.days.length > 1 ? [
+        `🏆 *DESTAQUES*`,
+        `   Melhor dia (respostas): *${dayNames[bestDay]}* — ${weeklyData.days[bestDay].responses} respostas`,
+        `   Dia com menor entrega: *${dayNames[worstDay]}* — ${pct(weeklyData.days[worstDay].delivered, weeklyData.days[worstDay].totalDispatches)}`,
+        ``,
+      ] : []),
+      `🔄 *COMPARATIVO (vs semana anterior)*`,
+      `   Disparos: ${variation(t.totalDispatches, prev.totalDispatches)}`,
+      `   Respostas: ${variation(t.responses, prev.responses)}`,
+      `   Entregues: ${variation(t.delivered, prev.delivered)}`,
+      `   Falhas: ${variation(t.failed, prev.failed)}`,
+      ``,
+      `${q.emoji} *SAÚDE DA CONTA*`,
+      `   Status: *${q.label}*`,
+      `   ${q.detail}`,
+      `   Restrições na semana: *${t.restrictions || t.blocks}*`,
+      `   Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
+      ``,
+      `💡 *INSIGHTS*`,
+      ...insights.map(i => `   ${i}`),
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `_Optimus CRM • Relatório automático_`,
+    ].join("\n");
+  };
+
   const handleSendReport = () => {
     const phone = reportPhone.replace(/\D/g, "");
     if (!phone) {
       toast.error("Cadastre um número de telefone primeiro");
       return;
     }
-    const message = reportType === "daily" ? buildDailyReport() : buildMonthlyReport();
+    const message = reportType === "daily" ? buildDailyReport() : reportType === "weekly" ? buildWeeklyReport() : buildMonthlyReport();
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };
