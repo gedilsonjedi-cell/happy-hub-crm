@@ -50,7 +50,9 @@ export function useCampaignProcessor({
 
     try {
       const isFullMode = (campaign.min_interval === 0 && campaign.max_interval === 0);
-      const currentBatchSize = isFullMode ? 99 : 1;
+      // Standard mode: send ALL remaining recipients in one batch per interval tick
+      // Full mode: same as before (99 per tick with 500ms delay)
+      const currentBatchSize = isFullMode ? 99 : campaign.total_recipients;
 
       const { data, error } = await supabase.functions.invoke('send-campaign-batch', {
         body: {
