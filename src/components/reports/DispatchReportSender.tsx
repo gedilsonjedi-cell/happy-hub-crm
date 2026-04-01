@@ -389,8 +389,11 @@ export function DispatchReportSender() {
           week.totalDispatches += 1;
           week.totalCost += costBRL;
           if (["delivered", "read"].includes(status)) week.delivered += 1;
-          if (["failed", "error"].includes(status)) week.failed += 1;
-          if (status === "failed" && String(metadata?.error_message || "").toLowerCase().includes("block")) week.blocks += 1;
+          if (["failed", "error"].includes(status)) {
+            week.failed += 1;
+            const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
+            if (RESTRICTION_PATTERNS.some(p => errorStr.includes(p))) { week.blocks += 1; week.restrictions += 1; }
+          }
 
           const dt = (metadata?.dispatch_type as string) || "service";
           const b = dt === "marketing" ? week.marketing : dt === "utility" ? week.utility : week.service;
