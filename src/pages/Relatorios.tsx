@@ -57,6 +57,10 @@ export default function Relatorios() {
               <DollarSign className="w-4 h-4" />
               Investimento
             </TabsTrigger>
+            <TabsTrigger value="enviar" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Enviar Relatório
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="atendimento">
