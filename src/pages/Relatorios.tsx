@@ -2,9 +2,10 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
-import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash, MessageSquare } from "lucide-react";
+import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash, MessageSquare, FileText } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ConversationMetricsPanel } from "@/components/reports/ConversationMetricsPanel";
+import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
 import { useState } from "react";
 
 export default function Relatorios() {
@@ -55,6 +56,10 @@ export default function Relatorios() {
             <TabsTrigger value="investimento" className="flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
               Investimento
+            </TabsTrigger>
+            <TabsTrigger value="enviar" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Enviar Relatório
             </TabsTrigger>
           </TabsList>
 
@@ -211,6 +216,9 @@ export default function Relatorios() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="enviar">
+            <DispatchReportSender />
           </TabsContent>
         </Tabs>
       </div>

@@ -2200,6 +2200,7 @@ export type Database = {
           max_users: number | null
           name: string
           plan: string
+          report_phone: string | null
           slug: string
           subscription_ends_at: string | null
           subscription_paid_until: string | null
@@ -2219,6 +2220,7 @@ export type Database = {
           max_users?: number | null
           name: string
           plan?: string
+          report_phone?: string | null
           slug: string
           subscription_ends_at?: string | null
           subscription_paid_until?: string | null
@@ -2238,6 +2240,7 @@ export type Database = {
           max_users?: number | null
           name?: string
           plan?: string
+          report_phone?: string | null
           slug?: string
           subscription_ends_at?: string | null
           subscription_paid_until?: string | null
