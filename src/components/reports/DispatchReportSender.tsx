@@ -153,6 +153,37 @@ export function DispatchReportSender() {
   }, [selectedDate, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
 
   // Load monthly data
+  // Helper: paginate all rows from a query (bypasses 1000-row limit)
+  const fetchAllRows = useCallback(async (
+    table: "whatsapp_messages",
+    channelIds: string[],
+    direction: string,
+    start: string,
+    end: string,
+    selectCols: string
+  ) => {
+    const PAGE_SIZE = 1000;
+    let allRows: any[] = [];
+    let from = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const { data } = await supabase
+        .from(table)
+        .select(selectCols)
+        .in("channel_id", channelIds)
+        .eq("direction", direction)
+        .gte("created_at", start)
+        .lte("created_at", end)
+        .range(from, from + PAGE_SIZE - 1);
+      const rows = data || [];
+      allRows = allRows.concat(rows);
+      hasMore = rows.length === PAGE_SIZE;
+      from += PAGE_SIZE;
+    }
+    return allRows;
+  }, []);
+
+  // Load monthly data — uses campaigns table for totals + paginated messages for details
   useEffect(() => {
     if (!effectiveOrganizationId || reportType !== "monthly") return;
     const load = async () => {
@@ -163,36 +194,52 @@ export function DispatchReportSender() {
       const month = now.getMonth();
       const firstDay = new Date(year, month, 1);
       const today = new Date();
+      const monthStart = firstDay.toISOString();
+      const monthEnd = today.toISOString();
 
-      // Split into weeks
+      // 1) Get campaign-level totals (accurate, no row limit issue)
+      const { data: campaigns } = await supabase
+        .from("campaigns")
+        .select("total_recipients, sent_count, delivered_count, failed_count, created_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .gte("created_at", monthStart)
+        .lte("created_at", monthEnd);
+
+      const campaignTotals = {
+        sent: (campaigns || []).reduce((s, c) => s + (c.sent_count ?? 0), 0),
+        delivered: (campaigns || []).reduce((s, c) => s + (c.delivered_count ?? 0), 0),
+        failed: (campaigns || []).reduce((s, c) => s + (c.failed_count ?? 0), 0),
+        recipients: (campaigns || []).reduce((s, c) => s + (c.total_recipients ?? 0), 0),
+      };
+
+      // 2) Paginate outbound messages for cost/type breakdown & inbound for responses
+      const startISO = `${firstDay.toISOString().split("T")[0]}T00:00:00.000Z`;
+      const endISO = `${today.toISOString().split("T")[0]}T23:59:59.999Z`;
+
+      const [allOutbound, allInbound] = await Promise.all([
+        fetchAllRows("whatsapp_messages", channelIds, "outbound", startISO, endISO, "metadata, status, created_at"),
+        fetchAllRows("whatsapp_messages", channelIds, "inbound", startISO, endISO, "id, created_at"),
+      ]);
+
+      // 3) Build weekly breakdown from paginated data
       const weeks: DayData[] = [];
       const total = emptyDay();
       let weekStart = new Date(firstDay);
-      
+
       while (weekStart <= today) {
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
         if (weekEnd > today) weekEnd.setTime(today.getTime());
 
-        const startStr = weekStart.toISOString().split("T")[0];
-        const endStr = weekEnd.toISOString().split("T")[0];
-
-        // Fetch week data in one query
-        const start = `${startStr}T00:00:00.000Z`;
-        const end = `${endStr}T23:59:59.999Z`;
-
-        const [{ data: outbound }, { data: inbound }] = await Promise.all([
-          supabase.from("whatsapp_messages").select("metadata, status")
-            .in("channel_id", channelIds).eq("direction", "outbound")
-            .gte("created_at", start).lte("created_at", end).limit(5000),
-          supabase.from("whatsapp_messages").select("id")
-            .in("channel_id", channelIds).eq("direction", "inbound")
-            .gte("created_at", start).lte("created_at", end).limit(5000),
-        ]);
+        const wStart = weekStart.getTime();
+        const wEnd = new Date(weekEnd.toISOString().split("T")[0] + "T23:59:59.999Z").getTime();
 
         const week = emptyDay();
-        week.responses = inbound?.length || 0;
-        (outbound || []).forEach((msg) => {
+
+        // Filter outbound for this week
+        allOutbound.forEach((msg: any) => {
+          const msgTime = new Date(msg.created_at).getTime();
+          if (msgTime < wStart || msgTime > wEnd) return;
           const metadata = msg.metadata as Record<string, unknown> | null;
           const costBRL = Number(metadata?.cost || 0) * USD_TO_BRL_RATE;
           const status = msg.status || "";
@@ -207,11 +254,16 @@ export function DispatchReportSender() {
           b.count += 1;
           b.cost += costBRL;
         });
+
+        // Filter inbound for this week
+        allInbound.forEach((msg: any) => {
+          const msgTime = new Date(msg.created_at).getTime();
+          if (msgTime >= wStart && msgTime <= wEnd) week.responses += 1;
+        });
+
         week.totalCost = Math.round(week.totalCost * 100) / 100;
         weeks.push(week);
 
-        // Accumulate
-        total.totalDispatches += week.totalDispatches;
         total.delivered += week.delivered;
         total.failed += week.failed;
         total.totalCost += week.totalCost;
@@ -228,6 +280,15 @@ export function DispatchReportSender() {
         weekStart.setDate(weekStart.getDate() + 1);
       }
 
+      // Use the HIGHER value between campaigns table and counted messages
+      // This ensures we never undercount
+      total.totalDispatches = Math.max(
+        campaignTotals.sent,
+        allOutbound.length
+      );
+      total.delivered = Math.max(campaignTotals.delivered, total.delivered);
+      total.failed = Math.max(campaignTotals.failed, total.failed);
+
       total.totalCost = Math.round(total.totalCost * 100) / 100;
       total.marketing.cost = Math.round(total.marketing.cost * 100) / 100;
       total.utility.cost = Math.round(total.utility.cost * 100) / 100;
@@ -237,7 +298,7 @@ export function DispatchReportSender() {
       setLoadingData(false);
     };
     load();
-  }, [effectiveOrganizationId, reportType, getChannelIds]);
+  }, [effectiveOrganizationId, reportType, getChannelIds, fetchAllRows]);
 
   const handleSavePhone = async () => {
     if (!effectiveOrganizationId) return;
