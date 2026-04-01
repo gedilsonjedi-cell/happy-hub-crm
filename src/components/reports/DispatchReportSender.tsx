@@ -359,6 +359,7 @@ export function DispatchReportSender() {
       );
       total.delivered = Math.max(campaignTotals.delivered, total.delivered);
       total.failed = Math.max(campaignTotals.failed, total.failed);
+      total.blocks = Math.max(campaignTotals.blocks, total.blocks);
 
       total.totalCost = Math.round(total.totalCost * 100) / 100;
       total.marketing.cost = Math.round(total.marketing.cost * 100) / 100;
