@@ -65,6 +65,14 @@ export function DispatchReportSender() {
   const [selectedMonth, setSelectedMonth] = useState(() => formatMonthInputValue(new Date()));
   const [dayData, setDayData] = useState<DayData>(emptyDay());
   const [prevDayData, setPrevDayData] = useState<DayData>(emptyDay());
+  const [weeklyData, setWeeklyData] = useState<{ days: DayData[]; total: DayData; prevWeekTotal: DayData }>({ days: [], total: emptyDay(), prevWeekTotal: emptyDay() });
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    return monday.toISOString().split("T")[0];
+  });
   const [monthData, setMonthData] = useState<{ weeks: DayData[]; total: DayData }>({ weeks: [], total: emptyDay() });
   const [loadingData, setLoadingData] = useState(false);
 
