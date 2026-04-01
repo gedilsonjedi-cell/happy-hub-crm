@@ -103,74 +103,110 @@ export function DispatchReportSender() {
   }, [effectiveOrganizationId]);
 
   const fetchDayMetrics = useCallback(async (date: string, channelIds: string[]): Promise<DayData> => {
-    if (channelIds.length === 0) return emptyDay();
+    if (!effectiveOrganizationId || channelIds.length === 0) return emptyDay();
     const start = `${date}T00:00:00.000Z`;
     const end = `${date}T23:59:59.999Z`;
 
-    // Paginate to get ALL outbound and inbound messages for the day
-    const PAGE_SIZE = 1000;
-    const paginateQuery = async (direction: string, cols: string) => {
-      let all: any[] = [];
-      let from = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const { data } = await supabase
-          .from("whatsapp_messages")
-          .select(cols)
-          .in("channel_id", channelIds)
-          .eq("direction", direction)
-          .gte("created_at", start)
-          .lte("created_at", end)
-          .range(from, from + PAGE_SIZE - 1);
-        const rows = data || [];
-        all = all.concat(rows);
-        hasMore = rows.length === PAGE_SIZE;
-        from += PAGE_SIZE;
-      }
-      return all;
-    };
+    // 1) Get campaigns for this org (all statuses that had actual sends)
+    const { data: campaigns } = await supabase
+      .from("campaigns")
+      .select("id, unified_template_id")
+      .eq("organization_id", effectiveOrganizationId);
 
-    const [outbound, inbound] = await Promise.all([
-      paginateQuery("outbound", "metadata, status"),
-      paginateQuery("inbound", "id"),
-    ]);
+    const campaignIds = (campaigns || []).map(c => c.id);
 
-    const result = emptyDay();
-    result.responses = inbound.length;
-
-    outbound.forEach((msg: any) => {
-      const metadata = msg.metadata as Record<string, unknown> | null;
-      const costUSD = Number(metadata?.cost || 0);
-      const costBRL = costUSD * USD_TO_BRL_RATE;
-      const dispatchType = (metadata?.dispatch_type as string) || "service";
-      const status = msg.status || "";
-
-      const isDelivered = ["delivered", "read"].includes(status);
-      const isFailed = ["failed", "error"].includes(status);
-      const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
-      const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errorStr.includes(p));
-
-      result.totalDispatches += 1;
-      result.totalCost += costBRL;
-      if (isDelivered) result.delivered += 1;
-      if (isFailed) result.failed += 1;
-      if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
-
-      const bucket = dispatchType === "marketing" ? result.marketing : dispatchType === "utility" ? result.utility : result.service;
-      bucket.count += 1;
-      bucket.cost += costBRL;
-      if (isDelivered) bucket.delivered += 1;
-      if (isFailed) bucket.failed += 1;
+    // 2) Get template dispatch types for category breakdown
+    const templateIds = [...new Set((campaigns || []).map(c => c.unified_template_id).filter(Boolean))];
+    let templateTypeMap: Record<string, string> = {};
+    if (templateIds.length > 0) {
+      const { data: templates } = await supabase
+        .from("message_templates")
+        .select("id, dispatch_type")
+        .in("id", templateIds);
+      (templates || []).forEach(t => { templateTypeMap[t.id] = t.dispatch_type || "service"; });
+    }
+    // Map campaign -> dispatch_type
+    const campaignTypeMap: Record<string, string> = {};
+    (campaigns || []).forEach(c => {
+      campaignTypeMap[c.id] = c.unified_template_id ? (templateTypeMap[c.unified_template_id] || "service") : "service";
     });
 
-    // Round costs
-    result.totalCost = Math.round(result.totalCost * 100) / 100;
-    result.marketing.cost = Math.round(result.marketing.cost * 100) / 100;
-    result.utility.cost = Math.round(result.utility.cost * 100) / 100;
-    result.service.cost = Math.round(result.service.cost * 100) / 100;
+    // 3) Paginate campaign_recipients by sent_at date
+    const PAGE_SIZE = 1000;
+    const result = emptyDay();
+
+    if (campaignIds.length > 0) {
+      const BATCH = 50;
+      for (let bi = 0; bi < campaignIds.length; bi += BATCH) {
+        const batchIds = campaignIds.slice(bi, bi + BATCH);
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data: recipients } = await supabase
+            .from("campaign_recipients")
+            .select("campaign_id, status, error_message, last_error_code")
+            .in("campaign_id", batchIds)
+            .gte("sent_at", start)
+            .lte("sent_at", end)
+            .range(from, from + PAGE_SIZE - 1);
+          const rows = recipients || [];
+          rows.forEach((r: any) => {
+            const st = r.status || "";
+            const isDelivered = ["delivered", "read", "clicked"].includes(st);
+            const isSent = ["sent", "delivered", "read", "clicked"].includes(st);
+            const isFailed = st === "failed";
+            const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
+            const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errMsg.includes(p));
+
+            if (isSent || isFailed) result.totalDispatches += 1;
+            if (isDelivered) result.delivered += 1;
+            if (isFailed) result.failed += 1;
+            if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
+
+            const dispatchType = campaignTypeMap[r.campaign_id] || "service";
+            const bucket = dispatchType === "marketing" ? result.marketing : dispatchType === "utility" ? result.utility : result.service;
+            if (isSent || isFailed) bucket.count += 1;
+            if (isDelivered) bucket.delivered += 1;
+            if (isFailed) bucket.failed += 1;
+          });
+          hasMore = rows.length === PAGE_SIZE;
+          from += PAGE_SIZE;
+        }
+      }
+    }
+
+    // 4) Calculate costs from dispatch_pricing
+    const { data: pricing } = await supabase.from("dispatch_pricing").select("dispatch_type, price_per_message");
+    const priceMap: Record<string, number> = {};
+    (pricing || []).forEach(p => { priceMap[p.dispatch_type] = Number(p.price_per_message); });
+
+    result.marketing.cost = Math.round(result.marketing.count * (priceMap["marketing"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+    result.utility.cost = Math.round(result.utility.count * (priceMap["utility"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+    result.service.cost = Math.round(result.service.count * (priceMap["service"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+    result.totalCost = Math.round((result.marketing.cost + result.utility.cost + result.service.cost) * 100) / 100;
+
+    // 5) Count inbound responses
+    let inboundCount = 0;
+    let inbFrom = 0;
+    let inbMore = true;
+    while (inbMore) {
+      const { data } = await supabase
+        .from("whatsapp_messages")
+        .select("id")
+        .in("channel_id", channelIds)
+        .eq("direction", "inbound")
+        .gte("created_at", start)
+        .lte("created_at", end)
+        .range(inbFrom, inbFrom + PAGE_SIZE - 1);
+      const rows = data || [];
+      inboundCount += rows.length;
+      inbMore = rows.length === PAGE_SIZE;
+      inbFrom += PAGE_SIZE;
+    }
+    result.responses = inboundCount;
 
     return result;
-  }, []);
+  }, [effectiveOrganizationId]);
 
   // Load daily data
   useEffect(() => {
@@ -257,37 +293,7 @@ export function DispatchReportSender() {
   }, [selectedWeekStart, effectiveOrganizationId, reportType, getChannelIds, fetchDayMetrics]);
 
 
-  // Helper: paginate all rows from a query (bypasses 1000-row limit)
-  const fetchAllRows = useCallback(async (
-    table: "whatsapp_messages",
-    channelIds: string[],
-    direction: string,
-    start: string,
-    end: string,
-    selectCols: string
-  ) => {
-    const PAGE_SIZE = 1000;
-    let allRows: any[] = [];
-    let from = 0;
-    let hasMore = true;
-    while (hasMore) {
-      const { data } = await supabase
-        .from(table)
-        .select(selectCols)
-        .in("channel_id", channelIds)
-        .eq("direction", direction)
-        .gte("created_at", start)
-        .lte("created_at", end)
-        .range(from, from + PAGE_SIZE - 1);
-      const rows = data || [];
-      allRows = allRows.concat(rows);
-      hasMore = rows.length === PAGE_SIZE;
-      from += PAGE_SIZE;
-    }
-    return allRows;
-  }, []);
-
-  // Load monthly data — uses campaigns table for totals + paginated messages for details
+  // Load monthly data — uses campaign_recipients.sent_at for accurate counts
   useEffect(() => {
     if (!effectiveOrganizationId || reportType !== "monthly") return;
     const load = async () => {
@@ -296,73 +302,84 @@ export function DispatchReportSender() {
       const monthRange = getMonthRange(selectedMonth);
       const monthStartDate = new Date(monthRange.monthStart);
       const monthEndDate = new Date(monthRange.monthEnd);
+      const startISO = monthRange.monthStart;
+      const endISO = monthRange.monthEnd;
 
-      // 1) Get campaign-level totals — only completed/running campaigns (exclude paused, draft, failed)
+      // 1) Get all campaigns for this org with their template types
       const { data: campaigns } = await supabase
         .from("campaigns")
-        .select("id, total_recipients, sent_count, delivered_count, failed_count, created_at, status")
-        .eq("organization_id", effectiveOrganizationId)
-        .in("status", ["completed", "running"])
-        .gte("created_at", monthRange.monthStart)
-        .lte("created_at", monthRange.monthEnd);
+        .select("id, unified_template_id")
+        .eq("organization_id", effectiveOrganizationId);
 
-      // 2) For accurate counts, fetch recipient-level data from campaign_recipients
       const campaignIds = (campaigns || []).map(c => c.id);
-      let recipientDelivered = 0;
-      let recipientFailed = 0;
-      let recipientSent = 0;
-      let recipientBlocks = 0;
+
+      // Get template dispatch types
+      const templateIds = [...new Set((campaigns || []).map(c => c.unified_template_id).filter(Boolean))];
+      let templateTypeMap: Record<string, string> = {};
+      if (templateIds.length > 0) {
+        const { data: templates } = await supabase
+          .from("message_templates")
+          .select("id, dispatch_type")
+          .in("id", templateIds);
+        (templates || []).forEach(t => { templateTypeMap[t.id] = t.dispatch_type || "service"; });
+      }
+      const campaignTypeMap: Record<string, string> = {};
+      (campaigns || []).forEach(c => {
+        campaignTypeMap[c.id] = c.unified_template_id ? (templateTypeMap[c.unified_template_id] || "service") : "service";
+      });
+
+      // 2) Fetch ALL campaign_recipients sent in this month (paginated)
+      const PAGE_SIZE = 1000;
+      interface RecipientRow { campaign_id: string; status: string; error_message: string | null; last_error_code: string | null; sent_at: string; }
+      let allRecipients: RecipientRow[] = [];
 
       if (campaignIds.length > 0) {
-        // Paginate campaign_recipients for all campaigns in the month
-        const BATCH_SIZE = 50; // batch campaign IDs to avoid huge IN clauses
-        for (let bi = 0; bi < campaignIds.length; bi += BATCH_SIZE) {
-          const batchIds = campaignIds.slice(bi, bi + BATCH_SIZE);
+        const BATCH = 50;
+        for (let bi = 0; bi < campaignIds.length; bi += BATCH) {
+          const batchIds = campaignIds.slice(bi, bi + BATCH);
           let from = 0;
           let hasMore = true;
           while (hasMore) {
             const { data: recipients } = await supabase
               .from("campaign_recipients")
-              .select("status, error_message, last_error_code")
+              .select("campaign_id, status, error_message, last_error_code, sent_at")
               .in("campaign_id", batchIds)
-              .range(from, from + 999);
-            const rows = recipients || [];
-            rows.forEach((r: any) => {
-              const st = r.status || "";
-              if (["sent", "delivered", "read", "clicked"].includes(st)) recipientSent += 1;
-              if (["delivered", "read", "clicked"].includes(st)) recipientDelivered += 1;
-              if (st === "failed") {
-                recipientFailed += 1;
-                const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
-                if (RESTRICTION_PATTERNS.some(p => errMsg.includes(p))) {
-                  recipientBlocks += 1;
-                }
-              }
-            });
-            hasMore = rows.length === 1000;
-            from += 1000;
+              .gte("sent_at", startISO)
+              .lte("sent_at", endISO)
+              .range(from, from + PAGE_SIZE - 1);
+            const rows = (recipients || []) as any[];
+            allRecipients = allRecipients.concat(rows);
+            hasMore = rows.length === PAGE_SIZE;
+            from += PAGE_SIZE;
           }
         }
       }
 
-      const campaignTotals = {
-        sent: recipientSent || (campaigns || []).reduce((s, c) => s + (c.sent_count ?? 0), 0),
-        delivered: recipientDelivered || (campaigns || []).reduce((s, c) => s + (c.delivered_count ?? 0), 0),
-        failed: recipientFailed || (campaigns || []).reduce((s, c) => s + (c.failed_count ?? 0), 0),
-        recipients: (campaigns || []).reduce((s, c) => s + (c.total_recipients ?? 0), 0),
-        blocks: recipientBlocks,
-      };
+      // 3) Get pricing
+      const { data: pricing } = await supabase.from("dispatch_pricing").select("dispatch_type, price_per_message");
+      const priceMap: Record<string, number> = {};
+      (pricing || []).forEach(p => { priceMap[p.dispatch_type] = Number(p.price_per_message); });
 
-      // 2) Paginate outbound messages for cost/type breakdown & inbound for responses
-      const startISO = monthRange.monthStart;
-      const endISO = monthRange.monthEnd;
+      // 4) Get inbound messages for response count
+      let allInbound: { created_at: string }[] = [];
+      let inbFrom = 0;
+      let inbMore = true;
+      while (inbMore) {
+        const { data } = await supabase
+          .from("whatsapp_messages")
+          .select("created_at")
+          .in("channel_id", channelIds)
+          .eq("direction", "inbound")
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .range(inbFrom, inbFrom + PAGE_SIZE - 1);
+        const rows = (data || []) as any[];
+        allInbound = allInbound.concat(rows);
+        inbMore = rows.length === PAGE_SIZE;
+        inbFrom += PAGE_SIZE;
+      }
 
-      const [allOutbound, allInbound] = await Promise.all([
-        fetchAllRows("whatsapp_messages", channelIds, "outbound", startISO, endISO, "metadata, status, created_at"),
-        fetchAllRows("whatsapp_messages", channelIds, "inbound", startISO, endISO, "id, created_at"),
-      ]);
-
-      // 3) Build weekly breakdown from paginated data
+      // 5) Build weekly breakdown
       const weeks: DayData[] = [];
       const total = emptyDay();
       let weekStart = new Date(monthStartDate);
@@ -370,46 +387,48 @@ export function DispatchReportSender() {
       while (weekStart.getTime() <= monthEndDate.getTime()) {
         let weekEnd = new Date(weekStart);
         weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
-        if (weekEnd.getTime() > monthEndDate.getTime()) {
-          weekEnd = new Date(monthEndDate);
-        }
+        if (weekEnd.getTime() > monthEndDate.getTime()) weekEnd = new Date(monthEndDate);
 
         const wStart = weekStart.getTime();
         const wEnd = weekEnd.getTime();
-
         const week = emptyDay();
 
-        // Filter outbound for this week
-        allOutbound.forEach((msg: any) => {
-          const msgTime = new Date(msg.created_at).getTime();
-          if (msgTime < wStart || msgTime > wEnd) return;
-          const metadata = msg.metadata as Record<string, unknown> | null;
-          const costBRL = Number(metadata?.cost || 0) * USD_TO_BRL_RATE;
-          const status = msg.status || "";
-          week.totalDispatches += 1;
-          week.totalCost += costBRL;
-          if (["delivered", "read"].includes(status)) week.delivered += 1;
-          if (["failed", "error"].includes(status)) {
-            week.failed += 1;
-            const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
-            if (RESTRICTION_PATTERNS.some(p => errorStr.includes(p))) { week.blocks += 1; week.restrictions += 1; }
-          }
+        allRecipients.forEach((r: any) => {
+          const sentTime = new Date(r.sent_at).getTime();
+          if (sentTime < wStart || sentTime > wEnd) return;
+          const st = r.status || "";
+          const isSent = ["sent", "delivered", "read", "clicked"].includes(st);
+          const isDelivered = ["delivered", "read", "clicked"].includes(st);
+          const isFailed = st === "failed";
+          const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
+          const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errMsg.includes(p));
 
-          const dt = (metadata?.dispatch_type as string) || "service";
-          const b = dt === "marketing" ? week.marketing : dt === "utility" ? week.utility : week.service;
-          b.count += 1;
-          b.cost += costBRL;
+          if (isSent || isFailed) week.totalDispatches += 1;
+          if (isDelivered) week.delivered += 1;
+          if (isFailed) week.failed += 1;
+          if (isRestriction) { week.blocks += 1; week.restrictions += 1; }
+
+          const dispatchType = campaignTypeMap[r.campaign_id] || "service";
+          const bucket = dispatchType === "marketing" ? week.marketing : dispatchType === "utility" ? week.utility : week.service;
+          if (isSent || isFailed) bucket.count += 1;
+          if (isDelivered) bucket.delivered += 1;
+          if (isFailed) bucket.failed += 1;
         });
 
-        // Filter inbound for this week
         allInbound.forEach((msg: any) => {
           const msgTime = new Date(msg.created_at).getTime();
           if (msgTime >= wStart && msgTime <= wEnd) week.responses += 1;
         });
 
-        week.totalCost = Math.round(week.totalCost * 100) / 100;
+        // Calculate costs per category
+        week.marketing.cost = Math.round(week.marketing.count * (priceMap["marketing"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+        week.utility.cost = Math.round(week.utility.count * (priceMap["utility"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+        week.service.cost = Math.round(week.service.count * (priceMap["service"] || 0) * USD_TO_BRL_RATE * 100) / 100;
+        week.totalCost = Math.round((week.marketing.cost + week.utility.cost + week.service.cost) * 100) / 100;
+
         weeks.push(week);
 
+        total.totalDispatches += week.totalDispatches;
         total.delivered += week.delivered;
         total.failed += week.failed;
         total.totalCost += week.totalCost;
@@ -427,16 +446,6 @@ export function DispatchReportSender() {
         weekStart.setUTCDate(weekStart.getUTCDate() + 1);
       }
 
-      // Use the HIGHER value between campaigns table and counted messages
-      // This ensures we never undercount
-      total.totalDispatches = Math.max(
-        campaignTotals.sent,
-        allOutbound.length
-      );
-      total.delivered = Math.max(campaignTotals.delivered, total.delivered);
-      total.failed = Math.max(campaignTotals.failed, total.failed);
-      total.blocks = Math.max(campaignTotals.blocks, total.blocks);
-
       total.totalCost = Math.round(total.totalCost * 100) / 100;
       total.marketing.cost = Math.round(total.marketing.cost * 100) / 100;
       total.utility.cost = Math.round(total.utility.cost * 100) / 100;
@@ -446,7 +455,7 @@ export function DispatchReportSender() {
       setLoadingData(false);
     };
     load();
-  }, [effectiveOrganizationId, reportType, selectedMonth, getChannelIds, fetchAllRows]);
+  }, [effectiveOrganizationId, reportType, selectedMonth, getChannelIds]);
 
   const handleSavePhone = async () => {
     if (!effectiveOrganizationId) return;
