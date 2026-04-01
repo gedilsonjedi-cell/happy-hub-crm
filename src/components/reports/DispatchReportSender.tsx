@@ -474,14 +474,14 @@ export function DispatchReportSender() {
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const pct = (n: number, d: number) => d === 0 ? "0%" : `${Math.round((n / d) * 100)}%`;
   const variation = (curr: number, prev: number) => {
-    if (prev === 0) return curr > 0 ? "🔼 N/A (sem dados anteriores)" : "—";
+    if (prev === 0) return curr > 0 ? "+N/A" : "—";
     const diff = Math.round(((curr - prev) / prev) * 100);
-    return diff > 0 ? `🔼 +${diff}%` : diff < 0 ? `🔻 ${diff}%` : "➡️ Estável";
+    return diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : "Estavel";
   };
 
   const getQualityLabel = (data: DayData) => {
     const { blocks, restrictions, failed, totalDispatches, delivered } = data;
-    if (totalDispatches === 0) return { label: "Sem dados", emoji: "⚪", detail: "Nenhum disparo registrado" };
+    if (totalDispatches === 0) return { label: "Sem dados", emoji: "", detail: "Nenhum disparo registrado" };
     
     const restrictionRate = (restrictions || blocks) / totalDispatches;
     const failureRate = failed / totalDispatches;
@@ -489,15 +489,15 @@ export function DispatchReportSender() {
     
     // Use the worst indicator to determine quality
     if (restrictionRate > 0.05 || failureRate > 0.15) {
-      return { label: "Crítica", emoji: "🔴", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições detectadas` };
+      return { label: "Critica", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes detectadas` };
     }
     if (restrictionRate > 0.03 || failureRate > 0.10) {
-      return { label: "Baixa", emoji: "🟠", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições` };
+      return { label: "Baixa", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes` };
     }
     if (restrictionRate > 0.01 || failureRate > 0.05) {
-      return { label: "Moderada", emoji: "🟡", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restrições` };
+      return { label: "Moderada", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restricoes` };
     }
-    return { label: "Excelente", emoji: "🟢", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudável` };
+    return { label: "Excelente", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudavel` };
   };
 
   const generateInsight = (data: DayData, prev?: DayData) => {
@@ -509,30 +509,30 @@ export function DispatchReportSender() {
     if (prev && prev.totalDispatches > 0) {
       const prevResponseRate = prev.responses / prev.totalDispatches;
       if (responseRate > prevResponseRate + 0.05) {
-        lines.push("📈 Taxa de resposta acima do dia anterior — sua comunicação está engajando bem!");
+        lines.push("Taxa de resposta acima do dia anterior. Sua comunicacao esta engajando bem!");
       } else if (responseRate < prevResponseRate - 0.05) {
-        lines.push("📉 Queda na taxa de resposta — considere revisar o copy ou horário de envio.");
+        lines.push("Queda na taxa de resposta. Considere revisar o copy ou horario de envio.");
       }
     }
 
     if (deliveryRate >= 0.95) {
-      lines.push("✅ Excelente taxa de entrega! Base saudável.");
+      lines.push("Excelente taxa de entrega! Base saudavel.");
     } else if (deliveryRate < 0.85 && data.totalDispatches > 10) {
-      lines.push("⚠️ Taxa de entrega abaixo do ideal — verifique a qualidade da base de contatos.");
+      lines.push("Taxa de entrega abaixo do ideal. Verifique a qualidade da base de contatos.");
     }
 
     if (blockRate > 0.03 && data.totalDispatches > 10) {
-      lines.push("🚨 Atenção: taxa de bloqueio elevada. Reduza o volume ou revise o conteúdo.");
+      lines.push("Atencao: taxa de bloqueio elevada. Reduza o volume ou revise o conteudo.");
     }
 
     if (responseRate >= 0.1 && data.totalDispatches > 10) {
-      lines.push("💬 Boa taxa de engajamento! Leads estão interagindo com as mensagens.");
+      lines.push("Boa taxa de engajamento! Leads estao interagindo com as mensagens.");
     } else if (responseRate < 0.03 && data.totalDispatches > 20) {
-      lines.push("💡 Poucas respostas recebidas — experimente CTAs mais diretos ou templates interativos.");
+      lines.push("Poucas respostas recebidas. Experimente CTAs mais diretos ou templates interativos.");
     }
 
     if (lines.length === 0) {
-      lines.push("📊 Operação estável. Continue monitorando os indicadores.");
+      lines.push("Operacao estavel. Continue monitorando os indicadores.");
     }
 
     return lines;
