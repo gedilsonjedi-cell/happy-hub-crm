@@ -118,7 +118,7 @@ export function Sidebar() {
   const unreadCount = useUnreadMessagesCount();
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
-  const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
+  const isDisparosActive = filteredDisparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
   const isAppsActive = appsSubmenu.some(item => location.pathname === item.path);
 
