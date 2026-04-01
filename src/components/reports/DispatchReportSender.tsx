@@ -415,6 +415,7 @@ export function DispatchReportSender() {
         total.totalCost += week.totalCost;
         total.responses += week.responses;
         total.blocks += week.blocks;
+        total.restrictions += week.restrictions;
         total.marketing.count += week.marketing.count;
         total.marketing.cost += week.marketing.cost;
         total.utility.count += week.utility.count;
