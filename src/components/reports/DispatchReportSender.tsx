@@ -474,14 +474,14 @@ export function DispatchReportSender() {
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const pct = (n: number, d: number) => d === 0 ? "0%" : `${Math.round((n / d) * 100)}%`;
   const variation = (curr: number, prev: number) => {
-    if (prev === 0) return curr > 0 ? "🔼 N/A (sem dados anteriores)" : "—";
+    if (prev === 0) return curr > 0 ? "+N/A" : "—";
     const diff = Math.round(((curr - prev) / prev) * 100);
-    return diff > 0 ? `🔼 +${diff}%` : diff < 0 ? `🔻 ${diff}%` : "➡️ Estável";
+    return diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : "Estavel";
   };
 
   const getQualityLabel = (data: DayData) => {
     const { blocks, restrictions, failed, totalDispatches, delivered } = data;
-    if (totalDispatches === 0) return { label: "Sem dados", emoji: "⚪", detail: "Nenhum disparo registrado" };
+    if (totalDispatches === 0) return { label: "Sem dados", emoji: "", detail: "Nenhum disparo registrado" };
     
     const restrictionRate = (restrictions || blocks) / totalDispatches;
     const failureRate = failed / totalDispatches;
@@ -489,15 +489,15 @@ export function DispatchReportSender() {
     
     // Use the worst indicator to determine quality
     if (restrictionRate > 0.05 || failureRate > 0.15) {
-      return { label: "Crítica", emoji: "🔴", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições detectadas` };
+      return { label: "Critica", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes detectadas` };
     }
     if (restrictionRate > 0.03 || failureRate > 0.10) {
-      return { label: "Baixa", emoji: "🟠", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restrições` };
+      return { label: "Baixa", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes` };
     }
     if (restrictionRate > 0.01 || failureRate > 0.05) {
-      return { label: "Moderada", emoji: "🟡", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restrições` };
+      return { label: "Moderada", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restricoes` };
     }
-    return { label: "Excelente", emoji: "🟢", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudável` };
+    return { label: "Excelente", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudavel` };
   };
 
   const generateInsight = (data: DayData, prev?: DayData) => {
@@ -509,30 +509,30 @@ export function DispatchReportSender() {
     if (prev && prev.totalDispatches > 0) {
       const prevResponseRate = prev.responses / prev.totalDispatches;
       if (responseRate > prevResponseRate + 0.05) {
-        lines.push("📈 Taxa de resposta acima do dia anterior — sua comunicação está engajando bem!");
+        lines.push("Taxa de resposta acima do dia anterior. Sua comunicacao esta engajando bem!");
       } else if (responseRate < prevResponseRate - 0.05) {
-        lines.push("📉 Queda na taxa de resposta — considere revisar o copy ou horário de envio.");
+        lines.push("Queda na taxa de resposta. Considere revisar o copy ou horario de envio.");
       }
     }
 
     if (deliveryRate >= 0.95) {
-      lines.push("✅ Excelente taxa de entrega! Base saudável.");
+      lines.push("Excelente taxa de entrega! Base saudavel.");
     } else if (deliveryRate < 0.85 && data.totalDispatches > 10) {
-      lines.push("⚠️ Taxa de entrega abaixo do ideal — verifique a qualidade da base de contatos.");
+      lines.push("Taxa de entrega abaixo do ideal. Verifique a qualidade da base de contatos.");
     }
 
     if (blockRate > 0.03 && data.totalDispatches > 10) {
-      lines.push("🚨 Atenção: taxa de bloqueio elevada. Reduza o volume ou revise o conteúdo.");
+      lines.push("Atencao: taxa de bloqueio elevada. Reduza o volume ou revise o conteudo.");
     }
 
     if (responseRate >= 0.1 && data.totalDispatches > 10) {
-      lines.push("💬 Boa taxa de engajamento! Leads estão interagindo com as mensagens.");
+      lines.push("Boa taxa de engajamento! Leads estao interagindo com as mensagens.");
     } else if (responseRate < 0.03 && data.totalDispatches > 20) {
-      lines.push("💡 Poucas respostas recebidas — experimente CTAs mais diretos ou templates interativos.");
+      lines.push("Poucas respostas recebidas. Experimente CTAs mais diretos ou templates interativos.");
     }
 
     if (lines.length === 0) {
-      lines.push("📊 Operação estável. Continue monitorando os indicadores.");
+      lines.push("Operacao estavel. Continue monitorando os indicadores.");
     }
 
     return lines;
@@ -555,48 +555,33 @@ export function DispatchReportSender() {
     const failRate = pct(d.failed, d.totalDispatches);
 
     return [
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `📊  *RELATÓRIO DIÁRIO*`,
-      `📅  *${selectedDateFormatted}*`,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
+      `*RELATORIO DIARIO*`,
+      `${selectedDateFormatted}`,
       ``,
-      `┌─────────────────────`,
-      `│  📨  *ENVIOS*`,
-      `│`,
-      `│  Total de disparos:  *${d.totalDispatches}*`,
-      `│  Entregues:  *${d.delivered}*  (${deliveryRate})`,
-      `│  Falhas:  *${d.failed}*  (${failRate})`,
-      `│  Respostas:  *${clickCount}*`,
-      `│  Engajamento:  *${engagementRate}*`,
-      `└─────────────────────`,
+      `*ENVIOS*`,
+      `Total: *${d.totalDispatches}*`,
+      `Entregues: *${d.delivered}* (${deliveryRate})`,
+      `Falhas: *${d.failed}* (${failRate})`,
+      `Respostas: *${clickCount}*`,
+      `Engajamento: *${engagementRate}*`,
       ``,
-      `┌─────────────────────`,
-      `│  ${q.emoji}  *SAÚDE DA BASE*`,
-      `│`,
-      `│  Status:  *${q.label}*`,
-      `│  ${q.detail}`,
-      ...(d.restrictions > 0 || d.blocks > 0 ? [`│  ⚠️  ${d.restrictions || d.blocks} restrições detectadas`] : []),
-      `└─────────────────────`,
+      `*SAUDE DA BASE*`,
+      `Status: *${q.label}*`,
+      `${q.detail}`,
+      ...(d.restrictions > 0 || d.blocks > 0 ? [`${d.restrictions || d.blocks} restricoes detectadas`] : []),
       ...(d.marketing.count > 0 || d.utility.count > 0 || d.service.count > 0 ? [
         ``,
-        `┌─────────────────────`,
-        `│  💰  *CUSTOS*`,
-        `│`,
-        `│  Total:  *${fmt(d.totalCost)}*`,
-        ...(d.marketing.count > 0 ? [`│  ├ Marketing:  ${d.marketing.count} — ${fmt(d.marketing.cost)}`] : []),
-        ...(d.utility.count > 0 ? [`│  ├ Utilidade:  ${d.utility.count} — ${fmt(d.utility.cost)}`] : []),
-        ...(d.service.count > 0 ? [`│  └ Serviço:  ${d.service.count} — ${fmt(d.service.cost)}`] : []),
-        `└─────────────────────`,
+        `*CUSTOS*`,
+        `Total: *${fmt(d.totalCost)}*`,
+        ...(d.marketing.count > 0 ? [`Marketing: ${d.marketing.count} - ${fmt(d.marketing.cost)}`] : []),
+        ...(d.utility.count > 0 ? [`Utilidade: ${d.utility.count} - ${fmt(d.utility.cost)}`] : []),
+        ...(d.service.count > 0 ? [`Servico: ${d.service.count} - ${fmt(d.service.cost)}`] : []),
       ] : []),
       ``,
-      `┌─────────────────────`,
-      `│  💡  *INSIGHTS*`,
-      `│`,
-      ...insights.map(i => `│  ${i}`),
-      `└─────────────────────`,
+      `*INSIGHTS*`,
+      ...insights,
       ``,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `_Optimus CRM • Relatório automático_`,
+      `_Optimus CRM_`,
     ].join("\n");
   };
 
@@ -615,7 +600,7 @@ export function DispatchReportSender() {
     const weekLines = monthData.weeks.map((w, i) => {
       const weekLabel = `Semana ${i + 1}`;
       const trend = i > 0 ? variation(w.totalDispatches, monthData.weeks[i - 1].totalDispatches) : "";
-      return `   ${weekLabel}: ${w.totalDispatches} envios | ${w.responses} respostas | ${pct(w.delivered, w.totalDispatches)} entrega ${trend}`;
+      return `${weekLabel}: ${w.totalDispatches} envios | ${w.responses} respostas | ${pct(w.delivered, w.totalDispatches)} entrega ${trend}`.trim();
     });
 
     // Monthly insights
@@ -625,96 +610,75 @@ export function DispatchReportSender() {
     const blockRate = t.totalDispatches > 0 ? t.blocks / t.totalDispatches : 0;
 
     if (deliveryRate >= 0.95) {
-      insights.push("✅ Base de contatos saudável — taxa de entrega acima de 95%.");
+      insights.push("Base de contatos saudavel. Taxa de entrega acima de 95%.");
     } else if (deliveryRate < 0.85) {
-      insights.push("⚠️ Recomendação: higienize sua base de contatos para melhorar entregas.");
+      insights.push("Recomendacao: higienize sua base de contatos para melhorar entregas.");
     }
 
     if (responseRate >= 0.08) {
-      insights.push("💬 Engajamento positivo — leads estão interagindo ativamente.");
+      insights.push("Engajamento positivo. Leads estao interagindo ativamente.");
     } else if (responseRate < 0.03 && t.totalDispatches > 50) {
-      insights.push("💡 Considere templates mais interativos (botões/listas) para aumentar respostas.");
+      insights.push("Considere templates mais interativos (botoes/listas) para aumentar respostas.");
     }
 
     if (blockRate > 0.03) {
-      insights.push("🚨 Taxa de bloqueio alta. Reduza volume diário ou segmente melhor a base.");
+      insights.push("Taxa de bloqueio alta. Reduza volume diario ou segmente melhor a base.");
     }
 
     if (monthData.weeks.length >= 2) {
       const lastWeek = monthData.weeks[monthData.weeks.length - 1];
       const prevWeek = monthData.weeks[monthData.weeks.length - 2];
       if (lastWeek.totalDispatches > prevWeek.totalDispatches * 1.2) {
-        insights.push("📈 Volume crescente nas últimas semanas — monitore a qualidade da conta.");
+        insights.push("Volume crescente nas ultimas semanas. Monitore a qualidade da conta.");
       }
     }
 
     if (avgDaily > 0 && monthRange.isCurrentMonth) {
       const projection = avgDaily * daysInMonth;
-      insights.push(`📊 Projeção para o mês: ~${projection} disparos | ~${fmt(t.totalCost / daysPassed * daysInMonth)} investimento.`);
+      insights.push(`Projecao para o mes: ~${projection} disparos | ~${fmt(t.totalCost / daysPassed * daysInMonth)} investimento.`);
     }
 
     if (insights.length === 0) {
-      insights.push("📊 Métricas dentro do esperado. Continue monitorando.");
+      insights.push("Metricas dentro do esperado. Continue monitorando.");
     }
 
     return [
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `📅  *RELATÓRIO MENSAL*`,
-      `🗓️  *${monthStr.charAt(0).toUpperCase() + monthStr.slice(1)}*`,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
+      `*RELATORIO MENSAL*`,
+      `${monthStr.charAt(0).toUpperCase() + monthStr.slice(1)}`,
       ``,
-      `┌─────────────────────`,
-      `│  📨  *RESUMO GERAL*`,
-      `│`,
-      `│  Total de disparos:  *${t.totalDispatches}*`,
-      `│  Entregues:  *${t.delivered}*`,
-      `│  Respostas:  *${t.responses}*`,
-      `│  Falhas:  *${t.failed}*`,
-      `│  Média diária:  *${avgDaily} envios / ${avgDailyResponses} respostas*`,
-      `└─────────────────────`,
+      `*RESUMO GERAL*`,
+      `Total de disparos: *${t.totalDispatches}*`,
+      `Entregues: *${t.delivered}*`,
+      `Respostas: *${t.responses}*`,
+      `Falhas: *${t.failed}*`,
+      `Media diaria: *${avgDaily} envios / ${avgDailyResponses} respostas*`,
       ``,
-      `┌─────────────────────`,
-      `│  📈  *PERFORMANCE*`,
-      `│`,
-      `│  Taxa de entrega:  *${pct(t.delivered, t.totalDispatches)}*`,
-      `│  Taxa de resposta:  *${pct(t.responses, t.totalDispatches)}*`,
-      `│  Taxa de restrições:  *${pct(t.restrictions || t.blocks, t.totalDispatches)}*`,
-      `│  Taxa de falha:  *${pct(t.failed, t.totalDispatches)}*`,
-      `└─────────────────────`,
+      `*PERFORMANCE*`,
+      `Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
+      `Taxa de restricoes: *${pct(t.restrictions || t.blocks, t.totalDispatches)}*`,
+      `Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
       ``,
-      `┌─────────────────────`,
-      `│  💰  *INVESTIMENTO*`,
-      `│`,
-      `│  Total:  *${fmt(t.totalCost)}*`,
-      `│  ├ Marketing:  ${t.marketing.count} — ${fmt(t.marketing.cost)}`,
-      `│  ├ Utilidade:  ${t.utility.count} — ${fmt(t.utility.cost)}`,
-      `│  └ Serviço:  ${t.service.count} — ${fmt(t.service.cost)}`,
-      `└─────────────────────`,
+      `*INVESTIMENTO*`,
+      `Total: *${fmt(t.totalCost)}*`,
+      `Marketing: ${t.marketing.count} - ${fmt(t.marketing.cost)}`,
+      `Utilidade: ${t.utility.count} - ${fmt(t.utility.cost)}`,
+      `Servico: ${t.service.count} - ${fmt(t.service.cost)}`,
       ``,
-      `┌─────────────────────`,
-      `│  📊  *EVOLUÇÃO SEMANAL*`,
-      `│`,
-      ...weekLines.map(l => `│  ${l.trim()}`),
-      `└─────────────────────`,
+      `*EVOLUCAO SEMANAL*`,
+      ...weekLines,
       ``,
-      `┌─────────────────────`,
-      `│  ${q.emoji}  *SAÚDE DA CONTA*`,
-      `│`,
-      `│  Status:  *${q.label}*`,
-      `│  ${q.detail}`,
-      `│  Restrições no mês:  *${t.restrictions || t.blocks}*`,
-      `│  Falhas totais:  *${t.failed}*`,
-      `│  Taxa de resposta:  *${pct(t.responses, t.totalDispatches)}*`,
-      `└─────────────────────`,
+      `*SAUDE DA CONTA*`,
+      `Status: *${q.label}*`,
+      `${q.detail}`,
+      `Restricoes no mes: *${t.restrictions || t.blocks}*`,
+      `Falhas totais: *${t.failed}*`,
+      `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
       ``,
-      `┌─────────────────────`,
-      `│  💡  *INSIGHTS ESTRATÉGICOS*`,
-      `│`,
-      ...insights.map(i => `│  ${i}`),
-      `└─────────────────────`,
+      `*INSIGHTS*`,
+      ...insights,
       ``,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `_Optimus CRM • Relatório automático_`,
+      `_Optimus CRM_`,
     ].join("\n");
   };
 
@@ -734,7 +698,7 @@ export function DispatchReportSender() {
     const dayLines = weeklyData.days.map((d, i) => {
       const dayDate = new Date(weekStartDate);
       dayDate.setDate(dayDate.getDate() + i);
-      return `   ${dayNames[i]} (${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}): ${d.totalDispatches} envios | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ⚠️ ${d.restrictions} restrições` : ""}`;
+      return `${dayNames[i]} ${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}: ${d.totalDispatches} envios | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ${d.restrictions} restricoes` : ""}`;
     });
 
     // Best/worst day
@@ -745,78 +709,51 @@ export function DispatchReportSender() {
     });
 
     return [
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `📊  *RELATÓRIO SEMANAL*`,
-      `📅  *${weekLabel}*`,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
+      `*RELATORIO SEMANAL*`,
+      `${weekLabel}`,
       ``,
-      `┌─────────────────────`,
-      `│  📨  *RESUMO DA SEMANA*`,
-      `│`,
-      `│  Total de disparos:  *${t.totalDispatches}*`,
-      `│  Entregues:  *${t.delivered}*`,
-      `│  Respostas:  *${t.responses}*`,
-      `│  Falhas:  *${t.failed}*`,
-      `└─────────────────────`,
+      `*RESUMO DA SEMANA*`,
+      `Total de disparos: *${t.totalDispatches}*`,
+      `Entregues: *${t.delivered}*`,
+      `Respostas: *${t.responses}*`,
+      `Falhas: *${t.failed}*`,
       ``,
-      `┌─────────────────────`,
-      `│  📈  *PERFORMANCE*`,
-      `│`,
-      `│  Taxa de entrega:  *${pct(t.delivered, t.totalDispatches)}*`,
-      `│  Taxa de resposta:  *${pct(t.responses, t.totalDispatches)}*`,
-      `│  Custo por resposta:  *${costPerResponse}*`,
-      `└─────────────────────`,
+      `*PERFORMANCE*`,
+      `Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
+      `Custo por resposta: *${costPerResponse}*`,
       ``,
-      `┌─────────────────────`,
-      `│  💰  *INVESTIMENTO*`,
-      `│`,
-      `│  Total:  *${fmt(t.totalCost)}*`,
-      `│  ├ Marketing:  ${t.marketing.count} — ${fmt(t.marketing.cost)}`,
-      `│  ├ Utilidade:  ${t.utility.count} — ${fmt(t.utility.cost)}`,
-      `│  └ Serviço:  ${t.service.count} — ${fmt(t.service.cost)}`,
-      `└─────────────────────`,
+      `*INVESTIMENTO*`,
+      `Total: *${fmt(t.totalCost)}*`,
+      `Marketing: ${t.marketing.count} - ${fmt(t.marketing.cost)}`,
+      `Utilidade: ${t.utility.count} - ${fmt(t.utility.cost)}`,
+      `Servico: ${t.service.count} - ${fmt(t.service.cost)}`,
       ``,
-      `┌─────────────────────`,
-      `│  📅  *DETALHAMENTO DIÁRIO*`,
-      `│`,
-      ...dayLines.map(l => `│  ${l.trim()}`),
-      `└─────────────────────`,
+      `*DETALHAMENTO DIARIO*`,
+      ...dayLines,
       ``,
       ...(weeklyData.days.length > 1 ? [
-        `┌─────────────────────`,
-        `│  🏆  *DESTAQUES*`,
-        `│`,
-        `│  Melhor dia:  *${dayNames[bestDay]}* — ${weeklyData.days[bestDay].responses} respostas`,
-        `│  Menor entrega:  *${dayNames[worstDay]}* — ${pct(weeklyData.days[worstDay].delivered, weeklyData.days[worstDay].totalDispatches)}`,
-        `└─────────────────────`,
+        `*DESTAQUES*`,
+        `Melhor dia: *${dayNames[bestDay]}* - ${weeklyData.days[bestDay].responses} respostas`,
+        `Menor entrega: *${dayNames[worstDay]}* - ${pct(weeklyData.days[worstDay].delivered, weeklyData.days[worstDay].totalDispatches)}`,
         ``,
       ] : []),
-      `┌─────────────────────`,
-      `│  🔄  *VS SEMANA ANTERIOR*`,
-      `│`,
-      `│  Disparos:  ${variation(t.totalDispatches, prev.totalDispatches)}`,
-      `│  Respostas:  ${variation(t.responses, prev.responses)}`,
-      `│  Entregues:  ${variation(t.delivered, prev.delivered)}`,
-      `│  Falhas:  ${variation(t.failed, prev.failed)}`,
-      `└─────────────────────`,
+      `*VS SEMANA ANTERIOR*`,
+      `Disparos: ${variation(t.totalDispatches, prev.totalDispatches)}`,
+      `Respostas: ${variation(t.responses, prev.responses)}`,
+      `Entregues: ${variation(t.delivered, prev.delivered)}`,
+      `Falhas: ${variation(t.failed, prev.failed)}`,
       ``,
-      `┌─────────────────────`,
-      `│  ${q.emoji}  *SAÚDE DA CONTA*`,
-      `│`,
-      `│  Status:  *${q.label}*`,
-      `│  ${q.detail}`,
-      `│  Restrições:  *${t.restrictions || t.blocks}*`,
-      `│  Taxa de falha:  *${pct(t.failed, t.totalDispatches)}*`,
-      `└─────────────────────`,
+      `*SAUDE DA CONTA*`,
+      `Status: *${q.label}*`,
+      `${q.detail}`,
+      `Restricoes: *${t.restrictions || t.blocks}*`,
+      `Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
       ``,
-      `┌─────────────────────`,
-      `│  💡  *INSIGHTS*`,
-      `│`,
-      ...insights.map(i => `│  ${i}`),
-      `└─────────────────────`,
+      `*INSIGHTS*`,
+      ...insights,
       ``,
-      `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬`,
-      `_Optimus CRM • Relatório automático_`,
+      `_Optimus CRM_`,
     ].join("\n");
   };
 
