@@ -137,12 +137,12 @@ Deno.serve(async (req) => {
       console.log(`[Processor] Processing ${campaign.name}${isRetryOnly ? ' (retries only)' : ''}${isFullMode ? ' (FULL MODE)' : ''}...`)
 
       try {
+        const requestBody = isFullMode
+          ? { campaignId: campaign.id, batchSize: 99, processRetries: isRetryOnly }
+          : { campaignId: campaign.id, processRetries: isRetryOnly }
+
         const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
-          body: {
-            campaignId: campaign.id,
-            batchSize: isFullMode ? 99 : campaign.total_recipients,
-            processRetries: isRetryOnly
-          }
+          body: requestBody
         })
 
         if (invokeError) {
