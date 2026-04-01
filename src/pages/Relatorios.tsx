@@ -15,12 +15,22 @@ const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"]
 
 export default function Relatorios() {
   const { user } = useAuth();
-  const { isSuperAdmin } = useUserRole();
+  const { isSuperAdmin, loading: roleLoading } = useUserRole();
   const { summary, byType, counts, loading } = useDispatchCosts();
   const [activeTab, setActiveTab] = useState("atendimento");
 
   const userEmail = user?.email?.toLowerCase() || "";
   const hasAccess = ALLOWED_EMAILS.includes(userEmail) || isSuperAdmin;
+
+  if (roleLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MainLayout>
+    );
+  }
 
   if (!hasAccess) {
     return <Navigate to="/" replace />;
