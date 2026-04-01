@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
-import { Phone, Send, Save, FileText, Calendar, TrendingUp, Loader2 } from "lucide-react";
+import { Phone, Send, Save, FileText, Calendar, TrendingUp, Loader2, BarChart3 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const USD_TO_BRL_RATE = 6.0;
