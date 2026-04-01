@@ -225,19 +225,60 @@ export function DispatchReportSender() {
       const monthStartDate = new Date(monthRange.monthStart);
       const monthEndDate = new Date(monthRange.monthEnd);
 
-      // 1) Get campaign-level totals (accurate, no row limit issue)
+      // 1) Get campaign-level totals — only completed/running campaigns (exclude paused, draft, failed)
       const { data: campaigns } = await supabase
         .from("campaigns")
-        .select("total_recipients, sent_count, delivered_count, failed_count, created_at")
+        .select("id, total_recipients, sent_count, delivered_count, failed_count, created_at, status")
         .eq("organization_id", effectiveOrganizationId)
+        .in("status", ["completed", "running"])
         .gte("created_at", monthRange.monthStart)
         .lte("created_at", monthRange.monthEnd);
 
+      // 2) For accurate counts, fetch recipient-level data from campaign_recipients
+      const campaignIds = (campaigns || []).map(c => c.id);
+      let recipientDelivered = 0;
+      let recipientFailed = 0;
+      let recipientSent = 0;
+      let recipientBlocks = 0;
+
+      if (campaignIds.length > 0) {
+        // Paginate campaign_recipients for all campaigns in the month
+        const BATCH_SIZE = 50; // batch campaign IDs to avoid huge IN clauses
+        for (let bi = 0; bi < campaignIds.length; bi += BATCH_SIZE) {
+          const batchIds = campaignIds.slice(bi, bi + BATCH_SIZE);
+          let from = 0;
+          let hasMore = true;
+          while (hasMore) {
+            const { data: recipients } = await supabase
+              .from("campaign_recipients")
+              .select("status, error_message, last_error_code")
+              .in("campaign_id", batchIds)
+              .range(from, from + 999);
+            const rows = recipients || [];
+            rows.forEach((r: any) => {
+              const st = r.status || "";
+              if (["sent", "delivered", "read", "clicked"].includes(st)) recipientSent += 1;
+              if (["delivered", "read", "clicked"].includes(st)) recipientDelivered += 1;
+              if (st === "failed") {
+                recipientFailed += 1;
+                const errMsg = String(r.error_message || r.last_error_code || "").toLowerCase();
+                if (errMsg.includes("block") || errMsg.includes("restrict") || errMsg.includes("131026") || errMsg.includes("spam")) {
+                  recipientBlocks += 1;
+                }
+              }
+            });
+            hasMore = rows.length === 1000;
+            from += 1000;
+          }
+        }
+      }
+
       const campaignTotals = {
-        sent: (campaigns || []).reduce((s, c) => s + (c.sent_count ?? 0), 0),
-        delivered: (campaigns || []).reduce((s, c) => s + (c.delivered_count ?? 0), 0),
-        failed: (campaigns || []).reduce((s, c) => s + (c.failed_count ?? 0), 0),
+        sent: recipientSent || (campaigns || []).reduce((s, c) => s + (c.sent_count ?? 0), 0),
+        delivered: recipientDelivered || (campaigns || []).reduce((s, c) => s + (c.delivered_count ?? 0), 0),
+        failed: recipientFailed || (campaigns || []).reduce((s, c) => s + (c.failed_count ?? 0), 0),
         recipients: (campaigns || []).reduce((s, c) => s + (c.total_recipients ?? 0), 0),
+        blocks: recipientBlocks,
       };
 
       // 2) Paginate outbound messages for cost/type breakdown & inbound for responses
