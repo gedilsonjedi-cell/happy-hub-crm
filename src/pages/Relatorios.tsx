@@ -5,6 +5,7 @@ import { useDispatchCosts } from "@/hooks/useDispatchCosts";
 import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash, MessageSquare, FileText } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ConversationMetricsPanel } from "@/components/reports/ConversationMetricsPanel";
+import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
 import { useState } from "react";
 
 export default function Relatorios() {
