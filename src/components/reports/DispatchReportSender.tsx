@@ -147,13 +147,14 @@ export function DispatchReportSender() {
 
       const isDelivered = ["delivered", "read"].includes(status);
       const isFailed = ["failed", "error"].includes(status);
-      const isBlocked = status === "failed" && (metadata?.error_code === "131026" || String(metadata?.error_message || "").toLowerCase().includes("block"));
+      const errorStr = String(metadata?.error_code || metadata?.error_message || "").toLowerCase();
+      const isRestriction = isFailed && RESTRICTION_PATTERNS.some(p => errorStr.includes(p));
 
       result.totalDispatches += 1;
       result.totalCost += costBRL;
       if (isDelivered) result.delivered += 1;
       if (isFailed) result.failed += 1;
-      if (isBlocked) result.blocks += 1;
+      if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
 
       const bucket = dispatchType === "marketing" ? result.marketing : dispatchType === "utility" ? result.utility : result.service;
       bucket.count += 1;
