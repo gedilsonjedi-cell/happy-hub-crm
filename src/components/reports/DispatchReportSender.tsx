@@ -57,7 +57,7 @@ export function DispatchReportSender() {
   const [reportPhone, setReportPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [reportType, setReportType] = useState<"daily" | "monthly">("daily");
+  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly">("daily");
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedMonth, setSelectedMonth] = useState(() => formatMonthInputValue(new Date()));
   const [dayData, setDayData] = useState<DayData>(emptyDay());
