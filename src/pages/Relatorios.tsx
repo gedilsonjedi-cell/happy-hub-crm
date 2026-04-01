@@ -2,15 +2,29 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDispatchCosts } from "@/hooks/useDispatchCosts";
-import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash, MessageSquare, FileText } from "lucide-react";
+import { DollarSign, TrendingUp, Send, Megaphone, Settings, Wrench, Hash, MessageSquare, FileText, ShieldAlert } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ConversationMetricsPanel } from "@/components/reports/ConversationMetricsPanel";
 import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { Navigate } from "react-router-dom";
+
+const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
 
 export default function Relatorios() {
+  const { user } = useAuth();
+  const { isSuperAdmin } = useUserRole();
   const { summary, byType, counts, loading } = useDispatchCosts();
   const [activeTab, setActiveTab] = useState("atendimento");
+
+  const userEmail = user?.email?.toLowerCase() || "";
+  const hasAccess = ALLOWED_EMAILS.includes(userEmail) || isSuperAdmin;
+
+  if (!hasAccess) {
+    return <Navigate to="/" replace />;
+  }
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString("pt-BR", {

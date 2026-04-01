@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutGrid, 
@@ -65,10 +66,12 @@ const crmSubmenu = [
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: null },
 ];
 
+const RELATORIOS_ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
+
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
   { icon: FileText, label: "Templates", path: "/templates", permission: "canAccessDisparos" },
-  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos" },
+  { icon: BarChart3, label: "Relatórios", path: "/relatorios", permission: "canAccessDisparos", emailRestricted: true },
 ];
 
 const appsSubmenu = [
@@ -102,10 +105,20 @@ export function Sidebar() {
   const [appsOpen, setAppsOpen] = useState(true);
   const location = useLocation();
   const userRole = useUserRole();
+  const { user } = useAuth();
+  const userEmail = user?.email?.toLowerCase() || "";
+
+  const filteredDisparosSubmenu = useMemo(() => {
+    const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin;
+    return disparosSubmenu.filter(item => {
+      if ((item as any).emailRestricted && !canAccessRelatorios) return false;
+      return true;
+    });
+  }, [userEmail, userRole.isSuperAdmin]);
   const unreadCount = useUnreadMessagesCount();
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
-  const isDisparosActive = disparosSubmenu.some(item => location.pathname === item.path);
+  const isDisparosActive = filteredDisparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
   const isAppsActive = appsSubmenu.some(item => location.pathname === item.path);
 
@@ -306,7 +319,7 @@ export function Sidebar() {
             {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
 
             {/* Disparos submenu */}
-            {renderSubmenu(disparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
+            {renderSubmenu(filteredDisparosSubmenu, disparosOpen, setDisparosOpen, "Disparos", Send, isDisparosActive)}
 
             {/* Personalização submenu */}
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
