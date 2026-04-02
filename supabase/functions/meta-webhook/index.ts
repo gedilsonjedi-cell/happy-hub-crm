@@ -74,8 +74,11 @@ async function getChannelByPhoneNumberId(phoneNumberId: string) {
     .eq('app_name', phoneNumberId)
     .eq('provider', 'meta')
     .maybeSingle();
-  const jitter = Math.random() * 10_000;
-  channelCache.set(phoneNumberId, { data, expiry: Date.now() + 60_000 + jitter }); // 60s + jitter
+  // Only cache successful lookups — never cache null to avoid blocking status updates
+  if (data) {
+    const jitter = Math.random() * 10_000;
+    channelCache.set(phoneNumberId, { data, expiry: Date.now() + 60_000 + jitter }); // 60s + jitter
+  }
   return data;
 }
 
