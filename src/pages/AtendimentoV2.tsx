@@ -3201,7 +3201,14 @@ const AtendimentoV2 = () => {
     ? globalSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
-        if (filterStatus === "new") {
+        if (filterStatus === "unread") {
+          // "Não Lidos" - conversations with unread messages that belong to this user
+          // Assigned to me OR unassigned (orphan visible to me)
+          const isMyConversation = conv.assignedTo === user?.id;
+          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+        }
+        else if (filterStatus === "new") {
           // Same strict logic as main filter - only truly orphan conversations
           const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
           matchesFilter = isTrulyOrphan && conv.status !== "archived";
