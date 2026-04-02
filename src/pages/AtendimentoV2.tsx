@@ -3124,7 +3124,9 @@ const AtendimentoV2 = () => {
   };
 
   // Computed values - FIXED: Only archived conversations go to archived, not based on hasClientResponse
-  const activeConversations = conversations.filter(conv => conv.status !== "archived");
+  const activeConversations = conversations
+    .filter(conv => conv.status !== "archived")
+    .sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
   const archivedConversations = conversations.filter(conv => conv.status === "archived");
 
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
