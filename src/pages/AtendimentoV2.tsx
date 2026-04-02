@@ -3305,6 +3305,12 @@ const AtendimentoV2 = () => {
   const newCount = visibleConversations.filter(c => !c.assignedTo && !c.sectorId && c.status !== "archived").length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
+  const unreadCount = visibleConversations.filter(c => {
+    if (c.unreadCount <= 0 || c.status === "archived") return false;
+    const isMyConversation = c.assignedTo === user?.id;
+    const isOrphanVisibleToMe = !c.assignedTo && (!c.sectorId || sectorIds.includes(c.sectorId));
+    return isMyConversation || isOrphanVisibleToMe;
+  }).length;
 
   // 24-hour window
   const is24HourWindowExpired = (lastInboundTime: string | null) => {
