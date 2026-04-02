@@ -209,7 +209,7 @@ const getStatusConfig = (status: string) => {
   return statusConfig[status] || { label: status || "Pendente", className: "bg-muted text-muted-foreground border-border" };
 };
 
-type FilterStatus = "new" | "mine" | "others";
+type FilterStatus = "new" | "mine" | "others" | "unread";
 
 // Audio notification using Web Audio API
 const useNotificationSound = () => {
@@ -3201,7 +3201,14 @@ const AtendimentoV2 = () => {
     ? globalSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
-        if (filterStatus === "new") {
+        if (filterStatus === "unread") {
+          // "Não Lidos" - conversations with unread messages that belong to this user
+          // Assigned to me OR unassigned (orphan visible to me)
+          const isMyConversation = conv.assignedTo === user?.id;
+          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+        }
+        else if (filterStatus === "new") {
           // Same strict logic as main filter - only truly orphan conversations
           const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
           matchesFilter = isTrulyOrphan && conv.status !== "archived";
@@ -3211,7 +3218,7 @@ const AtendimentoV2 = () => {
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        const matchesAttendant = filterStatus === "new" || filterStatus === "unread" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
@@ -3222,17 +3229,17 @@ const AtendimentoV2 = () => {
         const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
         
         let matchesFilter = false;
-        if (filterStatus === "new") {
+        if (filterStatus === "unread") {
+          // "Não Lidos" - conversations with unread messages that belong to this user
+          const isMyConversation = conv.assignedTo === user?.id;
+          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+        }
+        else if (filterStatus === "new") {
           // CRITICAL FIX: "Novos" ONLY shows truly orphan conversations:
           // 1. Have NO assignee (assigned_to is null/undefined)
           // 2. Have NO sector (sector_id is null/undefined)
           // 3. Are not archived
-          // 
-          // STRICT ENFORCEMENT: If a conversation has a sector, it means it came from
-          // a campaign or was manually assigned to a department. Such conversations
-          // should NEVER appear in "Novos" because they WILL be auto-distributed.
-          // If the assignedTo is still null but sector exists, it means the state
-          // is stale and the conversation shouldn't be shown until synced.
           const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
           matchesFilter = isTrulyOrphan && conv.status !== "archived";
         }
@@ -3241,7 +3248,7 @@ const AtendimentoV2 = () => {
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        const matchesAttendant = filterStatus === "new" || filterStatus === "unread" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
@@ -3298,6 +3305,12 @@ const AtendimentoV2 = () => {
   const newCount = visibleConversations.filter(c => !c.assignedTo && !c.sectorId && c.status !== "archived").length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
+  const unreadCount = visibleConversations.filter(c => {
+    if (c.unreadCount <= 0 || c.status === "archived") return false;
+    const isMyConversation = c.assignedTo === user?.id;
+    const isOrphanVisibleToMe = !c.assignedTo && (!c.sectorId || sectorIds.includes(c.sectorId));
+    return isMyConversation || isOrphanVisibleToMe;
+  }).length;
 
   // 24-hour window
   const is24HourWindowExpired = (lastInboundTime: string | null) => {
@@ -3432,6 +3445,20 @@ const AtendimentoV2 = () => {
                   {newCount > 0 && (
                     <span className="px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold min-w-5 text-center">
                       {newCount}
+                    </span>
+                  )}
+                </button>
+                <button 
+                  onClick={() => setFilterStatus("unread")} 
+                  className={cn(
+                    "text-sm font-medium flex items-center gap-1.5 transition-colors",
+                    filterStatus === "unread" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Não Lidos
+                  {unreadCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-semibold min-w-5 text-center">
+                      {unreadCount}
                     </span>
                   )}
                 </button>
