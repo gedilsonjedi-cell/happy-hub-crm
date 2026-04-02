@@ -209,7 +209,7 @@ const getStatusConfig = (status: string) => {
   return statusConfig[status] || { label: status || "Pendente", className: "bg-muted text-muted-foreground border-border" };
 };
 
-type FilterStatus = "new" | "mine" | "others";
+type FilterStatus = "new" | "mine" | "others" | "unread";
 
 // Audio notification using Web Audio API
 const useNotificationSound = () => {
