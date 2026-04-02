@@ -3449,6 +3449,20 @@ const AtendimentoV2 = () => {
                   )}
                 </button>
                 <button 
+                  onClick={() => setFilterStatus("unread")} 
+                  className={cn(
+                    "text-sm font-medium flex items-center gap-1.5 transition-colors",
+                    filterStatus === "unread" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Não Lidos
+                  {unreadCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-semibold min-w-5 text-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+                <button 
                   onClick={() => setFilterStatus("mine")} 
                   className={cn(
                     "text-sm font-medium transition-colors",
