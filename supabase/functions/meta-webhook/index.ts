@@ -74,8 +74,11 @@ async function getChannelByPhoneNumberId(phoneNumberId: string) {
     .eq('app_name', phoneNumberId)
     .eq('provider', 'meta')
     .maybeSingle();
-  const jitter = Math.random() * 10_000;
-  channelCache.set(phoneNumberId, { data, expiry: Date.now() + 60_000 + jitter }); // 60s + jitter
+  // Only cache successful lookups — never cache null to avoid blocking status updates
+  if (data) {
+    const jitter = Math.random() * 10_000;
+    channelCache.set(phoneNumberId, { data, expiry: Date.now() + 60_000 + jitter }); // 60s + jitter
+  }
   return data;
 }
 
@@ -1014,31 +1017,34 @@ Deno.serve(async (req) => {
         const metadata = value.metadata;
         if (!metadata?.phone_number_id) return;
 
-        const channel = await getChannelByPhoneNumberId(metadata.phone_number_id);
-        if (!channel) {
-          console.warn('Channel not found for phone_number_id:', metadata.phone_number_id);
-          return;
-        }
+        // CRITICAL: Process status updates (delivered/read/failed) INDEPENDENTLY of channel lookup.
+        // Status updates only need message_id (globally unique) — they must NOT be blocked
+        // by a missing channel, which would cause delivered/read counts to never update.
+        const statusPromise = value.statuses?.length
+          ? processStatusUpdates(value.statuses)
+          : Promise.resolve();
 
-        // Build contact name map
-        const contactsMap = new Map<string, string>();
-        if (value.contacts) {
-          for (const c of value.contacts) {
-            if (c.wa_id && c.profile?.name) contactsMap.set(c.wa_id, c.profile.name);
+        const channel = await getChannelByPhoneNumberId(metadata.phone_number_id);
+
+        // Process inbound messages (requires channel)
+        let messagePromise: Promise<unknown> = Promise.resolve();
+        if (value.messages?.length) {
+          if (!channel) {
+            console.warn('Channel not found for phone_number_id:', metadata.phone_number_id, '- skipping inbound messages but status updates still processed');
+          } else {
+            const contactsMap = new Map<string, string>();
+            if (value.contacts) {
+              for (const c of value.contacts) {
+                if (c.wa_id && c.profile?.name) contactsMap.set(c.wa_id, c.profile.name);
+              }
+            }
+            messagePromise = Promise.all(value.messages.map((msg: Record<string, unknown>) =>
+              processMessage(msg, channel as Record<string, unknown>, contactsMap.get(msg.from as string) || null)
+            ));
           }
         }
 
-        // Process messages and status updates in parallel
-        await Promise.all([
-          value.messages?.length
-            ? Promise.all(value.messages.map((msg: Record<string, unknown>) =>
-                processMessage(msg, channel as Record<string, unknown>, contactsMap.get(msg.from as string) || null)
-              ))
-            : Promise.resolve(),
-          value.statuses?.length
-            ? processStatusUpdates(value.statuses)
-            : Promise.resolve(),
-        ]);
+        await Promise.all([statusPromise, messagePromise]);
       } catch (e) {
         console.error('Webhook processing error:', e);
       }
