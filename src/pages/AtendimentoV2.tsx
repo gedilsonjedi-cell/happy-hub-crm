@@ -3229,17 +3229,17 @@ const AtendimentoV2 = () => {
         const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
         
         let matchesFilter = false;
-        if (filterStatus === "new") {
+        if (filterStatus === "unread") {
+          // "Não Lidos" - conversations with unread messages that belong to this user
+          const isMyConversation = conv.assignedTo === user?.id;
+          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+        }
+        else if (filterStatus === "new") {
           // CRITICAL FIX: "Novos" ONLY shows truly orphan conversations:
           // 1. Have NO assignee (assigned_to is null/undefined)
           // 2. Have NO sector (sector_id is null/undefined)
           // 3. Are not archived
-          // 
-          // STRICT ENFORCEMENT: If a conversation has a sector, it means it came from
-          // a campaign or was manually assigned to a department. Such conversations
-          // should NEVER appear in "Novos" because they WILL be auto-distributed.
-          // If the assignedTo is still null but sector exists, it means the state
-          // is stale and the conversation shouldn't be shown until synced.
           const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
           matchesFilter = isTrulyOrphan && conv.status !== "archived";
         }
