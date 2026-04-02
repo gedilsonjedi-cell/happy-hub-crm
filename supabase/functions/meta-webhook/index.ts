@@ -790,12 +790,24 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   
   // Group by status to batch updates
   const grouped = new Map<string, string[]>();
+  // Track error info for failed messages
+  const failedErrorMap = new Map<string, { error_message: string; error_code: string }>();
+  
   for (const s of statuses) {
     const msgId = s.id as string;
     const dbStatus = statusMap[s.status as string];
     if (!msgId || !dbStatus) continue;
     if (!grouped.has(dbStatus)) grouped.set(dbStatus, []);
     grouped.get(dbStatus)!.push(msgId);
+    
+    // Capture error details for failed messages
+    if (dbStatus === 'failed') {
+      const errors = s.errors as Record<string, unknown>[] | undefined;
+      const errCode = String(errors?.[0]?.code || 'UNKNOWN');
+      const errTitle = String(errors?.[0]?.title || 'Unknown error');
+      console.log(`[Webhook] ❌ Message ${msgId} failed - Code: ${errCode}, Title: ${errTitle}, Errors: ${JSON.stringify(errors)}`);
+      failedErrorMap.set(msgId, { error_message: `(#${errCode}) ${errTitle}`, error_code: errCode });
+    }
   }
 
   // ─── QUALITY SIGNAL DETECTION ───────────────────────────────────────
@@ -841,14 +853,34 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   }
 
   // Execute one update per status group in whatsapp_messages (dual-write)
-  await Promise.all(
-    Array.from(grouped.entries()).map(([status, ids]) =>
-      dualUpdateMessages(
-        { column: 'message_id', values: ids },
-        { status, updated_at: new Date().toISOString() }
-      )
-    )
-  );
+  // For failed messages, also save error_message individually
+  const updatePromisesWm: Promise<unknown>[] = [];
+  for (const [status, ids] of grouped.entries()) {
+    if (status === 'failed') {
+      // Update failed messages individually to include error_message
+      for (const id of ids) {
+        const errInfo = failedErrorMap.get(id);
+        updatePromisesWm.push(
+          dualUpdateMessages(
+            { column: 'message_id', values: [id] },
+            { 
+              status: 'failed', 
+              error_message: errInfo?.error_message || 'Falha reportada pela Meta',
+              updated_at: new Date().toISOString() 
+            }
+          )
+        );
+      }
+    } else {
+      updatePromisesWm.push(
+        dualUpdateMessages(
+          { column: 'message_id', values: ids },
+          { status, updated_at: new Date().toISOString() }
+        )
+      );
+    }
+  }
+  await Promise.all(updatePromisesWm);
 
   // ─── SYNC CAMPAIGN RECIPIENTS ─────────────────────────────────────────
   const relevantStatuses = ['delivered', 'read', 'failed'];
