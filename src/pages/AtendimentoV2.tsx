@@ -3248,7 +3248,7 @@ const AtendimentoV2 = () => {
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        const matchesAttendant = filterStatus === "new" || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        const matchesAttendant = filterStatus === "new" || filterStatus === "unread" || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
