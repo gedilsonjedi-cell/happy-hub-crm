@@ -322,7 +322,9 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
         r.phone.includes(searchTerm) || 
         (r.name || "").toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesStatus = statusFilter === "all" || r.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || 
+        r.status === statusFilter ||
+        (statusFilter === "clicked" && !!r.button_clicked);
       
       const classification = classifyError(r.error_message, r.last_error_code);
       const effectiveStatus = classification === "no_whatsapp" ? "no_whatsapp" : r.status;
