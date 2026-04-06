@@ -742,6 +742,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <SelectItem value="waiting_retry">Aguardando Retry</SelectItem>
                     <SelectItem value="delivered">Entregue</SelectItem>
                     <SelectItem value="read">Lida</SelectItem>
+                    <SelectItem value="clicked">Interagiram (clicaram botão)</SelectItem>
                     <SelectItem value="failed">Falha</SelectItem>
                   </SelectContent>
                 </Select>
