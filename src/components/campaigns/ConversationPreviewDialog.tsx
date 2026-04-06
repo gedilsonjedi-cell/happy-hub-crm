@@ -100,40 +100,34 @@ export function ConversationPreviewDialog({
 
       const channelIds = channels.map((c) => c.id);
 
-      // Fetch ALL messages for these channels and filter in memory
-      // Because outbound messages have destination in metadata, not sender_phone
-      const { data, error } = await supabase
+      // Query inbound messages by sender_phone suffix
+      const inboundPromise = supabase
         .from("whatsapp_messages")
         .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
         .in("channel_id", channelIds)
-        .order("created_at", { ascending: false })
-        .limit(500);
+        .eq("direction", "inbound")
+        .like("sender_phone", `%${phoneEnd}`)
+        .order("created_at", { ascending: true })
+        .limit(200);
 
-      if (error) throw error;
+      // Query outbound messages by metadata destination suffix
+      const outboundPromise = supabase
+        .from("whatsapp_messages")
+        .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
+        .in("channel_id", channelIds)
+        .eq("direction", "outbound")
+        .like("metadata->>destination", `%${phoneEnd}`)
+        .order("created_at", { ascending: true })
+        .limit(200);
 
-      // Filter messages that match this phone
-      // For inbound: sender_phone contains the contact's phone
-      // For outbound: metadata.destination contains the contact's phone
-      const filteredMessages = (data || []).filter((msg) => {
-        const msgMetadata = msg.metadata as Record<string, unknown> | null;
-        
-        if (msg.direction === "inbound") {
-          // Inbound: sender_phone is the contact
-          return msg.sender_phone?.replace(/\D/g, "").endsWith(phoneEnd);
-        } else {
-          // Outbound: destination in metadata is the contact
-          const destination = msgMetadata?.destination as string | undefined;
-          if (destination) {
-            return destination.replace(/\D/g, "").endsWith(phoneEnd);
-          }
-          return false;
-        }
-      });
+      const [inboundResult, outboundResult] = await Promise.all([inboundPromise, outboundPromise]);
 
-      // Sort by created_at ascending for display
-      filteredMessages.sort((a, b) => 
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+      if (inboundResult.error) throw inboundResult.error;
+      if (outboundResult.error) throw outboundResult.error;
+
+      // Merge and sort by created_at ascending
+      const filteredMessages = [...(inboundResult.data || []), ...(outboundResult.data || [])]
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       // Map to remove metadata from the display object but keep content
       const displayMessages = filteredMessages.map((msg) => {
