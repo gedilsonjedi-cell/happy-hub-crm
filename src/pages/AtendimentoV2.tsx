@@ -254,6 +254,7 @@ const AtendimentoV2 = () => {
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
+  const [channelIdToOpen] = useState<string | null>(searchParams.get("channelId"));
   // Legacy messages state — still used for SalesAssistant context (read-only, derived from infinite hook)
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
@@ -1563,8 +1564,10 @@ const AtendimentoV2 = () => {
       setSearchParams({}, { replace: true });
     } else if (channels.length > 0) {
       // Create a temporary conversation to display messages
-      // This handles the case where there's no existing conversation_assignment
-      const firstChannel = channels[0];
+      // Use channelId from URL if available, otherwise fallback to first channel
+      const targetChannel = channelIdToOpen 
+        ? channels.find(ch => ch.id === channelIdToOpen) || channels[0]
+        : channels[0];
       
       const tempConversation: Conversation = {
         phone: normalizedPhoneToOpen,
@@ -1573,7 +1576,7 @@ const AtendimentoV2 = () => {
         lastMessageTime: new Date().toISOString(),
         lastInboundTime: null,
         unreadCount: 0,
-        channelId: firstChannel.id,
+        channelId: targetChannel.id,
         status: "in_progress",
         assignedTo: null,
         assignedToName: null,
@@ -1582,7 +1585,7 @@ const AtendimentoV2 = () => {
       };
       
       setSelectedConversation(tempConversation);
-      setSelectedChannel(firstChannel);
+      setSelectedChannel(targetChannel);
       setPhoneToOpen(null);
       setSearchParams({}, { replace: true });
     }

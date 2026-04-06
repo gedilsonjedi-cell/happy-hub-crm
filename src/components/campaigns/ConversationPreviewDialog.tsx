@@ -187,8 +187,12 @@ export function ConversationPreviewDialog({
 
   const handleOpenChat = () => {
     onOpenChange(false);
-    // Navigate to AtendimentoV2 with phone filter
-    navigate(`/atendimento-v2?phone=${encodeURIComponent(normalizedPhone)}`);
+    // Navigate to AtendimentoV2 with phone filter and channel if found
+    const params = new URLSearchParams({ phone: normalizedPhone });
+    if (foundChannelId) {
+      params.set("channelId", foundChannelId);
+    }
+    navigate(`/atendimento-v2?${params.toString()}`);
   };
 
   const formatPhoneDisplay = (p: string) => {
