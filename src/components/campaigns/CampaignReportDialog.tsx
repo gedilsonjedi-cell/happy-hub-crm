@@ -322,7 +322,9 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
         r.phone.includes(searchTerm) || 
         (r.name || "").toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesStatus = statusFilter === "all" || r.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || 
+        r.status === statusFilter ||
+        (statusFilter === "clicked" && !!r.button_clicked);
       
       const classification = classifyError(r.error_message, r.last_error_code);
       const effectiveStatus = classification === "no_whatsapp" ? "no_whatsapp" : r.status;
@@ -740,6 +742,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <SelectItem value="waiting_retry">Aguardando Retry</SelectItem>
                     <SelectItem value="delivered">Entregue</SelectItem>
                     <SelectItem value="read">Lida</SelectItem>
+                    <SelectItem value="clicked">Interagiram (clicaram botão)</SelectItem>
                     <SelectItem value="failed">Falha</SelectItem>
                   </SelectContent>
                 </Select>
@@ -806,6 +809,30 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 >
                   <Download className="w-3 h-3 mr-1" />
                   Exportar falhas
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs text-cyan-400"
+                  onClick={() => {
+                    setStatusFilter("clicked");
+                    setClassificationFilter("all");
+                  }}
+                >
+                  <MessageCircle className="w-3 h-3 mr-1" />
+                  Ver interações ({metrics.clicked})
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs"
+                  onClick={() => {
+                    const clicked = recipients.filter(r => !!r.button_clicked);
+                    exportToCSV(clicked, `campanha-${campaign?.name}-interacoes`);
+                  }}
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Exportar interações
                 </Button>
               </div>
 
