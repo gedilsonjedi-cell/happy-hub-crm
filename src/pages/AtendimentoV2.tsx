@@ -254,6 +254,7 @@ const AtendimentoV2 = () => {
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
+  const [channelIdToOpen] = useState<string | null>(searchParams.get("channelId"));
   // Legacy messages state — still used for SalesAssistant context (read-only, derived from infinite hook)
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
