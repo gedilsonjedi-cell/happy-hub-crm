@@ -810,6 +810,30 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                   <Download className="w-3 h-3 mr-1" />
                   Exportar falhas
                 </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs text-cyan-400"
+                  onClick={() => {
+                    setStatusFilter("clicked");
+                    setClassificationFilter("all");
+                  }}
+                >
+                  <MessageCircle className="w-3 h-3 mr-1" />
+                  Ver interações ({metrics.clicked})
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs"
+                  onClick={() => {
+                    const clicked = recipients.filter(r => !!r.button_clicked);
+                    exportToCSV(clicked, `campanha-${campaign?.name}-interacoes`);
+                  }}
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Exportar interações
+                </Button>
               </div>
 
               {/* Table */}
