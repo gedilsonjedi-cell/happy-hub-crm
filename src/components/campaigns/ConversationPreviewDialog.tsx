@@ -100,31 +100,23 @@ export function ConversationPreviewDialog({
 
       const channelIds = channels.map((c) => c.id);
 
-      // Build phone variants for matching (last 8, last 9, full)
-      const phoneVariants = [
-        normalizedPhone,
-        `+${normalizedPhone}`,
-        normalizedPhone.startsWith("55") ? normalizedPhone.slice(2) : normalizedPhone,
-      ];
-
-      // Query inbound messages (sender_phone matches)
+      // Query inbound messages by sender_phone suffix
       const inboundPromise = supabase
         .from("whatsapp_messages")
         .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
         .in("channel_id", channelIds)
         .eq("direction", "inbound")
-        .or(phoneVariants.map(v => `sender_phone.like.%${phoneEnd}`).slice(0, 1).join(','))
+        .like("sender_phone", `%${phoneEnd}`)
         .order("created_at", { ascending: true })
         .limit(200);
 
-      // Query outbound messages (metadata contains destination phone)
-      // Use textSearch on metadata to find matching destination
+      // Query outbound messages by metadata destination suffix
       const outboundPromise = supabase
         .from("whatsapp_messages")
         .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
         .in("channel_id", channelIds)
         .eq("direction", "outbound")
-        .or(`metadata->>destination.like.%${phoneEnd}`)
+        .like("metadata->>destination", `%${phoneEnd}`)
         .order("created_at", { ascending: true })
         .limit(200);
 
@@ -133,20 +125,8 @@ export function ConversationPreviewDialog({
       if (inboundResult.error) throw inboundResult.error;
       if (outboundResult.error) throw outboundResult.error;
 
-      // Filter inbound more precisely
-      const inboundFiltered = (inboundResult.data || []).filter((msg) => 
-        msg.sender_phone?.replace(/\D/g, "").endsWith(phoneEnd)
-      );
-
-      // Filter outbound more precisely  
-      const outboundFiltered = (outboundResult.data || []).filter((msg) => {
-        const msgMetadata = msg.metadata as Record<string, unknown> | null;
-        const destination = msgMetadata?.destination as string | undefined;
-        return destination?.replace(/\D/g, "").endsWith(phoneEnd);
-      });
-
       // Merge and sort by created_at ascending
-      const filteredMessages = [...inboundFiltered, ...outboundFiltered]
+      const filteredMessages = [...(inboundResult.data || []), ...(outboundResult.data || [])]
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       // Map to remove metadata from the display object but keep content
