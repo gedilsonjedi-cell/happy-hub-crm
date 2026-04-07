@@ -3,7 +3,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
-import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle } from "lucide-react";
+import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface Destination {
@@ -37,6 +37,7 @@ const Links = () => {
   const [links, setLinks] = useState<RedirectLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingLink, setEditingLink] = useState<RedirectLink | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -95,7 +96,7 @@ const Links = () => {
     setDestinations(updated);
   };
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!name.trim() || !slug.trim()) {
       toast.error("Preencha o nome e o slug do link");
       return;
@@ -113,25 +114,47 @@ const Links = () => {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("redirect_links").insert({
-      organization_id: organizationId,
-      created_by: user.id,
-      slug: slug.trim().toLowerCase(),
-      name: name.trim(),
-      destinations: validDestinations as any,
-    });
 
-    if (error) {
-      if (error.code === "23505") {
-        toast.error("Este slug já está em uso. Escolha outro.");
+    if (editingLink) {
+      // Update existing link — slug and URL stay the same
+      const { error } = await supabase
+        .from("redirect_links")
+        .update({
+          name: name.trim(),
+          destinations: validDestinations as any,
+        })
+        .eq("id", editingLink.id);
+
+      if (error) {
+        toast.error("Erro ao atualizar link: " + error.message);
       } else {
-        toast.error("Erro ao criar link: " + error.message);
+        toast.success("Link atualizado com sucesso!");
+        setDialogOpen(false);
+        resetForm();
+        fetchLinks();
       }
     } else {
-      toast.success("Link criado com sucesso!");
-      setDialogOpen(false);
-      resetForm();
-      fetchLinks();
+      // Create new link
+      const { error } = await supabase.from("redirect_links").insert({
+        organization_id: organizationId,
+        created_by: user.id,
+        slug: slug.trim().toLowerCase(),
+        name: name.trim(),
+        destinations: validDestinations as any,
+      });
+
+      if (error) {
+        if (error.code === "23505") {
+          toast.error("Este slug já está em uso. Escolha outro.");
+        } else {
+          toast.error("Erro ao criar link: " + error.message);
+        }
+      } else {
+        toast.success("Link criado com sucesso!");
+        setDialogOpen(false);
+        resetForm();
+        fetchLinks();
+      }
     }
     setSaving(false);
   };
@@ -140,6 +163,21 @@ const Links = () => {
     setName("");
     setSlug("");
     setDestinations([{ phone: "", message: "" }]);
+    setEditingLink(null);
+  };
+
+  const openEditDialog = (link: RedirectLink) => {
+    setEditingLink(link);
+    setName(link.name);
+    setSlug(link.slug);
+    setDestinations(link.destinations.length > 0 ? [...link.destinations] : [{ phone: "", message: "" }]);
+    setDialogOpen(true);
+  };
+
+  const openCreateDialog = () => {
+    resetForm();
+    generateSlug();
+    setDialogOpen(true);
   };
 
   const toggleActive = async (link: RedirectLink) => {
@@ -166,6 +204,8 @@ const Links = () => {
     toast.success("Link copiado!");
   };
 
+  const isEditing = !!editingLink;
+
   return (
     <MainLayout>
       <div className="p-4 md:p-6 space-y-6">
@@ -180,105 +220,108 @@ const Links = () => {
             </p>
           </div>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => { resetForm(); generateSlug(); }}>
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Link
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Criar Link de Redirecionamento</DialogTitle>
-              </DialogHeader>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Link
+          </Button>
+        </div>
 
-              <div className="space-y-4">
-                <div>
-                  <Label>Nome do Link</Label>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isEditing ? "Editar Link" : "Criar Link de Redirecionamento"}</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Nome do Link</Label>
+                <Input
+                  placeholder="Ex: Campanha Janeiro"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Label>Slug (identificador do link)</Label>
+                <div className="flex gap-2">
                   <Input
-                    placeholder="Ex: Campanha Janeiro"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
+                    placeholder="ex: campanha-jan"
+                    value={slug}
+                    onChange={e => setSlug(e.target.value.replace(/[^a-z0-9-]/g, ""))}
+                    disabled={isEditing}
                   />
-                </div>
-
-                <div>
-                  <Label>Slug (identificador do link)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="ex: campanha-jan"
-                      value={slug}
-                      onChange={e => setSlug(e.target.value.replace(/[^a-z0-9-]/g, ""))}
-                    />
+                  {!isEditing && (
                     <Button variant="outline" size="sm" onClick={generateSlug}>
                       <Shuffle className="w-4 h-4" />
                     </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Link: {baseUrl}/r/{slug || "..."}
-                  </p>
+                  )}
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Destinos WhatsApp</Label>
-                    <Button variant="ghost" size="sm" onClick={addDestination}>
-                      <Plus className="w-4 h-4 mr-1" />
-                      Adicionar
-                    </Button>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Com múltiplos destinos, o redirecionamento será aleatório entre eles.
-                  </p>
-
-                  {destinations.map((dest, index) => (
-                    <Card key={index} className="relative">
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Destino {index + 1}
-                          </span>
-                          {destinations.length > 1 && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => removeDestination(index)}
-                            >
-                              <Trash2 className="w-3 h-3 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs">Número (com DDI)</Label>
-                          <Input
-                            placeholder="5511999999999"
-                            value={dest.phone}
-                            onChange={e => updateDestination(index, "phone", e.target.value.replace(/\D/g, ""))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Mensagem pré-definida (opcional)</Label>
-                          <Textarea
-                            placeholder="Olá, vim pelo link..."
-                            value={dest.message}
-                            onChange={e => updateDestination(index, "message", e.target.value)}
-                            rows={2}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <Button onClick={handleCreate} disabled={saving} className="w-full">
-                  {saving ? "Criando..." : "Criar Link"}
-                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Link: {baseUrl}/r/{slug || "..."}
+                  {isEditing && <span className="ml-2 text-primary">(a URL não será alterada)</span>}
+                </p>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Destinos WhatsApp</Label>
+                  <Button variant="ghost" size="sm" onClick={addDestination}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Adicionar
+                  </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Com múltiplos destinos, o redirecionamento será aleatório entre eles.
+                </p>
+
+                {destinations.map((dest, index) => (
+                  <Card key={index} className="relative">
+                    <CardContent className="p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Destino {index + 1}
+                        </span>
+                        {destinations.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeDestination(index)}
+                          >
+                            <Trash2 className="w-3 h-3 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                      <div>
+                        <Label className="text-xs">Número (com DDI)</Label>
+                        <Input
+                          placeholder="5511999999999"
+                          value={dest.phone}
+                          onChange={e => updateDestination(index, "phone", e.target.value.replace(/\D/g, ""))}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Mensagem pré-definida (opcional)</Label>
+                        <Textarea
+                          placeholder="Olá, vim pelo link..."
+                          value={dest.message}
+                          onChange={e => updateDestination(index, "message", e.target.value)}
+                          rows={2}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <Button onClick={handleSave} disabled={saving} className="w-full">
+                {saving ? (isEditing ? "Salvando..." : "Criando...") : (isEditing ? "Salvar Alterações" : "Criar Link")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {loading ? (
           <div className="flex justify-center py-12">
@@ -335,6 +378,14 @@ const Links = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditDialog(link)}
+                        title="Editar link"
+                      >
+                        <Pencil className="w-4 h-4 text-muted-foreground" />
+                      </Button>
                       <Switch
                         checked={link.is_active}
                         onCheckedChange={() => toggleActive(link)}
