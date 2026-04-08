@@ -626,6 +626,26 @@ const WhatsAppChat = () => {
 
       console.log("[WhatsAppChat] Total messages for conversation:", allMessages.length);
       setMessages(allMessages as Message[]);
+
+      // Update lastInboundTime from the most recent inbound message fetched from DB
+      const inboundMsgs = inboundResult.data || [];
+      if (inboundMsgs.length > 0) {
+        const latestInboundTime = inboundMsgs[inboundMsgs.length - 1].created_at;
+        const conversationKey = `${conversationChannelId}_${normalizedPhone}`;
+        const shouldUpdate = !selectedConversation.lastInboundTime ||
+          new Date(latestInboundTime) > new Date(selectedConversation.lastInboundTime);
+        if (shouldUpdate) {
+          setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInboundTime } : null);
+          setAllConversations(prev => prev.map(c => {
+            const key = `${c.channelId || 'unknown'}_${c.phone.replace(/\D/g, '')}`;
+            if (key !== conversationKey) return c;
+            if (!c.lastInboundTime || new Date(latestInboundTime) > new Date(c.lastInboundTime)) {
+              return { ...c, lastInboundTime: latestInboundTime };
+            }
+            return c;
+          }));
+        }
+      }
       
       // Mark inbound messages as read
       const unreadMessageIds = allMessages
