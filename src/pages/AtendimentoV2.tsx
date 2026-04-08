@@ -1473,23 +1473,31 @@ const AtendimentoV2 = () => {
       setConversationNotes([]);
     }
 
-    // Update lastInboundTime from the latest inbound message already loaded
-    const inboundMessages = infiniteMessages.messages
-      .filter(m => m.direction === "inbound");
-    const latestInbound = inboundMessages.length > 0 ? inboundMessages[inboundMessages.length - 1] : undefined;
+    // Query DB directly for the most recent inbound message to accurately determine lastInboundTime
+    // This avoids relying on the limited first page of messages which may all be outbound
+    const phoneWithPlus = `+${normalizedPhone}`;
+    const { data: latestInboundData } = await supabase
+      .from("whatsapp_messages")
+      .select("created_at")
+      .eq("channel_id", conversationChannelId)
+      .eq("direction", "inbound")
+      .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (latestInbound) {
+    const latestInboundTime = latestInboundData?.[0]?.created_at;
+    if (latestInboundTime) {
       const conversationKey = getConversationKey(selectedConversation);
       const shouldUpdate = !selectedConversation.lastInboundTime ||
-        new Date(latestInbound.created_at) > new Date(selectedConversation.lastInboundTime);
+        new Date(latestInboundTime) > new Date(selectedConversation.lastInboundTime);
 
       if (shouldUpdate) {
-        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInbound.created_at } : null);
+        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInboundTime } : null);
         setAllConversations(prev => prev.map(c => {
           const key = getConversationKey(c);
           if (key !== conversationKey) return c;
-          if (!c.lastInboundTime || new Date(latestInbound.created_at) > new Date(c.lastInboundTime)) {
-            return { ...c, lastInboundTime: latestInbound.created_at };
+          if (!c.lastInboundTime || new Date(latestInboundTime) > new Date(c.lastInboundTime)) {
+            return { ...c, lastInboundTime: latestInboundTime };
           }
           return c;
         }));
