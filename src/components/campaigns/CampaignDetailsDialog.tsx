@@ -47,6 +47,7 @@ interface Campaign {
   max_interval?: number;
   team?: string | null;
   chatbot_enabled?: boolean;
+  sector_id?: string | null;
 }
 
 interface FailedMessage {
