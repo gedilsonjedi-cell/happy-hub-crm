@@ -316,7 +316,8 @@ Deno.serve(async (req) => {
       name: r.name || undefined,
       recipientId: r.id,
       isRetry: r.is_retry,
-      retryCount: r.retry_count || 0
+      retryCount: r.retry_count || 0,
+      leadId: r.lead_id || undefined
     }));
 
     console.log(`[Batch] Claimed ${recipientsToSend.length} recipients for campaign ${campaign.name}`);
