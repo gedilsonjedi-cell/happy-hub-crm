@@ -1473,23 +1473,45 @@ const AtendimentoV2 = () => {
       setConversationNotes([]);
     }
 
-    // Update lastInboundTime from the latest inbound message already loaded
-    const inboundMessages = infiniteMessages.messages
-      .filter(m => m.direction === "inbound");
-    const latestInbound = inboundMessages.length > 0 ? inboundMessages[inboundMessages.length - 1] : undefined;
+    // Query DB directly for the most recent inbound message to accurately determine lastInboundTime
+    // This avoids relying on the limited first page of messages which may all be outbound
+    const phoneWithPlus = `+${normalizedPhone}`;
+    // Generate Brazilian phone variants (8-digit vs 9-digit mobile numbers)
+    const phoneVariants = [normalizedPhone, phoneWithPlus];
+    if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 12) {
+      const areaCode = normalizedPhone.slice(2, 4);
+      const localNumber = normalizedPhone.slice(4);
+      if (localNumber.length === 9 && localNumber.startsWith("9")) {
+        const without9 = `55${areaCode}${localNumber.slice(1)}`;
+        phoneVariants.push(without9, `+${without9}`);
+      } else if (localNumber.length === 8) {
+        const with9 = `55${areaCode}9${localNumber}`;
+        phoneVariants.push(with9, `+${with9}`);
+      }
+    }
+    const orFilter = phoneVariants.map(v => `sender_phone.eq.${v}`).join(",");
+    const { data: latestInboundData } = await supabase
+      .from("whatsapp_messages")
+      .select("created_at")
+      .eq("channel_id", conversationChannelId)
+      .eq("direction", "inbound")
+      .or(orFilter)
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (latestInbound) {
+    const latestInboundTime = latestInboundData?.[0]?.created_at;
+    if (latestInboundTime) {
       const conversationKey = getConversationKey(selectedConversation);
       const shouldUpdate = !selectedConversation.lastInboundTime ||
-        new Date(latestInbound.created_at) > new Date(selectedConversation.lastInboundTime);
+        new Date(latestInboundTime) > new Date(selectedConversation.lastInboundTime);
 
       if (shouldUpdate) {
-        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInbound.created_at } : null);
+        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInboundTime } : null);
         setAllConversations(prev => prev.map(c => {
           const key = getConversationKey(c);
           if (key !== conversationKey) return c;
-          if (!c.lastInboundTime || new Date(latestInbound.created_at) > new Date(c.lastInboundTime)) {
-            return { ...c, lastInboundTime: latestInbound.created_at };
+          if (!c.lastInboundTime || new Date(latestInboundTime) > new Date(c.lastInboundTime)) {
+            return { ...c, lastInboundTime: latestInboundTime };
           }
           return c;
         }));
