@@ -506,6 +506,34 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange, onCampaign
 
         <Separator className="my-4" />
 
+        {/* Department Assignment */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-primary" />
+            Departamento da Campanha
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            As conversas geradas por esta campanha serão direcionadas para o departamento selecionado.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <SectorFilter value={selectedSectorId} onChange={handleSectorChange} />
+            </div>
+            {sectorChanged && (
+              <button
+                onClick={handleSaveSector}
+                disabled={savingSector}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {savingSector ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Salvar
+              </button>
+            )}
+          </div>
+        </div>
+
+        <Separator className="my-4" />
+
         {/* Campaign Details */}
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-foreground">Informações da Campanha</h3>
