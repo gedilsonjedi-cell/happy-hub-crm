@@ -64,6 +64,7 @@ interface CampaignDetailsDialogProps {
   campaign: Campaign | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCampaignUpdated?: () => void;
 }
 
 const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
