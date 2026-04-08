@@ -1092,10 +1092,23 @@ const Templates = () => {
                                     </div>
                                   </SelectItem>
                                 ))}
-                                {/* Custom field option */}
-                                <SelectItem value="custom_field">
-                                  <span className="text-primary font-medium">Campo personalizado</span>
-                                </SelectItem>
+                                {customFields.length > 0 && (
+                                  <>
+                                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-t border-border mt-1 pt-2">
+                                      Campos Personalizados
+                                    </div>
+                                    {customFields.map(field => (
+                                      <SelectItem key={`cf_${field.id}`} value={`custom_field:${field.field_name}`}>
+                                        <span className="text-primary font-medium">{field.field_label}</span>
+                                      </SelectItem>
+                                    ))}
+                                  </>
+                                )}
+                                {customFields.length === 0 && (
+                                  <SelectItem value="custom_field" disabled>
+                                    <span className="text-muted-foreground">Nenhum campo personalizado</span>
+                                  </SelectItem>
+                                )}
                               </SelectContent>
                             </Select>
                           </div>
