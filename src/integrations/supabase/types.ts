@@ -3286,7 +3286,7 @@ export type Database = {
       }
       claim_campaign_recipients: {
         Args: {
-          p_batch_size?: number
+          p_batch_size: number
           p_campaign_id: string
           p_include_retries?: boolean
         }
@@ -3294,6 +3294,7 @@ export type Database = {
           id: string
           is_retry: boolean
           last_error_code: string
+          lead_id: string
           name: string
           phone: string
           retry_count: number
