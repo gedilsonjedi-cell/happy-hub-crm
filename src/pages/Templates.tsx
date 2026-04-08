@@ -373,7 +373,11 @@ const Templates = () => {
     const mappingsToSave: Record<string, string> = {};
     detectedVariables.forEach(v => {
       const mapping = variableMappings[v.name] || "manual";
-      if (mapping === "custom_field" && selectedCustomField[v.name]) {
+      if (mapping.startsWith("custom_field:")) {
+        // Already in the correct format (direct selection from dropdown)
+        mappingsToSave[v.name] = mapping;
+      } else if (mapping === "custom_field" && selectedCustomField[v.name]) {
+        // Legacy two-step format
         mappingsToSave[v.name] = `custom_field:${selectedCustomField[v.name]}`;
       } else {
         mappingsToSave[v.name] = mapping;
