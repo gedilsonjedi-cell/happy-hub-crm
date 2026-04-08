@@ -1117,50 +1117,12 @@ const Templates = () => {
                             </Select>
                           </div>
 
-                          {/* Custom field selector */}
-                          {variableMappings[variable.name] === "custom_field" && (
-                            <div className="space-y-1 col-span-2">
-                              <Label className="text-xs text-muted-foreground">Selecione o campo personalizado</Label>
-                              <Select
-                                value={selectedCustomField[variable.name] || ""}
-                                onValueChange={(value) => {
-                                  setSelectedCustomField(prev => ({
-                                    ...prev,
-                                    [variable.name]: value
-                                  }));
-                                }}
-                              >
-                                <SelectTrigger className="bg-background border-border">
-                                  <SelectValue placeholder="Selecione o campo" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-card border-border z-50">
-                                  {customFields.length === 0 ? (
-                                    <div className="p-3 text-center text-muted-foreground text-sm">
-                                      Nenhum campo personalizado.
-                                      <br />
-                                      <span className="text-xs">Crie em Personalização → Campos</span>
-                                    </div>
-                                  ) : (
-                                    customFields.map(field => (
-                                      <SelectItem key={field.id} value={field.field_name}>
-                                        {field.field_label}
-                                      </SelectItem>
-                                    ))
-                                  )}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                        </div>
-                        
                         {/* Show selected mapping description */}
                         <p className="text-xs text-muted-foreground">
                           {variableMappings[variable.name] === "manual" || !variableMappings[variable.name]
                             ? "⚠️ Será solicitado informar o valor ao disparar mensagem"
-                            : variableMappings[variable.name] === "custom_field"
-                            ? selectedCustomField[variable.name] 
-                              ? `✓ Será preenchido com o campo "${customFields.find(f => f.field_name === selectedCustomField[variable.name])?.field_label}"`
-                              : "⚠️ Selecione o campo personalizado"
+                            : variableMappings[variable.name]?.startsWith("custom_field:")
+                            ? `✓ Será preenchido com o campo "${customFields.find(f => f.field_name === variableMappings[variable.name]?.replace('custom_field:', ''))?.field_label || variableMappings[variable.name]?.replace('custom_field:', '')}"`
                             : "✓ Será preenchido automaticamente com dados do lead no CRM"
                           }
                         </p>
