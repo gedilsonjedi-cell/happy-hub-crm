@@ -107,11 +107,48 @@ interface ButtonClickData {
   byButton: Record<string, number>;
 }
 
-export function CampaignDetailsDialog({ campaign, open, onOpenChange }: CampaignDetailsDialogProps) {
+export function CampaignDetailsDialog({ campaign, open, onOpenChange, onCampaignUpdated }: CampaignDetailsDialogProps) {
   const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
   const [loadingErrors, setLoadingErrors] = useState(false);
   const [buttonClicks, setButtonClicks] = useState<ButtonClickData>({ total: 0, byButton: {} });
   const [loadingClicks, setLoadingClicks] = useState(false);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
+  const [savingSector, setSavingSector] = useState(false);
+  const [sectorChanged, setSectorChanged] = useState(false);
+
+  useEffect(() => {
+    if (campaign) {
+      setSelectedSectorId(campaign.sector_id || null);
+      setSectorChanged(false);
+    }
+  }, [campaign?.id, open]);
+
+  const handleSectorChange = useCallback((sectorId: string | null) => {
+    setSelectedSectorId(sectorId);
+    setSectorChanged(sectorId !== (campaign?.sector_id || null));
+  }, [campaign?.sector_id]);
+
+  const handleSaveSector = useCallback(async () => {
+    if (!campaign) return;
+    setSavingSector(true);
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ sector_id: selectedSectorId })
+        .eq('id', campaign.id);
+
+      if (error) throw error;
+
+      toast.success('Departamento atualizado com sucesso!');
+      setSectorChanged(false);
+      onCampaignUpdated?.();
+    } catch (err) {
+      console.error('Error updating sector:', err);
+      toast.error('Erro ao atualizar departamento');
+    } finally {
+      setSavingSector(false);
+    }
+  }, [campaign, selectedSectorId, onCampaignUpdated]);
 
   useEffect(() => {
     if (open && campaign) {
