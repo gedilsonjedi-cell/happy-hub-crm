@@ -1897,6 +1897,27 @@ const Disparos = () => {
         campaign={selectedCampaign}
         open={showDetailsDialog}
         onOpenChange={setShowDetailsDialog}
+        onCampaignUpdated={() => {
+          // Refresh the campaign in local state
+          if (selectedCampaign) {
+            setAllCampaigns(prev => prev.map(c => 
+              c.id === selectedCampaign.id ? { ...c, sector_id: undefined } : c
+            ));
+            // Re-fetch to get updated data
+            supabase
+              .from('campaigns')
+              .select('*')
+              .eq('id', selectedCampaign.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  const updated = { ...data, status: data.status as Campaign["status"] };
+                  setAllCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+                  setSelectedCampaign(updated);
+                }
+              });
+          }
+        }}
       />
 
       {/* Recycle Failures Dialog */}
