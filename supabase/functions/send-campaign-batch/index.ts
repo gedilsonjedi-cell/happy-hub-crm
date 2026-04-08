@@ -378,6 +378,30 @@ Deno.serve(async (req) => {
 
     const manualVariables = campaign.manual_variables as Record<string, string> | null;
 
+    // Pre-fetch custom fields for leads if any template uses custom_field mappings
+    const needsCustomFields = templates.some((t: any) => {
+      const mappings = t.variable_mappings as Record<string, string> | null;
+      return mappings && Object.values(mappings).some((m: string) => m?.startsWith('custom_field:'));
+    });
+
+    const leadCustomFieldsMap = new Map<string, Record<string, any>>();
+    if (needsCustomFields) {
+      const leadIds = recipientsToSend.map(r => r.leadId).filter(Boolean);
+      if (leadIds.length > 0) {
+        const { data: leadsData } = await supabase
+          .from('leads')
+          .select('id, custom_fields')
+          .in('id', leadIds);
+        if (leadsData) {
+          for (const lead of leadsData) {
+            if (lead.custom_fields) {
+              leadCustomFieldsMap.set(lead.id, lead.custom_fields as Record<string, any>);
+            }
+          }
+        }
+      }
+    }
+
     async function processRecipient(recipient: typeof recipientsToSend[0], idx: number) {
       const campaignChannel = activeCampaignChannels[idx % activeCampaignChannels.length] as { channel_id: string; template_id: string };
       const channel = channelsMap.get(campaignChannel.channel_id);
@@ -403,6 +427,13 @@ Deno.serve(async (req) => {
             value = getFirstName(recipient.name) || recipient.name || 'Cliente';
           } else if (mapping === 'contact_name' || mapping === 'contact_full_name') {
             value = recipient.name || 'Cliente';
+          } else if (mapping.startsWith('custom_field:')) {
+            // Resolve custom field from lead's custom_fields JSONB
+            const fieldName = mapping.replace('custom_field:', '');
+            if (recipient.leadId) {
+              const customFields = leadCustomFieldsMap.get(recipient.leadId);
+              value = customFields?.[fieldName] ? String(customFields[fieldName]) : '';
+            }
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || '');
