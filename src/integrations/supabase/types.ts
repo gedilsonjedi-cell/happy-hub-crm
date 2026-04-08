@@ -3363,6 +3363,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_redirect_click: {
+        Args: { link_id: string }
+        Returns: undefined
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
       is_phone_blacklisted: {

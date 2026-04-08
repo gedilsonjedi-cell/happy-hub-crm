@@ -42,12 +42,8 @@ const RedirectPage = () => {
       const msg = dest.message ? `?text=${encodeURIComponent(dest.message)}` : "";
       setRedirectUrl(`https://wa.me/${phone}${msg}`);
 
-      // Increment click count (fire and forget)
-      supabase
-        .from("redirect_links")
-        .update({ click_count: (data.click_count || 0) + 1 })
-        .eq("id", data.id)
-        .then(() => {});
+      // Atomic increment click count (fire and forget)
+      supabase.rpc("increment_redirect_click", { link_id: data.id }).then(() => {});
     };
 
     fetchLink();
