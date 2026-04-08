@@ -75,6 +75,7 @@ interface Campaign {
   team?: string | null;
   chatbot_enabled?: boolean;
   organization_id?: string | null;
+  sector_id?: string | null;
 }
 
 interface Recipient {
