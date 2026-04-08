@@ -1116,6 +1116,7 @@ const Templates = () => {
                               </SelectContent>
                             </Select>
                           </div>
+                        </div>
 
                         {/* Show selected mapping description */}
                         <p className="text-xs text-muted-foreground">
