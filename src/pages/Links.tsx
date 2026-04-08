@@ -51,6 +51,35 @@ const Links = () => {
     if (organizationId) fetchLinks();
   }, [organizationId]);
 
+  // Realtime subscription for click count updates
+  useEffect(() => {
+    if (!organizationId) return;
+    const channel = supabase
+      .channel('redirect-links-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'redirect_links',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          setLinks(prev => prev.map(l =>
+            l.id === updated.id
+              ? { ...l, click_count: updated.click_count, is_active: updated.is_active }
+              : l
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [organizationId]);
+
   const fetchLinks = async () => {
     let query = supabase
       .from("redirect_links")
