@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,11 @@ import {
   Pause,
   Loader2,
   AlertCircle,
+  Building2,
+  Save,
 } from "lucide-react";
+import { SectorFilter } from "@/components/whatsapp/SectorFilter";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -47,6 +51,7 @@ interface Campaign {
   max_interval?: number;
   team?: string | null;
   chatbot_enabled?: boolean;
+  sector_id?: string | null;
 }
 
 interface FailedMessage {
@@ -59,6 +64,7 @@ interface CampaignDetailsDialogProps {
   campaign: Campaign | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCampaignUpdated?: () => void;
 }
 
 const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
@@ -101,11 +107,48 @@ interface ButtonClickData {
   byButton: Record<string, number>;
 }
 
-export function CampaignDetailsDialog({ campaign, open, onOpenChange }: CampaignDetailsDialogProps) {
+export function CampaignDetailsDialog({ campaign, open, onOpenChange, onCampaignUpdated }: CampaignDetailsDialogProps) {
   const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
   const [loadingErrors, setLoadingErrors] = useState(false);
   const [buttonClicks, setButtonClicks] = useState<ButtonClickData>({ total: 0, byButton: {} });
   const [loadingClicks, setLoadingClicks] = useState(false);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
+  const [savingSector, setSavingSector] = useState(false);
+  const [sectorChanged, setSectorChanged] = useState(false);
+
+  useEffect(() => {
+    if (campaign) {
+      setSelectedSectorId(campaign.sector_id || null);
+      setSectorChanged(false);
+    }
+  }, [campaign?.id, open]);
+
+  const handleSectorChange = useCallback((sectorId: string | null) => {
+    setSelectedSectorId(sectorId);
+    setSectorChanged(sectorId !== (campaign?.sector_id || null));
+  }, [campaign?.sector_id]);
+
+  const handleSaveSector = useCallback(async () => {
+    if (!campaign) return;
+    setSavingSector(true);
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ sector_id: selectedSectorId })
+        .eq('id', campaign.id);
+
+      if (error) throw error;
+
+      toast.success('Departamento atualizado com sucesso!');
+      setSectorChanged(false);
+      onCampaignUpdated?.();
+    } catch (err) {
+      console.error('Error updating sector:', err);
+      toast.error('Erro ao atualizar departamento');
+    } finally {
+      setSavingSector(false);
+    }
+  }, [campaign, selectedSectorId, onCampaignUpdated]);
 
   useEffect(() => {
     if (open && campaign) {
@@ -460,6 +503,34 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange }: Campaign
             )}
           </div>
         )}
+
+        <Separator className="my-4" />
+
+        {/* Department Assignment */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-primary" />
+            Departamento da Campanha
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            As conversas geradas por esta campanha serão direcionadas para o departamento selecionado.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <SectorFilter value={selectedSectorId} onChange={handleSectorChange} />
+            </div>
+            {sectorChanged && (
+              <button
+                onClick={handleSaveSector}
+                disabled={savingSector}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {savingSector ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Salvar
+              </button>
+            )}
+          </div>
+        </div>
 
         <Separator className="my-4" />
 
