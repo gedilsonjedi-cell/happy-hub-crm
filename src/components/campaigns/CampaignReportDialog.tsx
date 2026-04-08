@@ -741,6 +741,33 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
               </div>
             </div>
 
+            {/* Department Assignment */}
+            <div className="bg-muted/20 rounded-lg p-4 border border-border space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary" />
+                Departamento da Campanha
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                As conversas geradas serão direcionadas para o departamento selecionado.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 max-w-xs">
+                  <SectorFilter value={selectedSectorId} onChange={handleSectorChange} />
+                </div>
+                {sectorChanged && (
+                  <Button
+                    size="sm"
+                    onClick={handleSaveSector}
+                    disabled={savingSector}
+                    className="gap-1.5"
+                  >
+                    {savingSector ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Salvar
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <Separator />
 
             {/* Recipients Table Section */}
