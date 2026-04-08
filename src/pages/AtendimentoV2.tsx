@@ -1476,12 +1476,26 @@ const AtendimentoV2 = () => {
     // Query DB directly for the most recent inbound message to accurately determine lastInboundTime
     // This avoids relying on the limited first page of messages which may all be outbound
     const phoneWithPlus = `+${normalizedPhone}`;
+    // Generate Brazilian phone variants (8-digit vs 9-digit mobile numbers)
+    const phoneVariants = [normalizedPhone, phoneWithPlus];
+    if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 12) {
+      const areaCode = normalizedPhone.slice(2, 4);
+      const localNumber = normalizedPhone.slice(4);
+      if (localNumber.length === 9 && localNumber.startsWith("9")) {
+        const without9 = `55${areaCode}${localNumber.slice(1)}`;
+        phoneVariants.push(without9, `+${without9}`);
+      } else if (localNumber.length === 8) {
+        const with9 = `55${areaCode}9${localNumber}`;
+        phoneVariants.push(with9, `+${with9}`);
+      }
+    }
+    const orFilter = phoneVariants.map(v => `sender_phone.eq.${v}`).join(",");
     const { data: latestInboundData } = await supabase
       .from("whatsapp_messages")
       .select("created_at")
       .eq("channel_id", conversationChannelId)
       .eq("direction", "inbound")
-      .or(`sender_phone.eq.${normalizedPhone},sender_phone.eq.${phoneWithPlus}`)
+      .or(orFilter)
       .order("created_at", { ascending: false })
       .limit(1);
 
