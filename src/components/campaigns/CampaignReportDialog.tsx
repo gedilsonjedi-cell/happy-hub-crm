@@ -52,7 +52,11 @@ import {
   Target,
   RotateCcw,
   Smartphone,
+  Building2,
+  Save,
 } from "lucide-react";
+import { SectorFilter } from "@/components/whatsapp/SectorFilter";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { ConversationPreviewDialog } from "./ConversationPreviewDialog";
