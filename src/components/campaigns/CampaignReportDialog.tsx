@@ -52,7 +52,11 @@ import {
   Target,
   RotateCcw,
   Smartphone,
+  Building2,
+  Save,
 } from "lucide-react";
+import { SectorFilter } from "@/components/whatsapp/SectorFilter";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { ConversationPreviewDialog } from "./ConversationPreviewDialog";
@@ -75,6 +79,7 @@ interface Campaign {
   team?: string | null;
   chatbot_enabled?: boolean;
   organization_id?: string | null;
+  sector_id?: string | null;
 }
 
 interface Recipient {
@@ -98,6 +103,7 @@ interface CampaignReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRecycleSuccess?: () => void;
+  onCampaignUpdated?: () => void;
 }
 
 // Recipient status display config
@@ -143,7 +149,7 @@ const classificationLabels: Record<string, string> = {
   api_error: "Erro de API",
 };
 
-export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSuccess }: CampaignReportDialogProps) {
+export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSuccess, onCampaignUpdated }: CampaignReportDialogProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -153,6 +159,43 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
   const [campaignChannels, setCampaignChannels] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
+  const [savingSector, setSavingSector] = useState(false);
+  const [sectorChanged, setSectorChanged] = useState(false);
+
+  useEffect(() => {
+    if (campaign) {
+      setSelectedSectorId(campaign.sector_id || null);
+      setSectorChanged(false);
+    }
+  }, [campaign?.id, open]);
+
+  const handleSectorChange = useCallback((sectorId: string | null) => {
+    setSelectedSectorId(sectorId);
+    setSectorChanged(sectorId !== (campaign?.sector_id || null));
+  }, [campaign?.sector_id]);
+
+  const handleSaveSector = useCallback(async () => {
+    if (!campaign) return;
+    setSavingSector(true);
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ sector_id: selectedSectorId })
+        .eq('id', campaign.id);
+
+      if (error) throw error;
+
+      toast.success('Departamento atualizado com sucesso!');
+      setSectorChanged(false);
+      onCampaignUpdated?.();
+    } catch (err) {
+      console.error('Error updating sector:', err);
+      toast.error('Erro ao atualizar departamento');
+    } finally {
+      setSavingSector(false);
+    }
+  }, [campaign, selectedSectorId, onCampaignUpdated]);
 
   useEffect(() => {
     if (open && campaign) {
@@ -694,6 +737,33 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                       ))}
                     </div>
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* Department Assignment */}
+            <div className="bg-muted/20 rounded-lg p-4 border border-border space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary" />
+                Departamento da Campanha
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                As conversas geradas serão direcionadas para o departamento selecionado.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 max-w-xs">
+                  <SectorFilter value={selectedSectorId} onChange={handleSectorChange} />
+                </div>
+                {sectorChanged && (
+                  <Button
+                    size="sm"
+                    onClick={handleSaveSector}
+                    disabled={savingSector}
+                    className="gap-1.5"
+                  >
+                    {savingSector ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Salvar
+                  </Button>
                 )}
               </div>
             </div>

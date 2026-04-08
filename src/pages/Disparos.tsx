@@ -1890,6 +1890,22 @@ const Disparos = () => {
         open={showReportDialog}
         onOpenChange={setShowReportDialog}
         onRecycleSuccess={fetchData}
+        onCampaignUpdated={() => {
+          if (selectedCampaign) {
+            supabase
+              .from('campaigns')
+              .select('*')
+              .eq('id', selectedCampaign.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  const updated = { ...data, status: data.status as Campaign["status"] };
+                  setAllCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+                  setSelectedCampaign(updated);
+                }
+              });
+          }
+        }}
       />
 
       {/* Legacy Campaign Details Dialog */}
