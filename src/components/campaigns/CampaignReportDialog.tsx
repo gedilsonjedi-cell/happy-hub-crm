@@ -99,6 +99,7 @@ interface CampaignReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRecycleSuccess?: () => void;
+  onCampaignUpdated?: () => void;
 }
 
 // Recipient status display config
