@@ -71,6 +71,7 @@ interface Channel {
   access_token: string | null;
   webhook_verify_token: string | null;
   waba_id: string | null;
+  api_token: string | null;
   connected: boolean;
   created_at: string;
   user_id: string;
