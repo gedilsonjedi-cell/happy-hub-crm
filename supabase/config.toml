@@ -107,3 +107,12 @@ verify_jwt = false
 
 [functions.migrate-to-external]
 verify_jwt = false
+
+[functions.send-whatsapp]
+verify_jwt = false
+
+[functions.manage-contacts]
+verify_jwt = false
+
+[functions.manage-labels]
+verify_jwt = false
