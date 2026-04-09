@@ -2791,6 +2791,41 @@ const Conexoes = () => {
                 </div>
               </div>
 
+              {/* API Token for external integrations */}
+              {showChannelConfig.api_token && (
+                <div className="space-y-2">
+                  <Label className="text-foreground text-sm flex items-center gap-2">
+                    🔑 API Token (para integrações externas)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Use este token como Bearer no header Authorization para integrar com n8n, Make, etc.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-muted/50 px-3 py-2.5 rounded border border-border font-mono overflow-x-auto max-w-[320px] truncate">
+                      {showApiToken
+                        ? showChannelConfig.api_token
+                        : '••••••••••••••••••••••••••••••••••••••••'}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowApiToken(!showApiToken)}
+                      className="gap-1.5"
+                    >
+                      {showApiToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(showChannelConfig.api_token || '', "API Token")}
+                      className="gap-1.5"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                 <p className="text-sm text-emerald-400">
                   <strong>Após configurar:</strong> Clique em "Verify and Save" no Meta, depois ative o canal aqui.
