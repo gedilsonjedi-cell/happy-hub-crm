@@ -116,6 +116,7 @@ const Conexoes = () => {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
+  const [showApiToken, setShowApiToken] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
   
   // Chatbot linking state
