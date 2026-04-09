@@ -1740,6 +1740,7 @@ const Conexoes = () => {
                         className="gap-2 cursor-pointer"
                         onClick={() => {
                           setShowAccessToken(false);
+                          setShowApiToken(false);
                           setShowChannelConfig(channel);
                         }}
                       >
