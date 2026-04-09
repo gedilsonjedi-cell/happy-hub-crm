@@ -13,77 +13,98 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      db: { schema: 'public' },
-      global: { headers: { 'x-supabase-db-timeout': '120s' } }
-    });
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { org_ids } = await req.json();
+    const { org_id, step } = await req.json();
 
-    if (!org_ids || !Array.isArray(org_ids)) {
-      return new Response(JSON.stringify({ error: "org_ids array required" }), {
+    if (!org_id) {
+      return new Response(JSON.stringify({ error: "org_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Process only first org to avoid overall timeout
-    const orgId = org_ids[0];
-    const remaining = org_ids.slice(1);
+    const currentStep = step || "messages";
 
-    try {
-      console.log(`Processing org: ${orgId}`);
-
-      // Get channel IDs
+    if (currentStep === "messages") {
+      // Delete messages in batches of 500
       const { data: channels } = await supabase
         .from("channels")
         .select("id")
-        .eq("organization_id", orgId);
+        .eq("organization_id", org_id);
 
       const channelIds = channels?.map((c: { id: string }) => c.id) || [];
+      let totalDeleted = 0;
 
-      // Delete whatsapp_messages directly by channel_id
-      if (channelIds.length > 0) {
-        for (const chId of channelIds) {
-          const { error: msgErr, count } = await supabase
-            .from("whatsapp_messages")
-            .delete({ count: "exact" })
-            .eq("channel_id", chId);
-          
-          if (msgErr) {
-            console.error(`Error deleting messages for channel ${chId}:`, msgErr.message);
-          } else {
-            console.log(`Deleted ${count} messages for channel ${chId}`);
-          }
+      for (const chId of channelIds) {
+        // Select batch of IDs
+        const { data: batch } = await supabase
+          .from("whatsapp_messages")
+          .select("id")
+          .eq("channel_id", chId)
+          .limit(500);
+
+        if (batch && batch.length > 0) {
+          const ids = batch.map((m: { id: string }) => m.id);
+          await supabase.from("whatsapp_messages").delete().in("id", ids);
+          totalDeleted += ids.length;
         }
       }
 
-      // Run cascade
-      const { error } = await supabase.rpc("delete_organization_cascade", {
-        _organization_id: orgId,
-      });
+      // Check if there are more messages
+      const { count } = await supabase
+        .from("whatsapp_messages")
+        .select("id", { count: "exact", head: true })
+        .in("channel_id", channelIds.length > 0 ? channelIds : ["none"]);
 
-      if (error) throw new Error(error.message || JSON.stringify(error));
+      if (count && count > 0) {
+        return new Response(JSON.stringify({
+          status: "in_progress",
+          step: "messages",
+          deleted_batch: totalDeleted,
+          remaining: count,
+          message: `Deletou ${totalDeleted} mensagens, faltam ${count}. Chame novamente.`
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      return new Response(JSON.stringify({ 
-        success: true, 
-        deleted: orgId,
-        remaining 
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      console.error(`Failed: ${msg}`);
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: msg, 
-        org: orgId, 
-        remaining 
+      // Messages done, proceed to cascade
+      return new Response(JSON.stringify({
+        status: "messages_done",
+        step: "cascade",
+        message: "Mensagens deletadas. Chame novamente com step=cascade."
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    if (currentStep === "cascade") {
+      const { error } = await supabase.rpc("delete_organization_cascade", {
+        _organization_id: org_id,
+      });
+
+      if (error) {
+        return new Response(JSON.stringify({
+          status: "error",
+          error: error.message,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        status: "done",
+        message: `Organização ${org_id} excluída com sucesso.`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: "Invalid step" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return new Response(JSON.stringify({ error: msg }), {
