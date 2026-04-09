@@ -649,6 +649,7 @@ export type Database = {
       channels: {
         Row: {
           access_token: string | null
+          api_token: string | null
           app_name: string | null
           connected: boolean
           created_at: string
@@ -664,6 +665,7 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          api_token?: string | null
           app_name?: string | null
           connected?: boolean
           created_at?: string
@@ -679,6 +681,7 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          api_token?: string | null
           app_name?: string | null
           connected?: boolean
           created_at?: string
@@ -3354,6 +3357,20 @@ export type Database = {
         Args: { _organization_id: string; _phone: string }
         Returns: string
       }
+      get_channel_by_api_token: {
+        Args: { _token: string }
+        Returns: {
+          access_token: string
+          app_name: string
+          id: string
+          name: string
+          organization_id: string
+          phone: string
+          provider: string
+          user_id: string
+          waba_id: string
+        }[]
+      }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
@@ -3391,6 +3408,10 @@ export type Database = {
             }
             Returns: boolean
           }
+      regenerate_channel_api_token: {
+        Args: { _channel_id: string }
+        Returns: string
+      }
       register_user_session: {
         Args: {
           _device_info?: string
