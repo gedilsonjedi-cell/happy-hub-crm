@@ -7,11 +7,37 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const PROXY_FUNCTION = "external-db-proxy";
+const PROXY_TIMEOUT_MS = 3500;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 async function callProxy<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(PROXY_FUNCTION, {
-    body,
-  });
+  const { data, error } = await withTimeout(
+    supabase.functions.invoke(PROXY_FUNCTION, {
+      body,
+    }),
+    PROXY_TIMEOUT_MS,
+    "Timeout loading external history"
+  );
 
   if (error) {
     throw new Error(`External DB proxy error: ${error.message}`);

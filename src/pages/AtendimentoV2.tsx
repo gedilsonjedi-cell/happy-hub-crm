@@ -171,8 +171,7 @@ const getPhoneComparisonVariants = (phone: string): string[] => {
 const phonesMatch = (phoneA?: string | null, phoneB?: string | null): boolean => {
   if (!phoneA || !phoneB) return false;
 
-  const variantsA = new Set(getPhoneComparisonVariants(phoneA));
-  return getPhoneComparisonVariants(phoneB).some((variant) => variantsA.has(variant));
+  return normalizePhoneNumber(phoneA) === normalizePhoneNumber(phoneB);
 };
 
 interface Channel {
