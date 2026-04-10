@@ -68,6 +68,10 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
+import {
+  getCanonicalPhoneThreadKey,
+  phonesShareSameThread,
+} from "@/lib/phoneThreadKey";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
@@ -254,8 +258,6 @@ const AtendimentoV2 = () => {
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
   const [phoneToOpen, setPhoneToOpen] = useState<string | null>(searchParams.get("phone"));
   const [channelIdToOpen] = useState<string | null>(searchParams.get("channelId"));
-  // Legacy messages state — still used for SalesAssistant context (read-only, derived from infinite hook)
-  const [messages, setMessages] = useState<Message[]>([]);
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   
@@ -322,7 +324,6 @@ const AtendimentoV2 = () => {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isConvertingAudio, setIsConvertingAudio] = useState(false);
   const [pastedImage, setPastedImage] = useState<{ file: File; preview: string } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -352,19 +353,17 @@ const AtendimentoV2 = () => {
     selectedConversation?.channelId ?? null,
     selectedConversation?.phone ?? null
   );
-  const selectedConversationCacheKey = `${selectedConversation?.channelId ?? "no-channel"}:${selectedConversation?.phone ?? "no-phone"}`;
+  const messages = useMemo(
+    () => infiniteMessages.messages as Message[],
+    [infiniteMessages.messages]
+  );
+  const selectedConversationCacheKey = `${selectedConversation?.channelId ?? "no-channel"}:${selectedConversation?.phone ? getCanonicalPhoneThreadKey(selectedConversation.phone) : "no-phone"}`;
 
   useEffect(() => {
-    setMessages([]);
-
     return () => {
       infiniteMessages.invalidate();
     };
   }, [selectedConversationCacheKey]);
-
-  useEffect(() => {
-    setMessages(infiniteMessages.messages as Message[]);
-  }, [infiniteMessages.messages]);
 
   // ─── useMutation: optimistic send with TanStack Query ─────────────────────
   const sendMessageMutation = useSendMessage((restoredText) => setNewMessage(restoredText));
@@ -1729,7 +1728,9 @@ const AtendimentoV2 = () => {
     const isConversationMatch = (conv: Conversation) =>
       conv.channelId === msg.channelId && phonesMatch(conv.phone, normalizedContactPhone);
     const isActiveConversation =
-      !!currentSelectedConv && isConversationMatch(currentSelectedConv);
+      !!currentSelectedConv &&
+      currentSelectedConv.channelId === msg.channelId &&
+      phonesShareSameThread(currentSelectedConv.phone, normalizedContactPhone);
 
     // Build a full Message-like object for compatibility
     const newMsg = {
@@ -1787,8 +1788,8 @@ const AtendimentoV2 = () => {
       prependMessageRef.current(newMsg);
 
       // If inbound and user is viewing this conversation, mark as read immediately in DB
-      if (msg.direction === "inbound") {
-        markConversationAsRead({ channelId: msg.channelId, phone: normalizedContactPhone });
+      if (msg.direction === "inbound" && currentSelectedConv) {
+        markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
       }
     }
 
@@ -2104,12 +2105,6 @@ const AtendimentoV2 = () => {
     onNewMessage: handleNewMessageRealtime,
     onAssignmentChange: handleAssignmentChangeRealtime,
   });
-
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
     setConversationToArchive(conversation);
@@ -3869,6 +3864,7 @@ const AtendimentoV2 = () => {
               {/* Messages — Infinite scroll with memoized bubbles */}
               <InfiniteMessageList
                 key={selectedConversationCacheKey}
+                conversationKey={selectedConversationCacheKey}
                 messages={messages}
                 isLoading={infiniteMessages.isLoading}
                 isFetchingNextPage={infiniteMessages.isFetchingNextPage}

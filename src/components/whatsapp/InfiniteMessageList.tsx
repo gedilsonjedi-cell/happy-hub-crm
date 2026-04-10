@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import type { MessageRow } from "@/hooks/useInfiniteMessages";
 
 interface InfiniteMessageListProps {
+  conversationKey: string;
   messages: MessageRow[];
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -23,6 +24,7 @@ interface InfiniteMessageListProps {
  * No virtualization to preserve text selection, copying, and click interactions.
  */
 const InfiniteMessageList = memo(function InfiniteMessageList({
+  conversationKey,
   messages,
   isLoading,
   isFetchingNextPage,
@@ -36,9 +38,25 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   const isLoadingMoreRef = useRef(false);
   const prevScrollHeightRef = useRef<number>(0);
 
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        container.scrollTop = container.scrollHeight;
+      });
+    });
+  }, []);
+
   // Build date separator set
   const getDateKey = (dateStr: string) => format(new Date(dateStr), "yyyy-MM-dd");
   const datesShown = new Set<string>();
+
+  useEffect(() => {
+    prevMessageCountRef.current = 0;
+    isLoadingMoreRef.current = false;
+    prevScrollHeightRef.current = 0;
+  }, [conversationKey]);
 
   // Scroll to bottom on first load and new messages
   useEffect(() => {
@@ -49,23 +67,25 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
     const newCount = messages.length;
     const prevCount = prevMessageCountRef.current;
 
+    if (newCount === 0) {
+      prevMessageCountRef.current = 0;
+      return;
+    }
+
     if (prevCount === 0 && newCount > 0) {
       // First load — jump to bottom
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-      });
+      scrollToBottom();
     } else if (newCount > prevCount && !isLoadingMoreRef.current) {
       // New message appended — if near bottom, scroll down
       const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distFromBottom < 200) {
-        requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight;
-        });
+      const latestMessage = messages[newCount - 1];
+      if (distFromBottom < 200 || latestMessage?.direction === "outbound") {
+        scrollToBottom();
       }
     }
 
     prevMessageCountRef.current = newCount;
-  }, [messages.length, isLoading]);
+  }, [conversationKey, messages, isLoading, scrollToBottom]);
 
   // Maintain scroll position when older messages are prepended
   useEffect(() => {
