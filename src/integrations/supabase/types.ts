@@ -3304,6 +3304,14 @@ export type Database = {
           status: string
         }[]
       }
+      cleanup_old_assignments: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_campaign_recipients: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
       credit_organization_balance: {
         Args: {
           _amount: number
