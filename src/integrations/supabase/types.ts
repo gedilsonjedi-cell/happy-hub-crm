@@ -3312,6 +3312,10 @@ export type Database = {
         Args: { batch_size: number; cutoff_date: string }
         Returns: number
       }
+      cleanup_unresponsive_campaign_leads: {
+        Args: { batch_size?: number; days_threshold?: number }
+        Returns: Json
+      }
       credit_organization_balance: {
         Args: {
           _amount: number
