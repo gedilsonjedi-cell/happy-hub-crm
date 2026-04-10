@@ -5,6 +5,7 @@ import {
   fetchInternalMessages,
   type ExternalMessageRow,
 } from "@/lib/externalDb";
+import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
 
 const PAGE_SIZE = 20;
 
@@ -98,8 +99,11 @@ export function useInfiniteMessages(
   conversationPhone: string | null
 ) {
   const queryClient = useQueryClient();
+  const conversationThreadKey = conversationPhone
+    ? getCanonicalPhoneThreadKey(conversationPhone)
+    : null;
 
-  const queryKey = ["messages", channelId, conversationPhone];
+  const queryKey = ["messages", channelId, conversationThreadKey];
 
   const query = useInfiniteQuery<MessagePage, Error>({
     queryKey,

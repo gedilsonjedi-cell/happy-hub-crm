@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { MessageRow, MessagePage } from "@/hooks/useInfiniteMessages";
+import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
 
 export interface SendMessagePayload {
   channelId: string;
@@ -75,7 +76,11 @@ export function useSendMessage(
     },
 
     onMutate: async (payload) => {
-      const queryKey = ["messages", payload.channelId, payload.destination];
+      const queryKey = [
+        "messages",
+        payload.channelId,
+        getCanonicalPhoneThreadKey(payload.destination),
+      ];
 
       // Cancel outgoing refetches to avoid overwriting our optimistic update
       await queryClient.cancelQueries({ queryKey });
@@ -223,7 +228,11 @@ export function useSendMessage(
       }
       // For successful sends, do a late reconciliation (8s) so the DB webhook
       // has time to write the record. This syncs real IDs/timestamps.
-      const queryKey = ["messages", payload.channelId, payload.destination];
+      const queryKey = [
+        "messages",
+        payload.channelId,
+        getCanonicalPhoneThreadKey(payload.destination),
+      ];
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey });
       }, 8000);
