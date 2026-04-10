@@ -1195,6 +1195,70 @@ export type Database = {
           },
         ]
       }
+      conversation_stats: {
+        Row: {
+          assignment_id: string
+          channel_id: string | null
+          conversation_phone: string
+          id: string
+          last_inbound_at: string | null
+          last_message_at: string | null
+          last_message_content: string | null
+          organization_id: string | null
+          sender_name: string | null
+          unread_count: number
+          updated_at: string
+        }
+        Insert: {
+          assignment_id: string
+          channel_id?: string | null
+          conversation_phone: string
+          id?: string
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_content?: string | null
+          organization_id?: string | null
+          sender_name?: string | null
+          unread_count?: number
+          updated_at?: string
+        }
+        Update: {
+          assignment_id?: string
+          channel_id?: string | null
+          conversation_phone?: string
+          id?: string
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_message_content?: string | null
+          organization_id?: string | null
+          sender_name?: string | null
+          unread_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_stats_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: true
+            referencedRelation: "conversation_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_costs: {
         Row: {
           campaign_id: string | null
@@ -3278,6 +3342,10 @@ export type Database = {
       archive_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
+      }
+      backfill_conversation_stats: {
+        Args: { batch_size?: number }
+        Returns: number
       }
       calculate_subscription_total: {
         Args: { _organization_id: string }
