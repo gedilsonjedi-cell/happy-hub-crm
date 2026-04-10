@@ -24,6 +24,44 @@ const RETRYABLE_ERROR_CODES = [
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+interface IntegrationWebhookPayload {
+  organization_id: string;
+  event: 'message_created' | 'message_updated';
+  data: Record<string, unknown>;
+}
+
+function runInBackground(promise: Promise<unknown>) {
+  if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
+    (globalThis as any).EdgeRuntime.waitUntil(promise);
+  } else {
+    promise.catch(() => {});
+  }
+}
+
+async function dispatchIntegrationWebhook(payload: IntegrationWebhookPayload) {
+  if (!payload.organization_id || !serviceRoleKey) return;
+
+  try {
+    const response = await fetch(webhookDispatcherUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error('[Meta-Send] Webhook dispatch failed:', response.status, await response.text());
+    }
+  } catch (error) {
+    console.error('[Meta-Send] Webhook dispatch error:', error);
+  }
+}
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -970,17 +1008,33 @@ Deno.serve(async (req) => {
         if (externalSupabase) {
           externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
         }
+
+        if (channel.organization_id) {
+          await dispatchIntegrationWebhook({
+            organization_id: channel.organization_id,
+            event: 'message_created',
+            data: {
+              message_id: messageId,
+              phone: cleanDestination,
+              sender_phone: channel.phone,
+              content: storedContent,
+              direction: 'outbound',
+              status: 'sent',
+              channel_id: channelId,
+              message_type: storedMessageType,
+              media_url: mediaUrl || null,
+              template_name: templateName || null,
+              campaign_id: campaignId || null,
+              provider: 'meta',
+            },
+          });
+        }
       } catch (e) {
         console.error('[Meta-Send] Background DB write failed:', e);
       }
     })();
 
-    // Use EdgeRuntime.waitUntil if available, otherwise fire-and-forget
-    if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
-      (globalThis as any).EdgeRuntime.waitUntil(dbWritePromise);
-    } else {
-      dbWritePromise.catch(() => {});
-    }
+    runInBackground(dbWritePromise);
 
     return new Response(
       JSON.stringify({ 

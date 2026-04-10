@@ -40,6 +40,45 @@ async function dualUpdateMessages(filter: { column: string; values: string[] }, 
   return op;
 }
 
+const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+interface IntegrationWebhookPayload {
+  organization_id: string;
+  event: 'message_created' | 'message_updated';
+  data: Record<string, unknown>;
+}
+
+function runInBackground(promise: Promise<unknown>) {
+  if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
+    (globalThis as any).EdgeRuntime.waitUntil(promise);
+  } else {
+    promise.catch(() => {});
+  }
+}
+
+async function dispatchIntegrationWebhook(payload: IntegrationWebhookPayload) {
+  if (!payload.organization_id || !serviceRoleKey) return;
+
+  try {
+    const response = await fetch(webhookDispatcherUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error('[Meta-Webhook] Webhook dispatch failed:', response.status, await response.text());
+    }
+  } catch (error) {
+    console.error('[Meta-Webhook] Webhook dispatch error:', error);
+  }
+}
+
 // =============================================
 // IN-MEMORY CONFIG CACHE (with jitter to avoid stampedes)
 // =============================================
@@ -656,7 +695,30 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     },
   }, true);
 
-  if (insertError) console.error('Error storing message:', insertError);
+  if (insertError) {
+    console.error('Error storing message:', insertError);
+  } else if (organizationId) {
+    runInBackground(
+      dispatchIntegrationWebhook({
+        organization_id: organizationId,
+        event: 'message_created',
+        data: {
+          message_id: messageId,
+          phone: normalizedPhone,
+          sender_name: contactName,
+          content,
+          direction: 'inbound',
+          status: 'received',
+          channel_id: channel.id,
+          message_type: messageType,
+          media_url: finalMediaUrl,
+          lead_id: leadData?.leadId || null,
+          provider: 'meta',
+          timestamp,
+        },
+      })
+    );
+  }
 
   // ── PHASE 3.5: Track button clicks for campaign recipients ─────────
   if (messageType === 'button' || messageType === 'interactive') {
@@ -894,11 +956,34 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
   const { data: messages } = await supabase
     .from('whatsapp_messages')
-    .select('message_id, status, metadata')
+    .select('message_id, status, metadata, organization_id, channel_id, error_message')
     .in('message_id', allRelevantIds)
     .eq('direction', 'outbound');
 
   if (!messages || messages.length === 0) return;
+
+  const dispatchPromises = messages
+    .filter((msg) => !!msg.organization_id)
+    .map((msg) => {
+      const metadata = (msg.metadata || {}) as Record<string, unknown>;
+      return dispatchIntegrationWebhook({
+        organization_id: msg.organization_id as string,
+        event: 'message_updated',
+        data: {
+          message_id: msg.message_id,
+          status: msg.status,
+          channel_id: msg.channel_id,
+          destination: metadata.destination || null,
+          campaign_id: metadata.campaignId || null,
+          error_message: msg.error_message || null,
+          provider: 'meta',
+        },
+      });
+    });
+
+  if (dispatchPromises.length > 0) {
+    runInBackground(Promise.allSettled(dispatchPromises));
+  }
 
   const updatePromises: Promise<unknown>[] = [];
   for (const msg of messages) {
