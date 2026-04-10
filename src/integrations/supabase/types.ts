@@ -3371,6 +3371,27 @@ export type Database = {
           waba_id: string
         }[]
       }
+      get_conversations_summary: {
+        Args: { p_channel_ids: string[]; p_organization_id: string }
+        Returns: {
+          assigned_to: string
+          assigned_to_name: string
+          assignment_id: string
+          channel_id: string
+          conversation_phone: string
+          last_inbound_at: string
+          last_message: string
+          last_message_at: string
+          lead_id: string
+          lead_name: string
+          lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+          updated_at: string
+        }[]
+      }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {

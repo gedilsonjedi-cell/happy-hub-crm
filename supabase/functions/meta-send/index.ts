@@ -451,58 +451,37 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Check if user is a SuperAdmin (exempt from balance check)
-    // Skip for service role since it's used for campaigns
-    let isSuperAdmin = false;
-    if (userId && userId !== 'service_role') {
-      const { data: superAdminCheck } = await serviceRoleClient.rpc('is_super_admin', {
-        _user_id: userId
-      });
-      isSuperAdmin = !!superAdminCheck;
-    } else if (userId === 'service_role') {
-      // Service role is trusted, skip balance check for campaigns
-      isSuperAdmin = true;
-    }
+    // Parallelize independent checks: super_admin + pricing + blacklist
+    const cleanDest = destination.replace(/\D/g, '');
+    
+    const [superAdminResult, pricingResult, blacklistResult] = await Promise.all([
+      // Super admin check
+      (userId && userId !== 'service_role')
+        ? serviceRoleClient.rpc('is_super_admin', { _user_id: userId })
+        : Promise.resolve({ data: userId === 'service_role' }),
+      // Pricing
+      serviceRoleClient.from('dispatch_pricing').select('price_per_message').eq('dispatch_type', 'service').single(),
+      // Blacklist
+      channel.organization_id
+        ? serviceRoleClient.rpc('is_phone_blacklisted', { _organization_id: channel.organization_id, _phone: cleanDest })
+        : Promise.resolve({ data: false, error: null }),
+    ]);
 
+    const isSuperAdmin = !!superAdminResult.data;
     console.log('User/Role:', userId, 'Is SuperAdmin:', isSuperAdmin);
 
-    // Get message pricing
-    const { data: pricing } = await serviceRoleClient
-      .from('dispatch_pricing')
-      .select('price_per_message')
-      .eq('dispatch_type', 'service')
-      .single();
+    const pricePerMessage = pricingResult.data?.price_per_message ?? 0.008;
 
-    const pricePerMessage = pricing?.price_per_message ?? 0.008;
-
-    // Balance check disabled - messages are now free
-    // Note: Balance system still exists for subscriptions and store purchases
-
-    // Check if destination is blacklisted (keep this check)
-    if (channel.organization_id) {
-      const { data: isBlacklisted, error: blacklistError } = await serviceRoleClient.rpc(
-        'is_phone_blacklisted',
-        {
-          _organization_id: channel.organization_id,
-          _phone: destination.replace(/\D/g, '')
-        }
+    if (blacklistResult.data) {
+      console.log('Destination is blacklisted:', destination);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Este contato está na lista negra e não pode receber mensagens.',
+          code: 'BLACKLISTED'
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-
-      if (blacklistError) {
-        console.error('Error checking blacklist:', blacklistError);
-      }
-
-      if (isBlacklisted) {
-        console.log('Destination is blacklisted:', destination);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Este contato está na lista negra e não pode receber mensagens.',
-            code: 'BLACKLISTED'
-          }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
     }
 
     const phoneNumberId = channel.app_name; // Phone Number ID from Meta
@@ -957,7 +936,7 @@ Deno.serve(async (req) => {
       storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
     }
 
-    // Store outbound message in database (dual-write)
+    // Store outbound message in database (dual-write) — non-blocking
     const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
@@ -983,11 +962,25 @@ Deno.serve(async (req) => {
           campaignId: campaignId || null
         }
       };
-    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
-    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
-    
-    // NOTE: Conversation assignment is now created BEFORE the send attempt (line ~375)
-    // This ensures conversations persist even when Meta API fails
+
+    // Use waitUntil to persist DB writes in background — respond instantly
+    const dbWritePromise = (async () => {
+      try {
+        await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
+        if (externalSupabase) {
+          externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
+        }
+      } catch (e) {
+        console.error('[Meta-Send] Background DB write failed:', e);
+      }
+    })();
+
+    // Use EdgeRuntime.waitUntil if available, otherwise fire-and-forget
+    if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
+      (globalThis as any).EdgeRuntime.waitUntil(dbWritePromise);
+    } else {
+      dbWritePromise.catch(() => {});
+    }
 
     return new Response(
       JSON.stringify({ 
