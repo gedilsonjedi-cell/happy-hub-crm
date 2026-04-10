@@ -1393,6 +1393,216 @@ def criar_contato(nome, telefone):
                 </Accordion>
               </CardContent>
             </Card>
+
+            {/* ── Documentação de Webhooks ── */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">🔔 Webhooks — Payload dos Eventos</CardTitle>
+                <CardDescription>
+                  Os webhooks são configurados por <strong>organização</strong> e recebem eventos de <strong>todos os canais</strong>. 
+                  Cada payload inclui a identificação do canal (nome e número) para que você saiba de qual canal veio o evento.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="webhook-structure">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">POST</Badge>
+                        <span className="text-sm">Estrutura geral do payload</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Todos os eventos são enviados via <strong>POST</strong> para a URL configurada no webhook. 
+                        O payload sempre segue a mesma estrutura base:
+                      </p>
+                      <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                        <pre className="text-xs font-mono">{`{
+  "event": "message_created",
+  "timestamp": "2026-04-10T15:30:00.000Z",
+  "organization_id": "uuid-da-organizacao",
+  "data": {
+    // Dados específicos do evento (veja exemplos abaixo)
+  }
+}`}</pre>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Headers enviados:</h4>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`Content-Type: application/json
+User-Agent: Optimus-CRM-Webhook/1.0
+X-Webhook-Event: message_created
+X-Webhook-ID: uuid-do-webhook`}</pre>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem value="webhook-message-created">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-green-600 text-white hover:bg-green-600">message_created</Badge>
+                        <span className="text-sm text-muted-foreground">— Nova mensagem (inbound ou outbound)</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Disparado quando uma nova mensagem é recebida (inbound) ou enviada (outbound).
+                      </p>
+                      <div>
+                        <h4 className="font-medium mb-2">Mensagem recebida (inbound):</h4>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`{
+  "event": "message_created",
+  "timestamp": "2026-04-10T15:30:00.000Z",
+  "organization_id": "uuid-da-organizacao",
+  "data": {
+    "message_id": "wamid.HBgN...",
+    "phone": "5511999999999",
+    "sender_name": "João Silva",
+    "content": "Olá, preciso de ajuda",
+    "direction": "inbound",
+    "status": "received",
+    "channel_id": "uuid-do-canal",
+    "channel_name": "Vendas Principal",
+    "channel_phone": "5511888888888",
+    "message_type": "text",
+    "media_url": null,
+    "lead_id": "uuid-do-lead",
+    "provider": "meta",
+    "timestamp": "1712767800"
+  }
+}`}</pre>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-medium mb-2">Mensagem enviada (outbound):</h4>
+                        <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                          <pre className="text-xs font-mono">{`{
+  "event": "message_created",
+  "timestamp": "2026-04-10T15:30:00.000Z",
+  "organization_id": "uuid-da-organizacao",
+  "data": {
+    "message_id": "wamid.HBgN...",
+    "phone": "5511999999999",
+    "sender_phone": "5511888888888",
+    "content": "Olá! Como posso ajudar?",
+    "direction": "outbound",
+    "status": "sent",
+    "channel_id": "uuid-do-canal",
+    "channel_name": "Vendas Principal",
+    "channel_phone": "5511888888888",
+    "message_type": "text",
+    "media_url": null,
+    "template_name": null,
+    "campaign_id": null,
+    "provider": "meta"
+  }
+}`}</pre>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem value="webhook-message-updated">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">message_updated</Badge>
+                        <span className="text-sm text-muted-foreground">— Status da mensagem atualizado</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Disparado quando o status de uma mensagem enviada muda (sent → delivered → read ou failed).
+                      </p>
+                      <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
+                        <pre className="text-xs font-mono">{`{
+  "event": "message_updated",
+  "timestamp": "2026-04-10T15:31:00.000Z",
+  "organization_id": "uuid-da-organizacao",
+  "data": {
+    "message_id": "wamid.HBgN...",
+    "status": "delivered",
+    "channel_id": "uuid-do-canal",
+    "channel_name": "Vendas Principal",
+    "channel_phone": "5511888888888",
+    "destination": "5511999999999",
+    "campaign_id": null,
+    "error_message": null,
+    "provider": "meta"
+  }
+}`}</pre>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Status possíveis:</h4>
+                        <div className="grid gap-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">sent</Badge>
+                            <span className="text-muted-foreground">Mensagem enviada para o servidor do WhatsApp</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">delivered</Badge>
+                            <span className="text-muted-foreground">Mensagem entregue no dispositivo do destinatário</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">read</Badge>
+                            <span className="text-muted-foreground">Mensagem lida pelo destinatário</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">failed</Badge>
+                            <span className="text-muted-foreground">Falha no envio (detalhes em error_message)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem value="webhook-channel-info">
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center gap-2">
+                        <Info className="h-4 w-4" />
+                        <span className="text-sm">Identificação do canal no payload</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Todos os eventos incluem os campos <code className="bg-muted px-1.5 py-0.5 rounded text-xs">channel_id</code>, 
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs">channel_name</code> e 
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs">channel_phone</code> no objeto <code className="bg-muted px-1.5 py-0.5 rounded text-xs">data</code>.
+                      </p>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Campos do canal:</h4>
+                        <div className="grid gap-2">
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded whitespace-nowrap">channel_id</code>
+                            <span className="text-muted-foreground">UUID único do canal</span>
+                          </div>
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded whitespace-nowrap">channel_name</code>
+                            <span className="text-muted-foreground">Nome do canal configurado (ex: "Vendas Principal")</span>
+                          </div>
+                          <div className="flex items-start gap-2 text-sm">
+                            <code className="bg-muted px-2 py-0.5 rounded whitespace-nowrap">channel_phone</code>
+                            <span className="text-muted-foreground">Número de telefone do canal (ex: "5511888888888")</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-muted-foreground">
+                            Os webhooks são <strong>globais por organização</strong>. Você configura uma vez e recebe eventos 
+                            de <strong>todos os canais</strong> da organização. Use o <code className="bg-muted px-1 py-0.5 rounded text-xs">channel_name</code> e 
+                            <code className="bg-muted px-1 py-0.5 rounded text-xs">channel_phone</code> para filtrar por canal na sua automação.
+                          </p>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
