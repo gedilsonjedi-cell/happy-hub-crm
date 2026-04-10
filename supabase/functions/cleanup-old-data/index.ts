@@ -110,87 +110,52 @@ Deno.serve(async (req) => {
       console.log(`[Cleanup] balance_transactions antigas removidas: ${txCount}`);
     }
 
-    // ─── 5. Limpar conversation_assignments resolvidas/fechadas há >15 dias ───
-    let assignmentsDeleted = 0;
-    let hasMoreAssignments = true;
-    while (hasMoreAssignments) {
-      const { data: batch, error: fetchErr } = await supabase
-        .from("conversation_assignments")
-        .select("id")
-        .in("status", ["resolved", "closed", "archived"])
-        .lt("updated_at", cutoff15Days.toISOString())
-        .limit(1000);
-
-      if (fetchErr || !batch || batch.length === 0) {
-        if (fetchErr) console.error("[Cleanup] Erro assignments:", fetchErr);
-        hasMoreAssignments = false;
-        break;
+    // ─── 5. Limpar conversation_assignments resolvidas/fechadas/arquivadas há >15 dias ───
+    // Usa RPC para deletar em lotes via SQL direto (evita limite de URL do PostgREST)
+    {
+      let totalDel = 0;
+      let keepGoing = true;
+      while (keepGoing) {
+        const { data, error } = await supabase.rpc("cleanup_old_assignments", {
+          cutoff_date: cutoff15Days.toISOString(),
+          batch_size: 2000,
+        });
+        if (error) {
+          console.error("[Cleanup] Erro assignments RPC:", error);
+          keepGoing = false;
+        } else {
+          const deleted = data || 0;
+          totalDel += deleted;
+          console.log(`[Cleanup] Lote assignments: ${deleted} (total: ${totalDel})`);
+          if (deleted < 2000) keepGoing = false;
+        }
       }
-
-      const ids = batch.map((r: { id: string }) => r.id);
-      const { count: delCount, error: delErr } = await supabase
-        .from("conversation_assignments")
-        .delete({ count: "exact" })
-        .in("id", ids);
-
-      if (delErr) {
-        console.error("[Cleanup] Erro deletar assignments:", delErr);
-        hasMoreAssignments = false;
-      } else {
-        assignmentsDeleted += delCount || 0;
-        console.log(`[Cleanup] Lote assignments: ${delCount} (total: ${assignmentsDeleted})`);
-        if (batch.length < 1000) hasMoreAssignments = false;
-      }
+      results.conversation_assignments_resolved = totalDel;
+      console.log(`[Cleanup] Assignments removidas: ${totalDel}`);
     }
-    results.conversation_assignments_resolved = assignmentsDeleted;
-    console.log(`[Cleanup] Assignments resolvidas removidas: ${assignmentsDeleted}`);
 
     // ─── 6. Limpar campaign_recipients de campanhas concluídas há >15 dias ────
-    let recipientsDeleted = 0;
-    const { data: oldCampaigns, error: campErr } = await supabase
-      .from("campaigns")
-      .select("id")
-      .eq("status", "completed")
-      .lt("completed_at", cutoff15Days.toISOString());
-
-    if (campErr) {
-      console.error("[Cleanup] Erro buscar campanhas:", campErr);
-    } else if (oldCampaigns && oldCampaigns.length > 0) {
-      const campaignIds = oldCampaigns.map((c: { id: string }) => c.id);
-      console.log(`[Cleanup] Campanhas >15 dias: ${campaignIds.length}`);
-
-      let hasMoreRecipients = true;
-      while (hasMoreRecipients) {
-        const { data: batch, error: fetchErr } = await supabase
-          .from("campaign_recipients")
-          .select("id")
-          .in("campaign_id", campaignIds)
-          .limit(1000);
-
-        if (fetchErr || !batch || batch.length === 0) {
-          if (fetchErr) console.error("[Cleanup] Erro recipients:", fetchErr);
-          hasMoreRecipients = false;
-          break;
-        }
-
-        const ids = batch.map((r: { id: string }) => r.id);
-        const { count: delCount, error: delErr } = await supabase
-          .from("campaign_recipients")
-          .delete({ count: "exact" })
-          .in("id", ids);
-
-        if (delErr) {
-          console.error("[Cleanup] Erro deletar recipients:", delErr);
-          hasMoreRecipients = false;
+    {
+      let totalDel = 0;
+      let keepGoing = true;
+      while (keepGoing) {
+        const { data, error } = await supabase.rpc("cleanup_old_campaign_recipients", {
+          cutoff_date: cutoff15Days.toISOString(),
+          batch_size: 2000,
+        });
+        if (error) {
+          console.error("[Cleanup] Erro recipients RPC:", error);
+          keepGoing = false;
         } else {
-          recipientsDeleted += delCount || 0;
-          console.log(`[Cleanup] Lote recipients: ${delCount} (total: ${recipientsDeleted})`);
-          if (batch.length < 1000) hasMoreRecipients = false;
+          const deleted = data || 0;
+          totalDel += deleted;
+          console.log(`[Cleanup] Lote recipients: ${deleted} (total: ${totalDel})`);
+          if (deleted < 2000) keepGoing = false;
         }
       }
+      results.campaign_recipients_completed = totalDel;
+      console.log(`[Cleanup] Recipients removidos: ${totalDel}`);
     }
-    results.campaign_recipients_completed = recipientsDeleted;
-    console.log(`[Cleanup] Recipients concluídos removidos: ${recipientsDeleted}`);
 
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
     console.log(`[Cleanup] Concluído. Total de registros técnicos removidos: ${totalDeleted}`, results);
