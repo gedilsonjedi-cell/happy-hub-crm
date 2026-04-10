@@ -964,10 +964,22 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
 
   if (!messages || messages.length === 0) return;
 
+  // Fetch channel info for enriching webhook payloads
+  const uniqueChannelIds = [...new Set(messages.map(m => m.channel_id).filter(Boolean))];
+  const channelMap = new Map<string, { name: string; phone: string }>();
+  if (uniqueChannelIds.length > 0) {
+    const { data: channels } = await supabase
+      .from('channels')
+      .select('id, name, phone')
+      .in('id', uniqueChannelIds);
+    channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+  }
+
   const dispatchPromises = messages
     .filter((msg) => !!msg.organization_id)
     .map((msg) => {
       const metadata = (msg.metadata || {}) as Record<string, unknown>;
+      const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
       return dispatchIntegrationWebhook({
         organization_id: msg.organization_id as string,
         event: 'message_updated',
@@ -975,6 +987,8 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
           message_id: msg.message_id,
           status: msg.status,
           channel_id: msg.channel_id,
+          channel_name: chInfo?.name || null,
+          channel_phone: chInfo?.phone || null,
           destination: metadata.destination || null,
           campaign_id: metadata.campaignId || null,
           error_message: msg.error_message || null,
