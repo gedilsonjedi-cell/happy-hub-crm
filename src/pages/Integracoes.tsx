@@ -217,28 +217,32 @@ const Integracoes = () => {
     toast.info("Enviando teste...");
     
     try {
-      const response = await fetch(webhook.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...webhook.headers,
-        },
-        body: JSON.stringify({
+      const { data: result, error } = await supabase.functions.invoke("webhook-dispatcher", {
+        body: {
+          organization_id: orgId,
           event: "test",
-          timestamp: new Date().toISOString(),
           data: {
             message: "Este é um teste de webhook do Optimus CRM",
+            webhook_name: webhook.name,
           },
-        }),
+          test_webhook_id: webhook.id,
+        },
       });
 
-      if (response.ok) {
-        toast.success("Webhook testado com sucesso!");
+      if (error) {
+        toast.error("Erro ao testar webhook: " + error.message);
+        return;
+      }
+
+      const webhookResult = result?.results?.[0];
+      if (webhookResult?.success) {
+        toast.success(`Webhook testado com sucesso! Status: ${webhookResult.status}`);
       } else {
-        toast.error(`Erro no teste: ${response.status} ${response.statusText}`);
+        const errorDetail = webhookResult?.error || `Status: ${webhookResult?.status || 'desconhecido'}`;
+        toast.error(`Falha no teste: ${errorDetail}`);
       }
     } catch (error) {
-      toast.error("Erro ao testar webhook. Verifique a URL e CORS.");
+      toast.error("Erro ao testar webhook. Verifique a URL.");
     }
   };
 

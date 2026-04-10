@@ -10,6 +10,8 @@ interface WebhookPayload {
   organization_id: string;
   event: string;
   data: Record<string, unknown>;
+  // Optional: test a specific webhook by ID
+  test_webhook_id?: string;
 }
 
 interface Webhook {
@@ -32,7 +34,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload: WebhookPayload = await req.json();
-    const { organization_id, event, data } = payload;
+    const { organization_id, event, data, test_webhook_id } = payload;
 
     if (!organization_id || !event) {
       return new Response(
@@ -43,25 +45,47 @@ serve(async (req) => {
 
     console.log(`Processing webhook event: ${event} for org: ${organization_id}`);
 
-    // Fetch active webhooks for this organization that listen to this event
-    const { data: webhooks, error: fetchError } = await supabase
-      .from("webhooks")
-      .select("*")
-      .eq("organization_id", organization_id)
-      .eq("is_active", true);
+    let matchingWebhooks: Webhook[] = [];
 
-    if (fetchError) {
-      console.error("Error fetching webhooks:", fetchError);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch webhooks" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (test_webhook_id) {
+      // Test mode: fetch the specific webhook and dispatch regardless of event matching
+      const { data: webhook, error: fetchError } = await supabase
+        .from("webhooks")
+        .select("*")
+        .eq("id", test_webhook_id)
+        .eq("organization_id", organization_id)
+        .single();
+
+      if (fetchError || !webhook) {
+        console.error("Error fetching test webhook:", fetchError);
+        return new Response(
+          JSON.stringify({ error: "Webhook not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      matchingWebhooks = [webhook as Webhook];
+    } else {
+      // Normal mode: fetch all active webhooks for this org
+      const { data: webhooks, error: fetchError } = await supabase
+        .from("webhooks")
+        .select("*")
+        .eq("organization_id", organization_id)
+        .eq("is_active", true);
+
+      if (fetchError) {
+        console.error("Error fetching webhooks:", fetchError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch webhooks" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Filter webhooks that listen to this specific event
+      matchingWebhooks = (webhooks as Webhook[]).filter(
+        (webhook) => webhook.events.includes(event)
       );
     }
-
-    // Filter webhooks that listen to this specific event
-    const matchingWebhooks = (webhooks as Webhook[]).filter(
-      (webhook) => webhook.events.includes(event)
-    );
 
     console.log(`Found ${matchingWebhooks.length} webhooks for event: ${event}`);
 
@@ -91,11 +115,17 @@ serve(async (req) => {
 
         console.log(`Dispatching to webhook: ${webhook.name} (${webhook.url})`);
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         const response = await fetch(webhook.url, {
           method: "POST",
           headers,
           body: JSON.stringify(webhookPayload),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         results.push({
           webhook_id: webhook.id,
@@ -114,7 +144,7 @@ serve(async (req) => {
         results.push({
           webhook_id: webhook.id,
           success: false,
-          error: errorMessage,
+          error: errorMessage.includes("aborted") ? "Timeout: webhook did not respond in 10s" : errorMessage,
         });
       }
     }
