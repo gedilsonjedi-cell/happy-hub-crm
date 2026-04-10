@@ -1,4 +1,5 @@
-import { useEffect, useRef, useCallback, memo } from "react";
+import { useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { VariableSizeList as List } from "react-window";
 import { Loader2 } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { format } from "date-fns";
@@ -18,14 +19,86 @@ interface InfiniteMessageListProps {
   }>;
 }
 
+const DEFAULT_ITEM_HEIGHT = 90;
+const OVERSCAN_COUNT = 5;
+
 /**
- * InfiniteMessageList
+ * Virtualized InfiniteMessageList
  *
- * - Renders messages using memoized MessageBubble (no re-render per bubble when new msg arrives)
- * - IntersectionObserver at the TOP triggers fetchNextPage when user scrolls up
- * - Scroll is preserved: we anchor to bottom on mount and after new messages,
- *   and anchor to previous position when older pages load
+ * Uses react-window VariableSizeList to keep only ~20 DOM nodes
+ * regardless of how many messages are loaded. Dynamic height
+ * measurement ensures correct layout for variable-height bubbles.
  */
+
+interface RowItem {
+  type: "date-separator" | "message";
+  message?: MessageRow;
+  dateLabel?: string;
+}
+
+function buildItems(messages: MessageRow[]): RowItem[] {
+  const items: RowItem[] = [];
+  const datesShown = new Set<string>();
+
+  for (const msg of messages) {
+    const dateKey = format(new Date(msg.created_at), "yyyy-MM-dd");
+    if (!datesShown.has(dateKey)) {
+      datesShown.add(dateKey);
+      items.push({ type: "date-separator", dateLabel: dateKey });
+    }
+    items.push({ type: "message", message: msg });
+  }
+
+  return items;
+}
+
+// Measures actual rendered height and reports back
+const MeasuredRow = memo(function MeasuredRow({
+  item,
+  index,
+  onMediaPreview,
+  templates,
+  onHeightMeasured,
+}: {
+  item: RowItem;
+  index: number;
+  onMediaPreview: (url: string, type: string, fileName?: string) => void;
+  templates: InfiniteMessageListProps["templates"];
+  onHeightMeasured: (index: number, height: number) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (rowRef.current) {
+      const h = rowRef.current.getBoundingClientRect().height;
+      onHeightMeasured(index, h);
+    }
+  }, [index, onHeightMeasured]);
+
+  if (item.type === "date-separator") {
+    return (
+      <div ref={rowRef}>
+        <div className="flex justify-center py-2">
+          <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+            {item.dateLabel}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={rowRef}>
+      <MessageBubble
+        message={item.message!}
+        showDateSeparator={false}
+        onMediaPreview={onMediaPreview}
+        templates={templates}
+      />
+    </div>
+  );
+});
+
 const InfiniteMessageList = memo(function InfiniteMessageList({
   messages,
   isLoading,
@@ -35,82 +108,159 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   onMediaPreview,
   templates,
 }: InfiniteMessageListProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const topSentinelRef = useRef<HTMLDivElement>(null);
-  const prevScrollHeightRef = useRef<number>(0);
+  const listRef = useRef<List>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const heightMapRef = useRef<Map<number, number>>(new Map());
   const prevMessageCountRef = useRef<number>(0);
   const isLoadingMoreRef = useRef(false);
+  const containerHeightRef = useRef(500);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom on first load and when a new message is appended
+  // Build flat item list with date separators
+  const items = useMemo(() => buildItems(messages), [messages]);
+
+  // Extra rows: loading indicator at top, "start" label
+  const hasTopLoader = isFetchingNextPage;
+  const hasStartLabel = !hasNextPage && messages.length > 0;
+  const prefixCount = (hasTopLoader ? 1 : 0) + (hasStartLabel ? 1 : 0);
+  const totalCount = prefixCount + items.length;
+
+  // Height getter for VariableSizeList
+  const getItemSize = useCallback(
+    (index: number) => {
+      // Prefix rows (loader / start label)
+      if (index < prefixCount) return 40;
+      const realIndex = index - prefixCount;
+      return heightMapRef.current.get(realIndex) ?? DEFAULT_ITEM_HEIGHT;
+    },
+    [prefixCount]
+  );
+
+  // When a row measures itself, update the map and reset the list cache
+  const handleHeightMeasured = useCallback(
+    (realIndex: number, height: number) => {
+      const prev = heightMapRef.current.get(realIndex);
+      if (prev !== height) {
+        heightMapRef.current.set(realIndex, height);
+        const listIndex = realIndex + prefixCount;
+        listRef.current?.resetAfterIndex(listIndex, false);
+      }
+    },
+    [prefixCount]
+  );
+
+  // Measure container height
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    const measure = () => {
+      const h = wrapper.clientHeight;
+      if (h > 0 && h !== containerHeightRef.current) {
+        containerHeightRef.current = h;
+        listRef.current?.resetAfterIndex(0, false);
+      }
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrapper);
+    resizeObserverRef.current = ro;
+    return () => ro.disconnect();
+  }, []);
+
+  // Scroll to bottom on first load and new messages
   useEffect(() => {
     if (isLoading) return;
-
-    const container = scrollContainerRef.current;
-    if (!container) return;
 
     const newCount = messages.length;
     const prevCount = prevMessageCountRef.current;
 
     if (prevCount === 0 && newCount > 0) {
-      // First load — jump to bottom
-      bottomRef.current?.scrollIntoView({ behavior: "instant" });
-    } else if (newCount > prevCount) {
-      // New message appended — if already near bottom, stay there
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < 200) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      // First load — jump to end
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToItem(totalCount - 1, "end");
+      });
+    } else if (newCount > prevCount && !isLoadingMoreRef.current) {
+      // New message appended — if near bottom, scroll down
+      const outer = outerRef.current;
+      if (outer) {
+        const distFromBottom = outer.scrollHeight - outer.scrollTop - outer.clientHeight;
+        if (distFromBottom < 200) {
+          requestAnimationFrame(() => {
+            listRef.current?.scrollToItem(totalCount - 1, "end");
+          });
+        }
       }
     }
 
     prevMessageCountRef.current = newCount;
-  }, [messages.length, isLoading]);
+  }, [messages.length, isLoading, totalCount]);
 
-  // Restore scroll position after loading older pages (scroll up)
+  // When older page loads, maintain scroll position
   useEffect(() => {
-    if (!isFetchingNextPage) {
-      const container = scrollContainerRef.current;
-      if (!container || !isLoadingMoreRef.current) return;
-      // Scroll so the user stays at the same relative position
-      const newScrollHeight = container.scrollHeight;
-      const scrollDiff = newScrollHeight - prevScrollHeightRef.current;
-      container.scrollTop = scrollDiff;
+    if (!isFetchingNextPage && isLoadingMoreRef.current) {
       isLoadingMoreRef.current = false;
+      // Heights map indices shift — clear and let re-measure
+      heightMapRef.current.clear();
+      listRef.current?.resetAfterIndex(0, false);
     }
   }, [isFetchingNextPage]);
 
-  // IntersectionObserver: when top sentinel enters view → load more
-  const handleLoadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      const container = scrollContainerRef.current;
-      if (container) {
-        prevScrollHeightRef.current = container.scrollHeight;
+  // Detect scroll near top → load more
+  const handleScroll = useCallback(
+    ({ scrollOffset }: { scrollOffset: number }) => {
+      if (scrollOffset < 100 && hasNextPage && !isFetchingNextPage) {
         isLoadingMoreRef.current = true;
+        fetchNextPage();
       }
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage]
+  );
 
-  useEffect(() => {
-    const sentinel = topSentinelRef.current;
-    if (!sentinel) return;
+  // Render each row
+  const renderRow = useCallback(
+    ({ index, style }: { index: number; style: React.CSSProperties }) => {
+      // Prefix: start label
+      if (hasStartLabel && index === 0) {
+        return (
+          <div style={style}>
+            <div className="text-center text-xs text-muted-foreground py-2">
+              Início da conversa
+            </div>
+          </div>
+        );
+      }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          handleLoadMore();
-        }
-      },
-      { threshold: 0.1 }
-    );
+      // Prefix: loader
+      if (hasTopLoader && index === (hasStartLabel ? 1 : 0)) {
+        return (
+          <div style={style} className="flex justify-center py-3">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        );
+      }
 
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [handleLoadMore]);
+      const realIndex = index - prefixCount;
+      const item = items[realIndex];
+      if (!item) return null;
 
-  // Pre-compute date separators
-  const datesShown = new Set<string>();
+      return (
+        <div style={style}>
+          <MeasuredRow
+            item={item}
+            index={realIndex}
+            onMediaPreview={onMediaPreview}
+            templates={templates}
+            onHeightMeasured={handleHeightMeasured}
+          />
+        </div>
+      );
+    },
+    [items, prefixCount, hasStartLabel, hasTopLoader, onMediaPreview, templates, handleHeightMeasured]
+  );
 
   if (isLoading) {
     return (
@@ -121,45 +271,21 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   }
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className="flex-1 overflow-y-auto p-4"
-      style={{ overscrollBehavior: "contain" }}
-    >
-      {/* Top sentinel — triggers older page load when scrolled into view */}
-      <div ref={topSentinelRef} className="h-1" />
-
-      {isFetchingNextPage && (
-        <div className="flex justify-center py-3">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {!hasNextPage && messages.length > 0 && (
-        <div className="text-center text-xs text-muted-foreground py-2">
-          Início da conversa
-        </div>
-      )}
-
-      <div className="space-y-4 max-w-3xl mx-auto">
-        {messages.map((message) => {
-          const dateKey = format(new Date(message.created_at), "yyyy-MM-dd");
-          const showDateSeparator = !datesShown.has(dateKey);
-          if (showDateSeparator) datesShown.add(dateKey);
-
-          return (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              showDateSeparator={showDateSeparator}
-              onMediaPreview={onMediaPreview}
-              templates={templates}
-            />
-          );
-        })}
-      </div>
-
-      <div ref={bottomRef} />
+    <div ref={wrapperRef} className="flex-1 overflow-hidden">
+      <List
+        ref={listRef}
+        outerRef={outerRef}
+        height={containerHeightRef.current}
+        itemCount={totalCount}
+        itemSize={getItemSize}
+        width="100%"
+        overscanCount={OVERSCAN_COUNT}
+        onScroll={handleScroll}
+        className="p-4"
+        style={{ overscrollBehavior: "contain" }}
+      >
+        {renderRow}
+      </List>
     </div>
   );
 });
