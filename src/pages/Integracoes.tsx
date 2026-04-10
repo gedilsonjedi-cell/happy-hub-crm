@@ -293,7 +293,7 @@ const Integracoes = () => {
                       Webhooks
                     </CardTitle>
                     <CardDescription>
-                      Configure webhooks para receber notificações em tempo real. 
+                      Configure webhooks para receber notificações em tempo real de <strong>todos os canais</strong> da organização.
                       Compatível com N8N, Make, Zapier e outras plataformas.
                     </CardDescription>
                   </div>
