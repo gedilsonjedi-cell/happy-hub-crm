@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
       balance_transactions_old: 0,
       conversation_assignments_resolved: 0,
       campaign_recipients_completed: 0,
+      unresponsive_leads_deleted: 0,
     };
 
     // ─── 1. Limpar conversation_memory expirada (expiração definida pelo próprio sistema) ──
@@ -157,6 +158,29 @@ Deno.serve(async (req) => {
       console.log(`[Cleanup] Recipients removidos: ${totalDel}`);
     }
 
+    // ─── 7. Limpar leads de campanha que não responderam há >10 dias ──────────
+    {
+      let totalDel = 0;
+      let keepGoing = true;
+      while (keepGoing) {
+        const { data, error } = await supabase.rpc("cleanup_unresponsive_campaign_leads", {
+          days_threshold: 10,
+          batch_size: 500,
+        });
+        if (error) {
+          console.error("[Cleanup] Erro unresponsive leads RPC:", error);
+          keepGoing = false;
+        } else {
+          const deleted = data?.deleted_leads || 0;
+          totalDel += deleted;
+          console.log(`[Cleanup] Lote leads sem resposta: ${deleted} (total: ${totalDel})`);
+          if (deleted < 500) keepGoing = false;
+        }
+      }
+      results.unresponsive_leads_deleted = totalDel;
+      console.log(`[Cleanup] Leads sem resposta removidos: ${totalDel}`);
+    }
+
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
     console.log(`[Cleanup] Concluído. Total de registros técnicos removidos: ${totalDeleted}`, results);
 
@@ -166,12 +190,6 @@ Deno.serve(async (req) => {
         message: `Limpeza de logs técnicos concluída. ${totalDeleted} registros removidos.`,
         details: results,
         policy: {
-          never_deleted: [
-            "leads / contatos",
-            "whatsapp_messages (mensagens)",
-            "conversation_notes (notas)",
-            "campaigns (campanhas)",
-          ],
           cleaned_technical_logs: {
             conversation_memory: "Memória de bot expirada (campo expires_at)",
             flow_sessions: "Sessões de flow bot inativas há >7 dias",
@@ -179,6 +197,7 @@ Deno.serve(async (req) => {
             balance_transactions: "Transações financeiras há >180 dias",
             conversation_assignments: "Resolvidas/fechadas há >15 dias",
             campaign_recipients: "De campanhas concluídas há >15 dias",
+            unresponsive_leads: "Leads de campanha sem resposta há >10 dias (lead + histórico completo)",
           },
         },
         cutoffs: {
