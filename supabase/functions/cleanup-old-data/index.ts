@@ -6,18 +6,65 @@ const corsHeaders = {
 };
 
 /**
- * cleanup-old-data
+ * cleanup-old-data (v2 — otimizado)
  *
- * POLÍTICA:
- * ✅ NUNCA apaga: leads, mensagens (whatsapp_messages), notas, campanhas.
+ * POLÍTICA DE RETENÇÃO:
+ * ✅ NUNCA apaga: leads manuais, mensagens WhatsApp, notas, campanhas.
  * ✅ Limpa dados transitórios/operacionais:
- *    - conversation_memory (expirada)
- *    - flow_sessions (inativas >7 dias)
- *    - lead_activity_log (>90 dias)
- *    - balance_transactions (>180 dias)
- *    - conversation_assignments resolvidas/fechadas (>15 dias)
- *    - campaign_recipients de campanhas concluídas (>15 dias)
+ *    - conversation_memory expirada + sem interação >7 dias
+ *    - flow_sessions inativas >7 dias
+ *    - lead_activity_log >30 dias (reduzido de 90)
+ *    - balance_transactions >180 dias
+ *    - conversation_assignments resolvidas/fechadas >15 dias
+ *    - campaign_recipients de campanhas concluídas >15 dias
+ *    - conversation_metrics de conversas arquivadas >15 dias (NOVO)
+ *    - follow_up_logs de sequências concluídas >30 dias (NOVO)
+ *    - chat_messages (IA interna) >30 dias (NOVO)
+ *    - leads de campanha sem resposta >10 dias
  */
+
+interface CleanupResults {
+  conversation_memory_expired: number;
+  conversation_memory_stale: number;
+  flow_sessions_inactive: number;
+  lead_activity_log_old: number;
+  balance_transactions_old: number;
+  conversation_assignments_resolved: number;
+  campaign_recipients_completed: number;
+  conversation_metrics_orphaned: number;
+  follow_up_logs_old: number;
+  chat_messages_old: number;
+  unresponsive_leads_deleted: number;
+}
+
+async function runBatchRpc(
+  supabase: ReturnType<typeof createClient>,
+  rpcName: string,
+  params: Record<string, unknown>,
+  batchSize: number,
+  label: string,
+): Promise<number> {
+  let totalDel = 0;
+  let keepGoing = true;
+  while (keepGoing) {
+    const { data, error } = await supabase.rpc(rpcName, {
+      ...params,
+      batch_size: batchSize,
+    });
+    if (error) {
+      console.error(`[Cleanup] Erro ${label} RPC:`, error);
+      keepGoing = false;
+    } else {
+      const deleted = typeof data === "number" ? data : (data?.deleted_leads ?? 0);
+      totalDel += deleted;
+      console.log(`[Cleanup] Lote ${label}: ${deleted} (total: ${totalDel})`);
+      if (deleted < batchSize) keepGoing = false;
+    }
+  }
+  console.log(`[Cleanup] ${label} removidos: ${totalDel}`);
+  return totalDel;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,191 +77,160 @@ Deno.serve(async (req) => {
 
     const now = new Date();
 
-    const cutoff7Days = new Date(now);
-    cutoff7Days.setDate(cutoff7Days.getDate() - 7);
+    const cutoff = (days: number) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - days);
+      return d.toISOString();
+    };
 
-    const cutoff15Days = new Date(now);
-    cutoff15Days.setDate(cutoff15Days.getDate() - 15);
+    console.log(`[Cleanup] Iniciando limpeza otimizada de dados transitórios.`);
 
-    const cutoff90Days = new Date(now);
-    cutoff90Days.setDate(cutoff90Days.getDate() - 90);
-
-    const cutoff180Days = new Date(now);
-    cutoff180Days.setDate(cutoff180Days.getDate() - 180);
-
-    console.log(`[Cleanup] Iniciando limpeza de logs técnicos.`);
-    console.log(`[Cleanup] Cutoffs: 7d=${cutoff7Days.toISOString()}, 15d=${cutoff15Days.toISOString()}, 90d=${cutoff90Days.toISOString()}, 180d=${cutoff180Days.toISOString()}`);
-
-    const results = {
+    const results: CleanupResults = {
       conversation_memory_expired: 0,
+      conversation_memory_stale: 0,
       flow_sessions_inactive: 0,
       lead_activity_log_old: 0,
       balance_transactions_old: 0,
       conversation_assignments_resolved: 0,
       campaign_recipients_completed: 0,
+      conversation_metrics_orphaned: 0,
+      follow_up_logs_old: 0,
+      chat_messages_old: 0,
       unresponsive_leads_deleted: 0,
     };
 
-    // ─── 1. Limpar conversation_memory expirada (expiração definida pelo próprio sistema) ──
-    // Esses registros têm um campo expires_at que o bot define. Quando expiram, são inúteis.
-    const { count: memCount, error: memError } = await supabase
-      .from("conversation_memory")
-      .delete({ count: "exact" })
-      .lt("expires_at", now.toISOString());
-
-    if (memError) {
-      console.error("[Cleanup] Erro ao limpar conversation_memory:", memError);
-    } else {
-      results.conversation_memory_expired = memCount || 0;
-      console.log(`[Cleanup] conversation_memory expirada removida: ${memCount}`);
-    }
-
-    // ─── 2. Limpar flow_sessions de bots inativas há >7 dias ─────────────────────────────
-    // Sessões de flow bot que não têm atividade há 7+ dias são consideradas abandonadas.
-    const { count: flowCount, error: flowError } = await supabase
-      .from("flow_sessions")
-      .delete({ count: "exact" })
-      .lt("updated_at", cutoff7Days.toISOString());
-
-    if (flowError) {
-      console.error("[Cleanup] Erro ao limpar flow_sessions:", flowError);
-    } else {
-      results.flow_sessions_inactive = flowCount || 0;
-      console.log(`[Cleanup] flow_sessions inativas removidas: ${flowCount}`);
-    }
-
-    // ─── 3. Limpar lead_activity_log há >90 dias ─────────────────────────────────────────
-    // Log técnico de atividades. Após 90 dias, não tem valor operacional.
-    const { count: logCount, error: logError } = await supabase
-      .from("lead_activity_log")
-      .delete({ count: "exact" })
-      .lt("created_at", cutoff90Days.toISOString());
-
-    if (logError) {
-      console.error("[Cleanup] Erro ao limpar lead_activity_log:", logError);
-    } else {
-      results.lead_activity_log_old = logCount || 0;
-      console.log(`[Cleanup] lead_activity_log antigo removido: ${logCount}`);
-    }
-
-    // ─── 4. Limpar balance_transactions há >180 dias ──────────────────────────────────────
-    // Histórico financeiro operacional. Mantemos 180 dias (6 meses) para auditoria.
-    const { count: txCount, error: txError } = await supabase
-      .from("balance_transactions")
-      .delete({ count: "exact" })
-      .lt("created_at", cutoff180Days.toISOString());
-
-    if (txError) {
-      console.error("[Cleanup] Erro ao limpar balance_transactions:", txError);
-    } else {
-      results.balance_transactions_old = txCount || 0;
-      console.log(`[Cleanup] balance_transactions antigas removidas: ${txCount}`);
-    }
-
-    // ─── 5. Limpar conversation_assignments resolvidas/fechadas/arquivadas há >15 dias ───
-    // Usa RPC para deletar em lotes via SQL direto (evita limite de URL do PostgREST)
+    // ─── 1. conversation_memory expirada ───
     {
-      let totalDel = 0;
-      let keepGoing = true;
-      while (keepGoing) {
-        const { data, error } = await supabase.rpc("cleanup_old_assignments", {
-          cutoff_date: cutoff15Days.toISOString(),
-          batch_size: 2000,
-        });
-        if (error) {
-          console.error("[Cleanup] Erro assignments RPC:", error);
-          keepGoing = false;
-        } else {
-          const deleted = data || 0;
-          totalDel += deleted;
-          console.log(`[Cleanup] Lote assignments: ${deleted} (total: ${totalDel})`);
-          if (deleted < 2000) keepGoing = false;
-        }
-      }
-      results.conversation_assignments_resolved = totalDel;
-      console.log(`[Cleanup] Assignments removidas: ${totalDel}`);
+      const { count, error } = await supabase
+        .from("conversation_memory")
+        .delete({ count: "exact" })
+        .lt("expires_at", now.toISOString());
+      if (error) console.error("[Cleanup] Erro conversation_memory expirada:", error);
+      else results.conversation_memory_expired = count || 0;
     }
 
-    // ─── 6. Limpar campaign_recipients de campanhas concluídas há >15 dias ────
+    // ─── 2. conversation_memory sem interação >7 dias (NOVO — independente de expires_at) ───
+    results.conversation_memory_stale = await runBatchRpc(
+      supabase,
+      "cleanup_stale_conversation_memory",
+      { cutoff_date: cutoff(7) },
+      2000,
+      "conversation_memory_stale",
+    );
+
+    // ─── 3. flow_sessions inativas >7 dias ───
     {
-      let totalDel = 0;
-      let keepGoing = true;
-      while (keepGoing) {
-        const { data, error } = await supabase.rpc("cleanup_old_campaign_recipients", {
-          cutoff_date: cutoff15Days.toISOString(),
-          batch_size: 2000,
-        });
-        if (error) {
-          console.error("[Cleanup] Erro recipients RPC:", error);
-          keepGoing = false;
-        } else {
-          const deleted = data || 0;
-          totalDel += deleted;
-          console.log(`[Cleanup] Lote recipients: ${deleted} (total: ${totalDel})`);
-          if (deleted < 2000) keepGoing = false;
-        }
-      }
-      results.campaign_recipients_completed = totalDel;
-      console.log(`[Cleanup] Recipients removidos: ${totalDel}`);
+      const { count, error } = await supabase
+        .from("flow_sessions")
+        .delete({ count: "exact" })
+        .lt("updated_at", cutoff(7));
+      if (error) console.error("[Cleanup] Erro flow_sessions:", error);
+      else results.flow_sessions_inactive = count || 0;
     }
 
-    // ─── 7. Limpar leads de campanha que não responderam há >10 dias ──────────
+    // ─── 4. lead_activity_log >30 dias (REDUZIDO de 90) ───
     {
-      let totalDel = 0;
-      let keepGoing = true;
-      while (keepGoing) {
-        const { data, error } = await supabase.rpc("cleanup_unresponsive_campaign_leads", {
-          days_threshold: 10,
-          batch_size: 500,
-        });
-        if (error) {
-          console.error("[Cleanup] Erro unresponsive leads RPC:", error);
-          keepGoing = false;
-        } else {
-          const deleted = data?.deleted_leads || 0;
-          totalDel += deleted;
-          console.log(`[Cleanup] Lote leads sem resposta: ${deleted} (total: ${totalDel})`);
-          if (deleted < 500) keepGoing = false;
-        }
-      }
-      results.unresponsive_leads_deleted = totalDel;
-      console.log(`[Cleanup] Leads sem resposta removidos: ${totalDel}`);
+      const { count, error } = await supabase
+        .from("lead_activity_log")
+        .delete({ count: "exact" })
+        .lt("created_at", cutoff(30));
+      if (error) console.error("[Cleanup] Erro lead_activity_log:", error);
+      else results.lead_activity_log_old = count || 0;
     }
+
+    // ─── 5. balance_transactions >180 dias ───
+    {
+      const { count, error } = await supabase
+        .from("balance_transactions")
+        .delete({ count: "exact" })
+        .lt("created_at", cutoff(180));
+      if (error) console.error("[Cleanup] Erro balance_transactions:", error);
+      else results.balance_transactions_old = count || 0;
+    }
+
+    // ─── 6. conversation_assignments resolvidas >15 dias ───
+    results.conversation_assignments_resolved = await runBatchRpc(
+      supabase,
+      "cleanup_old_assignments",
+      { cutoff_date: cutoff(15) },
+      2000,
+      "assignments",
+    );
+
+    // ─── 7. campaign_recipients concluídos >15 dias ───
+    results.campaign_recipients_completed = await runBatchRpc(
+      supabase,
+      "cleanup_old_campaign_recipients",
+      { cutoff_date: cutoff(15) },
+      2000,
+      "campaign_recipients",
+    );
+
+    // ─── 8. conversation_metrics de conversas arquivadas >15 dias (NOVO) ───
+    results.conversation_metrics_orphaned = await runBatchRpc(
+      supabase,
+      "cleanup_old_conversation_metrics",
+      { cutoff_date: cutoff(15) },
+      2000,
+      "conversation_metrics",
+    );
+
+    // ─── 9. follow_up_logs de sequências concluídas >30 dias (NOVO) ───
+    results.follow_up_logs_old = await runBatchRpc(
+      supabase,
+      "cleanup_old_follow_up_logs",
+      { cutoff_date: cutoff(30) },
+      2000,
+      "follow_up_logs",
+    );
+
+    // ─── 10. chat_messages (IA interna) >30 dias (NOVO) ───
+    results.chat_messages_old = await runBatchRpc(
+      supabase,
+      "cleanup_old_chat_messages",
+      { cutoff_date: cutoff(30) },
+      2000,
+      "chat_messages",
+    );
+
+    // ─── 11. leads de campanha sem resposta >10 dias ───
+    results.unresponsive_leads_deleted = await runBatchRpc(
+      supabase,
+      "cleanup_unresponsive_campaign_leads",
+      { days_threshold: 10 },
+      500,
+      "leads_sem_resposta",
+    );
 
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
-    console.log(`[Cleanup] Concluído. Total de registros técnicos removidos: ${totalDeleted}`, results);
+    console.log(`[Cleanup] Concluído. Total removidos: ${totalDeleted}`, results);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Limpeza de logs técnicos concluída. ${totalDeleted} registros removidos.`,
+        message: `Limpeza otimizada concluída. ${totalDeleted} registros removidos.`,
         details: results,
-        policy: {
-          cleaned_technical_logs: {
-            conversation_memory: "Memória de bot expirada (campo expires_at)",
-            flow_sessions: "Sessões de flow bot inativas há >7 dias",
-            lead_activity_log: "Log de atividades de leads há >90 dias",
-            balance_transactions: "Transações financeiras há >180 dias",
-            conversation_assignments: "Resolvidas/fechadas há >15 dias",
-            campaign_recipients: "De campanhas concluídas há >15 dias",
-            unresponsive_leads: "Leads de campanha sem resposta há >10 dias (lead + histórico completo)",
-          },
-        },
-        cutoffs: {
-          "7_days_flow_sessions": cutoff7Days.toISOString(),
-          "15_days_assignments_recipients": cutoff15Days.toISOString(),
-          "90_days_activity_log": cutoff90Days.toISOString(),
-          "180_days_transactions": cutoff180Days.toISOString(),
+        retention_policy: {
+          conversation_memory: "Expirada + sem interação >7 dias",
+          flow_sessions: "Inativas >7 dias",
+          lead_activity_log: "Mais de 30 dias",
+          balance_transactions: "Mais de 180 dias",
+          conversation_assignments: "Resolvidas/fechadas >15 dias",
+          campaign_recipients: "Campanhas concluídas >15 dias",
+          conversation_metrics: "Conversas arquivadas >15 dias",
+          follow_up_logs: "Sequências concluídas >30 dias",
+          chat_messages: "Conversas IA >30 dias",
+          unresponsive_leads: "Sem resposta >10 dias (lead + histórico completo)",
         },
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("[Cleanup] Error:", errorMessage);
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
