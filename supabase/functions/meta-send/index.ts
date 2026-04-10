@@ -1021,6 +1021,8 @@ Deno.serve(async (req) => {
               direction: 'outbound',
               status: 'sent',
               channel_id: channelId,
+              channel_name: channel.name || null,
+              channel_phone: channel.phone || null,
               message_type: storedMessageType,
               media_url: mediaUrl || null,
               template_name: templateName || null,

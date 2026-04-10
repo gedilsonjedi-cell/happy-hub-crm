@@ -109,7 +109,7 @@ async function getChannelByPhoneNumberId(phoneNumberId: string) {
   if (cached && cached.expiry > Date.now()) return cached.data;
   const { data } = await supabase
     .from('channels')
-    .select('id, organization_id, user_id, phone, app_name, access_token, provider')
+    .select('id, organization_id, user_id, phone, name, app_name, access_token, provider')
     .eq('app_name', phoneNumberId)
     .eq('provider', 'meta')
     .maybeSingle();
@@ -710,6 +710,8 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
           direction: 'inbound',
           status: 'received',
           channel_id: channel.id,
+          channel_name: channel.name || null,
+          channel_phone: channel.phone || null,
           message_type: messageType,
           media_url: finalMediaUrl,
           lead_id: leadData?.leadId || null,
