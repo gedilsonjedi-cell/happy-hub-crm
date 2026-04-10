@@ -957,7 +957,7 @@ Deno.serve(async (req) => {
       storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
     }
 
-    // Store outbound message in database (dual-write)
+    // Store outbound message in database (dual-write) — non-blocking
     const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
@@ -983,11 +983,25 @@ Deno.serve(async (req) => {
           campaignId: campaignId || null
         }
       };
-    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
-    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
-    
-    // NOTE: Conversation assignment is now created BEFORE the send attempt (line ~375)
-    // This ensures conversations persist even when Meta API fails
+
+    // Use waitUntil to persist DB writes in background — respond instantly
+    const dbWritePromise = (async () => {
+      try {
+        await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
+        if (externalSupabase) {
+          externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
+        }
+      } catch (e) {
+        console.error('[Meta-Send] Background DB write failed:', e);
+      }
+    })();
+
+    // Use EdgeRuntime.waitUntil if available, otherwise fire-and-forget
+    if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
+      (globalThis as any).EdgeRuntime.waitUntil(dbWritePromise);
+    } else {
+      dbWritePromise.catch(() => {});
+    }
 
     return new Response(
       JSON.stringify({ 
