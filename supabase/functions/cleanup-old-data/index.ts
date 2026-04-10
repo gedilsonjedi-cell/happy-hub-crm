@@ -8,16 +8,15 @@ const corsHeaders = {
 /**
  * cleanup-old-data
  *
- * POLÍTICA PERMANENTE E INVIOLÁVEL:
- * ✅ NUNCA apaga: leads, contatos, conversas (conversation_assignments),
- *    mensagens (whatsapp_messages), notas de conversa (conversation_notes),
- *    campanhas (campaigns) ou destinatários (campaign_recipients).
- *
- * ✅ APENAS limpa logs técnicos transitórios:
- *    - conversation_memory (memória de bot expirada pelo próprio sistema)
- *    - flow_sessions (sessões de fluxo inativas há >7 dias)
- *    - lead_activity_log (log de atividades há >90 dias)
- *    - balance_transactions (histórico financeiro há >180 dias)
+ * POLÍTICA:
+ * ✅ NUNCA apaga: leads, mensagens (whatsapp_messages), notas, campanhas.
+ * ✅ Limpa dados transitórios/operacionais:
+ *    - conversation_memory (expirada)
+ *    - flow_sessions (inativas >7 dias)
+ *    - lead_activity_log (>90 dias)
+ *    - balance_transactions (>180 dias)
+ *    - conversation_assignments resolvidas/fechadas (>15 dias)
+ *    - campaign_recipients de campanhas concluídas (>15 dias)
  */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -34,6 +33,9 @@ Deno.serve(async (req) => {
     const cutoff7Days = new Date(now);
     cutoff7Days.setDate(cutoff7Days.getDate() - 7);
 
+    const cutoff15Days = new Date(now);
+    cutoff15Days.setDate(cutoff15Days.getDate() - 15);
+
     const cutoff90Days = new Date(now);
     cutoff90Days.setDate(cutoff90Days.getDate() - 90);
 
@@ -41,14 +43,15 @@ Deno.serve(async (req) => {
     cutoff180Days.setDate(cutoff180Days.getDate() - 180);
 
     console.log(`[Cleanup] Iniciando limpeza de logs técnicos.`);
-    console.log(`[Cleanup] Cutoffs: 7d=${cutoff7Days.toISOString()}, 90d=${cutoff90Days.toISOString()}, 180d=${cutoff180Days.toISOString()}`);
-    console.log(`[Cleanup] POLÍTICA: Campanhas, conversas, mensagens e leads NUNCA são removidos.`);
+    console.log(`[Cleanup] Cutoffs: 7d=${cutoff7Days.toISOString()}, 15d=${cutoff15Days.toISOString()}, 90d=${cutoff90Days.toISOString()}, 180d=${cutoff180Days.toISOString()}`);
 
     const results = {
       conversation_memory_expired: 0,
       flow_sessions_inactive: 0,
       lead_activity_log_old: 0,
       balance_transactions_old: 0,
+      conversation_assignments_resolved: 0,
+      campaign_recipients_completed: 0,
     };
 
     // ─── 1. Limpar conversation_memory expirada (expiração definida pelo próprio sistema) ──
@@ -107,6 +110,53 @@ Deno.serve(async (req) => {
       console.log(`[Cleanup] balance_transactions antigas removidas: ${txCount}`);
     }
 
+    // ─── 5. Limpar conversation_assignments resolvidas/fechadas/arquivadas há >15 dias ───
+    // Usa RPC para deletar em lotes via SQL direto (evita limite de URL do PostgREST)
+    {
+      let totalDel = 0;
+      let keepGoing = true;
+      while (keepGoing) {
+        const { data, error } = await supabase.rpc("cleanup_old_assignments", {
+          cutoff_date: cutoff15Days.toISOString(),
+          batch_size: 2000,
+        });
+        if (error) {
+          console.error("[Cleanup] Erro assignments RPC:", error);
+          keepGoing = false;
+        } else {
+          const deleted = data || 0;
+          totalDel += deleted;
+          console.log(`[Cleanup] Lote assignments: ${deleted} (total: ${totalDel})`);
+          if (deleted < 2000) keepGoing = false;
+        }
+      }
+      results.conversation_assignments_resolved = totalDel;
+      console.log(`[Cleanup] Assignments removidas: ${totalDel}`);
+    }
+
+    // ─── 6. Limpar campaign_recipients de campanhas concluídas há >15 dias ────
+    {
+      let totalDel = 0;
+      let keepGoing = true;
+      while (keepGoing) {
+        const { data, error } = await supabase.rpc("cleanup_old_campaign_recipients", {
+          cutoff_date: cutoff15Days.toISOString(),
+          batch_size: 2000,
+        });
+        if (error) {
+          console.error("[Cleanup] Erro recipients RPC:", error);
+          keepGoing = false;
+        } else {
+          const deleted = data || 0;
+          totalDel += deleted;
+          console.log(`[Cleanup] Lote recipients: ${deleted} (total: ${totalDel})`);
+          if (deleted < 2000) keepGoing = false;
+        }
+      }
+      results.campaign_recipients_completed = totalDel;
+      console.log(`[Cleanup] Recipients removidos: ${totalDel}`);
+    }
+
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
     console.log(`[Cleanup] Concluído. Total de registros técnicos removidos: ${totalDeleted}`, results);
 
@@ -119,20 +169,21 @@ Deno.serve(async (req) => {
           never_deleted: [
             "leads / contatos",
             "whatsapp_messages (mensagens)",
-            "conversation_assignments (conversas)",
             "conversation_notes (notas)",
             "campaigns (campanhas)",
-            "campaign_recipients (destinatários de campanhas)",
           ],
           cleaned_technical_logs: {
             conversation_memory: "Memória de bot expirada (campo expires_at)",
             flow_sessions: "Sessões de flow bot inativas há >7 dias",
             lead_activity_log: "Log de atividades de leads há >90 dias",
             balance_transactions: "Transações financeiras há >180 dias",
+            conversation_assignments: "Resolvidas/fechadas há >15 dias",
+            campaign_recipients: "De campanhas concluídas há >15 dias",
           },
         },
         cutoffs: {
           "7_days_flow_sessions": cutoff7Days.toISOString(),
+          "15_days_assignments_recipients": cutoff15Days.toISOString(),
           "90_days_activity_log": cutoff90Days.toISOString(),
           "180_days_transactions": cutoff180Days.toISOString(),
         },
