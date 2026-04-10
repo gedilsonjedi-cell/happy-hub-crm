@@ -3258,6 +3258,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _resolve_auth_role: { Args: never; Returns: string }
       admin_add_product_to_organization: {
         Args: {
           _is_free?: boolean
