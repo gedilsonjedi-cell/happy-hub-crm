@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
       const { data: batch, error: fetchErr } = await supabase
         .from("conversation_assignments")
         .select("id")
-        .in("status", ["resolved", "closed"])
+        .in("status", ["resolved", "closed", "archived"])
         .lt("updated_at", cutoff15Days.toISOString())
         .limit(1000);
 
