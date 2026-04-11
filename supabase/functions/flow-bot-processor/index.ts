@@ -884,7 +884,7 @@ async function sendFlowMessages(
         if (msg.buttons?.length) {
           textContent += '\n\n' + msg.buttons.map((b, i) => `${i + 1}. ${b.label}`).join('\n');
         }
-        await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, textContent, channelId, organizationId, channel.phone, contactPhone, supabase);
+        await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, textContent, channelId, organizationId, channel.phone, contactPhone, supabase, messageDb);
       }
 
       // Small delay between messages for natural pacing
