@@ -595,6 +595,19 @@ const AtendimentoV2 = () => {
     bySuffix: Map<string, { id?: string; name: string; tags: string[] | null }>;
   }>({ byPhone: new Map(), bySuffix: new Map() });
 
+  const getLeadFromCache = useCallback((phone: string) => {
+    const candidates = getPhoneComparisonVariants(phone)
+      .map((variant) => leadsMapRef.current.byPhone.get(variant))
+      .filter(Boolean);
+
+    return candidates.find(
+      (candidate) =>
+        candidate &&
+        ((candidate.name && !candidate.name.startsWith('LeadWhats-')) ||
+          (candidate.tags && candidate.tags.length > 0))
+    ) || candidates[0] || null;
+  }, []);
+
   // Fetch conversations using the precomputed summary RPC.
   // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
@@ -1021,20 +1034,7 @@ const AtendimentoV2 = () => {
         let resolvedTags = matchingLeadByName?.tags || null;
         
         if (!resolvedName) {
-          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-          const phoneSuffix8 = normalizedPhone.slice(-8);
-          const phoneSuffix9 = normalizedPhone.slice(-9);
-          
-          const candidates = [
-            leadsMapRef.current.byPhone.get(normalizedPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55),
-            leadsMapRef.current.bySuffix.get(phoneSuffix9),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8),
-          ].filter(Boolean);
-          
-          const bestMatch = candidates.find(c => c && c.name && !c.name.startsWith('LeadWhats-')) || candidates[0];
+          const bestMatch = getLeadFromCache(normalizedPhone);
           if (bestMatch) {
             resolvedName = bestMatch.name || null;
             resolvedTags = bestMatch.tags || null;
@@ -1508,15 +1508,8 @@ const AtendimentoV2 = () => {
           ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
         } else if (isSentByHuman) {
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
-          const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
-          const phoneWith55New = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
-          const phoneSuffix8 = normalizedContactPhone.slice(-8);
-          const newMatches = [
-            leadsMapRef.current.byPhone.get(normalizedContactPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55New),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8)
-          ].filter(Boolean);
+          const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
+          const newMatches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
           let leadNameFromSystem: string | undefined;
           let leadTagsFromSystem: string[] | null = null;
@@ -1596,15 +1589,8 @@ const AtendimentoV2 = () => {
         else if (assignment?.status === "archived") mappedStatusFromDb = "archived";
         else if (assignment?.status === "resolved") mappedStatusFromDb = "resolved";
 
-        const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
-        const phoneWith55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
-        const phoneSuffix8 = normalizedContactPhone.slice(-8);
-        const matches = [
-          leadsMapRef.current.byPhone.get(normalizedContactPhone),
-          leadsMapRef.current.byPhone.get(phoneWithout55),
-          leadsMapRef.current.byPhone.get(phoneWith55),
-          leadsMapRef.current.bySuffix.get(phoneSuffix8)
-        ].filter(Boolean);
+        const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
+        const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
         let leadNameFromSystem: string | undefined;
         let leadTagsFromSystem: string[] | null = null;
@@ -1756,15 +1742,8 @@ const AtendimentoV2 = () => {
             return c;
           });
         } else if (assignment.assignedTo && assignment.channelId) {
-          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-          const phoneSuffix8 = normalizedPhone.slice(-8);
-          const matches = [
-            leadsMapRef.current.byPhone.get(normalizedPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8)
-          ].filter(Boolean);
+          const cachedLeadMatch = getLeadFromCache(normalizedPhone);
+          const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
           let leadName: string | null = null;
           let leadTags: string[] | null = null;
@@ -2590,20 +2569,14 @@ const AtendimentoV2 = () => {
     }
     
     // Get lead info from local cache first
-    const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-    const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
     const phoneSuffix8 = normalizedPhone.slice(-8);
     
     let leadName: string | null = null;
     let leadTags: string[] | null = null;
     let leadId: string | null = null;
     
-    const matches = [
-      leadsMapRef.current.byPhone.get(normalizedPhone),
-      leadsMapRef.current.byPhone.get(phoneWithout55),
-      leadsMapRef.current.byPhone.get(phoneWith55),
-      leadsMapRef.current.bySuffix.get(phoneSuffix8)
-    ].filter(Boolean);
+    const cachedLeadMatch = getLeadFromCache(normalizedPhone);
+    const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
     
     for (const m of matches) {
       if (!m) continue;

@@ -203,7 +203,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       const { data: assignments, error } = await supabase
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .or(`${channelFilter},channel_id.is.null`)
+        .or(channelFilter)
         .or(`conversation_phone.ilike.%${normalizedSearch}%,conversation_phone.ilike.%${searchTerm}%`)
         .order("updated_at", { ascending: false })
         .limit(50);
@@ -222,13 +222,13 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       let additionalAssignments: typeof assignments = [];
       if (leadPhones.length > 0) {
         const phoneConditions = leadPhones.map(p => `conversation_phone.ilike.%${p.slice(-8)}%`).join(',');
-        const { data: byLeadPhone } = await supabase
-          .from("conversation_assignments")
-          .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .or(`${channelFilter},channel_id.is.null`)
-          .or(phoneConditions)
-          .order("updated_at", { ascending: false })
-          .limit(50);
+          const { data: byLeadPhone } = await supabase
+            .from("conversation_assignments")
+            .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
+            .or(channelFilter)
+            .or(phoneConditions)
+            .order("updated_at", { ascending: false })
+            .limit(50);
         additionalAssignments = byLeadPhone || [];
       }
 
