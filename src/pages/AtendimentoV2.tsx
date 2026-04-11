@@ -3133,11 +3133,28 @@ const AtendimentoV2 = () => {
     return convSectorMatches;
   }, [filterBySector, attendantSectorsMap]);
 
-  // If we have global search results and a search term, prioritize showing those
-  const hasGlobalResults = globalSearchResults.length > 0 && searchTerm.length >= 3;
+  // Merge local + global search results, deduplicated
+  const combinedSearchResults = useMemo(() => {
+    if (!searchTerm || searchTerm.length < 2) return [];
+    const seen = new Set<string>();
+    const results: Conversation[] = [];
+    // Local results first (instant)
+    for (const c of localSearchResults) {
+      const key = getConversationKey(c);
+      if (!seen.has(key)) { seen.add(key); results.push(c); }
+    }
+    // Global results from DB (may arrive later)
+    for (const c of globalSearchResults) {
+      const key = getConversationKey(c);
+      if (!seen.has(key)) { seen.add(key); results.push(c); }
+    }
+    return results;
+  }, [localSearchResults, globalSearchResults, searchTerm]);
+
+  const hasSearchResults = combinedSearchResults.length > 0 && searchTerm.length >= 2;
   
-  const filteredConversations = hasGlobalResults 
-    ? globalSearchResults.filter(conv => {
+  const filteredConversations = hasSearchResults 
+    ? combinedSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
         if (filterStatus === "unread") {
