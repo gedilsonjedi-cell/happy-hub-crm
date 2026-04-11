@@ -287,7 +287,7 @@ async function processCampaignDispatch(
           }
           return { success: true, phone: formattedPhone };
         } else {
-          await supabase.from('whatsapp_messages').insert({
+          await messageDb.from('whatsapp_messages').insert({
             channel_id: channel.id, organization_id: channel.organization_id,
             message_id: `failed_${Date.now()}_${formattedPhone}`, sender_phone: channel.phone,
             message_type: 'template', content: `Template: ${template.name}`,
