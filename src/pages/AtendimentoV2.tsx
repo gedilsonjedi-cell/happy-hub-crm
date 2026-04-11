@@ -358,11 +358,16 @@ const AtendimentoV2 = () => {
   // CRITICAL: Build a set of valid channel IDs for safety filtering
   const validChannelIds = useMemo(() => new Set(channels.map(c => c.id)), [channels]);
   
-  // Filter conversations based on user's sector access AND valid channel ownership
-  // This is the FINAL defense against cross-org data leaks
-  const conversations = allConversations.filter(c => 
-    canSeeSector(c.sectorId) && 
-    (c.channelId ? validChannelIds.has(c.channelId) : true)
+  // Final conversation list shown by the UI:
+  // - only channel-backed threads that belong to this organization
+  // - deduplicated by channel + canonical phone thread key
+  const conversations = useMemo(
+    () =>
+      sanitizeConversationCollection(
+        allConversations.filter((conversation) => canSeeSector(conversation.sectorId)),
+        validChannelIds
+      ),
+    [allConversations, canSeeSector, validChannelIds]
   );
   
   // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
