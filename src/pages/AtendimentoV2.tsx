@@ -595,6 +595,19 @@ const AtendimentoV2 = () => {
     bySuffix: Map<string, { id?: string; name: string; tags: string[] | null }>;
   }>({ byPhone: new Map(), bySuffix: new Map() });
 
+  const getLeadFromCache = useCallback((phone: string) => {
+    const candidates = getPhoneComparisonVariants(phone)
+      .map((variant) => leadsMapRef.current.byPhone.get(variant))
+      .filter(Boolean);
+
+    return candidates.find(
+      (candidate) =>
+        candidate &&
+        ((candidate.name && !candidate.name.startsWith('LeadWhats-')) ||
+          (candidate.tags && candidate.tags.length > 0))
+    ) || candidates[0] || null;
+  }, []);
+
   // Fetch conversations using the precomputed summary RPC.
   // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
