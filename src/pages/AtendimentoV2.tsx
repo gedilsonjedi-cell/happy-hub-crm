@@ -3222,11 +3222,11 @@ const AtendimentoV2 = () => {
       });
     
   // Include global search results in archived if they are archived
-  const archivedFromGlobalSearch = hasGlobalResults 
-    ? globalSearchResults.filter(conv => isArchivedLikeConversation(conv))
+  const archivedFromGlobalSearch = hasSearchResults 
+    ? combinedSearchResults.filter(conv => isArchivedLikeConversation(conv))
     : [];
     
-  const filteredArchived = hasGlobalResults
+  const filteredArchived = hasSearchResults
     ? archivedFromGlobalSearch
         .filter(conv => {
           const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
