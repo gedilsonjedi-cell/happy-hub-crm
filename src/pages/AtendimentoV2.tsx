@@ -1355,7 +1355,7 @@ const AtendimentoV2 = () => {
     const lowerTerm = searchTerm.toLowerCase();
     const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
     
-    const localMatches = allConversations.filter(conv => {
+    const localMatches = conversations.filter(conv => {
       if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
       if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
       if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
@@ -1373,7 +1373,7 @@ const AtendimentoV2 = () => {
     } else {
       setGlobalSearchResults([]);
     }
-  }, [searchTerm, allConversations, searchConversationsGlobal]);
+  }, [searchTerm, conversations, searchConversationsGlobal]);
 
   // Fetch notes and handle side-effects when conversation changes.
   // Messages are now managed by useInfiniteMessages above.
