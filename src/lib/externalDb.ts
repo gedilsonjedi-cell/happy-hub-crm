@@ -57,6 +57,7 @@ export interface ExternalMessagePage {
 export interface ExternalMessageRow {
   id: string;
   channel_id: string | null;
+  organization_id?: string | null;
   message_id: string;
   sender_phone: string;
   sender_name: string | null;
@@ -82,7 +83,7 @@ export async function fetchExternalMessages(params: {
     channelId: params.channelId,
     phoneVariants: params.phoneVariants,
     cursor: params.cursor,
-    pageSize: params.pageSize ?? 20,
+    pageSize: params.pageSize ?? 25,
   });
 }
 
@@ -96,11 +97,11 @@ export async function fetchInternalMessages(params: {
   cursor: string | null;
   pageSize?: number;
 }): Promise<ExternalMessagePage> {
-  const pageSize = params.pageSize ?? 20;
+  const pageSize = params.pageSize ?? 25;
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
 
   const selectFields =
-    "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+    "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
   const inboundPhoneFilter = params.phoneVariants
     .map((phone) => `sender_phone.eq.${phone}`)

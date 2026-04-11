@@ -132,7 +132,7 @@ async function handleMessages(
     channelId,
     phoneVariants,
     cursor,
-    pageSize = 20,
+    pageSize = 25,
   } = body as {
     channelId: string;
     phoneVariants: string[];
@@ -153,7 +153,7 @@ async function handleMessages(
   const cursorFilter = cursor || new Date(Date.now() + 120_000).toISOString();
 
   const essentialSelect =
-    "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+    "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
   const inboundPhoneFilter = phoneVariants
     .map((p: string) => `sender_phone.eq.${p}`)
