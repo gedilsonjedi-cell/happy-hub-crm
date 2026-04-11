@@ -27,6 +27,11 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+
+    // External DB for dual-write
+    const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+    const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+    const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
     
     const token = authHeader.replace('Bearer ', '');
     const isServiceRole = token === supabaseServiceKey;
