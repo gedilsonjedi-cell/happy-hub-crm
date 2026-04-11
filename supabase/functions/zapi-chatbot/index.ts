@@ -273,8 +273,8 @@ Deno.serve(async (req) => {
         
         console.log('[v6] Fetching history for customer suffix:', customerPhoneSuffix);
         
-        // Fetch inbound and outbound messages
-        const { data: inboundHistory } = await supabase
+        // Fetch inbound and outbound messages from external DB
+        const { data: inboundHistory } = await messageDb
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: true })
           .limit(50);
         
-        const { data: outboundHistory } = await supabase
+        const { data: outboundHistory } = await messageDb
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
