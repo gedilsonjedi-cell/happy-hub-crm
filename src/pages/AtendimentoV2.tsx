@@ -813,18 +813,42 @@ const AtendimentoV2 = () => {
       profiles?.forEach(p => profilesMap.set(p.user_id, p.display_name || p.email || 'Atendente'));
       
       // Build archived conversations
+      // Batch-fetch lead info for archived assignments that have lead_id
+      const archivedLeadIds = archivedAssignments
+        .filter(a => a.lead_id)
+        .map(a => a.lead_id!);
+      
+      let archivedLeadsMap = new Map<string, { name: string | null; tags: string[] | null }>();
+      if (archivedLeadIds.length > 0) {
+        const { data: archivedLeads } = await supabase
+          .from("leads")
+          .select("id, name, tags")
+          .in("id", archivedLeadIds.slice(0, 100))
+          .eq("organization_id", effectiveOrganizationId);
+        
+        (archivedLeads || []).forEach(l => {
+          archivedLeadsMap.set(l.id, { name: l.name, tags: l.tags });
+        });
+      }
+
       const archivedConvs: Conversation[] = archivedAssignments.map(assignment => {
         const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
         const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
         
-        // Try to find lead info from existing leads map
+        // Use lead_id for exact match first, then fall back to phone cache
         let leadName: string | null = null;
-        const leadsRef = leadsMapRef.current;
-        if (leadsRef) {
-          const match = leadsRef.byPhone.get(normalizedPhone) || 
-                        leadsRef.bySuffix.get(normalizedPhone.slice(-9)) ||
-                        leadsRef.bySuffix.get(normalizedPhone.slice(-8));
-          if (match && match.name) leadName = match.name;
+        let leadTags: string[] | null = null;
+        
+        if (assignment.lead_id && archivedLeadsMap.has(assignment.lead_id)) {
+          const leadInfo = archivedLeadsMap.get(assignment.lead_id)!;
+          leadName = leadInfo.name;
+          leadTags = leadInfo.tags;
+        } else {
+          const cachedMatch = getLeadFromCache(normalizedPhone);
+          if (cachedMatch) {
+            leadName = cachedMatch.name || null;
+            leadTags = cachedMatch.tags || null;
+          }
         }
         
         return {
@@ -840,7 +864,8 @@ const AtendimentoV2 = () => {
           assignedTo: assignment.assigned_to,
           assignedToName: assignment.assigned_to ? profilesMap.get(assignment.assigned_to) || null : null,
           sectorId: assignment.sector_id,
-          tags: null
+          tags: leadTags,
+          leadId: assignment.lead_id,
         };
       });
       
