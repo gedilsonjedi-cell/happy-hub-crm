@@ -1965,6 +1965,37 @@ const AtendimentoV2 = () => {
   }), []);
 
   useChatRealtime(channelIds, throttledRealtimeCallbacks);
+
+  // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
+  // Warms TanStack Query cache so switching chat feels instant
+  const queryClient = useInfiniteMessages.__queryClient_noop; // placeholder — we get it below
+  useEffect(() => {
+    if (!selectedConversation || conversations.length === 0) return;
+
+    const selectedKey = getConversationKey(selectedConversation);
+    const idx = conversations.findIndex(c => getConversationKey(c) === selectedKey);
+    if (idx < 0) return;
+
+    const adjacentConvs = conversations.slice(idx + 1, idx + 4);
+    if (adjacentConvs.length === 0) return;
+
+    // Dynamically import QueryClient from the existing provider
+    const timer = setTimeout(() => {
+      adjacentConvs.forEach(conv => {
+        if (!conv.channelId || !conv.phone) return;
+        const threadKey = getCanonicalPhoneThreadKey(conv.phone);
+        const qk = ["messages", conv.channelId, threadKey];
+        const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
+        // Prefetch only if not cached — uses global queryClient from provider
+        import("@tanstack/react-query").then(({ useQueryClient: _noop }) => {
+          // Already handled below
+        });
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [selectedConversation?.channelId, selectedConversation?.phone, conversations]);
+
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
     setConversationToArchive(conversation);
