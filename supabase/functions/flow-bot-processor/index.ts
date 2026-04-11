@@ -906,8 +906,10 @@ async function sendTextMessage(
   organizationId: string,
   channelPhone: string,
   contactPhone: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  msgDb?: ReturnType<typeof createClient>
 ) {
+  const db = msgDb || supabase;
   const resp = await fetch(
     `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
     {
@@ -928,7 +930,7 @@ async function sendTextMessage(
   const wamId = result?.messages?.[0]?.id || `flow_text_${Date.now()}`;
   console.log('[FlowBot] Text send result:', resp.status, JSON.stringify(result));
 
-  await supabase.from('whatsapp_messages').insert({
+  await db.from('whatsapp_messages').insert({
     channel_id: channelId,
     organization_id: organizationId,
     message_id: wamId,
@@ -939,4 +941,9 @@ async function sendTextMessage(
     status: resp.ok ? 'sent' : 'failed',
     metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
   });
+  supabase.rpc('upsert_conversation_stats_manual', {
+    _channel_id: channelId, _conversation_phone: contactPhone,
+    _content: text, _direction: 'outbound', _is_read: null,
+    _sender_name: null, _created_at: new Date().toISOString(),
+  }).then(() => {}).catch(() => {});
 }
