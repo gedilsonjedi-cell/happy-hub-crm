@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from "react";
 import { useSearchParams } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -1968,7 +1968,7 @@ const AtendimentoV2 = () => {
 
   // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
   // Warms TanStack Query cache so switching chat feels instant
-  const queryClient = useInfiniteMessages.__queryClient_noop; // placeholder — we get it below
+  const prefetchQueryClient = useQueryClient();
   useEffect(() => {
     if (!selectedConversation || conversations.length === 0) return;
 
@@ -1979,22 +1979,28 @@ const AtendimentoV2 = () => {
     const adjacentConvs = conversations.slice(idx + 1, idx + 4);
     if (adjacentConvs.length === 0) return;
 
-    // Dynamically import QueryClient from the existing provider
     const timer = setTimeout(() => {
       adjacentConvs.forEach(conv => {
         if (!conv.channelId || !conv.phone) return;
         const threadKey = getCanonicalPhoneThreadKey(conv.phone);
         const qk = ["messages", conv.channelId, threadKey];
-        const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
-        // Prefetch only if not cached — uses global queryClient from provider
-        import("@tanstack/react-query").then(({ useQueryClient: _noop }) => {
-          // Already handled below
-        });
+        // Only prefetch if not already cached
+        if (!prefetchQueryClient.getQueryData(qk)) {
+          const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
+          prefetchQueryClient.prefetchInfiniteQuery({
+            queryKey: qk,
+            queryFn: () =>
+              fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })
+                .catch(() => fetchInternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })),
+            initialPageParam: null as string | null,
+            staleTime: 60_000,
+          });
+        }
       });
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [selectedConversation?.channelId, selectedConversation?.phone, conversations]);
+  }, [selectedConversation?.channelId, selectedConversation?.phone, conversations, prefetchQueryClient]);
 
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
