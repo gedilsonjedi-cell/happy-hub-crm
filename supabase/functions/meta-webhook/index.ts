@@ -636,7 +636,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   // Run all lookups simultaneously before any business logic
   const [existingMessage, orgConfig, chatbotConfig] = await Promise.all([
     // Dedup check (uses message_id unique constraint)
-    supabase.from('whatsapp_messages').select('id').eq('message_id', messageId).maybeSingle(),
+    messageDb.from('whatsapp_messages').select('id').eq('message_id', messageId).maybeSingle(),
     // All org config in ONE cached fetch (business hours + holidays + away + welcome)
     getOrganizationConfig(organizationId),
     // Chatbot config (cached per channel)
@@ -914,7 +914,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
 
       if (isQualityIssue) {
         // Find which channel this message belongs to
-        const { data: msg } = await supabase
+        const { data: msg } = await messageDb
           .from('whatsapp_messages')
           .select('channel_id')
           .eq('message_id', s.id as string)
@@ -967,7 +967,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   if (relevantGroups.length === 0) return;
 
   const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
-  const { data: messages } = await supabase
+  const { data: messages } = await messageDb
     .from('whatsapp_messages')
     .select('message_id, status, metadata, organization_id, channel_id, error_message')
     .in('message_id', allRelevantIds)
