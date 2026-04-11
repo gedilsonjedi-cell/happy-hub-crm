@@ -283,9 +283,7 @@ Deno.serve(async (req) => {
       
       // Store failed message in database with error
       const failedMessageId = `zapi_failed_${Date.now()}`;
-      await serviceRoleClient
-        .from('whatsapp_messages')
-        .insert({
+      const failedData = {
           channel_id: channelId,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
@@ -304,7 +302,9 @@ Deno.serve(async (req) => {
             sent_by_human: userId !== 'service_role',
             originalError: errorMessage
           }
-        });
+      };
+      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
+      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
       
       return new Response(
         JSON.stringify({ 
