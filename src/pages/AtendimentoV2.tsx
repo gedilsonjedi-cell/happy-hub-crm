@@ -1609,15 +1609,8 @@ const AtendimentoV2 = () => {
         else if (assignment?.status === "archived") mappedStatusFromDb = "archived";
         else if (assignment?.status === "resolved") mappedStatusFromDb = "resolved";
 
-        const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
-        const phoneWith55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
-        const phoneSuffix8 = normalizedContactPhone.slice(-8);
-        const matches = [
-          leadsMapRef.current.byPhone.get(normalizedContactPhone),
-          leadsMapRef.current.byPhone.get(phoneWithout55),
-          leadsMapRef.current.byPhone.get(phoneWith55),
-          leadsMapRef.current.bySuffix.get(phoneSuffix8)
-        ].filter(Boolean);
+        const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
+        const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
         let leadNameFromSystem: string | undefined;
         let leadTagsFromSystem: string[] | null = null;
