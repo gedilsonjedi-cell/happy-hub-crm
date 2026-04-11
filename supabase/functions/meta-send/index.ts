@@ -20,10 +20,12 @@ const RETRYABLE_ERROR_CODES = [
   100,    // Invalid parameter (sometimes transient)
 ];
 
-// External DB for high-volume tables (whatsapp_messages)
+// External DB — messages go here exclusively
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+/** DB where whatsapp_messages live */
+const messageDb = externalSupabase || createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
