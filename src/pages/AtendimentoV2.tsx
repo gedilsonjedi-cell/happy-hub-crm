@@ -1925,10 +1925,46 @@ const AtendimentoV2 = () => {
     fetchAndApply();
   }, [channelIdSet]);
 
-  useChatRealtime(channelIds, {
-    onNewMessage: handleNewMessageRealtime,
-    onAssignmentChange: handleAssignmentChangeRealtime,
-  });
+  // ─── Throttled Realtime: batch rapid messages into single render cycle ────
+  const messageBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>> | null>(null);
+  const assignmentBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>> | null>(null);
+
+  useEffect(() => {
+    messageBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>(
+      (items) => {
+        // Process all batched messages in a single React render cycle
+        startTransition(() => {
+          items.forEach(msg => handleNewMessageRealtime(msg));
+        });
+      },
+      150 // 150ms window — batches bursts without feeling laggy
+    );
+
+    assignmentBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>(
+      (items) => {
+        startTransition(() => {
+          items.forEach(assignment => handleAssignmentChangeRealtime(assignment));
+        });
+      },
+      200
+    );
+
+    return () => {
+      messageBatcherRef.current?.destroy();
+      assignmentBatcherRef.current?.destroy();
+    };
+  }, [handleNewMessageRealtime, handleAssignmentChangeRealtime]);
+
+  const throttledRealtimeCallbacks = useMemo(() => ({
+    onNewMessage: (msg: Parameters<typeof handleNewMessageRealtime>[0]) => {
+      messageBatcherRef.current?.push(msg);
+    },
+    onAssignmentChange: (assignment: Parameters<typeof handleAssignmentChangeRealtime>[0]) => {
+      assignmentBatcherRef.current?.push(assignment);
+    },
+  }), []);
+
+  useChatRealtime(channelIds, throttledRealtimeCallbacks);
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
     setConversationToArchive(conversation);
