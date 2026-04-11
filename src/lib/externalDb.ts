@@ -101,7 +101,7 @@ export async function fetchInternalMessages(params: {
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
 
   const selectFields =
-    "id, channel_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+    "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
   const inboundPhoneFilter = params.phoneVariants
     .map((phone) => `sender_phone.eq.${phone}`)
