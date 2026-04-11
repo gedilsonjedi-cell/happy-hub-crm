@@ -146,6 +146,58 @@ interface Conversation {
   tags: string[] | null;
 }
 
+const hasAssignedAgent = (conversation: Pick<Conversation, "assignedTo" | "assignedToName">) => {
+  return Boolean(conversation.assignedTo || conversation.assignedToName);
+};
+
+const getConversationDataScore = (conversation: Conversation) => {
+  let score = 0;
+
+  if (conversation.channelId) score += 100;
+  if (conversation.lastInboundTime) score += 40;
+  if (conversation.lastMessage) score += 20;
+  if (conversation.unreadCount > 0) score += 10;
+  if (hasAssignedAgent(conversation)) score += 5;
+
+  return score;
+};
+
+const sanitizeConversationCollection = (
+  items: Conversation[],
+  validChannelIds: Set<string>
+): Conversation[] => {
+  const deduped = new Map<string, Conversation>();
+
+  items.forEach((conversation) => {
+    const normalizedPhone = conversation.phone.replace(/\D/g, "");
+
+    if (!normalizedPhone || !conversation.channelId || !validChannelIds.has(conversation.channelId)) {
+      return;
+    }
+
+    const key = `${conversation.channelId}_${getCanonicalPhoneThreadKey(normalizedPhone)}`;
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, conversation);
+      return;
+    }
+
+    const candidateScore = getConversationDataScore(conversation);
+    const existingScore = getConversationDataScore(existing);
+    const candidateTime = new Date(conversation.lastMessageTime || conversation.lastInboundTime || 0).getTime();
+    const existingTime = new Date(existing.lastMessageTime || existing.lastInboundTime || 0).getTime();
+
+    if (candidateScore > existingScore || (candidateScore === existingScore && candidateTime > existingTime)) {
+      deduped.set(key, conversation);
+    }
+  });
+
+  return Array.from(deduped.values()).sort(
+    (a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+  );
+};
+
 // Helper function to normalize phone numbers consistently
 const normalizePhoneNumber = (phone: string): string => {
   let normalized = phone.replace(/\D/g, '');
@@ -306,11 +358,16 @@ const AtendimentoV2 = () => {
   // CRITICAL: Build a set of valid channel IDs for safety filtering
   const validChannelIds = useMemo(() => new Set(channels.map(c => c.id)), [channels]);
   
-  // Filter conversations based on user's sector access AND valid channel ownership
-  // This is the FINAL defense against cross-org data leaks
-  const conversations = allConversations.filter(c => 
-    canSeeSector(c.sectorId) && 
-    (c.channelId ? validChannelIds.has(c.channelId) : true)
+  // Final conversation list shown by the UI:
+  // - only channel-backed threads that belong to this organization
+  // - deduplicated by channel + canonical phone thread key
+  const conversations = useMemo(
+    () =>
+      sanitizeConversationCollection(
+        allConversations.filter((conversation) => canSeeSector(conversation.sectorId)),
+        validChannelIds
+      ),
+    [allConversations, canSeeSector, validChannelIds]
   );
   
   // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
@@ -695,10 +752,9 @@ const AtendimentoV2 = () => {
 
         const mappedConversations: Conversation[] = (rows || [])
           .filter((row) => {
-            // Drop stale campaign/assignment ghosts: no channel, no preview, no inbound.
-            // These rows cannot render history and should not pollute active queues.
-            const hasAnyMessageSignal = !!row.last_message_at || !!row.last_inbound_at || !!row.last_message;
-            return !!row.channel_id || hasAnyMessageSignal;
+            // Only channel-backed conversations can open history reliably in Atendimento.
+            // Legacy assignments without channel_id must stay out of the live queues.
+            return !!row.channel_id;
           })
           .map((row) => {
             const normalizedPhone = (row.conversation_phone || '').replace(/\D/g, '');
@@ -1030,7 +1086,7 @@ const AtendimentoV2 = () => {
     const currentKey = selectedConversation ? getConversationKey(selectedConversation) : null;
     if (currentKey === selectedConversationStableKey) return;
 
-    const recovered = [...allConversations, ...globalSearchResults].find(
+    const recovered = [...conversations, ...globalSearchResults].find(
       (conv) => getConversationKey(conv) === selectedConversationStableKey
     );
 
@@ -1299,7 +1355,7 @@ const AtendimentoV2 = () => {
     const lowerTerm = searchTerm.toLowerCase();
     const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
     
-    const localMatches = allConversations.filter(conv => {
+    const localMatches = conversations.filter(conv => {
       if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
       if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
       if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
@@ -1317,7 +1373,7 @@ const AtendimentoV2 = () => {
     } else {
       setGlobalSearchResults([]);
     }
-  }, [searchTerm, allConversations, searchConversationsGlobal]);
+  }, [searchTerm, conversations, searchConversationsGlobal]);
 
   // Fetch notes and handle side-effects when conversation changes.
   // Messages are now managed by useInfiniteMessages above.
@@ -1864,9 +1920,9 @@ const AtendimentoV2 = () => {
     updatedAt: string;
   }) => {
     if (!assignment?.conversationPhone) return;
-    // Allow assignments without channel_id (common for campaign dispatches)
-    // but still validate that known channel_ids belong to this organization
-    if (assignment.channelId && !channelIdSet.has(assignment.channelId)) return;
+    // Atendimento V2 only supports live threads backed by a real channel.
+    // Legacy assignments without channel_id must never mutate the visible queues.
+    if (!assignment.channelId || !channelIdSet.has(assignment.channelId)) return;
 
     const normalizedPhone = assignment.conversationPhone.replace(/\D/g, '');
 
