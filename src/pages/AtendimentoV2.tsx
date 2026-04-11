@@ -1988,7 +1988,7 @@ const AtendimentoV2 = () => {
     },
   }), []);
 
-  useChatRealtime(channelIds, throttledRealtimeCallbacks);
+  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId);
 
   // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
   // Warms TanStack Query cache so switching chat feels instant
