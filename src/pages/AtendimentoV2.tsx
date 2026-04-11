@@ -3066,7 +3066,7 @@ const AtendimentoV2 = () => {
 
   const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
   const isArchivedLikeConversation = useCallback(
-    (conv: Conversation) => conv.status === "archived" || (!hasClientResponse(conv) && !conv.assignedTo),
+    (conv: Conversation) => conv.status === "archived" || !hasClientResponse(conv),
     [hasClientResponse]
   );
 
