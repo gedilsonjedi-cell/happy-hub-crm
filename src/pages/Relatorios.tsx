@@ -70,8 +70,9 @@ export default function Relatorios() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="trafego">
+          <TabsContent value="trafego" className="space-y-6">
             <ConversationHeatmap />
+            <ButtonTrafficHeatmap />
           </TabsContent>
 
           <TabsContent value="agentes">
