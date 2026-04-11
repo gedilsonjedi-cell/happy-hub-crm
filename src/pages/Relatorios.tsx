@@ -2,6 +2,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart3, Users, Megaphone, FileText, DollarSign } from "lucide-react";
 import { ConversationHeatmap } from "@/components/reports/ConversationHeatmap";
+import { ButtonTrafficHeatmap } from "@/components/reports/ButtonTrafficHeatmap";
 import { AgentPerformanceTable } from "@/components/reports/AgentPerformanceTable";
 import { CampaignTrafficPanel } from "@/components/reports/CampaignTrafficPanel";
 import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
@@ -69,8 +70,9 @@ export default function Relatorios() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="trafego">
+          <TabsContent value="trafego" className="space-y-6">
             <ConversationHeatmap />
+            <ButtonTrafficHeatmap />
           </TabsContent>
 
           <TabsContent value="agentes">
