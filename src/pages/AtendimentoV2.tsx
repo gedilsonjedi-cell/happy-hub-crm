@@ -1769,15 +1769,8 @@ const AtendimentoV2 = () => {
             return c;
           });
         } else if (assignment.assignedTo && assignment.channelId) {
-          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-          const phoneSuffix8 = normalizedPhone.slice(-8);
-          const matches = [
-            leadsMapRef.current.byPhone.get(normalizedPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8)
-          ].filter(Boolean);
+          const cachedLeadMatch = getLeadFromCache(normalizedPhone);
+          const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
           let leadName: string | null = null;
           let leadTags: string[] | null = null;
