@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -54,22 +54,11 @@ const MessageBubble = memo(function MessageBubble({
         case "sticker":
           return (
             <div className="space-y-1">
-              <div
-                className="cursor-pointer group relative"
+              <ProgressiveImage
+                src={message.media_url!}
+                alt="Media"
                 onClick={() => onMediaPreview(message.media_url!, message.message_type)}
-              >
-                {/* loading="lazy" — browser defers decode until image enters viewport */}
-                <img
-                  src={message.media_url}
-                  alt="Media"
-                  loading="lazy"
-                  decoding="async"
-                  className="max-w-full rounded-lg max-h-60 object-cover transition-opacity group-hover:opacity-90"
-                />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-lg">
-                  <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
-                </div>
-              </div>
+              />
               {message.content && message.content !== `[${message.message_type}]` && (
                 <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
               )}
