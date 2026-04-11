@@ -142,7 +142,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       while (hasMore) {
         const { data, error } = await supabase.from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .or(`${channelFilter},channel_id.is.null`).neq("status", "archived")
+          .or(channelFilter).neq("status", "archived")
           .order("updated_at", { ascending: false }).range(from, from + 999);
         if (error || !data || data.length === 0) hasMore = false;
         else { all.push(...data); from += 1000; hasMore = data.length === 1000; }
