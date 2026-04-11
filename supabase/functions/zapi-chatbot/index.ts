@@ -5,6 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// External DB for whatsapp_messages
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+const messageDb = externalSupabase || supabase;
+
 interface ChatbotConfig {
   is_enabled: boolean;
   auto_reply_when_unavailable: boolean;
@@ -529,9 +539,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           .eq('id', channelId)
           .single();
 
-        await supabase
-          .from('whatsapp_messages')
-          .insert({
+        const botMsgData = {
             channel_id: channelId,
             organization_id: organizationId,
             message_id: `bot_zapi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -546,7 +554,18 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
               transferred: shouldTransfer,
               provider: 'zapi'
             }
-          });
+        };
+        await messageDb.from('whatsapp_messages').insert(botMsgData);
+        // Update conversation stats on Cloud
+        supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId,
+          _conversation_phone: senderPhone.replace(/\D/g, ''),
+          _content: responseMessage,
+          _direction: 'outbound',
+          _is_read: null,
+          _sender_name: null,
+          _created_at: new Date().toISOString(),
+        }).then(() => {}).catch(() => {});
       }
     }
 

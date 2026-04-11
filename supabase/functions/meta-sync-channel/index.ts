@@ -12,6 +12,12 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// External DB for whatsapp_messages
+const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+const messageDb = externalSupabase || supabase;
+
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   return digits.startsWith('55') ? digits : '55' + digits;
@@ -78,7 +84,7 @@ Deno.serve(async (req) => {
 
     // ─── STEP 2: Sync outbound message statuses ─────────────────────
     if (syncStatuses) {
-      const { data: stuckMessages } = await supabase
+      const { data: stuckMessages } = await messageDb
         .from('whatsapp_messages')
         .select('id, message_id, metadata, created_at')
         .eq('channel_id', channelId)
@@ -109,7 +115,7 @@ Deno.serve(async (req) => {
           if (toUpdate.length === 0) continue;
 
           const msgIds = toUpdate.map(m => m.id);
-          const { error: batchErr } = await supabase
+          const { error: batchErr } = await messageDb
             .from('whatsapp_messages')
             .update({ status: 'delivered', updated_at: new Date().toISOString() })
             .in('id', msgIds);
@@ -255,7 +261,7 @@ Deno.serve(async (req) => {
     }
 
     // ─── STEP 4: Check webhook health ───────────────────────────────
-    const { data: healthData } = await supabase
+    const { data: healthData } = await messageDb
       .from('whatsapp_messages')
       .select('direction, status')
       .eq('channel_id', channelId)

@@ -910,8 +910,8 @@ Deno.serve(async (req) => {
         content = '[Mensagem não suportada]';
       }
 
-      // Check for duplicate message
-      const { data: existingMessage } = await supabase
+      // Check for duplicate message on external DB
+      const { data: existingMessage } = await messageDb
         .from('whatsapp_messages')
         .select('id')
         .eq('message_id', messageId)
