@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from "react";
 import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
@@ -76,6 +76,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import { fetchExternalMessages, fetchInternalMessages } from "@/lib/externalDb";
+import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { QuickResponsesAutocomplete } from "@/components/whatsapp/QuickResponsesAutocomplete";
