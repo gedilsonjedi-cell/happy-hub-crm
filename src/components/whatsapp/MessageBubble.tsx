@@ -342,4 +342,51 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
+/**
+ * ProgressiveImage — shows a sized placeholder while the image loads,
+ * preventing layout shift. Fades in on load.
+ */
+const ProgressiveImage = memo(function ProgressiveImage({
+  src,
+  alt,
+  onClick,
+}: {
+  src: string;
+  alt: string;
+  onClick: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+
+  const handleLoad = useCallback(() => setLoaded(true), []);
+
+  return (
+    <div
+      className="cursor-pointer group relative"
+      onClick={onClick}
+    >
+      {/* Placeholder skeleton — exact size via aspect-ratio */}
+      {!loaded && (
+        <div
+          className="w-full max-w-[280px] rounded-lg bg-muted animate-pulse"
+          style={{ aspectRatio: "4/3", minHeight: 120 }}
+        />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={handleLoad}
+        className={cn(
+          "max-w-full rounded-lg max-h-60 object-cover transition-opacity duration-300",
+          loaded ? "opacity-100" : "opacity-0 absolute inset-0"
+        )}
+      />
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-lg">
+        <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
+      </div>
+    </div>
+  );
+});
+
 export { MessageBubble };
