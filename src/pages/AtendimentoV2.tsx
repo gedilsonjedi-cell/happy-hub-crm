@@ -1896,14 +1896,15 @@ const AtendimentoV2 = () => {
           existing = prev.find(c => {
             const cNormalized = normalizePhoneNumber(c.phone);
             const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
-            return cNormalized === assignmentNormalized && c.channelId === assignment.channelId;
+            // Match by phone + channel, or by phone alone if assignment has no channel
+            return cNormalized === assignmentNormalized && (c.channelId === assignment.channelId || !assignment.channelId);
           });
         }
 
         if (existing) {
           return prev.map(c => {
             const isMatch = c.id === assignment.id ||
-              (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && c.channelId === assignment.channelId);
+              (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && (c.channelId === assignment.channelId || !assignment.channelId));
             if (isMatch) {
               return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
             }
