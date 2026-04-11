@@ -876,7 +876,7 @@ async function sendFlowMessages(
         if (msg.media_type === 'audio' && msg.message) {
           console.log('[FlowBot] Waiting 5s before sending text after audio...');
           await new Promise(r => setTimeout(r, 5000));
-          await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase);
+          await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase, messageDb);
         }
       } else if (msg.message) {
         // Plain text message (or buttons formatted as text)
