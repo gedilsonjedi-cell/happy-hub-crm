@@ -1086,7 +1086,7 @@ const AtendimentoV2 = () => {
     const currentKey = selectedConversation ? getConversationKey(selectedConversation) : null;
     if (currentKey === selectedConversationStableKey) return;
 
-    const recovered = [...allConversations, ...globalSearchResults].find(
+    const recovered = [...conversations, ...globalSearchResults].find(
       (conv) => getConversationKey(conv) === selectedConversationStableKey
     );
 
@@ -1920,9 +1920,9 @@ const AtendimentoV2 = () => {
     updatedAt: string;
   }) => {
     if (!assignment?.conversationPhone) return;
-    // Allow assignments without channel_id (common for campaign dispatches)
-    // but still validate that known channel_ids belong to this organization
-    if (assignment.channelId && !channelIdSet.has(assignment.channelId)) return;
+    // Atendimento V2 only supports live threads backed by a real channel.
+    // Legacy assignments without channel_id must never mutate the visible queues.
+    if (!assignment.channelId || !channelIdSet.has(assignment.channelId)) return;
 
     const normalizedPhone = assignment.conversationPhone.replace(/\D/g, '');
 
