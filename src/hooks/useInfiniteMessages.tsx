@@ -7,7 +7,7 @@ import {
 } from "@/lib/externalDb";
 import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
 
 export interface MessagePage {
   messages: MessageRow[];

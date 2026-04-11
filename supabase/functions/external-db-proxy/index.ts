@@ -132,7 +132,7 @@ async function handleMessages(
     channelId,
     phoneVariants,
     cursor,
-    pageSize = 20,
+    pageSize = 25,
   } = body as {
     channelId: string;
     phoneVariants: string[];
