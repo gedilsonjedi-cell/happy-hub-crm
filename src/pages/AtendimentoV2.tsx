@@ -752,10 +752,9 @@ const AtendimentoV2 = () => {
 
         const mappedConversations: Conversation[] = (rows || [])
           .filter((row) => {
-            // Drop stale campaign/assignment ghosts: no channel, no preview, no inbound.
-            // These rows cannot render history and should not pollute active queues.
-            const hasAnyMessageSignal = !!row.last_message_at || !!row.last_inbound_at || !!row.last_message;
-            return !!row.channel_id || hasAnyMessageSignal;
+            // Only channel-backed conversations can open history reliably in Atendimento.
+            // Legacy assignments without channel_id must stay out of the live queues.
+            return !!row.channel_id;
           })
           .map((row) => {
             const normalizedPhone = (row.conversation_phone || '').replace(/\D/g, '');
