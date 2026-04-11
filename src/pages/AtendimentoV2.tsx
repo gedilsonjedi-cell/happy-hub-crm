@@ -146,6 +146,58 @@ interface Conversation {
   tags: string[] | null;
 }
 
+const hasAssignedAgent = (conversation: Pick<Conversation, "assignedTo" | "assignedToName">) => {
+  return Boolean(conversation.assignedTo || conversation.assignedToName);
+};
+
+const getConversationDataScore = (conversation: Conversation) => {
+  let score = 0;
+
+  if (conversation.channelId) score += 100;
+  if (conversation.lastInboundTime) score += 40;
+  if (conversation.lastMessage) score += 20;
+  if (conversation.unreadCount > 0) score += 10;
+  if (hasAssignedAgent(conversation)) score += 5;
+
+  return score;
+};
+
+const sanitizeConversationCollection = (
+  items: Conversation[],
+  validChannelIds: Set<string>
+): Conversation[] => {
+  const deduped = new Map<string, Conversation>();
+
+  items.forEach((conversation) => {
+    const normalizedPhone = conversation.phone.replace(/\D/g, "");
+
+    if (!normalizedPhone || !conversation.channelId || !validChannelIds.has(conversation.channelId)) {
+      return;
+    }
+
+    const key = `${conversation.channelId}_${getCanonicalPhoneThreadKey(normalizedPhone)}`;
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, conversation);
+      return;
+    }
+
+    const candidateScore = getConversationDataScore(conversation);
+    const existingScore = getConversationDataScore(existing);
+    const candidateTime = new Date(conversation.lastMessageTime || conversation.lastInboundTime || 0).getTime();
+    const existingTime = new Date(existing.lastMessageTime || existing.lastInboundTime || 0).getTime();
+
+    if (candidateScore > existingScore || (candidateScore === existingScore && candidateTime > existingTime)) {
+      deduped.set(key, conversation);
+    }
+  });
+
+  return Array.from(deduped.values()).sort(
+    (a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+  );
+};
+
 // Helper function to normalize phone numbers consistently
 const normalizePhoneNumber = (phone: string): string => {
   let normalized = phone.replace(/\D/g, '');
