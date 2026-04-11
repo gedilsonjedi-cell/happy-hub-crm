@@ -212,6 +212,15 @@ const getStatusConfig = (status: string) => {
   return statusConfig[status] || { label: status || "Pendente", className: "bg-muted text-muted-foreground border-border" };
 };
 
+const mapConversationStatus = (
+  status: string | null | undefined
+): Conversation["status"] => {
+  if (status === "active" || status === "in_progress") return "in_progress";
+  if (status === "archived") return "archived";
+  if (status === "resolved") return "resolved";
+  return "pending";
+};
+
 type FilterStatus = "new" | "mine" | "others" | "unread";
 
 // Audio notification using Web Audio API
@@ -439,8 +448,14 @@ const AtendimentoV2 = () => {
         .in("provider", ["meta", "zapi", "gupshup"])
         .eq("connected", true);
 
+      if (error) {
+        console.error("Error fetching channels:", error);
+        setChannels([]);
+        setLoading(false);
+        return;
+      }
 
-      if (!error && data) {
+      if (data) {
         // Only update channels if they actually changed (prevents unnecessary re-renders and re-fetches)
         setChannels(prev => {
           const prevIds = prev.map(c => c.id).sort().join(',');
@@ -448,6 +463,14 @@ const AtendimentoV2 = () => {
           if (prevIds === newIds) return prev;
           return data;
         });
+
+        if (data.length === 0) {
+          setAllConversations([]);
+          setSelectedConversation(null);
+          setSelectedConversationStableKey(null);
+          setLoading(false);
+        }
+
         if (data.length > 0 && !selectedChannel) {
           setSelectedChannel(data[0]);
         }
@@ -572,429 +595,106 @@ const AtendimentoV2 = () => {
     bySuffix: Map<string, { id?: string; name: string; tags: string[] | null }>;
   }>({ byPhone: new Map(), bySuffix: new Map() });
 
-  // Fetch conversations using conversation_assignments as PRIMARY source
-  // This ensures ALL conversations are visible, not just the last 5000 messages
+  // Fetch conversations using the precomputed summary RPC.
+  // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
     const fetchConversations = async () => {
-      if (channels.length === 0) return;
-
-      setLoading(true);
-      const channelIds = channels.map(c => c.id);
-
-      // CRITICAL FIX: Use conversation_assignments as PRIMARY source
-      // This prevents conversations from "disappearing" due to message limits
-      // CRITICAL: Fetch ALL leads using pagination to support high-scale orgs (10k+ leads)
-      const fetchAllLeads = async () => {
-        const allLeads: Array<{ id: string; phone: string; name: string | null; tags: string[] | null }> = [];
-        const PAGE_SIZE = 1000;
-        let from = 0;
-        let hasMore = true;
-        
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from("leads")
-            .select("id, phone, name, tags")
-            .eq("organization_id", effectiveOrganizationId)
-            .range(from, from + PAGE_SIZE - 1);
-          
-          if (error || !data || data.length === 0) {
-            hasMore = false;
-          } else {
-            allLeads.push(...data);
-            from += PAGE_SIZE;
-            hasMore = data.length === PAGE_SIZE;
-          }
-        }
-        
-        return { data: allLeads, error: null };
-      };
-
-      // UNLIMITED: Paginated fetch for assignments
-      const fetchAllAssignments = async () => {
-        const all: Array<{ id: string; conversation_phone: string; channel_id: string | null; assigned_to: string | null; status: string | null; sector_id: string | null; lead_id: string | null; updated_at: string }> = [];
-        const PAGE_SIZE = 1000;
-        let from = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from("conversation_assignments")
-            .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-            .in("channel_id", channelIds)
-            .neq("status", "archived")
-            .order("updated_at", { ascending: false })
-            .range(from, from + PAGE_SIZE - 1);
-          if (error || !data || data.length === 0) { hasMore = false; } 
-          else { all.push(...data); from += PAGE_SIZE; hasMore = data.length === PAGE_SIZE; }
-        }
-        return { data: all, error: null };
-      };
-
-      // UNLIMITED: Paginated fetch for profiles
-      const fetchAllProfiles = async () => {
-        const all: Array<{ user_id: string; display_name: string | null; email: string | null }> = [];
-        const PAGE_SIZE = 1000;
-        let from = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from("profiles")
-            .select("user_id, display_name, email")
-            .range(from, from + PAGE_SIZE - 1);
-          if (error || !data || data.length === 0) { hasMore = false; }
-          else { all.push(...data); from += PAGE_SIZE; hasMore = data.length === PAGE_SIZE; }
-        }
-        return { data: all, error: null };
-      };
-
-      const [assignmentsResult, profilesResult, leadsResult] = await Promise.all([
-        fetchAllAssignments(),
-        fetchAllProfiles(),
-        fetchAllLeads()
-      ]);
-
-      if (assignmentsResult.error) {
-        console.error("Error fetching assignments:", assignmentsResult.error);
+      if (channels.length === 0) {
+        setConversationStatuses({});
+        setAllConversations([]);
         setLoading(false);
         return;
       }
 
-      // Build leads map - prioritize system names and leads with tags over WhatsApp names
-      const leadsMap = new Map<string, { id?: string; name: string; tags: string[] | null }>();
-      const leadsBySuffix = new Map<string, { id?: string; name: string; tags: string[] | null }>();
-      const leadsById = new Map<string, { name: string; tags: string[] | null; phone: string }>();
-      
-      leadsResult.data?.forEach((lead) => {
-        const normalizedPhone = lead.phone.replace(/\D/g, '');
-        const isAutoGenerated = lead.name?.startsWith('LeadWhats-') || lead.name?.startsWith('WhatsApp ');
-        
-        const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-        const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-        const phoneSuffix8 = normalizedPhone.slice(-8);
-        const phoneSuffix9 = normalizedPhone.slice(-9);
-        
-        const leadData = {
-          id: lead.id,
-          name: isAutoGenerated ? '' : (lead.name || ''),
-          tags: lead.tags && lead.tags.length > 0 ? lead.tags : null
-        };
+      setLoading(true);
+      const channelIds = channels.map(c => c.id);
 
-        // Store by ID for direct lookup
-        leadsById.set(lead.id, { ...leadData, phone: normalizedPhone });
-        
-        // CRITICAL: Always store leads in the map, not just those with names
-        // This ensures we can find leads by phone regardless of name status
-        const updateMap = (key: string) => {
-          const existing = leadsMap.get(key);
-          
-          // If we have a real name (not auto-generated), always prefer it
-          if (!isAutoGenerated && leadData.name) {
-            const mergedTags = leadData.tags && leadData.tags.length > 0 ? leadData.tags : existing?.tags || null;
-            leadsMap.set(key, { 
-              id: lead.id,
-              name: leadData.name, 
-              tags: mergedTags
-            });
-          } else if (existing && existing.name && !existing.name.startsWith('LeadWhats-')) {
-            // Keep existing real name, but update tags if we have more
-            if (leadData.tags && leadData.tags.length > (existing.tags?.length || 0)) {
-              leadsMap.set(key, { ...existing, tags: leadData.tags });
-            }
-          } else if (leadData.tags && leadData.tags.length > 0) {
-            // No real name but we have tags - store it
-            leadsMap.set(key, { 
-              id: lead.id,
-              name: existing?.name || '', 
-              tags: leadData.tags 
-            });
-          } else if (!existing) {
-            // Store even empty entries for completeness
-            leadsMap.set(key, leadData);
-          }
-        };
-        
-        updateMap(normalizedPhone);
-        updateMap(phoneWithout55);
-        updateMap(phoneWith55);
-        
-        // Store by suffix - prioritize leads with real names
-        const updateSuffixMap = (suffix: string) => {
-          const existingSuffix = leadsBySuffix.get(suffix);
-          const hasRealName = leadData.name && !isAutoGenerated;
-          const existingHasRealName = existingSuffix?.name && !existingSuffix.name.startsWith('LeadWhats-');
-          
-          // Always prefer real names over auto-generated
-          if (hasRealName && !existingHasRealName) {
-            leadsBySuffix.set(suffix, { 
-              id: lead.id,
-              name: leadData.name, 
-              tags: leadData.tags || existingSuffix?.tags || null 
-            });
-          } else if (!existingSuffix) {
-            leadsBySuffix.set(suffix, leadData);
-          } else if (!existingHasRealName && leadData.tags && leadData.tags.length > (existingSuffix.tags?.length || 0)) {
-            // Update tags if we have more
-            leadsBySuffix.set(suffix, { 
-              ...existingSuffix, 
-              tags: leadData.tags 
-            });
-          }
-        };
-        
-        updateSuffixMap(phoneSuffix8);
-        updateSuffixMap(phoneSuffix9);
-      });
-      
-      leadsMapRef.current = { byPhone: leadsMap, bySuffix: leadsBySuffix };
-
-      // Build profiles map
-      const profilesMap = new Map<string, string>();
-      profilesResult.data?.forEach((profile) => {
-        profilesMap.set(profile.user_id, profile.display_name || profile.email || 'Atendente');
-      });
-
-      // Optimized: fetch only recent messages (last 500 per channel — reduced from 1500)
-      const lastMessagesPromises = channelIds.map(channelId => 
-        supabase
-          .from("whatsapp_messages")
-          .select("channel_id, sender_phone, sender_name, content, created_at, direction, metadata, is_read")
-          .eq("channel_id", channelId)
-          .order("created_at", { ascending: false })
-          .limit(500)
-      );
-
-      const lastMessagesResults = await Promise.all(lastMessagesPromises);
-      
-      // Build messages map by conversation key
-      const lastMessagesByConv = new Map<string, {
-        content: string;
-        createdAt: string;
-        lastInboundTime: string | null;
-        unreadCount: number;
-        senderName: string | null;
-      }>();
-
-      lastMessagesResults.forEach(result => {
-        if (result.error || !result.data) return;
-        
-        result.data.forEach((msg) => {
-          const msgData = msg as {
-            channel_id: string;
-            sender_phone: string;
-            sender_name?: string | null;
-            content: string | null;
-            created_at: string;
-            direction: string;
-            metadata: Record<string, unknown> | null;
-            is_read?: boolean;
-          };
-          let contactPhone: string;
-          
-          if (msgData.direction === "inbound") {
-            contactPhone = msgData.sender_phone.replace(/\D/g, '');
-          } else {
-            const metadata = msgData.metadata as { destination?: string } | null;
-            contactPhone = (metadata?.destination || '').replace(/\D/g, '');
-            if (!contactPhone) return;
-          }
-
-          const key = `${msgData.channel_id}_${contactPhone}`;
-          const existing = lastMessagesByConv.get(key);
-
-          if (!existing) {
-            lastMessagesByConv.set(key, {
-              content: msgData.content || '',
-              createdAt: msgData.created_at,
-              lastInboundTime: msgData.direction === 'inbound' ? msgData.created_at : null,
-              unreadCount: msgData.direction === 'inbound' && !msgData.is_read ? 1 : 0,
-              senderName: msgData.direction === 'inbound' ? (msgData.sender_name || null) : null
-            });
-          } else {
-            if (msgData.direction === 'inbound') {
-              if (!existing.lastInboundTime || new Date(msgData.created_at) > new Date(existing.lastInboundTime)) {
-                existing.lastInboundTime = msgData.created_at;
-              }
-              if (!msgData.is_read) {
-                existing.unreadCount++;
-              }
-              if (msgData.sender_name && !existing.senderName) {
-                existing.senderName = msgData.sender_name;
-              }
-            }
-          }
+      try {
+        const { data: rows, error } = await supabase.rpc("get_conversations_summary", {
+          p_channel_ids: channelIds,
+          p_organization_id: effectiveOrganizationId,
         });
-      });
 
-      // Build statuses map from assignments
-      const dbStatuses: Record<string, string> = {};
-      assignmentsResult.data?.forEach((assignment) => {
-        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
-        const key = `${assignment.channel_id}_${normalizedPhone}`;
-        if (assignment.status) {
-          dbStatuses[key] = assignment.status;
-        }
-      });
-      setConversationStatuses(dbStatuses as Record<string, Conversation["status"]>);
-
-      // Build conversations from assignments (PRIMARY SOURCE)
-      const conversationsFromAssignments: Conversation[] = (assignmentsResult.data || []).map(assignment => {
-        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
-        const conversationKey = `${assignment.channel_id}_${normalizedPhone}`;
-        const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
-
-        // Get lead info - first try by lead_id
-        let leadInfo: { name: string; tags: string[] | null } | undefined;
-        
-        if (assignment.lead_id) {
-          const leadById = leadsById.get(assignment.lead_id);
-          if (leadById) {
-            leadInfo = { name: leadById.name, tags: leadById.tags };
-          }
+        if (error) {
+          throw error;
         }
 
-        // Fallback to phone matching - try multiple formats and suffix lengths
-        if (!leadInfo || (!leadInfo.name && !leadInfo.tags)) {
-          const phoneSuffix8 = normalizedPhone.slice(-8);
-          const phoneSuffix9 = normalizedPhone.slice(-9);
+        const leadsByPhone = new Map<string, { id?: string; name: string; tags: string[] | null }>();
+        const leadsBySuffix = new Map<string, { id?: string; name: string; tags: string[] | null }>();
+        const nextStatuses: Record<string, Conversation["status"]> = {};
+
+        const upsertLeadLookup = (phone: string, leadData: { id?: string; name: string; tags: string[] | null }) => {
+          const normalizedPhone = phone.replace(/\D/g, '');
+          if (!normalizedPhone) return;
+
           const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
           const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-          
-          // Try all possible phone formats for matching
-          const matches = [
-            leadsMap.get(normalizedPhone),
-            leadsMap.get(phoneWithout55),
-            leadsMap.get(phoneWith55),
-            leadsBySuffix.get(phoneSuffix9), // 9-digit suffix (Brazilian mobile)
-            leadsBySuffix.get(phoneSuffix8)  // 8-digit suffix (fallback)
-          ].filter(Boolean);
+          const variants = [normalizedPhone, phoneWithout55, phoneWith55];
+          const suffixes = [normalizedPhone.slice(-9), normalizedPhone.slice(-8)].filter(Boolean);
 
-          // Prioritize matches with real names (not auto-generated)
-          const bestMatch = matches.find(m => m && m.name && !m.name.startsWith('LeadWhats-') && !m.name.startsWith('WhatsApp '));
-          
-          if (bestMatch) {
-            leadInfo = { name: bestMatch.name, tags: bestMatch.tags };
-          } else {
-            // Fallback: merge info from multiple matches
-            for (const match of matches) {
-              if (!match) continue;
-              if (!leadInfo) {
-                leadInfo = { name: match.name, tags: match.tags };
-              } else {
-                if (!leadInfo.name && match.name) leadInfo.name = match.name;
-                if ((!leadInfo.tags || leadInfo.tags.length === 0) && match.tags && match.tags.length > 0) {
-                  leadInfo.tags = match.tags;
-                }
-              }
-              if (leadInfo.name && leadInfo.tags && leadInfo.tags.length > 0) break;
+          variants.forEach((variant) => {
+            const existing = leadsByPhone.get(variant);
+            if (!existing || (!existing.name && leadData.name) || (!existing.tags?.length && leadData.tags?.length)) {
+              leadsByPhone.set(variant, leadData);
             }
-          }
-        }
-
-        // Get last message info
-        const lastMsgInfo = lastMessagesByConv.get(conversationKey);
-
-        // Map status from DB to frontend
-        let mappedStatus: Conversation["status"] = "pending";
-        if (assignment.status === "active" || assignment.status === "in_progress") mappedStatus = "in_progress";
-        else if (assignment.status === "archived") mappedStatus = "archived";
-        else if (assignment.status === "resolved") mappedStatus = "resolved";
-        else if (assignment.status === "pending") mappedStatus = "pending";
-
-        return {
-          id: assignment.id, // Include assignment ID for unique identification
-          phone: displayPhone,
-          name: leadInfo?.name || lastMsgInfo?.senderName || null,
-          lastMessage: lastMsgInfo?.content || "",
-          lastMessageTime: lastMsgInfo?.createdAt || assignment.updated_at,
-          lastInboundTime: lastMsgInfo?.lastInboundTime || null,
-          unreadCount: lastMsgInfo?.unreadCount || 0,
-          channelId: assignment.channel_id,
-          status: mappedStatus,
-          assignedTo: assignment.assigned_to,
-          assignedToName: assignment.assigned_to ? profilesMap.get(assignment.assigned_to) || null : null,
-          sectorId: assignment.sector_id,
-          tags: leadInfo?.tags || null
-        };
-      });
-
-      // Sort by last message time (most recent first)
-      conversationsFromAssignments.sort((a, b) => 
-        new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
-      );
-
-      setAllConversations(conversationsFromAssignments);
-      setLoading(false);
-
-      // For conversations without lastMessage, fetch their last message in background
-      const emptyMessageConvs = conversationsFromAssignments.filter(c => !c.lastMessage && c.channelId);
-      if (emptyMessageConvs.length > 0) {
-        const BATCH = 50;
-        for (let i = 0; i < emptyMessageConvs.length; i += BATCH) {
-          const batch = emptyMessageConvs.slice(i, i + BATCH);
-          
-          const results = await Promise.all(batch.map(async (conv) => {
-            const phone = conv.phone.replace(/\D/g, '');
-            const phoneWithPlus = `+${phone}`;
-            
-            // Fetch last inbound OR outbound message for this conversation
-            const [inboundRes, outboundRes] = await Promise.all([
-              supabase
-                .from("whatsapp_messages")
-                .select("content, created_at, direction, sender_name")
-                .eq("channel_id", conv.channelId!)
-                .eq("direction", "inbound")
-                .or(`sender_phone.eq.${phone},sender_phone.eq.${phoneWithPlus}`)
-                .order("created_at", { ascending: false })
-                .limit(1),
-              supabase
-                .from("whatsapp_messages")
-                .select("content, created_at, direction, metadata")
-                .eq("channel_id", conv.channelId!)
-                .eq("direction", "outbound")
-                .or(`metadata->>destination.eq.${phone},metadata->>destination.eq.${phoneWithPlus}`)
-                .order("created_at", { ascending: false })
-                .limit(1)
-            ]);
-            
-            const inMsg = inboundRes.data?.[0];
-            const outMsg = outboundRes.data?.[0];
-            
-            // Pick the most recent message
-            let lastMsg: { content: string | null; created_at: string; direction: string; senderName?: string | null } | null = null;
-            if (inMsg && outMsg) {
-              lastMsg = new Date(inMsg.created_at) > new Date(outMsg.created_at) 
-                ? { ...inMsg, senderName: inMsg.sender_name } 
-                : { ...outMsg };
-            } else {
-              lastMsg = inMsg ? { ...inMsg, senderName: inMsg.sender_name } : outMsg ? { ...outMsg } : null;
-            }
-            
-            return { phone: conv.phone, channelId: conv.channelId, lastMsg };
-          }));
-          
-          // Update conversations with fetched messages
-          setAllConversations(prev => {
-            let changed = false;
-            const updated = prev.map(c => {
-              const result = results.find(r => 
-                r.phone === c.phone && r.channelId === c.channelId && r.lastMsg
-              );
-              if (result && result.lastMsg && !c.lastMessage) {
-                changed = true;
-                return {
-                  ...c,
-                  lastMessage: result.lastMsg.content || "",
-                  lastMessageTime: result.lastMsg.created_at,
-                  lastInboundTime: result.lastMsg.direction === 'inbound' ? result.lastMsg.created_at : c.lastInboundTime,
-                  name: c.name || (result.lastMsg as { senderName?: string | null }).senderName || c.name,
-                };
-              }
-              return c;
-            });
-            return changed ? updated : prev;
           });
-        }
-        
-        console.log(`[AtendimentoV2] Finished fetching missing last messages`);
+
+          suffixes.forEach((suffix) => {
+            const existing = leadsBySuffix.get(suffix);
+            if (!existing || (!existing.name && leadData.name) || (!existing.tags?.length && leadData.tags?.length)) {
+              leadsBySuffix.set(suffix, leadData);
+            }
+          });
+        };
+
+        const mappedConversations: Conversation[] = (rows || []).map((row) => {
+          const normalizedPhone = (row.conversation_phone || '').replace(/\D/g, '');
+          const displayPhone = normalizedPhone ? `+${normalizedPhone}` : '';
+          const leadName = row.lead_name?.trim() || '';
+          const isAutoGenerated = leadName.startsWith('LeadWhats-') || leadName.startsWith('WhatsApp ');
+          const resolvedLeadName = isAutoGenerated ? '' : leadName;
+          const resolvedTags = row.lead_tags && row.lead_tags.length > 0 ? row.lead_tags : null;
+          const mappedStatus = mapConversationStatus(row.status);
+
+          nextStatuses[`${row.channel_id}_${normalizedPhone}`] = mappedStatus;
+
+          if (normalizedPhone && (resolvedLeadName || resolvedTags)) {
+            upsertLeadLookup(normalizedPhone, {
+              id: row.lead_id || undefined,
+              name: resolvedLeadName,
+              tags: resolvedTags,
+            });
+          }
+
+          return {
+            id: row.assignment_id,
+            phone: displayPhone,
+            name: resolvedLeadName || row.sender_name || null,
+            lastMessage: row.last_message || '',
+            lastMessageTime: row.last_message_at || row.updated_at,
+            lastInboundTime: row.last_inbound_at || null,
+            unreadCount: Number(row.unread_count) || 0,
+            channelId: row.channel_id,
+            status: mappedStatus,
+            assignedTo: row.assigned_to || null,
+            assignedToName: row.assigned_to_name || null,
+            sectorId: row.sector_id || null,
+            tags: resolvedTags,
+          };
+        });
+
+        mappedConversations.sort(
+          (a, b) =>
+            new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+        );
+
+        leadsMapRef.current = { byPhone: leadsByPhone, bySuffix: leadsBySuffix };
+        setConversationStatuses(nextStatuses);
+        setAllConversations(mappedConversations);
+      } catch (error) {
+        console.error("Error fetching conversations summary:", error);
+      } finally {
+        setLoading(false);
       }
     };
 
