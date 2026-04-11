@@ -273,9 +273,7 @@ Deno.serve(async (req) => {
 
       // Store failed message
       const failedMessageId = `gupshup_failed_${Date.now()}`;
-      await serviceRoleClient
-        .from('whatsapp_messages')
-        .insert({
+      const failedData = {
           channel_id: channelId,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
@@ -294,7 +292,9 @@ Deno.serve(async (req) => {
             sent_by_human: userId !== 'service_role',
             originalError: responseText,
           },
-        });
+      };
+      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
+      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
 
       return new Response(
         JSON.stringify({
@@ -311,9 +311,7 @@ Deno.serve(async (req) => {
     console.log('Message sent successfully via Gupshup:', messageId);
 
     // Store outbound message
-    await serviceRoleClient
-      .from('whatsapp_messages')
-      .insert({
+    const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
         message_id: messageId,
@@ -330,7 +328,9 @@ Deno.serve(async (req) => {
           provider: 'gupshup',
           sent_by_human: userId !== 'service_role',
         },
-      });
+    };
+    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
+    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
 
     // Pause bot for 24 hours when a human sends a message
     if (userId !== 'service_role') {
