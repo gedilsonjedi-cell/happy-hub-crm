@@ -65,6 +65,11 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // External DB for whatsapp_messages
+    const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+    const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+
     // Get chatbot config for this channel
     const { data: config } = await supabase
       .from('chatbot_config')
