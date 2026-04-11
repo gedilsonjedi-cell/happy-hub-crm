@@ -1034,21 +1034,12 @@ const AtendimentoV2 = () => {
         let resolvedTags = matchingLeadByName?.tags || null;
         
         if (!resolvedName) {
-          const phoneWithout55 = normalizedPhone.startsWith('55') ? normalizedPhone.slice(2) : normalizedPhone;
-          const phoneWith55 = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-          const phoneSuffix8 = normalizedPhone.slice(-8);
-          const phoneSuffix9 = normalizedPhone.slice(-9);
-          
-          const candidates = [
-            leadsMapRef.current.byPhone.get(normalizedPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55),
-            leadsMapRef.current.bySuffix.get(phoneSuffix9),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8),
-          ].filter(Boolean);
-          
-          const bestMatch = candidates.find(c => c && c.name && !c.name.startsWith('LeadWhats-')) || candidates[0];
+          const bestMatch = getLeadFromCache(normalizedPhone);
           if (bestMatch) {
+            resolvedName = bestMatch.name || null;
+            resolvedTags = bestMatch.tags || null;
+          }
+        }
             resolvedName = bestMatch.name || null;
             resolvedTags = bestMatch.tags || null;
           }
