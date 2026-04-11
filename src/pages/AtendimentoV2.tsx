@@ -1277,19 +1277,40 @@ const AtendimentoV2 = () => {
     }
   }, [channels, effectiveOrganizationId]);
 
-  // Debounced global search — 300ms for snappy feel
+  // Debounced global search — local-first, then DB fallback
+  // Filters in-memory conversations instantly; only queries DB if local results are sparse
+  const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
+  
   useEffect(() => {
-    if (!searchTerm || searchTerm.length < 3) {
+    if (!searchTerm || searchTerm.length < 2) {
       setGlobalSearchResults([]);
+      setLocalSearchResults([]);
       return;
     }
 
-    const debounceTimer = setTimeout(() => {
-      searchConversationsGlobal(searchTerm);
-    }, 300);
+    // ── Step 1: Instant local filter (no DB hit) ──
+    const lowerTerm = searchTerm.toLowerCase();
+    const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
+    
+    const localMatches = allConversations.filter(conv => {
+      if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
+      if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
+      if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
+      return false;
+    });
+    
+    setLocalSearchResults(localMatches);
 
-    return () => clearTimeout(debounceTimer);
-  }, [searchTerm, searchConversationsGlobal]);
+    // ── Step 2: If local results < 5, also query DB (debounced) ──
+    if (searchTerm.length >= 3 && localMatches.length < 5) {
+      const debounceTimer = setTimeout(() => {
+        searchConversationsGlobal(searchTerm);
+      }, 400);
+      return () => clearTimeout(debounceTimer);
+    } else {
+      setGlobalSearchResults([]);
+    }
+  }, [searchTerm, allConversations, searchConversationsGlobal]);
 
   // Fetch notes and handle side-effects when conversation changes.
   // Messages are now managed by useInfiniteMessages above.
