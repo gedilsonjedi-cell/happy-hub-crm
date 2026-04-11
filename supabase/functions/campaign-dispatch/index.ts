@@ -108,6 +108,9 @@ async function processCampaignDispatch(
   manualVariables?: Record<string, string>
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+  const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+  const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
   
   console.log(`[Campaign] Starting campaign ${campaignId} with ${recipients.length} recipients`);
 
