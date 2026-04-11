@@ -786,7 +786,93 @@ const AtendimentoV2 = () => {
     // No interval - Realtime handles ongoing updates
   }, [channels]);
 
-  // Fetch archived conversations when user opens the archived panel
+  // Background enrichment: fetch last message for conversations missing preview
+  useEffect(() => {
+    if (channels.length === 0 || loading) return;
+
+    const convsMissingPreview = allConversations.filter(
+      c => !c.lastMessage && c.channelId && c.status !== "archived"
+    );
+
+    if (convsMissingPreview.length === 0) return;
+
+    const enrichBatch = async () => {
+      const updates: { key: string; lastMessage: string; lastMessageTime: string }[] = [];
+
+      // Process in small batches to avoid flooding
+      const batch = convsMissingPreview.slice(0, 15);
+
+      await Promise.all(
+        batch.map(async (conv) => {
+          const normalizedPhone = conv.phone.replace(/\D/g, '');
+          const phoneSuffix = normalizedPhone.slice(-8);
+
+          try {
+            // Try inbound first
+            const { data: inbound } = await supabase
+              .from("whatsapp_messages")
+              .select("content, created_at")
+              .eq("channel_id", conv.channelId!)
+              .eq("direction", "inbound")
+              .ilike("sender_phone", `%${phoneSuffix}`)
+              .order("created_at", { ascending: false })
+              .limit(1);
+
+            if (inbound && inbound.length > 0 && inbound[0].content) {
+              updates.push({
+                key: `${conv.channelId}_${normalizedPhone}`,
+                lastMessage: inbound[0].content,
+                lastMessageTime: inbound[0].created_at,
+              });
+              return;
+            }
+
+            // Try outbound
+            const { data: outbound } = await supabase
+              .from("whatsapp_messages")
+              .select("content, created_at")
+              .eq("channel_id", conv.channelId!)
+              .eq("direction", "outbound")
+              .ilike("metadata->>destination", `%${phoneSuffix}`)
+              .order("created_at", { ascending: false })
+              .limit(1);
+
+            if (outbound && outbound.length > 0 && outbound[0].content) {
+              updates.push({
+                key: `${conv.channelId}_${normalizedPhone}`,
+                lastMessage: outbound[0].content,
+                lastMessageTime: outbound[0].created_at,
+              });
+            }
+          } catch {
+            // Silently skip failed enrichment
+          }
+        })
+      );
+
+      if (updates.length > 0) {
+        setAllConversations(prev => {
+          const updateMap = new Map(updates.map(u => [u.key, u]));
+          let changed = false;
+          const result = prev.map(c => {
+            const normalizedPhone = c.phone.replace(/\D/g, '');
+            const key = `${c.channelId}_${normalizedPhone}`;
+            const update = updateMap.get(key);
+            if (update && !c.lastMessage) {
+              changed = true;
+              return { ...c, lastMessage: update.lastMessage, lastMessageTime: update.lastMessageTime };
+            }
+            return c;
+          });
+          return changed ? result : prev;
+        });
+      }
+    };
+
+    // Delay to not block initial render
+    const timer = setTimeout(enrichBatch, 1500);
+    return () => clearTimeout(timer);
+  }, [allConversations.length, channels.length, loading]);
   useEffect(() => {
     if (!showArchived || channels.length === 0) return;
     
