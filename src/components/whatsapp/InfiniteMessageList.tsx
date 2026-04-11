@@ -151,7 +151,7 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
         if (showDate) datesShown.add(dateKey);
 
         return (
-          <div key={msg.id}>
+          <div key={msg.id} className="mb-1">
             {showDate && (
               <div className="flex justify-center py-2">
                 <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
