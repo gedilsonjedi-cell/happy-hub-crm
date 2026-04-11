@@ -3553,6 +3553,18 @@ export type Database = {
       }
       unaccent: { Args: { "": string }; Returns: string }
       update_session_activity: { Args: never; Returns: boolean }
+      upsert_conversation_stats_manual: {
+        Args: {
+          _channel_id: string
+          _content: string
+          _conversation_phone: string
+          _created_at?: string
+          _direction: string
+          _is_read: boolean
+          _sender_name: string
+        }
+        Returns: undefined
+      }
       user_can_access_campaign: {
         Args: { campaign_sector_id: string }
         Returns: boolean

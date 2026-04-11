@@ -19,6 +19,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // External DB for whatsapp_messages
+    const _extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const _extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+
     const now = new Date();
     const brazilHour = (now.getUTCHours() - 3 + 24) % 24; // Brazil is UTC-3
 
@@ -315,8 +320,8 @@ async function sendFollowUpMessage(
         return { success: false, error: JSON.stringify(errorData) };
       }
 
-      // Store the sent message
-      await supabase.from("whatsapp_messages").insert({
+      // Store the sent message on external DB
+      await messageDb.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -326,7 +331,13 @@ async function sendFollowUpMessage(
         content: message,
         direction: "outbound",
         status: "sent",
+        metadata: { destination: contactPhone, provider: 'meta', follow_up: true },
       });
+      supabase.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channel.id, _conversation_phone: contactPhone,
+        _content: message, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
 
       return { success: true };
     } else if (channel.provider === "zapi") {
@@ -351,8 +362,8 @@ async function sendFollowUpMessage(
         return { success: false, error: JSON.stringify(errorData) };
       }
 
-      // Store the sent message
-      await supabase.from("whatsapp_messages").insert({
+      // Store the sent message on external DB
+      await messageDb.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -362,7 +373,13 @@ async function sendFollowUpMessage(
         content: message,
         direction: "outbound",
         status: "sent",
+        metadata: { destination: contactPhone, provider: 'zapi', follow_up: true },
       });
+      supabase.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channel.id, _conversation_phone: contactPhone,
+        _content: message, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
 
       return { success: true };
     }

@@ -20,10 +20,12 @@ const RETRYABLE_ERROR_CODES = [
   100,    // Invalid parameter (sometimes transient)
 ];
 
-// External DB for high-volume tables (whatsapp_messages)
+// External DB — messages go here exclusively
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+/** DB where whatsapp_messages live */
+const messageDb = externalSupabase || createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -939,8 +941,13 @@ Deno.serve(async (req) => {
             retryAttempts: MAX_RETRIES + 1
           }
         };
-      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
-      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
+      await messageDb.from('whatsapp_messages').insert(failedData);
+      // Update conversation stats
+      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channelId, _conversation_phone: cleanDestination,
+        _content: storedContent, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
       
       return new Response(
         JSON.stringify({ 
@@ -1004,10 +1011,13 @@ Deno.serve(async (req) => {
     // Use waitUntil to persist DB writes in background — respond instantly
     const dbWritePromise = (async () => {
       try {
-        await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
-        if (externalSupabase) {
-          externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
-        }
+        await messageDb.from('whatsapp_messages').insert(outboundData);
+        // Update conversation stats
+        serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId, _conversation_phone: cleanDestination,
+          _content: storedContent, _direction: 'outbound', _is_read: null,
+          _sender_name: null, _created_at: new Date().toISOString(),
+        }).then(() => {}).catch(() => {});
 
         if (channel.organization_id) {
           await dispatchIntegrationWebhook({

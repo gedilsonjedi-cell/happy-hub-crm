@@ -65,6 +65,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // External DB for whatsapp_messages
+    const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+    const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+
     // Helper: create response AND send messages via Meta API
     async function respondWithMessages(messages: FlowMessage[], extra?: Record<string, unknown>) {
       // Send messages via Meta API (fire-and-forget safe — errors logged internally)
@@ -848,8 +853,8 @@ async function sendFlowMessages(
         const mediaWamId = mediaResult?.messages?.[0]?.id || `flow_media_${Date.now()}`;
         console.log('[FlowBot] Media send result:', mediaResp.status, JSON.stringify(mediaResult));
 
-        // Persist media message
-        await supabase.from('whatsapp_messages').insert({
+        // Persist media message on external DB
+        await messageDb.from('whatsapp_messages').insert({
           channel_id: channelId,
           organization_id: organizationId,
           message_id: mediaWamId,
@@ -861,12 +866,17 @@ async function sendFlowMessages(
           status: mediaResp.ok ? 'sent' : 'failed',
           metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
         });
+        supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId, _conversation_phone: contactPhone,
+          _content: msg.message || `[${msg.media_type}]`, _direction: 'outbound',
+          _is_read: null, _sender_name: null, _created_at: new Date().toISOString(),
+        }).then(() => {}).catch(() => {});
 
         // If audio + text message, send text separately after audio with a 5s delay
         if (msg.media_type === 'audio' && msg.message) {
           console.log('[FlowBot] Waiting 5s before sending text after audio...');
           await new Promise(r => setTimeout(r, 5000));
-          await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase);
+          await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, msg.message, channelId, organizationId, channel.phone, contactPhone, supabase, messageDb);
         }
       } else if (msg.message) {
         // Plain text message (or buttons formatted as text)
@@ -874,7 +884,7 @@ async function sendFlowMessages(
         if (msg.buttons?.length) {
           textContent += '\n\n' + msg.buttons.map((b, i) => `${i + 1}. ${b.label}`).join('\n');
         }
-        await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, textContent, channelId, organizationId, channel.phone, contactPhone, supabase);
+        await sendTextMessage(phoneNumberId, channel.access_token, cleanDestination, textContent, channelId, organizationId, channel.phone, contactPhone, supabase, messageDb);
       }
 
       // Small delay between messages for natural pacing
@@ -896,8 +906,10 @@ async function sendTextMessage(
   organizationId: string,
   channelPhone: string,
   contactPhone: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  msgDb?: ReturnType<typeof createClient>
 ) {
+  const db = msgDb || supabase;
   const resp = await fetch(
     `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
     {
@@ -918,7 +930,7 @@ async function sendTextMessage(
   const wamId = result?.messages?.[0]?.id || `flow_text_${Date.now()}`;
   console.log('[FlowBot] Text send result:', resp.status, JSON.stringify(result));
 
-  await supabase.from('whatsapp_messages').insert({
+  await db.from('whatsapp_messages').insert({
     channel_id: channelId,
     organization_id: organizationId,
     message_id: wamId,
@@ -929,4 +941,9 @@ async function sendTextMessage(
     status: resp.ok ? 'sent' : 'failed',
     metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
   });
+  supabase.rpc('upsert_conversation_stats_manual', {
+    _channel_id: channelId, _conversation_phone: contactPhone,
+    _content: text, _direction: 'outbound', _is_read: null,
+    _sender_name: null, _created_at: new Date().toISOString(),
+  }).then(() => {}).catch(() => {});
 }

@@ -23,20 +23,34 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
-/** Dual-write to whatsapp_messages */
+/** DB where whatsapp_messages live (external preferred, internal fallback) */
+const messageDb = externalSupabase || supabase;
+
+/** Write to whatsapp_messages on external DB + update conversation_stats */
 async function dualWriteMessage(data: Record<string, unknown>) {
-  const ops = [supabase.from('whatsapp_messages').insert(data)];
-  if (externalSupabase) ops.push(externalSupabase.from('whatsapp_messages').insert(data));
-  return Promise.all(ops).then(([primary]) => primary);
+  const result = await messageDb.from('whatsapp_messages').insert(data);
+  if (!result.error && data.channel_id && data.direction) {
+    const phone = data.direction === 'inbound'
+      ? (data.sender_phone as string)
+      : ((data.metadata as Record<string, unknown>)?.destination as string);
+    if (phone) {
+      supabase.rpc('upsert_conversation_stats_manual', {
+        _channel_id: data.channel_id,
+        _conversation_phone: phone,
+        _content: (data.content as string) || null,
+        _direction: data.direction as string,
+        _is_read: (data.is_read as boolean) ?? null,
+        _sender_name: (data.sender_name as string) || null,
+        _created_at: new Date().toISOString(),
+      }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+    }
+  }
+  return result;
 }
 
-/** Dual-update whatsapp_messages */
+/** Update whatsapp_messages on external DB only */
 async function dualUpdateMessage(column: string, value: string, updateData: Record<string, unknown>) {
-  const op = supabase.from('whatsapp_messages').update(updateData).eq(column, value);
-  if (externalSupabase) {
-    externalSupabase.from('whatsapp_messages').update(updateData).eq(column, value).then(() => {}).catch(() => {});
-  }
-  return op;
+  return messageDb.from('whatsapp_messages').update(updateData).eq(column, value);
 }
 
 // Channel cache
@@ -311,7 +325,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
   }
 
   // Check for existing message (dedup)
-  const { data: existing } = await supabase
+  const { data: existing } = await messageDb
     .from('whatsapp_messages')
     .select('id')
     .eq('message_id', messageId)

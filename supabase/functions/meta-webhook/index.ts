@@ -10,34 +10,45 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// External DB for high-volume tables (whatsapp_messages, leads)
+// External DB for high-volume tables (whatsapp_messages) — EXTERNAL-ONLY writes
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
-/** Write to whatsapp_messages on both internal and external DB */
+/** DB where whatsapp_messages live (external preferred, internal fallback) */
+const messageDb = externalSupabase || supabase;
+
+/** Write to whatsapp_messages on external DB only + update conversation_stats */
 async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
   const op = upsert
-    ? supabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
-    : supabase.from('whatsapp_messages').insert(data);
-  const results = [op];
-  if (externalSupabase) {
-    const extOp = upsert
-      ? externalSupabase.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
-      : externalSupabase.from('whatsapp_messages').insert(data);
-    results.push(extOp);
+    ? messageDb.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+    : messageDb.from('whatsapp_messages').insert(data);
+  const result = await op;
+
+  // Manually update conversation_stats (trigger won't fire on external DB)
+  if (!result.error && data.channel_id && data.direction) {
+    const phone = data.direction === 'inbound'
+      ? (data.sender_phone as string)
+      : ((data.metadata as Record<string, unknown>)?.destination as string);
+    if (phone) {
+      supabase.rpc('upsert_conversation_stats_manual', {
+        _channel_id: data.channel_id,
+        _conversation_phone: phone,
+        _content: (data.content as string) || null,
+        _direction: data.direction as string,
+        _is_read: (data.is_read as boolean) ?? null,
+        _sender_name: (data.sender_name as string) || null,
+        _created_at: new Date().toISOString(),
+      }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+    }
   }
-  const [primary] = await Promise.all(results);
-  return primary;
+
+  return result;
 }
 
-/** Update whatsapp_messages on both DBs */
+/** Update whatsapp_messages on external DB only */
 async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
-  const op = supabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
-  if (externalSupabase) {
-    externalSupabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values).then(() => {}).catch(() => {});
-  }
-  return op;
+  return messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
 }
 
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
@@ -625,7 +636,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   // Run all lookups simultaneously before any business logic
   const [existingMessage, orgConfig, chatbotConfig] = await Promise.all([
     // Dedup check (uses message_id unique constraint)
-    supabase.from('whatsapp_messages').select('id').eq('message_id', messageId).maybeSingle(),
+    messageDb.from('whatsapp_messages').select('id').eq('message_id', messageId).maybeSingle(),
     // All org config in ONE cached fetch (business hours + holidays + away + welcome)
     getOrganizationConfig(organizationId),
     // Chatbot config (cached per channel)
@@ -903,7 +914,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
 
       if (isQualityIssue) {
         // Find which channel this message belongs to
-        const { data: msg } = await supabase
+        const { data: msg } = await messageDb
           .from('whatsapp_messages')
           .select('channel_id')
           .eq('message_id', s.id as string)
@@ -956,7 +967,7 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   if (relevantGroups.length === 0) return;
 
   const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
-  const { data: messages } = await supabase
+  const { data: messages } = await messageDb
     .from('whatsapp_messages')
     .select('message_id, status, metadata, organization_id, channel_id, error_message')
     .in('message_id', allRelevantIds)

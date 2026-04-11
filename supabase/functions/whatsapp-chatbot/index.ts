@@ -65,6 +65,11 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // External DB for whatsapp_messages
+    const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+    const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+
     // Get chatbot config for this channel
     const { data: config } = await supabase
       .from('chatbot_config')
@@ -265,7 +270,7 @@ Deno.serve(async (req) => {
         console.log('[v6] Fetching history for customer suffix:', customerPhoneSuffix);
         
         // Fetch inbound and outbound messages separately then merge
-        const { data: inboundHistory } = await supabase
+        const { data: inboundHistory } = await messageDb
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
@@ -274,7 +279,7 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: true })
           .limit(50);
         
-        const { data: outboundHistory } = await supabase
+        const { data: outboundHistory } = await messageDb
           .from('whatsapp_messages')
           .select('content, direction, created_at, sender_phone, metadata')
           .eq('channel_id', channelId)
@@ -616,7 +621,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           }
         }
 
-        await supabase
+        await messageDb
           .from('whatsapp_messages')
           .insert({
             channel_id: channelId,
@@ -634,6 +639,12 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
               provider: channel.provider
             }
           });
+        // Update conversation stats
+        supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId, _conversation_phone: cleanDestination,
+          _content: responseMessage, _direction: 'outbound', _is_read: null,
+          _sender_name: null, _created_at: new Date().toISOString(),
+        }).then(() => {}).catch(() => {});
       }
     }
 

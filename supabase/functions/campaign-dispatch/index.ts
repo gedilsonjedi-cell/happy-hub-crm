@@ -108,6 +108,9 @@ async function processCampaignDispatch(
   manualVariables?: Record<string, string>
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+  const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+  const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
   
   console.log(`[Campaign] Starting campaign ${campaignId} with ${recipients.length} recipients`);
 
@@ -284,7 +287,7 @@ async function processCampaignDispatch(
           }
           return { success: true, phone: formattedPhone };
         } else {
-          await supabase.from('whatsapp_messages').insert({
+          await messageDb.from('whatsapp_messages').insert({
             channel_id: channel.id, organization_id: channel.organization_id,
             message_id: `failed_${Date.now()}_${formattedPhone}`, sender_phone: channel.phone,
             message_type: 'template', content: `Template: ${template.name}`,

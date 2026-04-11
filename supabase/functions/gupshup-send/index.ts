@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
-    // External DB for dual-write
+    // External DB — messages go here exclusively
     const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
     const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
     const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
@@ -293,8 +293,13 @@ Deno.serve(async (req) => {
             originalError: responseText,
           },
       };
-      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
-      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
+      const msgDb = externalSupabase || serviceRoleClient;
+      await msgDb.from('whatsapp_messages').insert(failedData);
+      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channelId, _conversation_phone: cleanDestination,
+        _content: storedContent, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
 
       return new Response(
         JSON.stringify({
@@ -329,8 +334,13 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role',
         },
     };
-    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
-    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
+    const msgDb2 = externalSupabase || serviceRoleClient;
+    await msgDb2.from('whatsapp_messages').insert(outboundData);
+    serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+      _channel_id: channelId, _conversation_phone: cleanDestination,
+      _content: storedContent, _direction: 'outbound', _is_read: null,
+      _sender_name: null, _created_at: new Date().toISOString(),
+    }).then(() => {}).catch(() => {});
 
     // Pause bot for 24 hours when a human sends a message
     if (userId !== 'service_role') {

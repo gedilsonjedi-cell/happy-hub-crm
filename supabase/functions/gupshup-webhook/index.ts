@@ -10,23 +10,40 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// External DB for high-volume tables (whatsapp_messages, leads)
+// External DB for high-volume tables (whatsapp_messages) — EXTERNAL-ONLY writes
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
-/** Dual-write to whatsapp_messages */
+/** DB where whatsapp_messages live (external preferred, internal fallback) */
+const messageDb = externalSupabase || supabase;
+
+/** Write to whatsapp_messages on external DB + update conversation_stats */
 function dualWriteMessage(data: Record<string, unknown>) {
-  const ops = [supabase.from('whatsapp_messages').insert(data)];
-  if (externalSupabase) ops.push(externalSupabase.from('whatsapp_messages').insert(data));
-  return Promise.all(ops).then(([primary]) => primary);
+  return messageDb.from('whatsapp_messages').insert(data).then(async (result) => {
+    if (!result.error && data.channel_id && data.direction) {
+      const phone = data.direction === 'inbound'
+        ? (data.sender_phone as string)
+        : ((data.metadata as Record<string, unknown>)?.destination as string);
+      if (phone) {
+        supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: data.channel_id,
+          _conversation_phone: phone,
+          _content: (data.content as string) || null,
+          _direction: data.direction as string,
+          _is_read: (data.is_read as boolean) ?? null,
+          _sender_name: (data.sender_name as string) || null,
+          _created_at: new Date().toISOString(),
+        }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+      }
+    }
+    return result;
+  });
 }
 
-/** Dual-update whatsapp_messages */
+/** Update whatsapp_messages on external DB only */
 function dualUpdateMessage(filter: { column: string; op: string; value: string }, updateData: Record<string, unknown>) {
-  const op = supabase.from('whatsapp_messages').update(updateData).eq(filter.column, filter.value);
-  if (externalSupabase) externalSupabase.from('whatsapp_messages').update(updateData).eq(filter.column, filter.value).then(() => {}).catch(() => {});
-  return op;
+  return messageDb.from('whatsapp_messages').update(updateData).eq(filter.column, filter.value);
 }
 
 // ===========================================
@@ -667,7 +684,7 @@ async function processInboundMessage(
   }
 
   // Check for duplicate
-  const { data: existingMessage } = await supabase
+  const { data: existingMessage } = await messageDb
     .from('whatsapp_messages')
     .select('id')
     .eq('message_id', messageId)
