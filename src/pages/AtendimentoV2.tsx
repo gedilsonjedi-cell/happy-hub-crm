@@ -75,6 +75,7 @@ import {
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
+import { fetchExternalMessages, fetchInternalMessages } from "@/lib/externalDb";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { QuickResponsesAutocomplete } from "@/components/whatsapp/QuickResponsesAutocomplete";
@@ -176,6 +177,37 @@ const phonesMatch = (phoneA?: string | null, phoneB?: string | null): boolean =>
   if (!phoneA || !phoneB) return false;
 
   return normalizePhoneNumber(phoneA) === normalizePhoneNumber(phoneB);
+};
+
+const buildMessageLookupVariants = (phone: string): string[] => {
+  const variants = new Set<string>();
+
+  getPhoneComparisonVariants(phone).forEach((variant) => {
+    variants.add(variant);
+    variants.add(`+${variant}`);
+  });
+
+  return Array.from(variants);
+};
+
+const getMessagePreviewText = (message: {
+  content?: string | null;
+  message_type?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) => {
+  if (message.content?.trim()) return message.content;
+
+  if (message.message_type === "template") {
+    const metadata = message.metadata as { templateName?: string } | null;
+    return metadata?.templateName ? `Template: ${metadata.templateName}` : "Template enviado";
+  }
+
+  if (message.message_type === "image") return "[Imagem]";
+  if (message.message_type === "video") return "[Vídeo]";
+  if (message.message_type === "audio" || message.message_type === "ptt") return "[Áudio]";
+  if (message.message_type === "document") return "[Documento]";
+
+  return "";
 };
 
 interface Channel {
@@ -791,7 +823,7 @@ const AtendimentoV2 = () => {
     if (channels.length === 0 || loading) return;
 
     const convsMissingPreview = allConversations.filter(
-      c => !c.lastMessage && c.channelId && c.status !== "archived"
+      c => !c.lastMessage && c.channelId
     );
 
     if (convsMissingPreview.length === 0) return;
@@ -805,43 +837,44 @@ const AtendimentoV2 = () => {
       await Promise.all(
         batch.map(async (conv) => {
           const normalizedPhone = conv.phone.replace(/\D/g, '');
-          const phoneSuffix = normalizedPhone.slice(-8);
+          const phoneVariants = buildMessageLookupVariants(normalizedPhone);
 
           try {
-            // Try inbound first
-            const { data: inbound } = await supabase
-              .from("whatsapp_messages")
-              .select("content, created_at")
-              .eq("channel_id", conv.channelId!)
-              .eq("direction", "inbound")
-              .ilike("sender_phone", `%${phoneSuffix}`)
-              .order("created_at", { ascending: false })
-              .limit(1);
-
-            if (inbound && inbound.length > 0 && inbound[0].content) {
-              updates.push({
-                key: `${conv.channelId}_${normalizedPhone}`,
-                lastMessage: inbound[0].content,
-                lastMessageTime: inbound[0].created_at,
+            let result = await fetchExternalMessages({
+              channelId: conv.channelId!,
+              phoneVariants,
+              cursor: null,
+              pageSize: 1,
+            }).catch(async () => {
+              return fetchInternalMessages({
+                channelId: conv.channelId!,
+                phoneVariants,
+                cursor: null,
+                pageSize: 1,
               });
-              return;
+            });
+
+            if (!result.messages.length) {
+              const internalResult = await fetchInternalMessages({
+                channelId: conv.channelId!,
+                phoneVariants,
+                cursor: null,
+                pageSize: 1,
+              }).catch(() => null);
+
+              if (internalResult?.messages.length) {
+                result = internalResult;
+              }
             }
 
-            // Try outbound
-            const { data: outbound } = await supabase
-              .from("whatsapp_messages")
-              .select("content, created_at")
-              .eq("channel_id", conv.channelId!)
-              .eq("direction", "outbound")
-              .ilike("metadata->>destination", `%${phoneSuffix}`)
-              .order("created_at", { ascending: false })
-              .limit(1);
+            const latestMessage = result.messages[0];
+            const previewText = latestMessage ? getMessagePreviewText(latestMessage) : "";
 
-            if (outbound && outbound.length > 0 && outbound[0].content) {
+            if (latestMessage && previewText) {
               updates.push({
                 key: `${conv.channelId}_${normalizedPhone}`,
-                lastMessage: outbound[0].content,
-                lastMessageTime: outbound[0].created_at,
+                lastMessage: previewText,
+                lastMessageTime: latestMessage.created_at,
               });
             }
           } catch {
@@ -2926,11 +2959,17 @@ const AtendimentoV2 = () => {
     return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
   };
 
-  // Computed values - FIXED: Only archived conversations go to archived, not based on hasClientResponse
+  const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
+  const isArchivedLikeConversation = useCallback(
+    (conv: Conversation) => conv.status === "archived" || (!hasClientResponse(conv) && !conv.assignedTo),
+    [hasClientResponse]
+  );
+
+  // Computed values - active tabs only show replied conversations or manual/owned attendances
   const activeConversations = conversations
-    .filter(conv => conv.status !== "archived")
+    .filter(conv => !isArchivedLikeConversation(conv))
     .sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
-  const archivedConversations = conversations.filter(conv => conv.status === "archived");
+  const archivedConversations = conversations.filter(isArchivedLikeConversation);
 
   const { isAdmin, isSupervisor, isSuperAdmin } = useUserRole();
   const canSeeOthers = isAdmin || isSupervisor || isSuperAdmin;
@@ -3011,15 +3050,14 @@ const AtendimentoV2 = () => {
           // Assigned to me OR unassigned (orphan visible to me)
           const isMyConversation = conv.assignedTo === user?.id;
           const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+          matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          // Same strict logic as main filter - only truly orphan conversations
-          const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
-          matchesFilter = isTrulyOrphan && conv.status !== "archived";
+          const isTrulyOrphan = hasClientResponse(conv) && !conv.assignedTo && !conv.sectorId;
+          matchesFilter = isTrulyOrphan;
         }
-        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
-        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
+        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && !isArchivedLikeConversation(conv);
+        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
@@ -3038,18 +3076,14 @@ const AtendimentoV2 = () => {
           // "Não Lidos" - conversations with unread messages that belong to this user
           const isMyConversation = conv.assignedTo === user?.id;
           const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-          matchesFilter = conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && conv.status !== "archived";
+          matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          // CRITICAL FIX: "Novos" ONLY shows truly orphan conversations:
-          // 1. Have NO assignee (assigned_to is null/undefined)
-          // 2. Have NO sector (sector_id is null/undefined)
-          // 3. Are not archived
-          const isTrulyOrphan = !conv.assignedTo && !conv.sectorId;
-          matchesFilter = isTrulyOrphan && conv.status !== "archived";
+          const isTrulyOrphan = hasClientResponse(conv) && !conv.assignedTo && !conv.sectorId;
+          matchesFilter = isTrulyOrphan;
         }
-        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id;
-        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id;
+        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && !isArchivedLikeConversation(conv);
+        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
@@ -3077,7 +3111,7 @@ const AtendimentoV2 = () => {
     
   // Include global search results in archived if they are archived
   const archivedFromGlobalSearch = hasGlobalResults 
-    ? globalSearchResults.filter(conv => conv.status === "archived")
+    ? globalSearchResults.filter(conv => isArchivedLikeConversation(conv))
     : [];
     
   const filteredArchived = hasGlobalResults
@@ -3107,11 +3141,11 @@ const AtendimentoV2 = () => {
 
   // Counts - "Novos" counts ALL conversations without assignee (excluding archived)
   // CRITICAL FIX: Count only truly orphan conversations (no assignee AND no sector)
-  const newCount = visibleConversations.filter(c => !c.assignedTo && !c.sectorId && c.status !== "archived").length;
+  const newCount = visibleConversations.filter(c => hasClientResponse(c) && !c.assignedTo && !c.sectorId).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
   const unreadCount = visibleConversations.filter(c => {
-    if (c.unreadCount <= 0 || c.status === "archived") return false;
+    if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
     const isMyConversation = c.assignedTo === user?.id;
     const isOrphanVisibleToMe = !c.assignedTo && (!c.sectorId || sectorIds.includes(c.sectorId));
     return isMyConversation || isOrphanVisibleToMe;
