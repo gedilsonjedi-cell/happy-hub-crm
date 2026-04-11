@@ -65,6 +65,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // External DB for whatsapp_messages
+    const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+    const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+
     // Helper: create response AND send messages via Meta API
     async function respondWithMessages(messages: FlowMessage[], extra?: Record<string, unknown>) {
       // Send messages via Meta API (fire-and-forget safe — errors logged internally)
@@ -848,8 +853,8 @@ async function sendFlowMessages(
         const mediaWamId = mediaResult?.messages?.[0]?.id || `flow_media_${Date.now()}`;
         console.log('[FlowBot] Media send result:', mediaResp.status, JSON.stringify(mediaResult));
 
-        // Persist media message
-        await supabase.from('whatsapp_messages').insert({
+        // Persist media message on external DB
+        await messageDb.from('whatsapp_messages').insert({
           channel_id: channelId,
           organization_id: organizationId,
           message_id: mediaWamId,
@@ -861,6 +866,11 @@ async function sendFlowMessages(
           status: mediaResp.ok ? 'sent' : 'failed',
           metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
         });
+        supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId, _conversation_phone: contactPhone,
+          _content: msg.message || `[${msg.media_type}]`, _direction: 'outbound',
+          _is_read: null, _sender_name: null, _created_at: new Date().toISOString(),
+        }).then(() => {}).catch(() => {});
 
         // If audio + text message, send text separately after audio with a 5s delay
         if (msg.media_type === 'audio' && msg.message) {
