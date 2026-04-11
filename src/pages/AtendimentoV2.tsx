@@ -1521,15 +1521,8 @@ const AtendimentoV2 = () => {
           ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
         } else if (isSentByHuman) {
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
-          const phoneWithout55 = normalizedContactPhone.startsWith('55') ? normalizedContactPhone.slice(2) : normalizedContactPhone;
-          const phoneWith55New = normalizedContactPhone.startsWith('55') ? normalizedContactPhone : `55${normalizedContactPhone}`;
-          const phoneSuffix8 = normalizedContactPhone.slice(-8);
-          const newMatches = [
-            leadsMapRef.current.byPhone.get(normalizedContactPhone),
-            leadsMapRef.current.byPhone.get(phoneWithout55),
-            leadsMapRef.current.byPhone.get(phoneWith55New),
-            leadsMapRef.current.bySuffix.get(phoneSuffix8)
-          ].filter(Boolean);
+          const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
+          const newMatches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
           let leadNameFromSystem: string | undefined;
           let leadTagsFromSystem: string[] | null = null;
