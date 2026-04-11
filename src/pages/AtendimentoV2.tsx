@@ -1857,7 +1857,9 @@ const AtendimentoV2 = () => {
     updatedAt: string;
   }) => {
     if (!assignment?.conversationPhone) return;
-    if (!assignment.channelId || !channelIdSet.has(assignment.channelId)) return;
+    // Allow assignments without channel_id (common for campaign dispatches)
+    // but still validate that known channel_ids belong to this organization
+    if (assignment.channelId && !channelIdSet.has(assignment.channelId)) return;
 
     const normalizedPhone = assignment.conversationPhone.replace(/\D/g, '');
 
@@ -1894,14 +1896,15 @@ const AtendimentoV2 = () => {
           existing = prev.find(c => {
             const cNormalized = normalizePhoneNumber(c.phone);
             const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
-            return cNormalized === assignmentNormalized && c.channelId === assignment.channelId;
+            // Match by phone + channel, or by phone alone if assignment has no channel
+            return cNormalized === assignmentNormalized && (c.channelId === assignment.channelId || !assignment.channelId);
           });
         }
 
         if (existing) {
           return prev.map(c => {
             const isMatch = c.id === assignment.id ||
-              (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && c.channelId === assignment.channelId);
+              (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && (c.channelId === assignment.channelId || !assignment.channelId));
             if (isMatch) {
               return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
             }
@@ -1985,7 +1988,7 @@ const AtendimentoV2 = () => {
     },
   }), []);
 
-  useChatRealtime(channelIds, throttledRealtimeCallbacks);
+  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId);
 
   // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
   // Warms TanStack Query cache so switching chat feels instant
@@ -3165,8 +3168,10 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          const isTrulyOrphan = hasClientResponse(conv) && !conv.assignedTo && !conv.sectorId;
-          matchesFilter = isTrulyOrphan;
+          // "Novos" = conversations with client response, no assignee
+          // For admins: include all unassigned (with or without sector)
+          // For attendants: only truly orphan (no sector) since sectored ones should be auto-distributed
+          matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && !isArchivedLikeConversation(conv);
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
@@ -3191,8 +3196,10 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          const isTrulyOrphan = hasClientResponse(conv) && !conv.assignedTo && !conv.sectorId;
-          matchesFilter = isTrulyOrphan;
+          // "Novos" = conversations with client response, no assignee
+          // For admins: include all unassigned (with or without sector)
+          // For attendants: only truly orphan (no sector) since sectored ones should be auto-distributed
+          matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && !isArchivedLikeConversation(conv);
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
@@ -3251,9 +3258,9 @@ const AtendimentoV2 = () => {
           return timeB - timeA;
         });
 
-  // Counts - "Novos" counts ALL conversations without assignee (excluding archived)
-  // CRITICAL FIX: Count only truly orphan conversations (no assignee AND no sector)
-  const newCount = visibleConversations.filter(c => hasClientResponse(c) && !c.assignedTo && !c.sectorId).length;
+  // Counts - "Novos" = unassigned conversations visible to the user
+  // Admins see all unassigned (with or without sector), attendants see only truly orphan
+  const newCount = visibleConversations.filter(c => hasClientResponse(c) && !c.assignedTo && (canSeeOthers || !c.sectorId)).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
   const unreadCount = visibleConversations.filter(c => {
