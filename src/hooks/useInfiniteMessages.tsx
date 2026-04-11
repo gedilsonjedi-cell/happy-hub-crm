@@ -116,8 +116,8 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone,
-    staleTime: 0,
-    gcTime: 5 * 60_000,
+    staleTime: 30_000, // 30s — allows prefetched data to stay fresh
+    gcTime: 3 * 60_000, // 3 min — keeps cache for recently-viewed conversations, then GC frees memory
     refetchOnMount: "always",
   });
 

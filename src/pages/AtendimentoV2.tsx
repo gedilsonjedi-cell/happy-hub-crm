@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from "react";
 import { useSearchParams } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -76,6 +76,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import { fetchExternalMessages, fetchInternalMessages } from "@/lib/externalDb";
+import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
 import { QuickResponsesAutocomplete } from "@/components/whatsapp/QuickResponsesAutocomplete";
@@ -1276,19 +1277,40 @@ const AtendimentoV2 = () => {
     }
   }, [channels, effectiveOrganizationId]);
 
-  // Debounced global search — 300ms for snappy feel
+  // Debounced global search — local-first, then DB fallback
+  // Filters in-memory conversations instantly; only queries DB if local results are sparse
+  const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
+  
   useEffect(() => {
-    if (!searchTerm || searchTerm.length < 3) {
+    if (!searchTerm || searchTerm.length < 2) {
       setGlobalSearchResults([]);
+      setLocalSearchResults([]);
       return;
     }
 
-    const debounceTimer = setTimeout(() => {
-      searchConversationsGlobal(searchTerm);
-    }, 300);
+    // ── Step 1: Instant local filter (no DB hit) ──
+    const lowerTerm = searchTerm.toLowerCase();
+    const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
+    
+    const localMatches = allConversations.filter(conv => {
+      if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
+      if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
+      if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
+      return false;
+    });
+    
+    setLocalSearchResults(localMatches);
 
-    return () => clearTimeout(debounceTimer);
-  }, [searchTerm, searchConversationsGlobal]);
+    // ── Step 2: If local results < 5, also query DB (debounced) ──
+    if (searchTerm.length >= 3 && localMatches.length < 5) {
+      const debounceTimer = setTimeout(() => {
+        searchConversationsGlobal(searchTerm);
+      }, 400);
+      return () => clearTimeout(debounceTimer);
+    } else {
+      setGlobalSearchResults([]);
+    }
+  }, [searchTerm, allConversations, searchConversationsGlobal]);
 
   // Fetch notes and handle side-effects when conversation changes.
   // Messages are now managed by useInfiniteMessages above.
@@ -1924,10 +1946,83 @@ const AtendimentoV2 = () => {
     fetchAndApply();
   }, [channelIdSet]);
 
-  useChatRealtime(channelIds, {
-    onNewMessage: handleNewMessageRealtime,
-    onAssignmentChange: handleAssignmentChangeRealtime,
-  });
+  // ─── Throttled Realtime: batch rapid messages into single render cycle ────
+  const messageBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>> | null>(null);
+  const assignmentBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>> | null>(null);
+
+  useEffect(() => {
+    messageBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>(
+      (items) => {
+        // Process all batched messages in a single React render cycle
+        startTransition(() => {
+          items.forEach(msg => handleNewMessageRealtime(msg));
+        });
+      },
+      150 // 150ms window — batches bursts without feeling laggy
+    );
+
+    assignmentBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>(
+      (items) => {
+        startTransition(() => {
+          items.forEach(assignment => handleAssignmentChangeRealtime(assignment));
+        });
+      },
+      200
+    );
+
+    return () => {
+      messageBatcherRef.current?.destroy();
+      assignmentBatcherRef.current?.destroy();
+    };
+  }, [handleNewMessageRealtime, handleAssignmentChangeRealtime]);
+
+  const throttledRealtimeCallbacks = useMemo(() => ({
+    onNewMessage: (msg: Parameters<typeof handleNewMessageRealtime>[0]) => {
+      messageBatcherRef.current?.push(msg);
+    },
+    onAssignmentChange: (assignment: Parameters<typeof handleAssignmentChangeRealtime>[0]) => {
+      assignmentBatcherRef.current?.push(assignment);
+    },
+  }), []);
+
+  useChatRealtime(channelIds, throttledRealtimeCallbacks);
+
+  // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
+  // Warms TanStack Query cache so switching chat feels instant
+  const prefetchQueryClient = useQueryClient();
+  useEffect(() => {
+    if (!selectedConversation || conversations.length === 0) return;
+
+    const selectedKey = getConversationKey(selectedConversation);
+    const idx = conversations.findIndex(c => getConversationKey(c) === selectedKey);
+    if (idx < 0) return;
+
+    const adjacentConvs = conversations.slice(idx + 1, idx + 4);
+    if (adjacentConvs.length === 0) return;
+
+    const timer = setTimeout(() => {
+      adjacentConvs.forEach(conv => {
+        if (!conv.channelId || !conv.phone) return;
+        const threadKey = getCanonicalPhoneThreadKey(conv.phone);
+        const qk = ["messages", conv.channelId, threadKey];
+        // Only prefetch if not already cached
+        if (!prefetchQueryClient.getQueryData(qk)) {
+          const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
+          prefetchQueryClient.prefetchInfiniteQuery({
+            queryKey: qk,
+            queryFn: () =>
+              fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })
+                .catch(() => fetchInternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })),
+            initialPageParam: null as string | null,
+            staleTime: 60_000,
+          });
+        }
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [selectedConversation?.channelId, selectedConversation?.phone, conversations, prefetchQueryClient]);
+
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
     setConversationToArchive(conversation);
@@ -3038,11 +3133,28 @@ const AtendimentoV2 = () => {
     return convSectorMatches;
   }, [filterBySector, attendantSectorsMap]);
 
-  // If we have global search results and a search term, prioritize showing those
-  const hasGlobalResults = globalSearchResults.length > 0 && searchTerm.length >= 3;
+  // Merge local + global search results, deduplicated
+  const combinedSearchResults = useMemo(() => {
+    if (!searchTerm || searchTerm.length < 2) return [];
+    const seen = new Set<string>();
+    const results: Conversation[] = [];
+    // Local results first (instant)
+    for (const c of localSearchResults) {
+      const key = getConversationKey(c);
+      if (!seen.has(key)) { seen.add(key); results.push(c); }
+    }
+    // Global results from DB (may arrive later)
+    for (const c of globalSearchResults) {
+      const key = getConversationKey(c);
+      if (!seen.has(key)) { seen.add(key); results.push(c); }
+    }
+    return results;
+  }, [localSearchResults, globalSearchResults, searchTerm]);
+
+  const hasSearchResults = combinedSearchResults.length > 0 && searchTerm.length >= 2;
   
-  const filteredConversations = hasGlobalResults 
-    ? globalSearchResults.filter(conv => {
+  const filteredConversations = hasSearchResults 
+    ? combinedSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
         if (filterStatus === "unread") {
@@ -3110,11 +3222,11 @@ const AtendimentoV2 = () => {
       });
     
   // Include global search results in archived if they are archived
-  const archivedFromGlobalSearch = hasGlobalResults 
-    ? globalSearchResults.filter(conv => isArchivedLikeConversation(conv))
+  const archivedFromGlobalSearch = hasSearchResults 
+    ? combinedSearchResults.filter(conv => isArchivedLikeConversation(conv))
     : [];
     
-  const filteredArchived = hasGlobalResults
+  const filteredArchived = hasSearchResults
     ? archivedFromGlobalSearch
         .filter(conv => {
           const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
