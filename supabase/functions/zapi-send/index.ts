@@ -324,9 +324,7 @@ Deno.serve(async (req) => {
     console.log('Message sent successfully (no charge):', messageId);
 
     // Store outbound message in database
-    await serviceRoleClient
-      .from('whatsapp_messages')
-      .insert({
+    const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
         message_id: messageId,
@@ -344,7 +342,9 @@ Deno.serve(async (req) => {
           provider: 'zapi',
           sent_by_human: userId !== 'service_role'
         }
-      });
+    };
+    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
+    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
     
     // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
     // This prevents the bot from responding while a human is handling the conversation
