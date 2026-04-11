@@ -27,24 +27,23 @@ interface RealtimeCallbacks {
 /**
  * useChatRealtime — Consolidated Realtime hook
  *
- * Replaces:
- * - Multiple per-channel subscriptions in AtendimentoV2
- * - The separate subscription in useUnreadMessagesCount for whatsapp_messages
- * - The global (unfiltered) subscription in useWhatsAppNotifications
- *
- * Reduces from ~12 subscriptions/user to 2 subscriptions total:
+ * Subscribes to:
  * 1. whatsapp_messages filtered by channel_id IN (...)
- * 2. conversation_assignments filtered by channel_id IN (...)
+ * 2. conversation_assignments filtered by channel_id IN (...) — catches assignments WITH channels
+ * 3. conversation_assignments (org-wide, no filter) — catches assignments WITHOUT channel_id (campaigns)
+ *    Deduplication handled via assignment ID tracking.
  */
 export function useChatRealtime(
   channelIds: string[],
-  callbacks: RealtimeCallbacks
+  callbacks: RealtimeCallbacks,
+  organizationId?: string | null
 ) {
   const channelIdsRef = useRef<string[]>(channelIds);
   const callbacksRef = useRef<RealtimeCallbacks>(callbacks);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const orgSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
 
-  // Keep refs up to date without re-subscribing
   useEffect(() => {
     channelIdsRef.current = channelIds;
   }, [channelIds]);
@@ -53,10 +52,49 @@ export function useChatRealtime(
     callbacksRef.current = callbacks;
   }, [callbacks]);
 
+  // Clear dedup set periodically to prevent memory growth
+  useEffect(() => {
+    const interval = setInterval(() => {
+      processedAssignmentIdsRef.current.clear();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleAssignmentPayload = useCallback((payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+    const data = (payload.new || payload.old) as {
+      id: string;
+      conversation_phone: string;
+      channel_id: string | null;
+      assigned_to: string | null;
+      status: string | null;
+      sector_id: string | null;
+      lead_id: string | null;
+      updated_at: string;
+    };
+
+    if (!data) return;
+
+    // Deduplicate: same assignment may arrive from both subscriptions
+    const dedupKey = `${data.id}_${data.updated_at}`;
+    if (processedAssignmentIdsRef.current.has(dedupKey)) return;
+    processedAssignmentIdsRef.current.add(dedupKey);
+
+    callbacksRef.current.onAssignmentChange({
+      id: data.id,
+      conversationPhone: data.conversation_phone,
+      channelId: data.channel_id,
+      assignedTo: data.assigned_to,
+      status: data.status,
+      sectorId: data.sector_id,
+      leadId: data.lead_id,
+      updatedAt: data.updated_at,
+    });
+  }, []);
+
   const setupSubscription = useCallback(() => {
     if (channelIdsRef.current.length === 0) return;
 
-    // Clean up previous subscription
+    // Clean up previous subscriptions
     if (subscriptionRef.current) {
       supabase.removeChannel(subscriptionRef.current);
       subscriptionRef.current = null;
@@ -108,47 +146,63 @@ export function useChatRealtime(
           table: "conversation_assignments",
           filter: `channel_id=in.(${channelFilter})`,
         },
-        (payload) => {
-          const data = (payload.new || payload.old) as {
-            id: string;
-            conversation_phone: string;
-            channel_id: string | null;
-            assigned_to: string | null;
-            status: string | null;
-            sector_id: string | null;
-            lead_id: string | null;
-            updated_at: string;
-          };
-
-          if (!data) return;
-
-          callbacksRef.current.onAssignmentChange({
-            id: data.id,
-            conversationPhone: data.conversation_phone,
-            channelId: data.channel_id,
-            assignedTo: data.assigned_to,
-            status: data.status,
-            sectorId: data.sector_id,
-            leadId: data.lead_id,
-            updatedAt: data.updated_at,
-          });
-        }
+        handleAssignmentPayload
       )
       .subscribe();
 
     subscriptionRef.current = channel;
-  }, []);
+  }, [handleAssignmentPayload]);
+
+  // 3. Separate org-wide subscription for assignments WITHOUT channel_id (campaigns)
+  const setupOrgSubscription = useCallback(() => {
+    if (!organizationId) return;
+
+    if (orgSubscriptionRef.current) {
+      supabase.removeChannel(orgSubscriptionRef.current);
+      orgSubscriptionRef.current = null;
+    }
+
+    // Subscribe to conversation_stats changes which carry organization_id
+    // This catches assignments that have no channel_id
+    const orgChannel = supabase
+      .channel(`assignments-org-${organizationId.slice(0, 12)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_assignments",
+        },
+        (payload) => {
+          const data = (payload.new || payload.old) as {
+            channel_id: string | null;
+          };
+          // Only process assignments WITHOUT channel_id here
+          // (ones WITH channel_id are already handled by the filtered subscription)
+          if (data?.channel_id) return;
+          handleAssignmentPayload(payload);
+        }
+      )
+      .subscribe();
+
+    orgSubscriptionRef.current = orgChannel;
+  }, [organizationId, handleAssignmentPayload]);
 
   useEffect(() => {
     if (channelIds.length === 0) return;
 
     setupSubscription();
+    setupOrgSubscription();
 
     return () => {
       if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
       }
+      if (orgSubscriptionRef.current) {
+        supabase.removeChannel(orgSubscriptionRef.current);
+        orgSubscriptionRef.current = null;
+      }
     };
-  }, [channelIds, setupSubscription]);
+  }, [channelIds, setupSubscription, setupOrgSubscription]);
 }
