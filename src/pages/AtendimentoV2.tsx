@@ -1040,10 +1040,6 @@ const AtendimentoV2 = () => {
             resolvedTags = bestMatch.tags || null;
           }
         }
-            resolvedName = bestMatch.name || null;
-            resolvedTags = bestMatch.tags || null;
-          }
-        }
 
         let mappedStatus: Conversation["status"] = "pending";
         if (assignment.status === "active" || assignment.status === "in_progress") mappedStatus = "in_progress";
