@@ -315,10 +315,13 @@ Deno.serve(async (req) => {
         },
       };
 
-      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
-      if (externalSupabase) {
-        externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
-      }
+      const msgDb = (extUrl && extKey) ? createClient(extUrl, extKey) : serviceRoleClient;
+      await msgDb.from('whatsapp_messages').insert(failedData);
+      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channelId, _conversation_phone: cleanDestination,
+        _content: storedContent, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
 
       return new Response(
         JSON.stringify({
@@ -356,10 +359,13 @@ Deno.serve(async (req) => {
       },
     };
 
-    await serviceRoleClient.from('whatsapp_messages').insert(successData);
-    if (externalSupabase) {
-      externalSupabase.from('whatsapp_messages').insert(successData).then(() => {}).catch(() => {});
-    }
+    const msgDb2 = (extUrl && extKey) ? createClient(extUrl, extKey) : serviceRoleClient;
+    await msgDb2.from('whatsapp_messages').insert(successData);
+    serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+      _channel_id: channelId, _conversation_phone: cleanDestination,
+      _content: storedContent, _direction: 'outbound', _is_read: null,
+      _sender_name: null, _created_at: new Date().toISOString(),
+    }).then(() => {}).catch(() => {});
 
     // Pause bot for 24 hours when a human sends a message
     if (userId !== 'service_role') {

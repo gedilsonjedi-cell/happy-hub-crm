@@ -303,8 +303,14 @@ Deno.serve(async (req) => {
             originalError: errorMessage
           }
       };
-      await serviceRoleClient.from('whatsapp_messages').insert(failedData);
-      if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(failedData).then(() => {}).catch(() => {});
+      const msgDb = externalSupabase || serviceRoleClient;
+      await msgDb.from('whatsapp_messages').insert(failedData);
+      // Update conversation stats manually
+      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channelId, _conversation_phone: cleanDestination,
+        _content: storedContent, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
       
       return new Response(
         JSON.stringify({ 
@@ -343,8 +349,14 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role'
         }
     };
-    await serviceRoleClient.from('whatsapp_messages').insert(outboundData);
-    if (externalSupabase) externalSupabase.from('whatsapp_messages').insert(outboundData).then(() => {}).catch(() => {});
+    const msgDb2 = externalSupabase || serviceRoleClient;
+    await msgDb2.from('whatsapp_messages').insert(outboundData);
+    // Update conversation stats manually
+    serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+      _channel_id: channelId, _conversation_phone: cleanDestination,
+      _content: storedContent, _direction: 'outbound', _is_read: null,
+      _sender_name: null, _created_at: new Date().toISOString(),
+    }).then(() => {}).catch(() => {});
     
     // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
     // This prevents the bot from responding while a human is handling the conversation
