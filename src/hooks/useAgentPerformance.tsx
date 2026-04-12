@@ -22,14 +22,7 @@ export function useAgentPerformance() {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
-      // Get all assignments for this org
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("assigned_to, status, channel_id")
-        .eq("channel_id", "") // will fix below
-        .limit(1);
-
-      // Get channels first
+      // Get channels for org
       const { data: channels } = await supabase
         .from("channels")
         .select("id")
@@ -38,6 +31,7 @@ export function useAgentPerformance() {
       if (!channels?.length) { setLoading(false); return; }
       const channelIds = channels.map(c => c.id);
 
+      // Get all assignments for org channels
       const { data: allAssignments } = await supabase
         .from("conversation_assignments")
         .select("assigned_to, status")
@@ -58,7 +52,7 @@ export function useAgentPerformance() {
       // Get metrics for avg response time
       const { data: metrics } = await supabase
         .from("conversation_metrics")
-        .select("assigned_to, first_response_time_seconds, resolved_at")
+        .select("assigned_to, first_response_time_seconds")
         .eq("organization_id", effectiveOrganizationId)
         .not("assigned_to", "is", null);
 
@@ -68,37 +62,44 @@ export function useAgentPerformance() {
         responseTimes: number[];
       }>();
 
+      const ensureAgent = (userId: string) => {
+        if (!agentMap.has(userId)) {
+          agentMap.set(userId, { open: 0, unattended: 0, resolved: 0, responseTimes: [] });
+        }
+        return agentMap.get(userId)!;
+      };
+
       // Count assignments per agent
       allAssignments?.forEach(a => {
-        if (!a.assigned_to) return;
-        if (!agentMap.has(a.assigned_to)) {
-          agentMap.set(a.assigned_to, { open: 0, unattended: 0, resolved: 0, responseTimes: [] });
+        if (a.status === "archived") {
+          // Resolved: only count if assigned
+          if (a.assigned_to) {
+            ensureAgent(a.assigned_to).resolved++;
+          }
+        } else {
+          // Active conversations (in_progress, pending, active, etc.)
+          if (a.assigned_to) {
+            ensureAgent(a.assigned_to).open++;
+          }
         }
-        const entry = agentMap.get(a.assigned_to)!;
-        if (a.status === "active" || a.status === "pending") entry.open++;
-        if (a.status === "archived") entry.resolved++;
       });
 
-      // Count unattended (assigned but no response yet) - assignments with no assigned_to
-      const unattendedTotal = allAssignments?.filter(a => !a.assigned_to && a.status !== "archived").length || 0;
+      // Count unattended per agent: conversations assigned to agent but still pending
+      allAssignments?.forEach(a => {
+        if (a.assigned_to && a.status === "pending") {
+          ensureAgent(a.assigned_to).unattended++;
+        }
+      });
 
       // Add response times from metrics
       metrics?.forEach(m => {
         if (!m.assigned_to) return;
-        if (!agentMap.has(m.assigned_to)) {
-          agentMap.set(m.assigned_to, { open: 0, unattended: 0, resolved: 0, responseTimes: [] });
-        }
-        const entry = agentMap.get(m.assigned_to)!;
+        const entry = ensureAgent(m.assigned_to);
         if (m.first_response_time_seconds) entry.responseTimes.push(m.first_response_time_seconds);
-        if (m.resolved_at) entry.resolved = Math.max(entry.resolved, entry.resolved);
       });
 
-      // Also include profiles that have no assignments yet
-      profiles?.forEach(p => {
-        if (!agentMap.has(p.user_id)) {
-          agentMap.set(p.user_id, { open: 0, unattended: 0, resolved: 0, responseTimes: [] });
-        }
-      });
+      // Include profiles that have no assignments
+      profiles?.forEach(p => ensureAgent(p.user_id));
 
       const result: AgentPerformanceItem[] = [];
       agentMap.forEach((data, userId) => {
