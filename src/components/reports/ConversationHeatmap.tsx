@@ -21,8 +21,7 @@ function getHeatColor(count: number, max: number): string {
 
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
-  const [buttonFilter, setButtonFilter] = useState<string | undefined>(undefined);
-  const { loading, data, availableButtons } = useConversationHeatmap(daysBack, buttonFilter);
+  const { loading, data } = useConversationHeatmap(daysBack);
 
   if (loading) {
     return (
@@ -50,19 +49,6 @@ export function ConversationHeatmap() {
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {availableButtons.length > 0 && (
-            <Select value={buttonFilter || "all"} onValueChange={(v) => setButtonFilter(v === "all" ? undefined : v)}>
-              <SelectTrigger className="w-[180px] h-8 text-xs">
-                <SelectValue placeholder="Todos os botões" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os botões</SelectItem>
-                {availableButtons.map(b => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue />
