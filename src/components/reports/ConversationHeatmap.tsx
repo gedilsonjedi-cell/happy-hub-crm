@@ -97,6 +97,10 @@ export function ConversationHeatmap() {
                       </Tooltip>
                     );
                   })}
+                  {/* Total column */}
+                  <div className="min-w-[40px] text-center text-xs font-semibold text-foreground flex items-center justify-center">
+                    {data.cells.filter(c => c.day === dayIdx).reduce((sum, c) => sum + c.count, 0)}
+                  </div>
                 </div>
               ))}
               {/* Hour labels */}
@@ -107,6 +111,7 @@ export function ConversationHeatmap() {
                     {h}
                   </div>
                 ))}
+                <div className="min-w-[40px] text-center text-[10px] text-muted-foreground font-semibold">Total</div>
               </div>
             </div>
           </div>
