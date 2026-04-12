@@ -21,8 +21,7 @@ function getHeatColor(count: number, max: number): string {
 
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
-  const [buttonFilter, setButtonFilter] = useState<string | undefined>(undefined);
-  const { loading, data, availableButtons } = useConversationHeatmap(daysBack, buttonFilter);
+  const { loading, data } = useConversationHeatmap(daysBack);
 
   if (loading) {
     return (
