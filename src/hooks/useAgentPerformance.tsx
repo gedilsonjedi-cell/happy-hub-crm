@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 
-export type AgentPeriod = "today" | "7d" | "15d" | "30d";
-
 export interface AgentPerformanceItem {
   userId: string;
   displayName: string;
@@ -15,21 +13,7 @@ export interface AgentPerformanceItem {
   avgResponseTime: number;
 }
 
-function getPeriodDate(period: AgentPeriod): string {
-  const now = new Date();
-  switch (period) {
-    case "today":
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    case "7d":
-      return new Date(now.getTime() - 7 * 86400000).toISOString();
-    case "15d":
-      return new Date(now.getTime() - 15 * 86400000).toISOString();
-    case "30d":
-      return new Date(now.getTime() - 30 * 86400000).toISOString();
-  }
-}
-
-export function useAgentPerformance(period: AgentPeriod = "today") {
+export function useAgentPerformance() {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<AgentPerformanceItem[]>([]);
@@ -38,9 +22,6 @@ export function useAgentPerformance(period: AgentPeriod = "today") {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
-      const sinceDate = getPeriodDate(period);
-
-      // Get channels for org
       const { data: channels } = await supabase
         .from("channels")
         .select("id")
@@ -49,34 +30,27 @@ export function useAgentPerformance(period: AgentPeriod = "today") {
       if (!channels?.length) { setLoading(false); return; }
       const channelIds = channels.map(c => c.id);
 
-      // Get assignments updated within the period
       const { data: allAssignments } = await supabase
         .from("conversation_assignments")
-        .select("assigned_to, status, updated_at")
-        .in("channel_id", channelIds)
-        .gte("updated_at", sinceDate);
+        .select("assigned_to, status")
+        .in("channel_id", channelIds);
 
-      // Get profiles
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, display_name, email")
         .eq("organization_id", effectiveOrganizationId);
 
-      // Get availability
       const { data: availability } = await supabase
         .from("attendant_availability")
         .select("user_id, is_available")
         .eq("organization_id", effectiveOrganizationId);
 
-      // Get metrics for avg response time
       const { data: metrics } = await supabase
         .from("conversation_metrics")
         .select("assigned_to, first_response_time_seconds")
         .eq("organization_id", effectiveOrganizationId)
-        .gte("created_at", sinceDate)
         .not("assigned_to", "is", null);
 
-      // Aggregate by user
       const agentMap = new Map<string, {
         open: number; unattended: number; resolved: number;
         responseTimes: number[];
@@ -137,7 +111,7 @@ export function useAgentPerformance(period: AgentPeriod = "today") {
     } finally {
       setLoading(false);
     }
-  }, [effectiveOrganizationId, period]);
+  }, [effectiveOrganizationId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

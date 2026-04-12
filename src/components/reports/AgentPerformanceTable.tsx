@@ -1,44 +1,15 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useAgentPerformance, AgentPeriod } from "@/hooks/useAgentPerformance";
+import { useAgentPerformance } from "@/hooks/useAgentPerformance";
 import { Users } from "lucide-react";
 
-const periodOptions: { value: AgentPeriod; label: string }[] = [
-  { value: "today", label: "Hoje" },
-  { value: "7d", label: "7 dias" },
-  { value: "15d", label: "15 dias" },
-  { value: "30d", label: "30 dias" },
-];
-
 export function AgentPerformanceTable() {
-  const [period, setPeriod] = useState<AgentPeriod>("today");
-  const { agents, loading } = useAgentPerformance(period);
+  const { agents, loading } = useAgentPerformance();
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-lg font-semibold">Conversas por agentes</CardTitle>
-          </div>
-          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-            {periodOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setPeriod(opt.value)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  period === opt.value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <CardTitle className="text-lg font-semibold">Conversas por agentes</CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
