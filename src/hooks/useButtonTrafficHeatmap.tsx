@@ -15,90 +15,54 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
+      // Fetch buttons list and filtered heatmap data via server-side RPCs
+      const [buttonsResult, heatmapResult] = await Promise.all([
+        supabase.rpc("get_available_buttons", {
+          p_organization_id: effectiveOrganizationId,
+          p_days_back: daysBack,
+        }),
+        supabase.rpc("get_conversation_heatmap", {
+          p_organization_id: effectiveOrganizationId,
+          p_days_back: daysBack,
+          p_button_filter: selectedButton || null,
+        }),
+      ]);
+
+      if (buttonsResult.data) {
+        setAvailableButtons(
+          (buttonsResult.data as { button_label: string; click_count: number }[])
+            .map((b) => b.button_label)
+        );
+      }
+
+      const rows = (heatmapResult.data || []) as { msg_date: string; msg_hour: number; msg_count: number; button_label: string | null }[];
+
+      // Only keep rows that have a button_label (for button-specific heatmap)
+      const buttonRows = selectedButton
+        ? rows
+        : rows.filter((r) => r.button_label && r.button_label.trim() !== "");
+
+      // Build day list
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
       startDate.setHours(0, 0, 0, 0);
 
-      const { data: channels } = await supabase
-        .from("channels")
-        .select("id")
-        .eq("organization_id", effectiveOrganizationId);
-
-      if (!channels?.length) { setLoading(false); return; }
-      const channelIds = channels.map(c => c.id);
-
-      // Fetch inbound interactive messages (button clicks)
-      const { data: messages } = await supabase
-        .from("whatsapp_messages")
-        .select("created_at, metadata, content, message_type")
-        .in("channel_id", channelIds)
-        .eq("direction", "inbound")
-        .gte("created_at", startDate.toISOString())
-        .order("created_at", { ascending: true })
-        .limit(5000);
-
-      if (!messages) { setLoading(false); return; }
-
-      // Extract button interactions - check metadata and message_type for interactive/button responses
-      const buttonMessages: { createdAt: string; buttonLabel: string }[] = [];
-      const buttonSet = new Set<string>();
-
-      messages.forEach(m => {
-        const meta = m.metadata as Record<string, unknown> | null;
-        let buttonLabel: string | null = null;
-
-        // Check various patterns for button clicks
-        if (meta) {
-          if (meta.interactive_type === "button_reply" || meta.interactive_type === "button" || meta.type === "interactive") {
-            buttonLabel = (meta.button_text || meta.title || meta.button_reply_title || "") as string;
-          }
-          if (meta.button_text) {
-            buttonLabel = meta.button_text as string;
-          }
-          if (meta.interactive && typeof meta.interactive === "object") {
-            const interactive = meta.interactive as Record<string, unknown>;
-            if (interactive.button_reply && typeof interactive.button_reply === "object") {
-              buttonLabel = (interactive.button_reply as Record<string, unknown>).title as string || null;
-            }
-          }
-        }
-
-        // Also check message_type for button responses
-        if (!buttonLabel && (m.message_type === "button" || m.message_type === "interactive")) {
-          buttonLabel = m.content || null;
-        }
-
-        if (buttonLabel && buttonLabel.trim()) {
-          const label = buttonLabel.trim();
-          buttonSet.add(label);
-          buttonMessages.push({ createdAt: m.created_at, buttonLabel: label });
-        }
-      });
-
-      setAvailableButtons(Array.from(buttonSet).sort());
-
-      // Filter by selected button
-      const filtered = selectedButton
-        ? buttonMessages.filter(m => m.buttonLabel === selectedButton)
-        : buttonMessages;
-
-      // Build day list
       const daysList: { dayOfWeek: number; date: string; label: string }[] = [];
       for (let i = 0; i < daysBack; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
-        const dateStr = d.toISOString().split("T")[0];
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
         daysList.push({ dayOfWeek: d.getDay(), date: dateStr, label: DAY_LABELS[d.getDay()] });
       }
 
       // Count per day/hour
       const countMap = new Map<string, number>();
-      filtered.forEach(m => {
-        const d = new Date(m.createdAt);
-        const dateStr = d.toISOString().split("T")[0];
-        const hour = d.getHours();
-        const key = `${dateStr}_${hour}`;
-        countMap.set(key, (countMap.get(key) || 0) + 1);
+      buttonRows.forEach((r) => {
+        const key = `${r.msg_date}_${r.msg_hour}`;
+        countMap.set(key, (countMap.get(key) || 0) + Number(r.msg_count));
       });
 
       let maxCount = 0;
