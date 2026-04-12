@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 
+export type AgentPeriod = "today" | "7d" | "15d" | "30d";
+
 export interface AgentPerformanceItem {
   userId: string;
   displayName: string;
@@ -13,7 +15,21 @@ export interface AgentPerformanceItem {
   avgResponseTime: number;
 }
 
-export function useAgentPerformance() {
+function getPeriodDate(period: AgentPeriod): string {
+  const now = new Date();
+  switch (period) {
+    case "today":
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    case "7d":
+      return new Date(now.getTime() - 7 * 86400000).toISOString();
+    case "15d":
+      return new Date(now.getTime() - 15 * 86400000).toISOString();
+    case "30d":
+      return new Date(now.getTime() - 30 * 86400000).toISOString();
+  }
+}
+
+export function useAgentPerformance(period: AgentPeriod = "today") {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<AgentPerformanceItem[]>([]);
@@ -22,6 +38,8 @@ export function useAgentPerformance() {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
+      const sinceDate = getPeriodDate(period);
+
       // Get channels for org
       const { data: channels } = await supabase
         .from("channels")
@@ -31,11 +49,12 @@ export function useAgentPerformance() {
       if (!channels?.length) { setLoading(false); return; }
       const channelIds = channels.map(c => c.id);
 
-      // Get all assignments for org channels
+      // Get assignments updated within the period
       const { data: allAssignments } = await supabase
         .from("conversation_assignments")
-        .select("assigned_to, status")
-        .in("channel_id", channelIds);
+        .select("assigned_to, status, updated_at")
+        .in("channel_id", channelIds)
+        .gte("updated_at", sinceDate);
 
       // Get profiles
       const { data: profiles } = await supabase
@@ -54,6 +73,7 @@ export function useAgentPerformance() {
         .from("conversation_metrics")
         .select("assigned_to, first_response_time_seconds")
         .eq("organization_id", effectiveOrganizationId)
+        .gte("created_at", sinceDate)
         .not("assigned_to", "is", null);
 
       // Aggregate by user
@@ -69,36 +89,26 @@ export function useAgentPerformance() {
         return agentMap.get(userId)!;
       };
 
-      // Count assignments per agent
       allAssignments?.forEach(a => {
         if (a.status === "archived") {
-          // Resolved: only count if assigned
-          if (a.assigned_to) {
-            ensureAgent(a.assigned_to).resolved++;
-          }
+          if (a.assigned_to) ensureAgent(a.assigned_to).resolved++;
         } else {
-          // Active conversations (in_progress, pending, active, etc.)
-          if (a.assigned_to) {
-            ensureAgent(a.assigned_to).open++;
-          }
+          if (a.assigned_to) ensureAgent(a.assigned_to).open++;
         }
       });
 
-      // Count unattended per agent: conversations assigned to agent but still pending
       allAssignments?.forEach(a => {
         if (a.assigned_to && a.status === "pending") {
           ensureAgent(a.assigned_to).unattended++;
         }
       });
 
-      // Add response times from metrics
       metrics?.forEach(m => {
         if (!m.assigned_to) return;
         const entry = ensureAgent(m.assigned_to);
         if (m.first_response_time_seconds) entry.responseTimes.push(m.first_response_time_seconds);
       });
 
-      // Include profiles that have no assignments
       profiles?.forEach(p => ensureAgent(p.user_id));
 
       const result: AgentPerformanceItem[] = [];
@@ -127,7 +137,7 @@ export function useAgentPerformance() {
     } finally {
       setLoading(false);
     }
-  }, [effectiveOrganizationId]);
+  }, [effectiveOrganizationId, period]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
