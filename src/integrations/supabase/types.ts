@@ -3439,6 +3439,13 @@ export type Database = {
       }
       force_sync_all_campaign_counts: { Args: never; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
+      get_available_buttons: {
+        Args: { p_days_back?: number; p_organization_id: string }
+        Returns: {
+          button_label: string
+          click_count: number
+        }[]
+      }
       get_campaign_counts: {
         Args: { p_campaign_id: string }
         Returns: {
@@ -3466,6 +3473,19 @@ export type Database = {
           provider: string
           user_id: string
           waba_id: string
+        }[]
+      }
+      get_conversation_heatmap: {
+        Args: {
+          p_button_filter?: string
+          p_days_back?: number
+          p_organization_id: string
+        }
+        Returns: {
+          button_label: string
+          msg_count: number
+          msg_date: string
+          msg_hour: number
         }[]
       }
       get_conversations_summary: {
