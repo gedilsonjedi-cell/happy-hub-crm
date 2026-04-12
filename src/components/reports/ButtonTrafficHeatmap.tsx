@@ -126,6 +126,9 @@ export function ButtonTrafficHeatmap() {
                         </Tooltip>
                       );
                     })}
+                    <div className="min-w-[40px] text-center text-xs font-semibold text-foreground flex items-center justify-center">
+                      {data.cells.filter(c => c.day === dayIdx).reduce((sum, c) => sum + c.count, 0)}
+                    </div>
                   </div>
                 ))}
                 <div className="flex items-center gap-1 mt-2">
@@ -135,6 +138,7 @@ export function ButtonTrafficHeatmap() {
                       {h}
                     </div>
                   ))}
+                  <div className="min-w-[40px] text-center text-[10px] text-muted-foreground font-semibold">Total</div>
                 </div>
               </div>
             </div>
