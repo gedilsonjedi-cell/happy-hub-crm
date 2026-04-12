@@ -3,10 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 
 export interface HeatmapCell {
-  day: number; // 0=Sun, 6=Sat
-  hour: number; // 0-23
+  day: number;
+  hour: number;
   count: number;
-  date: string; // ISO date string for that day
+  date: string;
 }
 
 export interface HeatmapData {
@@ -27,57 +27,42 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
+      // Fetch buttons and heatmap data via server-side RPCs
+      const [heatmapResult, buttonsResult] = await Promise.all([
+        supabase.rpc("get_conversation_heatmap", {
+          p_organization_id: effectiveOrganizationId,
+          p_days_back: daysBack,
+          p_button_filter: buttonFilter || null,
+        }),
+        supabase.rpc("get_available_buttons", {
+          p_organization_id: effectiveOrganizationId,
+          p_days_back: daysBack,
+        }),
+      ]);
+
+      if (buttonsResult.data) {
+        setAvailableButtons(
+          (buttonsResult.data as { button_label: string; click_count: number }[])
+            .map((b) => b.button_label)
+        );
+      }
+
+      const rows = (heatmapResult.data || []) as { msg_date: string; msg_hour: number; msg_count: number; button_label: string | null }[];
+
+      // Build day list for the range (using São Paulo timezone to match server)
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
       startDate.setHours(0, 0, 0, 0);
 
-      const { data: channels } = await supabase
-        .from("channels")
-        .select("id")
-        .eq("organization_id", effectiveOrganizationId);
-
-      if (!channels?.length) { setLoading(false); return; }
-      const channelIds = channels.map(c => c.id);
-
-      let query = supabase
-        .from("whatsapp_messages")
-        .select("created_at, direction, metadata, content")
-        .in("channel_id", channelIds)
-        .eq("direction", "inbound")
-        .gte("created_at", startDate.toISOString())
-        .order("created_at", { ascending: true })
-        .limit(5000);
-
-      const { data: messages } = await query;
-      if (!messages) { setLoading(false); return; }
-
-      // Extract unique button labels from interactive responses
-      const buttons = new Set<string>();
-      messages.forEach(m => {
-        const meta = m.metadata as Record<string, unknown> | null;
-        if (meta?.interactive_type === "button" || meta?.type === "interactive") {
-          const title = (meta.button_text || meta.title || "") as string;
-          if (title) buttons.add(title);
-        }
-      });
-      setAvailableButtons(Array.from(buttons).sort());
-
-      // Filter by button if specified
-      let filtered = messages;
-      if (buttonFilter) {
-        filtered = messages.filter(m => {
-          const meta = m.metadata as Record<string, unknown> | null;
-          const title = (meta?.button_text || meta?.title || "") as string;
-          return title === buttonFilter;
-        });
-      }
-
-      // Build day list for the range
       const daysList: { dayOfWeek: number; date: string; label: string }[] = [];
       for (let i = 0; i < daysBack; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
-        const dateStr = d.toISOString().split("T")[0];
+        // Format as YYYY-MM-DD in local timezone (matching server's São Paulo output)
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
         daysList.push({
           dayOfWeek: d.getDay(),
           date: dateStr,
@@ -85,14 +70,11 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
         });
       }
 
-      // Count messages per day/hour
+      // Aggregate rows by date/hour (sum across button labels for general view)
       const countMap = new Map<string, number>();
-      filtered.forEach(m => {
-        const d = new Date(m.created_at);
-        const dateStr = d.toISOString().split("T")[0];
-        const hour = d.getHours();
-        const key = `${dateStr}_${hour}`;
-        countMap.set(key, (countMap.get(key) || 0) + 1);
+      rows.forEach((r) => {
+        const key = `${r.msg_date}_${r.msg_hour}`;
+        countMap.set(key, (countMap.get(key) || 0) + Number(r.msg_count));
       });
 
       let maxCount = 0;
