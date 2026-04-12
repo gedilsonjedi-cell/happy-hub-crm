@@ -15,32 +15,41 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
-      // Fetch buttons list and filtered heatmap data via server-side RPCs
-      const [buttonsResult, heatmapResult] = await Promise.all([
-        supabase.rpc("get_available_buttons", {
-          p_organization_id: effectiveOrganizationId,
-          p_days_back: daysBack,
-        }),
-        supabase.rpc("get_conversation_heatmap", {
-          p_organization_id: effectiveOrganizationId,
-          p_days_back: daysBack,
-          p_button_filter: selectedButton || null,
-        }),
-      ]);
+      // First fetch available buttons
+      const buttonsResult = await supabase.rpc("get_available_buttons", {
+        p_organization_id: effectiveOrganizationId,
+        p_days_back: daysBack,
+      });
 
-      if (buttonsResult.data) {
-        setAvailableButtons(
-          (buttonsResult.data as { button_label: string; click_count: number }[])
-            .map((b) => b.button_label)
+      const buttons = (buttonsResult.data as { button_label: string; click_count: number }[] || [])
+        .map((b) => b.button_label);
+      setAvailableButtons(buttons);
+
+      let rows: { msg_date: string; msg_hour: number; msg_count: number; button_label: string | null }[];
+
+      if (selectedButton) {
+        // Fetch for a specific button
+        const heatmapResult = await supabase.rpc("get_conversation_heatmap", {
+          p_organization_id: effectiveOrganizationId,
+          p_days_back: daysBack,
+          p_button_filter: selectedButton,
+        });
+        rows = (heatmapResult.data || []) as typeof rows;
+      } else {
+        // "All buttons" — fetch each button individually and merge
+        const results = await Promise.all(
+          buttons.map((btn) =>
+            supabase.rpc("get_conversation_heatmap", {
+              p_organization_id: effectiveOrganizationId,
+              p_days_back: daysBack,
+              p_button_filter: btn,
+            })
+          )
         );
+        rows = results.flatMap((r) => (r.data || []) as typeof rows);
       }
 
-      const rows = (heatmapResult.data || []) as { msg_date: string; msg_hour: number; msg_count: number; button_label: string | null }[];
-
-      // Only keep rows that have a button_label (for button-specific heatmap)
-      const buttonRows = selectedButton
-        ? rows
-        : rows.filter((r) => r.button_label && r.button_label.trim() !== "");
+      const buttonRows = rows;
 
       // Build day list
       const startDate = new Date();
