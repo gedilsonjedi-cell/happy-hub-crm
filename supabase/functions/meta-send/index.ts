@@ -38,6 +38,27 @@ async function insertMessageRecord(data: Record<string, unknown>) {
     result = await localMessageDb.from('whatsapp_messages').insert(data);
   }
 
+  // Upsert contact in external DB for outbound messages (fire-and-forget)
+  if (!result.error && externalSupabase && data.channel_id) {
+    const destPhone = (data.metadata as Record<string, unknown>)?.destination as string;
+    if (destPhone) {
+      externalSupabase
+        .from('whatsapp_contacts')
+        .upsert(
+          {
+            channel_id: data.channel_id,
+            organization_id: data.organization_id || null,
+            sender_phone: destPhone,
+            sender_name: null,
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: 'channel_id,sender_phone', ignoreDuplicates: false }
+        )
+        .then(() => {})
+        .catch((e: unknown) => console.warn('[Meta-Send Contact upsert] Error:', e));
+    }
+  }
+
   return result;
 }
 

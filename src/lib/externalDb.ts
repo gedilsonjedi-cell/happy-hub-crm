@@ -292,3 +292,54 @@ export async function findExternalLeadByPhone(
     phoneVariants,
   });
 }
+
+// ── Bulk Previews ─────────────────────────────────────────────────
+
+export interface BulkPreviewResult {
+  channelId: string;
+  phone: string;
+  content: string | null;
+  messageType: string | null;
+  direction: string | null;
+  createdAt: string | null;
+  senderName: string | null;
+  lastInboundAt: string | null;
+}
+
+/**
+ * Fetch the latest message preview for multiple conversations in a single
+ * proxy call instead of N individual external-db-proxy requests.
+ */
+export async function fetchBulkPreviews(
+  conversations: Array<{ channelId: string; phoneVariants: string[] }>
+): Promise<BulkPreviewResult[]> {
+  if (conversations.length === 0) return [];
+
+  const { previews } = await callProxy<{ previews: BulkPreviewResult[] }>({
+    action: "bulk_previews",
+    conversations,
+  });
+
+  return previews || [];
+}
+
+/**
+ * Helper to derive a sidebar preview text from a bulk preview result.
+ */
+export function getPreviewTextFromBulkResult(result: BulkPreviewResult): string {
+  if (result.content?.trim()) {
+    return result.content;
+  }
+
+  if (result.messageType === "template") return "Template enviado";
+  if (result.messageType === "image") return "[Imagem]";
+  if (result.messageType === "video") return "[Vídeo]";
+  if (result.messageType === "audio" || result.messageType === "ptt") return "[Áudio]";
+  if (result.messageType === "document") return "[Documento]";
+  if (result.messageType === "sticker") return "[Sticker]";
+
+  if (result.direction === "inbound") return "[Mensagem recebida]";
+  if (result.direction === "outbound") return "[Mensagem enviada]";
+
+  return "";
+}

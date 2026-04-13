@@ -79,6 +79,8 @@ import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
   fetchInternalMessages,
+  fetchBulkPreviews,
+  getPreviewTextFromBulkResult,
 } from "@/lib/externalDb";
 import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
@@ -1110,101 +1112,49 @@ const AtendimentoV2 = () => {
 
       if (pendingConversations.length === 0) return;
 
-      for (let index = 0; index < pendingConversations.length && !cancelled; index += 10) {
-        const batch = pendingConversations.slice(index, index + 10);
-        const batchUpdates = await Promise.all(
-          batch.map(async (conversation) => {
-            const normalizedPhone = conversation.phone.replace(/\D/g, "");
-            const phoneVariants = buildMessageLookupVariants(normalizedPhone);
-            const conversationKey = getConversationThreadKey(
-              conversation.channelId,
-              conversation.phone
-            );
-
-            previewHydrationAttemptsRef.current.set(
-              conversationKey,
-              (previewHydrationAttemptsRef.current.get(conversationKey) ?? 0) + 1
-            );
-
-            try {
-              let result = await fetchExternalMessages({
-                channelId: conversation.channelId!,
-                phoneVariants,
-                cursor: null,
-                pageSize: 5,
-              }).catch(async () => {
-                return fetchInternalMessages({
-                  channelId: conversation.channelId!,
-                  phoneVariants,
-                  cursor: null,
-                  pageSize: 5,
-                });
-              });
-
-              if (!result.messages.length) {
-                const internalResult = await fetchInternalMessages({
-                  channelId: conversation.channelId!,
-                  phoneVariants,
-                  cursor: null,
-                  pageSize: 5,
-                }).catch(() => null);
-
-                if (internalResult?.messages.length) {
-                  result = internalResult;
-                }
-              }
-
-              if (!result.messages.length) {
-                const statsResult = await fetchConversationStatsMessages({
-                  channelId: conversation.channelId!,
-                  phoneVariants,
-                }).catch(() => null);
-
-                if (statsResult?.messages.length) {
-                  result = statsResult;
-                }
-              }
-
-              const latestMessage = result.messages[0];
-              if (!latestMessage) {
-                return null;
-              }
-
-              const previewCandidate =
-                result.messages.find((message) => Boolean(getMessagePreviewText(message))) ||
-                latestMessage;
-
-              const previewText = getMessagePreviewText(previewCandidate);
-              const latestInboundMessage = result.messages.find(
-                (message) => message.direction === "inbound"
-              );
-
-              return {
-                key: conversationKey,
-                lastMessage: previewText,
-                lastMessageTime: latestMessage.created_at,
-                lastInboundTime: latestInboundMessage?.created_at || null,
-              };
-            } catch {
-              return null;
-            }
-          })
+      // Mark all as attempted
+      pendingConversations.forEach((conversation) => {
+        const key = getConversationThreadKey(conversation.channelId, conversation.phone);
+        previewHydrationAttemptsRef.current.set(
+          key,
+          (previewHydrationAttemptsRef.current.get(key) ?? 0) + 1
         );
+      });
 
-        if (cancelled) return;
+      // Build bulk request — up to 50 conversations at a time
+      const bulkRequest = pendingConversations.slice(0, 50).map((conversation) => ({
+        channelId: conversation.channelId!,
+        phoneVariants: buildMessageLookupVariants(conversation.phone.replace(/\D/g, "")),
+      }));
 
-        const validUpdates = batchUpdates.filter(Boolean) as Array<{
-          key: string;
-          lastMessage: string;
-          lastMessageTime: string;
-          lastInboundTime: string | null;
-        }>;
+      try {
+        const results = await fetchBulkPreviews(bulkRequest);
 
-        if (validUpdates.length > 0) {
+        if (cancelled || results.length === 0) return;
+
+        // Map results back to conversation keys
+        const updateMap = new Map<string, { lastMessage: string; lastMessageTime: string; lastInboundTime: string | null }>();
+
+        results.forEach((result, index) => {
+          if (!result.createdAt) return;
+          const conversation = pendingConversations[index];
+          if (!conversation) return;
+
+          const key = getConversationThreadKey(conversation.channelId, conversation.phone);
+          const previewText = getPreviewTextFromBulkResult(result);
+
+          if (previewText) {
+            updateMap.set(key, {
+              lastMessage: previewText,
+              lastMessageTime: result.createdAt,
+              lastInboundTime: result.lastInboundAt || null,
+            });
+          }
+        });
+
+        if (updateMap.size > 0) {
           setAllConversations((prev) => {
-            const updateMap = new Map(validUpdates.map((update) => [update.key, update]));
             let changed = false;
-
             const nextConversations = prev.map((conversation) => {
               const update = updateMap.get(getConversationThreadKey(conversation.channelId, conversation.phone));
               if (!update || conversation.lastMessage) return conversation;
@@ -1217,15 +1167,19 @@ const AtendimentoV2 = () => {
                 lastInboundTime: conversation.lastInboundTime || update.lastInboundTime,
               };
             });
-
             return changed ? nextConversations : prev;
           });
         }
+      } catch (error) {
+        console.warn("[enrichMissingPreviews] Bulk preview failed, skipping:", error);
       }
     };
 
     const timer = setTimeout(enrichMissingPreviews, 350);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [channels.length, conversationsMissingPreview, conversationsMissingPreviewSignature, loading]);
   useEffect(() => {
     if (!showArchived || channels.length === 0) return;

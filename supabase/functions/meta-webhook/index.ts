@@ -28,7 +28,7 @@ function writeMessageRecord(
     : client.from('whatsapp_messages').insert(data);
 }
 
-/** Write to whatsapp_messages on external DB only + update conversation_stats */
+/** Write to whatsapp_messages on external DB only + update conversation_stats + upsert contact */
 async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
   let result = await writeMessageRecord(messageDb, data, upsert);
 
@@ -52,6 +52,24 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
         _sender_name: (data.sender_name as string) || null,
         _created_at: new Date().toISOString(),
       }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+
+      // Upsert contact in external DB (fire-and-forget)
+      if (externalSupabase && data.direction === 'inbound') {
+        externalSupabase
+          .from('whatsapp_contacts')
+          .upsert(
+            {
+              channel_id: data.channel_id,
+              organization_id: data.organization_id || null,
+              sender_phone: phone,
+              sender_name: (data.sender_name as string) || null,
+              last_message_at: new Date().toISOString(),
+            },
+            { onConflict: 'channel_id,sender_phone', ignoreDuplicates: false }
+          )
+          .then(() => {})
+          .catch((e: unknown) => console.warn('[Contact upsert] Error:', e));
+      }
     }
   }
 
