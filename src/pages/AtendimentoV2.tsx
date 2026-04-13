@@ -3510,7 +3510,7 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
-        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
+        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && conv.status !== "archived";
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
