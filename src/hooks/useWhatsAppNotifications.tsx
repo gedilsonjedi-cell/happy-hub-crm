@@ -40,12 +40,89 @@ const createNotificationSound = () => {
   }
 };
 
+/** Pending notifications are batched and consolidated into a single alert */
+interface PendingNotification {
+  senderName: string;
+  messagePreview: string;
+}
 
 export function useWhatsAppNotifications() {
   const { user } = useAuth();
   const playSound = useRef<() => void>(() => {});
   const isInitialized = useRef(false);
   const [channelIds, setChannelIds] = useState<string[]>([]);
+
+  // ── Notification batching (debounce) ────────────────────────
+  const pendingNotificationsRef = useRef<PendingNotification[]>([]);
+  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const BATCH_WINDOW_MS = 1500; // Consolidate notifications within 1.5s
+
+  const flushNotifications = useCallback(() => {
+    const pending = pendingNotificationsRef.current;
+    pendingNotificationsRef.current = [];
+    batchTimerRef.current = null;
+
+    if (pending.length === 0) return;
+
+    // Play sound ONCE for the batch
+    try {
+      playSound.current();
+    } catch (error) {
+      console.error('Error playing sound:', error);
+    }
+
+    // Show a single consolidated toast
+    if (pending.length === 1) {
+      const n = pending[0];
+      toast.message(`💬 ${n.senderName}`, {
+        description: n.messagePreview,
+        duration: 5000,
+        action: {
+          label: 'Ver',
+          onClick: () => { window.location.href = '/whatsapp-chat'; },
+        },
+      });
+    } else {
+      // Multiple messages: show summary
+      const uniqueSenders = [...new Set(pending.map(n => n.senderName))];
+      const senderSummary = uniqueSenders.length <= 3
+        ? uniqueSenders.join(', ')
+        : `${uniqueSenders.slice(0, 2).join(', ')} e +${uniqueSenders.length - 2}`;
+      toast.message(`💬 ${pending.length} novas mensagens`, {
+        description: `De: ${senderSummary}`,
+        duration: 5000,
+        action: {
+          label: 'Ver',
+          onClick: () => { window.location.href = '/whatsapp-chat'; },
+        },
+      });
+    }
+
+    // Browser notification (single, consolidated)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const body = pending.length === 1
+          ? pending[0].messagePreview
+          : `${pending.length} novas mensagens`;
+        new Notification(`Nova mensagem`, {
+          body,
+          icon: '/favicon.ico',
+          tag: 'whatsapp-message',
+        });
+      } catch (error) {
+        console.error('Error showing browser notification:', error);
+      }
+    }
+  }, []);
+
+  const enqueueNotification = useCallback((notification: PendingNotification) => {
+    pendingNotificationsRef.current.push(notification);
+    // Reset the batch timer on each new notification
+    if (batchTimerRef.current) {
+      clearTimeout(batchTimerRef.current);
+    }
+    batchTimerRef.current = setTimeout(flushNotifications, BATCH_WINDOW_MS);
+  }, [flushNotifications]);
 
   const initializeSound = useCallback(() => {
     if (!isInitialized.current) {
@@ -123,10 +200,10 @@ export function useWhatsAppNotifications() {
             channel_id: string;
           };
 
-          // Only notify for inbound messages (client → us)
+          // Only notify for inbound messages
           if (message.direction !== 'inbound') return;
 
-          // Check if conversation is assigned to someone else
+          // Check assignment
           try {
             const senderPhone = message.sender_phone.replace(/\D/g, '');
             const phoneSuffix = senderPhone.slice(-9);
@@ -147,14 +224,7 @@ export function useWhatsAppNotifications() {
             console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
           }
 
-          // Play notification sound
-          try {
-            playSound.current();
-          } catch (error) {
-            console.error('Error playing sound:', error);
-          }
-
-          // Show toast notification
+          // Build notification data and enqueue (batched)
           const senderName = message.sender_name || message.sender_phone;
           const messagePreview = message.content
             ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
@@ -164,37 +234,18 @@ export function useWhatsAppNotifications() {
             : message.message_type === 'document' ? '📄 Documento'
             : 'Nova mensagem';
 
-          toast.message(`💬 ${senderName}`, {
-            description: messagePreview,
-            duration: 5000,
-            action: {
-              label: 'Ver',
-              onClick: () => {
-                window.location.href = '/whatsapp-chat';
-              },
-            },
-          });
-
-          // Browser notification if permitted
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification(`Nova mensagem de ${senderName}`, {
-                body: messagePreview,
-                icon: '/favicon.ico',
-                tag: 'whatsapp-message',
-              });
-            } catch (error) {
-              console.error('Error showing browser notification:', error);
-            }
-          }
+          enqueueNotification({ senderName, messagePreview });
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      if (batchTimerRef.current) {
+        clearTimeout(batchTimerRef.current);
+      }
     };
-  }, [user, channelIds]);
+  }, [user, channelIds, enqueueNotification]);
 }
 
 // Provider component to be used at app level

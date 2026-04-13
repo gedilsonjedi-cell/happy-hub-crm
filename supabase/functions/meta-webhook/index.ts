@@ -1301,10 +1301,9 @@ Deno.serve(async (req) => {
       console.warn('[Webhook] META_APP_SECRET not configured - signature verification skipped');
     }
 
-    // Return 200 immediately to Meta — process async to prevent timeouts under load
-    const responsePromise = (async () => {
+    // Return 200 immediately to Meta — process in background to prevent timeouts
+    const processingPromise = (async () => {
       try {
-
         const body = JSON.parse(bodyText);
         const entry = body.entry?.[0];
         const changes = entry?.changes?.[0];
@@ -1312,20 +1311,16 @@ Deno.serve(async (req) => {
 
         if (!value) return;
 
-        // Channel lookup (60s cache)
         const metadata = value.metadata;
         if (!metadata?.phone_number_id) return;
 
-        // CRITICAL: Process status updates (delivered/read/failed) INDEPENDENTLY of channel lookup.
-        // Status updates only need message_id (globally unique) — they must NOT be blocked
-        // by a missing channel, which would cause delivered/read counts to never update.
+        // Process status updates independently of channel lookup
         const statusPromise = value.statuses?.length
           ? processStatusUpdates(value.statuses)
           : Promise.resolve();
 
         const channel = await getChannelByPhoneNumberId(metadata.phone_number_id);
 
-        // Process inbound messages (requires channel)
         let messagePromise: Promise<unknown> = Promise.resolve();
         if (value.messages?.length) {
           if (!channel) {
@@ -1349,15 +1344,10 @@ Deno.serve(async (req) => {
       }
     })();
 
-    // Respond immediately with 200 while processing continues
-    // This prevents Meta from retrying due to slow responses under high load
-    const responseReady = new Promise<Response>((resolve) => {
-      resolve(new Response('OK', { status: 200 }));
-    });
+    // Fire-and-forget: let Deno keep running in background
+    runInBackground(processingPromise);
 
-    // Ensure processing completes (Deno waits for all promises before shutting down)
-    await Promise.race([responseReady, responsePromise]);
-    await responsePromise; // Ensure processing finishes
+    // Return 200 to Meta IMMEDIATELY — do NOT await processing
     return new Response('OK', { status: 200 });
   }
 
