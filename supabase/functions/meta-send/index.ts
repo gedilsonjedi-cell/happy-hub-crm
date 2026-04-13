@@ -943,7 +943,21 @@ Deno.serve(async (req) => {
       
       // Store failed message in database with error
       const storedMessageType = templateName ? 'template' : (mediaUrl ? effectiveMediaType : 'text');
-      const storedContent = templateName ? `Template: ${templateName}` : (message || (mediaUrl ? `[${effectiveMediaType || 'file'}]` : ''));
+      let storedContent = '';
+      if (templateName) {
+        let renderedBody = templateContent || '';
+        if (renderedBody && Array.isArray(templateParams)) {
+          templateParams.forEach((param: string, index: number) => {
+            const placeholder = `{{${index + 1}}}`;
+            while (renderedBody.includes(placeholder)) {
+              renderedBody = renderedBody.replace(placeholder, param);
+            }
+          });
+        }
+        storedContent = renderedBody ? `📋 ${templateName}\n\n${renderedBody}` : `Template: ${templateName}`;
+      } else {
+        storedContent = message || (mediaUrl ? `[${effectiveMediaType || 'file'}]` : '');
+      }
       
       const failedMessageId = `failed_${Date.now()}`;
       const failedData = {
