@@ -27,57 +27,33 @@ async function fetchMessagePage(
   cursor: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
-  const normalizedPhone = conversationPhone.replace(/\D/g, "");
 
-  // External DB uses phone as channel_id (new) but also needs UUID for legacy records
   const externalParams = {
-    channelId: channelId, // Pass internal UUID so proxy can also match legacy records
-    phoneVariants,
-    cursor,
-    pageSize: PAGE_SIZE,
-  };
-
-  // Internal DB still uses UUID as channel_id
-  const internalParams = {
     channelId,
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
   };
 
-  // External DB is the single source of truth — no internal fallback
+  let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
+
+  // External DB is the single source of truth
   try {
     result = await fetchExternalMessages(externalParams);
   } catch (e) {
     console.error("[fetchMessagePage] External fetch failed:", e);
   }
 
+  // Fallback to conversation_stats synthetic message if external is empty
   if (!result?.messages?.length) {
     try {
-      const statsResult = await fetchConversationStatsMessages(internalParams);
+      const statsResult = await fetchConversationStatsMessages(externalParams);
       if (statsResult.messages.length > 0) {
-        console.warn(
-          "[fetchMessagePage] Falling back to synthetic conversation stats because no real history was returned",
-          {
-            channelId,
-            conversationPhone,
-            phoneVariants,
-          }
-        );
         result = statsResult;
       }
     } catch (e) {
-      console.warn("[fetchMessagePage] Conversation stats fallback also failed:", e);
+      console.warn("[fetchMessagePage] Stats fallback failed:", e);
     }
-  }
-
-  if (!result?.messages?.length) {
-    console.warn("[fetchMessagePage] No messages available after external + fallbacks", {
-      channelId,
-      conversationPhone,
-      phoneVariants,
-      externalOk,
-    });
   }
 
   return {
