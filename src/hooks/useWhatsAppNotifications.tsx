@@ -40,14 +40,24 @@ const createNotificationSound = () => {
   }
 };
 
+/**
+ * Normalize phone to last 8-9 digits for matching
+ */
+function phoneMatchesSuffix(phone1: string, phone2: string): boolean {
+  const p1 = phone1.replace(/\D/g, '');
+  const p2 = phone2.replace(/\D/g, '');
+  if (!p1 || !p2) return false;
+  const suffix1 = p1.slice(-9);
+  const suffix2 = p2.slice(-9);
+  return suffix1 === suffix2 || p1.slice(-8) === p2.slice(-8);
+}
+
 export function useWhatsAppNotifications() {
   const { user } = useAuth();
   const playSound = useRef<() => void>(() => {});
   const isInitialized = useRef(false);
-  // Store the user's channel IDs to filter subscriptions properly
   const [channelIds, setChannelIds] = useState<string[]>([]);
 
-  // Initialize sound on first user interaction
   const initializeSound = useCallback(() => {
     if (!isInitialized.current) {
       playSound.current = createNotificationSound();
@@ -55,7 +65,6 @@ export function useWhatsAppNotifications() {
     }
   }, []);
 
-  // Add click listener to initialize audio (browser policy requires user interaction)
   useEffect(() => {
     const handleInteraction = () => {
       initializeSound();
@@ -72,8 +81,6 @@ export function useWhatsAppNotifications() {
     };
   }, [initializeSound]);
 
-  // Fetch user's channels once (to filter subscription by channel_id)
-  // This prevents receiving notifications from other organizations
   useEffect(() => {
     if (!user) return;
 
@@ -100,17 +107,12 @@ export function useWhatsAppNotifications() {
   }, [user]);
 
   useEffect(() => {
-    // Only subscribe if we have the user's channels
-    // This avoids a global subscription that receives ALL org messages
     if (!user || channelIds.length === 0) return;
 
-    // Request browser notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // Subscribe ONLY to the user's organization channels (filtered by channel_id)
-    // This replaces the unfiltered global subscription that was a security risk
     const channelFilter = channelIds.join(',');
     const channel = supabase
       .channel(`whatsapp-notifications-${channelFilter.slice(0, 40)}`)
@@ -122,17 +124,58 @@ export function useWhatsAppNotifications() {
           table: 'whatsapp_messages',
           filter: `channel_id=in.(${channelFilter})`,
         },
-        (payload) => {
+        async (payload) => {
           const message = payload.new as {
             sender_name?: string;
             sender_phone: string;
             content?: string;
             message_type: string;
             direction: string;
+            channel_id: string;
           };
 
-          // Only notify for inbound messages
+          // Only notify for inbound messages (client → us)
           if (message.direction !== 'inbound') return;
+
+          // Check if the conversation is assigned to the current user.
+          // Only notify if: unassigned (new/queue) OR assigned to me.
+          try {
+            const { data: assignment } = await supabase
+              .from('conversation_assignments')
+              .select('assigned_to')
+              .eq('channel_id', message.channel_id)
+              .neq('status', 'archived')
+              .limit(100);
+
+            if (assignment && assignment.length > 0) {
+              // Find the matching assignment by phone suffix
+              const matchingAssignment = assignment.find(a => {
+                // We need to check conversation_phone but we only selected assigned_to
+                // Re-query with phone match
+                return true; // will be filtered below
+              });
+
+              // More precise: query with phone filter
+              const senderPhone = message.sender_phone.replace(/\D/g, '');
+              const phoneSuffix = senderPhone.slice(-9);
+              
+              const { data: phoneAssignment } = await supabase
+                .from('conversation_assignments')
+                .select('assigned_to, conversation_phone')
+                .eq('channel_id', message.channel_id)
+                .neq('status', 'archived')
+                .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
+                .limit(1)
+                .maybeSingle();
+
+              if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
+                // Assigned to someone else — don't notify
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
+          }
 
           // Play notification sound
           try {
