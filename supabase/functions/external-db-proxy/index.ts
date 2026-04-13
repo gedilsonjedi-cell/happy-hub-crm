@@ -161,12 +161,26 @@ async function handleMessages(
   const essentialSelect =
     "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
+  // Build phone suffix for robust matching (last 8-9 digits)
+  const suffixes = Array.from(
+    new Set(
+      phoneVariants
+        .map((p: string) => p.replace(/\D/g, ""))
+        .filter((p: string) => p.length >= 8)
+        .flatMap((p: string) => [p.slice(-9), p.slice(-8)])
+    )
+  );
+
   const inboundPhoneFilter = phoneVariants
     .map((p: string) => `sender_phone.eq.${p}`)
     .join(",");
-  const outboundPhoneFilter = phoneVariants
-    .map((p: string) => `metadata->>destination.eq.${p}`)
-    .join(",");
+  
+  // For outbound: use both exact match and suffix-based ilike for robustness
+  const outboundFilters = [
+    ...phoneVariants.map((p: string) => `metadata->>destination.eq.${p}`),
+    ...suffixes.map((s: string) => `metadata->>destination.ilike.%${s}`),
+  ];
+  const outboundPhoneFilter = outboundFilters.join(",");
 
   const [inboundResult, outboundResult] = await Promise.all([
     ext
