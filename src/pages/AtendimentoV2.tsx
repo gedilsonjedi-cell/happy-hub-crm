@@ -160,8 +160,10 @@ interface ConversationSummaryRow {
   status: string | null;
   sector_id: string | null;
   lead_id: string | null;
-  updated_at: string;
-  last_message: string | null;
+  updated_at?: string;
+  assignment_updated_at?: string;
+  last_message?: string | null;
+  last_message_content?: string | null;
   last_message_at: string | null;
   last_inbound_at: string | null;
   unread_count: number | null;
@@ -169,6 +171,9 @@ interface ConversationSummaryRow {
   lead_name: string | null;
   lead_tags: string[] | null;
   assigned_to_name: string | null;
+  is_bot_handling?: boolean;
+  campaign_chatbot_id?: string | null;
+  bot_paused_until?: string | null;
 }
 
 interface ConversationSummaryMapping {
