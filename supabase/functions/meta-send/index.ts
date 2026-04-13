@@ -20,22 +20,21 @@ const RETRYABLE_ERROR_CODES = [
   100,    // Invalid parameter (sometimes transient)
 ];
 
-// External DB — messages go here exclusively
+// External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 const localMessageDb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-/** DB where whatsapp_messages live */
+/** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 async function insertMessageRecord(data: Record<string, unknown>) {
-  let result = await messageDb.from('whatsapp_messages').insert(data);
+  const result = await messageDb.from('whatsapp_messages').insert(data);
 
-  if (result.error && externalSupabase) {
-    console.error('[Meta-Send] External message write failed, retrying locally:', result.error);
-    result = await localMessageDb.from('whatsapp_messages').insert(data);
+  if (result.error) {
+    console.error('[Meta-Send] Message write failed:', result.error);
   }
 
   // Upsert contact in external DB for outbound messages (fire-and-forget)

@@ -10,12 +10,12 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// External DB for high-volume tables (whatsapp_messages) — EXTERNAL-ONLY writes
+// External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
-/** DB where whatsapp_messages live (external preferred, internal fallback) */
+/** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || supabase;
 
 function writeMessageRecord(
@@ -28,22 +28,21 @@ function writeMessageRecord(
     : client.from('whatsapp_messages').insert(data);
 }
 
-/** Write to whatsapp_messages on external DB only + update conversation_stats + upsert contact */
+/** Write to whatsapp_messages on external DB (no internal fallback) + update conversation_stats + upsert contact */
 async function dualWriteMessage(data: Record<string, unknown>, upsert = false, internalChannelId?: string) {
-  let result = await writeMessageRecord(messageDb, data, upsert);
+  const result = await writeMessageRecord(messageDb, data, upsert);
 
-  if (result.error && externalSupabase) {
-    console.error('[Meta-Webhook] External message write failed, retrying locally:', result.error);
-    result = await writeMessageRecord(supabase, data, upsert);
+  if (result.error) {
+    console.error('[Meta-Webhook] Message write failed:', result.error);
   }
 
-  // Manually update conversation_stats (trigger won't fire on external DB)
+  // Manually update conversation_stats on internal DB (for Realtime + sidebar)
   if (!result.error && data.channel_id && data.direction) {
     const phone = data.direction === 'inbound'
       ? (data.sender_phone as string)
       : ((data.metadata as Record<string, unknown>)?.destination as string);
     if (phone) {
-      const statsChannelId = internalChannelId || (data as Record<string, unknown>)._internal_channel_id || data.channel_id;
+      const statsChannelId = internalChannelId || data.channel_id;
       supabase.rpc('upsert_conversation_stats_manual', {
         _channel_id: statsChannelId,
         _conversation_phone: phone,
