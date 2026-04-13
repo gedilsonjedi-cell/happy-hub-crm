@@ -458,11 +458,9 @@ const AtendimentoV2 = () => {
   );
   const selectedConversationCacheKey = `${selectedConversation?.channelId ?? "no-channel"}:${selectedConversation?.phone ? getCanonicalPhoneThreadKey(selectedConversation.phone) : "no-phone"}`;
 
-  useEffect(() => {
-    return () => {
-      infiniteMessages.invalidate();
-    };
-  }, [selectedConversationCacheKey]);
+  // Cache cleanup is handled by gcTime (3 min) — no manual invalidation needed.
+  // Previous cleanup effect caused a race condition where switching conversations
+  // would invalidate the NEW conversation's query instead of the old one.
 
   // ─── useMutation: optimistic send with TanStack Query ─────────────────────
   const sendMessageMutation = useSendMessage((restoredText) => setNewMessage(restoredText));

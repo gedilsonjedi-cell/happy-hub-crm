@@ -7,7 +7,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const PROXY_FUNCTION = "external-db-proxy";
-const PROXY_TIMEOUT_MS = 3500;
+const PROXY_TIMEOUT_MS = 8000;
 
 async function withTimeout<T>(
   promise: Promise<T>,
