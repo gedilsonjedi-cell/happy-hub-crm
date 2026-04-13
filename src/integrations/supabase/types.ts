@@ -3559,6 +3559,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      reset_conversation_unread: {
+        Args: { p_channel_id: string; p_phone_variants: string[] }
+        Returns: undefined
+      }
       restore_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
