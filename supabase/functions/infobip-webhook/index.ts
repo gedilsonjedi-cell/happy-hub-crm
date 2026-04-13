@@ -462,7 +462,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
 
           // Store away message
           await dualWriteMessage({
-            channel_id: channel.id,
+            channel_id: senderPhone,
             organization_id: channel.organization_id,
             message_id: `infobip_away_${Date.now()}`,
             sender_phone: recipientPhone,
