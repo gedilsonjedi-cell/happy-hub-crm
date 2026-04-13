@@ -1824,13 +1824,15 @@ const AtendimentoV2 = () => {
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
   const prependMessageRef = useRef(infiniteMessages.prependMessage);
+  const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
     prependMessageRef.current = infiniteMessages.prependMessage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage]);
+    refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage, infiniteMessages.refetchLatestPage]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
@@ -1936,6 +1938,10 @@ const AtendimentoV2 = () => {
     if (isActiveConversation) {
       // Use the ref to always call the latest prependMessage (avoids stale closure)
       prependMessageRef.current(newMsg);
+
+      // Refetch from external DB after a short delay to get the full message
+      // (the prepended message is synthetic from conversation_stats)
+      setTimeout(() => refetchLatestPageRef.current(), 800);
 
       // If inbound and user is viewing this conversation, mark as read immediately in DB
       if (msg.direction === "inbound" && currentSelectedConv) {
