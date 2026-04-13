@@ -2,8 +2,22 @@ function stripPhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
-export function getPhoneThreadVariants(phone: string): string[] {
+export function normalizePhoneThreadValue(phone: string): string {
   const normalized = stripPhone(phone);
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= 11 && !normalized.startsWith("55")) {
+    return `55${normalized}`;
+  }
+
+  return normalized;
+}
+
+export function getPhoneThreadVariants(phone: string): string[] {
+  const normalized = normalizePhoneThreadValue(phone);
 
   if (!normalized) {
     return [];
@@ -26,11 +40,22 @@ export function getPhoneThreadVariants(phone: string): string[] {
   return Array.from(variants);
 }
 
+export function getPhoneLookupVariants(phone: string): string[] {
+  const variants = new Set<string>();
+
+  getPhoneThreadVariants(phone).forEach((variant) => {
+    variants.add(variant);
+    variants.add(`+${variant}`);
+  });
+
+  return Array.from(variants);
+}
+
 export function getCanonicalPhoneThreadKey(phone: string): string {
   const variants = getPhoneThreadVariants(phone);
 
   if (!variants.length) {
-    return stripPhone(phone);
+    return normalizePhoneThreadValue(phone);
   }
 
   return [...variants].sort(
