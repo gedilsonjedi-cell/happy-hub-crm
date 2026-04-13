@@ -2044,7 +2044,8 @@ const AtendimentoV2 = () => {
             isConversationMatch(c)
               ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt, unreadCount: 0 }
               : c
-          ).sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+          ).filter(c => !isConversationMatch(c));
+          return [prev.find(isConversationMatch)!, ...rest].filter(Boolean);
         } else if (isSentByHuman) {
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
           const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
@@ -2142,7 +2143,9 @@ const AtendimentoV2 = () => {
                 }
               : c
           );
-          return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+          const rest = updated.filter(c => !isConversationMatch(c));
+          const movedConv = updated.find(isConversationMatch);
+          return movedConv ? [movedConv, ...rest] : updated;
         }
         return prev;
       });
