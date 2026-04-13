@@ -100,6 +100,12 @@ Deno.serve(async (req: Request) => {
       case "lead_by_phone": {
         return await handleLeadByPhone(extSupabase, organizationId, body);
       }
+      case "bulk_previews": {
+        return await handleBulkPreviews(extSupabase, body);
+      }
+      case "upsert_contact": {
+        return await handleUpsertContact(extSupabase, body);
+      }
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),
