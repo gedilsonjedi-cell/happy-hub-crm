@@ -186,7 +186,10 @@ async function fetchConversationMessagesByDirection(
       .limit(HISTORY_SCAN_BATCH_SIZE);
 
     if (error) {
-      throw new Error(error.message);
+      console.warn(
+        `[external-db-proxy] Failed to read ${direction} history for channel ${channelId}: ${error.message}`
+      );
+      break;
     }
 
     const rows = (data ?? []) as MessageRecord[];
