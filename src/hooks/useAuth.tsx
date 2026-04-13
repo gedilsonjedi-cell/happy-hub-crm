@@ -36,13 +36,60 @@ export const useAuth = () => {
         if (event === "SIGNED_OUT") {
           window.location.href = "/auth";
         }
+
+        // Detect token refresh failure — force re-login
+        if (event === "TOKEN_REFRESHED" && !session) {
+          console.warn("[useAuth] Token refresh failed, redirecting to login");
+          window.location.href = "/auth";
+        }
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("[useAuth] Session restore error:", error.message);
+        // If session can't be restored, try refresh
+        supabase.auth.refreshSession().then(({ data, error: refreshError }) => {
+          if (refreshError || !data.session) {
+            console.warn("[useAuth] Session expired and refresh failed, redirecting to login");
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            window.location.href = "/auth";
+          } else {
+            setSession(data.session);
+            setUser(data.session.user);
+            setLoading(false);
+          }
+        });
+        return;
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Proactively check if token is about to expire or already expired
+      if (session) {
+        const expiresAt = session.expires_at;
+        if (expiresAt) {
+          const now = Math.floor(Date.now() / 1000);
+          const timeLeft = expiresAt - now;
+          // If less than 60 seconds left or already expired, force refresh
+          if (timeLeft < 60) {
+            console.warn("[useAuth] Token expiring soon, forcing refresh");
+            supabase.auth.refreshSession().then(({ data, error: refreshError }) => {
+              if (refreshError || !data.session) {
+                console.warn("[useAuth] Proactive refresh failed, redirecting to login");
+                window.location.href = "/auth";
+              } else {
+                setSession(data.session);
+                setUser(data.session.user);
+              }
+            });
+          }
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
