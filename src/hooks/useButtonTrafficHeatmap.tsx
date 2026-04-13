@@ -57,7 +57,7 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
       startDate.setHours(0, 0, 0, 0);
 
       const daysList: { dayOfWeek: number; date: string; label: string }[] = [];
-      for (let i = 0; i < daysBack; i++) {
+      for (let i = 0; i <= daysBack; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
         const year = d.getFullYear();
