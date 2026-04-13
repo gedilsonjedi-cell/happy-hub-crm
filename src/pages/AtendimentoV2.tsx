@@ -1515,6 +1515,29 @@ const AtendimentoV2 = () => {
     }
   }, [channels, effectiveOrganizationId]);
 
+  // Debounced global search — local-first, then DB fallback
+  const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
+  
+  useEffect(() => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setGlobalSearchResults([]);
+      setLocalSearchResults([]);
+      return;
+    }
+
+    // ── Step 1: Instant local filter (no DB hit) ──
+    const lowerTerm = searchTerm.toLowerCase();
+    const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
+    
+    const localMatches = conversations.filter(conv => {
+      if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
+      if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
+      if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
+      return false;
+    });
+    
+    setLocalSearchResults(localMatches);
+
     // ── Step 2: If local results < 5, also query DB (debounced) ──
     if (searchTerm.length >= 3 && localMatches.length < 5) {
       const debounceTimer = setTimeout(() => {
