@@ -40,17 +40,6 @@ const createNotificationSound = () => {
   }
 };
 
-/**
- * Normalize phone to last 8-9 digits for matching
- */
-function phoneMatchesSuffix(phone1: string, phone2: string): boolean {
-  const p1 = phone1.replace(/\D/g, '');
-  const p2 = phone2.replace(/\D/g, '');
-  if (!p1 || !p2) return false;
-  const suffix1 = p1.slice(-9);
-  const suffix2 = p2.slice(-9);
-  return suffix1 === suffix2 || p1.slice(-8) === p2.slice(-8);
-}
 
 export function useWhatsAppNotifications() {
   const { user } = useAuth();
