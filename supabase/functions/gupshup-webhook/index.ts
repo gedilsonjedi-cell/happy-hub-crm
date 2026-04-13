@@ -718,7 +718,7 @@ async function processInboundMessage(
         provider: 'gupshup',
         original_phone: senderPhone,
       },
-    });
+  }, channelId);
 
   if (insertError) {
     console.error('Error storing Gupshup message:', insertError);

@@ -944,7 +944,7 @@ Deno.serve(async (req) => {
             provider: 'zapi',
             original_phone: phone
           }
-        });
+        }, channel.id);
 
       if (insertError) {
         console.error('Error storing Z-API message:', insertError);
