@@ -190,6 +190,15 @@ export function useInfiniteMessages(
     queryClient.removeQueries({ queryKey });
   }, [queryClient, queryKey.join("|")]);
 
+  /**
+   * Refetch the first (latest) page from the external DB.
+   * Used when a conversation_stats realtime event indicates a new message
+   * was written to the external DB but we only have a synthetic preview.
+   */
+  const refetchLatestPage = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey, refetchType: "active" });
+  }, [queryClient, queryKey.join("|")]);
+
   return {
     messages: allMessages,
     isLoading: isInitialLoading,
@@ -199,5 +208,6 @@ export function useInfiniteMessages(
     prependMessage,
     updateMessageStatus,
     invalidate,
+    refetchLatestPage,
   };
 }
