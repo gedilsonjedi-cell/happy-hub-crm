@@ -55,10 +55,9 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
       startDate.setHours(0, 0, 0, 0);
 
       const daysList: { dayOfWeek: number; date: string; label: string }[] = [];
-      for (let i = 0; i < daysBack; i++) {
+      for (let i = 0; i <= daysBack; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
-        // Format as YYYY-MM-DD in local timezone (matching server's São Paulo output)
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, "0");
         const day = String(d.getDate()).padStart(2, "0");
