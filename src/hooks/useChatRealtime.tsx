@@ -28,9 +28,13 @@ interface RealtimeCallbacks {
  * useChatRealtime — Consolidated Realtime hook
  *
  * Subscribes to:
- * 1. whatsapp_messages filtered by channel_id IN (...)
- * 2. conversation_assignments filtered by channel_id IN (...) — catches assignments WITH channels
- * 3. conversation_assignments (org-wide, no filter) — catches assignments WITHOUT channel_id (campaigns)
+ * 1. conversation_stats filtered by channel_id IN (...) — catches new messages
+ *    (whatsapp_messages are written to EXTERNAL DB only; conversation_stats is
+ *     updated locally via upsert_conversation_stats_manual after each external write)
+ * 2. whatsapp_messages filtered by channel_id IN (...) — fallback for orgs still
+ *    using local DB
+ * 3. conversation_assignments filtered by channel_id IN (...) — catches assignments WITH channels
+ * 4. conversation_assignments (org-wide, no filter) — catches assignments WITHOUT channel_id (campaigns)
  *    Deduplication handled via assignment ID tracking.
  */
 export function useChatRealtime(
@@ -42,7 +46,10 @@ export function useChatRealtime(
   const callbacksRef = useRef<RealtimeCallbacks>(callbacks);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const orgSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const statsSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
+  // Track processed stats events to avoid emitting duplicate message events
+  const processedStatsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     channelIdsRef.current = channelIds;
@@ -52,10 +59,11 @@ export function useChatRealtime(
     callbacksRef.current = callbacks;
   }, [callbacks]);
 
-  // Clear dedup set periodically to prevent memory growth
+  // Clear dedup sets periodically to prevent memory growth
   useEffect(() => {
     const interval = setInterval(() => {
       processedAssignmentIdsRef.current.clear();
+      processedStatsRef.current.clear();
     }, 60_000);
     return () => clearInterval(interval);
   }, []);
@@ -91,6 +99,62 @@ export function useChatRealtime(
     });
   }, []);
 
+  /**
+   * Handle conversation_stats changes — this is the PRIMARY source of
+   * new-message events after the external DB migration.
+   *
+   * When a message is written to the external DB, the webhook calls
+   * upsert_conversation_stats_manual on the LOCAL DB, which triggers
+   * this Realtime event.
+   */
+  const handleStatsPayload = useCallback((payload: { new?: Record<string, unknown>; old?: Record<string, unknown>; eventType?: string }) => {
+    const data = payload.new as {
+      channel_id: string | null;
+      conversation_phone: string;
+      last_message_content: string | null;
+      last_message_at: string | null;
+      last_inbound_at: string | null;
+      unread_count: number;
+      sender_name: string | null;
+      updated_at: string;
+    };
+
+    if (!data?.channel_id || !data.conversation_phone) return;
+
+    // Deduplicate by channel + phone + timestamp
+    const dedupKey = `stats_${data.channel_id}_${data.conversation_phone}_${data.updated_at}`;
+    if (processedStatsRef.current.has(dedupKey)) return;
+    processedStatsRef.current.add(dedupKey);
+
+    const oldData = payload.old as {
+      last_message_at: string | null;
+      last_inbound_at: string | null;
+      unread_count: number;
+    } | undefined;
+
+    // Determine direction from the change:
+    // If last_inbound_at changed, it's an inbound message
+    // If only last_message_at changed, it's outbound
+    const inboundChanged = data.last_inbound_at !== oldData?.last_inbound_at;
+    const direction = inboundChanged ? "inbound" : "outbound";
+
+    // Only emit if last_message_at actually changed (new message arrived)
+    if (data.last_message_at === oldData?.last_message_at) return;
+
+    callbacksRef.current.onNewMessage({
+      channelId: data.channel_id,
+      senderPhone: data.conversation_phone,
+      content: data.last_message_content || "",
+      direction,
+      createdAt: data.last_message_at || data.updated_at,
+      isRead: direction === "outbound" || data.unread_count === 0,
+      senderName: data.sender_name,
+      metadata: direction === "outbound"
+        ? { destination: data.conversation_phone }
+        : null,
+    });
+  }, []);
+
   const setupSubscription = useCallback(() => {
     if (channelIdsRef.current.length === 0) return;
 
@@ -104,7 +168,7 @@ export function useChatRealtime(
 
     const channel = supabase
       .channel(`chat-realtime-${channelFilter.slice(0, 40)}`)
-      // 1. Listen for new messages on these channels only
+      // 1. Listen for new messages on local whatsapp_messages (fallback for non-migrated orgs)
       .on(
         "postgres_changes",
         {
@@ -153,6 +217,44 @@ export function useChatRealtime(
     subscriptionRef.current = channel;
   }, [handleAssignmentPayload]);
 
+  // Subscribe to conversation_stats changes — PRIMARY realtime source for external DB messages
+  const setupStatsSubscription = useCallback(() => {
+    if (channelIdsRef.current.length === 0) return;
+
+    if (statsSubscriptionRef.current) {
+      supabase.removeChannel(statsSubscriptionRef.current);
+      statsSubscriptionRef.current = null;
+    }
+
+    const channelFilter = channelIdsRef.current.join(",");
+
+    const statsChannel = supabase
+      .channel(`stats-realtime-${channelFilter.slice(0, 40)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversation_stats",
+          filter: `channel_id=in.(${channelFilter})`,
+        },
+        handleStatsPayload
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_stats",
+          filter: `channel_id=in.(${channelFilter})`,
+        },
+        handleStatsPayload
+      )
+      .subscribe();
+
+    statsSubscriptionRef.current = statsChannel;
+  }, [handleStatsPayload]);
+
   // 3. Separate org-wide subscription for assignments WITHOUT channel_id (campaigns)
   const setupOrgSubscription = useCallback(() => {
     if (!organizationId) return;
@@ -162,8 +264,6 @@ export function useChatRealtime(
       orgSubscriptionRef.current = null;
     }
 
-    // Subscribe to conversation_stats changes which carry organization_id
-    // This catches assignments that have no channel_id
     const orgChannel = supabase
       .channel(`assignments-org-${organizationId.slice(0, 12)}`)
       .on(
@@ -178,7 +278,6 @@ export function useChatRealtime(
             channel_id: string | null;
           };
           // Only process assignments WITHOUT channel_id here
-          // (ones WITH channel_id are already handled by the filtered subscription)
           if (data?.channel_id) return;
           handleAssignmentPayload(payload);
         }
@@ -192,6 +291,7 @@ export function useChatRealtime(
     if (channelIds.length === 0) return;
 
     setupSubscription();
+    setupStatsSubscription();
     setupOrgSubscription();
 
     return () => {
@@ -199,10 +299,14 @@ export function useChatRealtime(
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
       }
+      if (statsSubscriptionRef.current) {
+        supabase.removeChannel(statsSubscriptionRef.current);
+        statsSubscriptionRef.current = null;
+      }
       if (orgSubscriptionRef.current) {
         supabase.removeChannel(orgSubscriptionRef.current);
         orgSubscriptionRef.current = null;
       }
     };
-  }, [channelIds, setupSubscription, setupOrgSubscription]);
+  }, [channelIds, setupSubscription, setupStatsSubscription, setupOrgSubscription]);
 }
