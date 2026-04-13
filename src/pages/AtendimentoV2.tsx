@@ -1939,6 +1939,10 @@ const AtendimentoV2 = () => {
       // Use the ref to always call the latest prependMessage (avoids stale closure)
       prependMessageRef.current(newMsg);
 
+      // Refetch from external DB after a short delay to get the full message
+      // (the prepended message is synthetic from conversation_stats)
+      setTimeout(() => refetchLatestPageRef.current(), 800);
+
       // If inbound and user is viewing this conversation, mark as read immediately in DB
       if (msg.direction === "inbound" && currentSelectedConv) {
         markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
