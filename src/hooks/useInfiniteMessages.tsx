@@ -3,7 +3,6 @@ import { useCallback } from "react";
 import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
-  fetchInternalMessages,
   type ExternalMessageRow,
 } from "@/lib/externalDb";
 import {
@@ -27,87 +26,33 @@ async function fetchMessagePage(
   cursor: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
-  const normalizedPhone = conversationPhone.replace(/\D/g, "");
 
-  // External DB uses phone as channel_id (new) but also needs UUID for legacy records
   const externalParams = {
-    channelId: channelId, // Pass internal UUID so proxy can also match legacy records
-    phoneVariants,
-    cursor,
-    pageSize: PAGE_SIZE,
-  };
-
-  // Internal DB still uses UUID as channel_id
-  const internalParams = {
     channelId,
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
   };
 
-  // Try external first, then internal. If external returns empty, also try internal.
-  let externalOk = false;
   let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
 
+  // External DB is the single source of truth
   try {
     result = await fetchExternalMessages(externalParams);
-    externalOk = true;
   } catch (e) {
-    console.error("[fetchMessagePage] External fetch failed:", {
-      channelId,
-      conversationPhone,
-      phoneVariants,
-      error: e,
-    });
+    console.error("[fetchMessagePage] External fetch failed:", e);
   }
 
-  // If external succeeded but returned no messages, or if it failed, try internal
+  // Fallback to conversation_stats synthetic message if external is empty
   if (!result?.messages?.length) {
     try {
-      const internalResult = await fetchInternalMessages(internalParams);
-      if (internalResult.messages.length > 0) {
-        console.warn(
-          "[fetchMessagePage] Falling back to internal history because external history was unavailable or empty",
-          {
-            channelId,
-            conversationPhone,
-            phoneVariants,
-            externalOk,
-          }
-        );
-        result = internalResult;
-      }
-    } catch (e) {
-      console.warn("[fetchMessagePage] Internal fetch also failed:", e);
-    }
-  }
-
-  if (!result?.messages?.length) {
-    try {
-      const statsResult = await fetchConversationStatsMessages(internalParams);
+      const statsResult = await fetchConversationStatsMessages(externalParams);
       if (statsResult.messages.length > 0) {
-        console.warn(
-          "[fetchMessagePage] Falling back to synthetic conversation stats because no real history was returned",
-          {
-            channelId,
-            conversationPhone,
-            phoneVariants,
-          }
-        );
         result = statsResult;
       }
     } catch (e) {
-      console.warn("[fetchMessagePage] Conversation stats fallback also failed:", e);
+      console.warn("[fetchMessagePage] Stats fallback failed:", e);
     }
-  }
-
-  if (!result?.messages?.length) {
-    console.warn("[fetchMessagePage] No messages available after external + fallbacks", {
-      channelId,
-      conversationPhone,
-      phoneVariants,
-      externalOk,
-    });
   }
 
   return {

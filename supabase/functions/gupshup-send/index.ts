@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
       // Store failed message
       const failedMessageId = `gupshup_failed_${Date.now()}`;
       const failedData = {
-          channel_id: channelId,
+          channel_id: cleanDestination,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
           sender_phone: sourcePhone,
@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
 
     // Store outbound message
     const outboundData = {
-        channel_id: channelId,
+        channel_id: cleanDestination,
         organization_id: channel.organization_id,
         message_id: messageId,
         sender_phone: sourcePhone,

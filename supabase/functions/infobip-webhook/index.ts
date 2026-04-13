@@ -10,32 +10,28 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// External DB for high-volume tables
+// External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
-function normalizePhone(phone: string): string {
-  let digits = phone.replace(/\D/g, '');
-  if (!digits.startsWith('55')) {
-    digits = '55' + digits;
-  }
-  return digits;
-}
-
-/** DB where whatsapp_messages live (external preferred, internal fallback) */
+/** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || supabase;
 
-/** Write to whatsapp_messages on external DB + update conversation_stats */
-async function dualWriteMessage(data: Record<string, unknown>) {
+/** Write to whatsapp_messages on external DB (no fallback) + update conversation_stats */
+async function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
   const result = await messageDb.from('whatsapp_messages').insert(data);
+  if (result.error) {
+    console.error('[Infobip Webhook] Message write failed:', result.error);
+  }
   if (!result.error && data.channel_id && data.direction) {
     const phone = data.direction === 'inbound'
       ? (data.sender_phone as string)
       : ((data.metadata as Record<string, unknown>)?.destination as string);
     if (phone) {
+      const statsChannelId = internalChannelId || data.channel_id;
       supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: data.channel_id,
+        _channel_id: statsChannelId,
         _conversation_phone: phone,
         _content: (data.content as string) || null,
         _direction: data.direction as string,
@@ -365,7 +361,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
 
   // Store inbound message
   const msgData = {
-    channel_id: channel.id,
+    channel_id: senderPhone,
     organization_id: channel.organization_id,
     message_id: messageId,
     sender_phone: senderPhone,
@@ -384,7 +380,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
     },
   };
 
-  await dualWriteMessage(msgData);
+  await dualWriteMessage(msgData, channel.id);
 
   // Create or update conversation assignment
   const { data: existingAssignment } = await supabase
@@ -466,7 +462,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
 
           // Store away message
           await dualWriteMessage({
-            channel_id: channel.id,
+            channel_id: senderPhone,
             organization_id: channel.organization_id,
             message_id: `infobip_away_${Date.now()}`,
             sender_phone: recipientPhone,

@@ -10,25 +10,28 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// External DB for high-volume tables (whatsapp_messages) — EXTERNAL-ONLY writes
+// External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
-/** DB where whatsapp_messages live (external preferred, internal fallback) */
+/** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || supabase;
 
-/** Write to whatsapp_messages on external DB + update conversation_stats */
-function dualWriteMessage(data: Record<string, unknown>) {
+/** Write to whatsapp_messages on external DB (no fallback) + update conversation_stats */
+function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
   return messageDb.from('whatsapp_messages').insert(data).then(async (result) => {
-    // Manually update conversation_stats
+    if (result.error) {
+      console.error('[Z-API Webhook] Message write failed:', result.error);
+    }
     if (!result.error && data.channel_id && data.direction) {
       const phone = data.direction === 'inbound'
         ? (data.sender_phone as string)
         : ((data.metadata as Record<string, unknown>)?.destination as string);
       if (phone) {
+        const statsChannelId = internalChannelId || data.channel_id;
         supabase.rpc('upsert_conversation_stats_manual', {
-          _channel_id: data.channel_id,
+          _channel_id: statsChannelId,
           _conversation_phone: phone,
           _content: (data.content as string) || null,
           _direction: data.direction as string,
@@ -924,7 +927,7 @@ Deno.serve(async (req) => {
 
       // Store message with normalized phone
       const { error: insertError } = await dualWriteMessage({
-          channel_id: channel.id,
+          channel_id: normalizedPhone,
           organization_id: channel.organization_id,
           message_id: messageId,
           sender_phone: normalizedPhone,
@@ -941,7 +944,7 @@ Deno.serve(async (req) => {
             provider: 'zapi',
             original_phone: phone
           }
-        });
+        }, channel.id);
 
       if (insertError) {
         console.error('Error storing Z-API message:', insertError);

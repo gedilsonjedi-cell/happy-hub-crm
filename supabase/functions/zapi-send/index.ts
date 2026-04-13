@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
       // Store failed message in database with error
       const failedMessageId = `zapi_failed_${Date.now()}`;
       const failedData = {
-          channel_id: channelId,
+          channel_id: cleanDestination,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
           sender_phone: channel.phone,
@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
       };
       const msgDb = externalSupabase || serviceRoleClient;
       await msgDb.from('whatsapp_messages').insert(failedData);
-      // Update conversation stats manually
+      // Update conversation stats manually (use internal UUID for stats)
       serviceRoleClient.rpc('upsert_conversation_stats_manual', {
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
 
     // Store outbound message in database
     const outboundData = {
-        channel_id: channelId,
+        channel_id: cleanDestination,
         organization_id: channel.organization_id,
         message_id: messageId,
         sender_phone: channel.phone,
@@ -351,7 +351,7 @@ Deno.serve(async (req) => {
     };
     const msgDb2 = externalSupabase || serviceRoleClient;
     await msgDb2.from('whatsapp_messages').insert(outboundData);
-    // Update conversation stats manually
+    // Update conversation stats manually (use internal UUID for stats)
     serviceRoleClient.rpc('upsert_conversation_stats_manual', {
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,
