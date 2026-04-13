@@ -1,3 +1,4 @@
+// Online/Offline status toggle component
 import { Signal, SignalZero } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
