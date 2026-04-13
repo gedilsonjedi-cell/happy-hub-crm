@@ -174,12 +174,13 @@ async function fetchConversationMessagesByDirection(
   let scanCursor = cursorFilter;
   const matched: MessageRecord[] = [];
   const seen = new Set<string>();
+  const channelIdStr = String(channelId);
 
   for (let batchIndex = 0; batchIndex < HISTORY_SCAN_MAX_BATCHES; batchIndex += 1) {
     const { data, error } = await ext
       .from("whatsapp_messages")
       .select(selectFields)
-      .eq("channel_id", channelId)
+      .filter("channel_id", "eq", channelIdStr)
       .eq("direction", direction)
       .lt("created_at", scanCursor)
       .order("created_at", { ascending: false })
@@ -230,12 +231,13 @@ async function fetchLatestConversationStatsMessage(
     return null;
   }
 
+  const channelIdStr = String(channelId);
   const { data, error } = await internalServiceRole
     .from("conversation_stats")
     .select(
       "conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name"
     )
-    .eq("channel_id", channelId)
+    .filter("channel_id", "eq", channelIdStr)
     .or(phoneFilter)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(1)
@@ -498,7 +500,7 @@ async function handleLeads(
   let query = ext
     .from("leads")
     .select("*", { count: "exact" })
-    .eq("organization_id", organizationId)
+    .filter("organization_id", "eq", String(organizationId))
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -551,7 +553,7 @@ async function handleLeadByPhone(
   const { data, error } = await ext
     .from("leads")
     .select("*")
-    .eq("organization_id", organizationId)
+    .filter("organization_id", "eq", String(organizationId))
     .or(phoneFilter)
     .limit(1)
     .maybeSingle();
@@ -613,11 +615,12 @@ async function handleBulkPreviews(
         ];
         const outboundFilter = outboundFilters.join(",");
 
+        const chIdStr = String(conv.channelId);
         const [inboundRes, outboundRes] = await Promise.all([
           ext
             .from("whatsapp_messages")
             .select("content, message_type, direction, created_at, sender_name, metadata")
-            .eq("channel_id", conv.channelId)
+            .filter("channel_id", "eq", chIdStr)
             .eq("direction", "inbound")
             .or(inboundFilter)
             .order("created_at", { ascending: false })
@@ -625,7 +628,7 @@ async function handleBulkPreviews(
           ext
             .from("whatsapp_messages")
             .select("content, message_type, direction, created_at, sender_name, metadata")
-            .eq("channel_id", conv.channelId)
+            .filter("channel_id", "eq", chIdStr)
             .eq("direction", "outbound")
             .or(outboundFilter)
             .order("created_at", { ascending: false })
@@ -699,13 +702,13 @@ async function handleUpsertContact(
     );
   }
 
-  // Upsert the contact
+  // Upsert the contact — cast IDs to strings to avoid text/uuid mismatch
   const { error } = await ext
     .from("whatsapp_contacts")
     .upsert(
       {
-        channel_id: channelId,
-        organization_id: organizationId,
+        channel_id: String(channelId),
+        organization_id: organizationId ? String(organizationId) : null,
         sender_phone: senderPhone,
         sender_name: senderName || null,
         last_message_at: lastMessageAt || new Date().toISOString(),

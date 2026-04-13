@@ -175,11 +175,12 @@ export async function fetchInternalMessages(params: {
     .map((phone) => `metadata->>destination.eq.${phone}`)
     .join(",");
 
+  const channelIdStr = String(params.channelId);
   const [inboundResult, outboundResult] = await Promise.all([
     supabase
       .from("whatsapp_messages")
       .select(selectFields)
-      .eq("channel_id", params.channelId)
+      .filter("channel_id", "eq", channelIdStr)
       .eq("direction", "inbound")
       .or(inboundPhoneFilter)
       .lt("created_at", cursorFilter)
@@ -188,7 +189,7 @@ export async function fetchInternalMessages(params: {
     supabase
       .from("whatsapp_messages")
       .select(selectFields)
-      .eq("channel_id", params.channelId)
+      .filter("channel_id", "eq", channelIdStr)
       .eq("direction", "outbound")
       .or(outboundPhoneFilter)
       .lt("created_at", cursorFilter)
@@ -242,12 +243,13 @@ export async function fetchConversationStatsMessages(params: {
     .map((phone) => `conversation_phone.eq.${phone}`)
     .join(",");
 
+  const channelIdStr = String(params.channelId);
   const { data, error } = await supabase
     .from("conversation_stats")
     .select(
       "conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name"
     )
-    .eq("channel_id", params.channelId)
+    .filter("channel_id", "eq", channelIdStr)
     .or(statsPhoneFilter)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(3);
