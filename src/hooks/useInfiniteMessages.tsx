@@ -124,9 +124,11 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone,
-    staleTime: 30_000, // 30s — allows prefetched data to stay fresh
-    gcTime: 3 * 60_000, // 3 min — keeps cache for recently-viewed conversations, then GC frees memory
+    staleTime: 30_000,
+    gcTime: 3 * 60_000,
     refetchOnMount: "always",
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   // All pages combined in chronological order (oldest → newest)
