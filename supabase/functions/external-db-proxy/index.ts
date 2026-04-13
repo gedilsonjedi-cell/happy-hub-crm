@@ -363,6 +363,18 @@ Deno.serve(async (req: Request) => {
       case "upsert_contact": {
         return await handleUpsertContact(extSupabase, body);
       }
+      case "debug_search": {
+        const { phone } = body as { phone: string };
+        const { data, error } = await extSupabase
+          .from("whatsapp_messages")
+          .select("id, channel_id, sender_phone, direction, content, message_type, created_at")
+          .or(`sender_phone.like.%${phone}%,metadata->>destination.like.%${phone}%,metadata->>original_phone.like.%${phone}%`)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        return new Response(JSON.stringify({ results: data, error: error?.message }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),
