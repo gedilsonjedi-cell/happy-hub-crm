@@ -175,14 +175,16 @@ async function fetchConversationMessagesByDirection(
   const matched: MessageRecord[] = [];
   const seen = new Set<string>();
 
-  // channel_id in external DB is now the client's phone number
-  // Build an OR filter to match any phone variant as channel_id
+  // channel_id in external DB can be phone number (new) or UUID (legacy)
+  // Build an OR filter to match any phone variant AND the internal UUID as channel_id
   const phoneVariantsForFilter = Array.from(lookup.exact);
-  if (phoneVariantsForFilter.length === 0) return [];
+  if (phoneVariantsForFilter.length === 0 && !channelId) return [];
 
-  const channelIdFilter = phoneVariantsForFilter
-    .map((phone) => `channel_id.eq.${phone}`)
-    .join(",");
+  const channelIdParts = phoneVariantsForFilter
+    .map((phone) => `channel_id.eq.${phone}`);
+  // Also include the internal UUID so legacy records are found
+  channelIdParts.push(`channel_id.eq.${channelId}`);
+  const channelIdFilter = channelIdParts.join(",");
 
   for (let batchIndex = 0; batchIndex < HISTORY_SCAN_MAX_BATCHES; batchIndex += 1) {
     const { data, error } = await ext
@@ -607,18 +609,20 @@ async function handleBulkPreviews(
   const results = await Promise.all(
     batch.map(async (conv) => {
       try {
-          // channel_id in external DB is now the client's phone number
+          // channel_id in external DB can be phone (new) or UUID (legacy)
           const phoneNormalized = conv.phoneVariants
             .map((p: string) => p.replace(/\D/g, ""))
             .filter(Boolean);
           
-          if (phoneNormalized.length === 0) {
+          if (phoneNormalized.length === 0 && !conv.channelId) {
             throw new Error("No valid phone variants");
           }
 
-          const channelIdFilter = phoneNormalized
-            .map((p: string) => `channel_id.eq.${p}`)
-          .join(",");
+          const channelIdParts = phoneNormalized
+            .map((p: string) => `channel_id.eq.${p}`);
+          // Also include the internal UUID channel_id for legacy records
+          if (conv.channelId) channelIdParts.push(`channel_id.eq.${conv.channelId}`);
+          const channelIdFilter = channelIdParts.join(",");
 
           const { data, error } = await ext
             .from("whatsapp_messages")

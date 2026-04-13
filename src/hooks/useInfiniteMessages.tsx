@@ -29,9 +29,9 @@ async function fetchMessagePage(
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
   const normalizedPhone = conversationPhone.replace(/\D/g, "");
 
-  // External DB uses phone as channel_id
+  // External DB uses phone as channel_id (new) but also needs UUID for legacy records
   const externalParams = {
-    channelId: normalizedPhone,
+    channelId: channelId, // Pass internal UUID so proxy can also match legacy records
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
