@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Navigate } from "react-router-dom";
 
-const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
+const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com", "henrique.miranda@henrimath.com.br"];
 
 export default function Relatorios() {
   const { user, loading: authLoading } = useAuth();

@@ -66,7 +66,7 @@ const crmSubmenu = [
   { icon: Ban, label: "Lista Negra", path: "/lista-negra", permission: null },
 ];
 
-const RELATORIOS_ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com"];
+const RELATORIOS_ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com", "henrique.miranda@henrimath.com.br"];
 
 const disparosSubmenu = [
   { icon: Send, label: "Campanhas", path: "/disparos", permission: "canAccessDisparos" },
