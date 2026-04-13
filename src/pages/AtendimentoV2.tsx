@@ -1994,7 +1994,7 @@ const AtendimentoV2 = () => {
 
       // Refetch from external DB after a short delay to get the full message
       // (the prepended message is synthetic from conversation_stats)
-      setTimeout(() => refetchLatestPageRef.current(), 800);
+      setTimeout(() => refetchLatestPageRef.current(), 250);
 
       // If inbound and user is viewing this conversation, mark as read immediately in DB
       if (msg.direction === "inbound" && currentSelectedConv) {
