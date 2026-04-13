@@ -1339,6 +1339,13 @@ const AtendimentoV2 = () => {
       .map(phone => `sender_phone.eq.${phone}`)
       .join(',');
 
+    // Reset unread count in conversation_stats (source of truth for sidebar badges)
+    const statsPhoneVariants = Array.from(phoneVariants);
+    supabase.rpc('reset_conversation_unread', {
+      p_channel_id: conversation.channelId,
+      p_phone_variants: statsPhoneVariants,
+    }).then(() => {});
+
     supabase
       .from("whatsapp_messages")
       .update({ is_read: true })
