@@ -536,6 +536,7 @@ const AtendimentoV2 = () => {
     components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
   }>>(new Map());
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messageWindowBaseTime, setMessageWindowBaseTime] = useState<string | null>(null);
   const [selectedConversationStableKey, setSelectedConversationStableKey] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1124,7 +1125,14 @@ const AtendimentoV2 = () => {
       try {
         const results = await fetchBulkPreviews(bulkRequest);
 
-        if (cancelled || results.length === 0) return;
+        if (cancelled) return;
+
+        if (results.length === 0) {
+          console.warn("[enrichMissingPreviews] External preview query returned no rows", {
+            conversations: bulkRequest,
+          });
+          return;
+        }
 
         // Map results back to conversation keys
         const updateMap = new Map<string, { lastMessage: string; lastMessageTime: string; lastInboundTime: string | null }>();
@@ -1163,9 +1171,16 @@ const AtendimentoV2 = () => {
             });
             return changed ? nextConversations : prev;
           });
+        } else {
+          console.warn("[enrichMissingPreviews] External preview query returned empty content", {
+            conversations: pendingConversations.map((conversation) => ({
+              channelId: conversation.channelId,
+              phone: conversation.phone,
+            })),
+          });
         }
       } catch (error) {
-        console.warn("[enrichMissingPreviews] Bulk preview failed, skipping:", error);
+        console.error("[enrichMissingPreviews] External preview query failed:", error);
       }
     };
 
@@ -1605,49 +1620,85 @@ const AtendimentoV2 = () => {
       setConversationNotes([]);
     }
 
-    // Query DB directly for the most recent inbound message to accurately determine lastInboundTime
-    // This avoids relying on the limited first page of messages which may all be outbound
-    const phoneWithPlus = `+${normalizedPhone}`;
-    // Generate Brazilian phone variants (8-digit vs 9-digit mobile numbers)
-    const phoneVariants = [normalizedPhone, phoneWithPlus];
-    if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 12) {
-      const areaCode = normalizedPhone.slice(2, 4);
-      const localNumber = normalizedPhone.slice(4);
-      if (localNumber.length === 9 && localNumber.startsWith("9")) {
-        const without9 = `55${areaCode}${localNumber.slice(1)}`;
-        phoneVariants.push(without9, `+${without9}`);
-      } else if (localNumber.length === 8) {
-        const with9 = `55${areaCode}9${localNumber}`;
-        phoneVariants.push(with9, `+${with9}`);
-      }
-    }
-    const orFilter = phoneVariants.map(v => `sender_phone.eq.${v}`).join(",");
-    const { data: latestInboundData } = await supabase
-      .from("whatsapp_messages")
-      .select("created_at")
-      .eq("channel_id", conversationChannelId)
-      .eq("direction", "inbound")
-      .or(orFilter)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    // Query external history directly for the latest real message and use it as
+    // the source of truth for the 24h window + sidebar/chat freshness.
+    const phoneVariants = buildMessageLookupVariants(normalizedPhone);
+    const fallbackWindowBase = selectedConversation.lastMessageTime || selectedConversation.lastInboundTime || null;
 
-    const latestInboundTime = latestInboundData?.[0]?.created_at;
-    if (latestInboundTime) {
-      const conversationKey = getConversationKey(selectedConversation);
-      const shouldUpdate = !selectedConversation.lastInboundTime ||
-        new Date(latestInboundTime) > new Date(selectedConversation.lastInboundTime);
+    try {
+      const latestExternalPage = await fetchExternalMessages({
+        channelId: String(conversationChannelId),
+        phoneVariants,
+        cursor: null,
+        pageSize: 1,
+      });
 
-      if (shouldUpdate) {
-        setSelectedConversation(prev => prev ? { ...prev, lastInboundTime: latestInboundTime } : null);
-        setAllConversations(prev => prev.map(c => {
-          const key = getConversationKey(c);
-          if (key !== conversationKey) return c;
-          if (!c.lastInboundTime || new Date(latestInboundTime) > new Date(c.lastInboundTime)) {
-            return { ...c, lastInboundTime: latestInboundTime };
-          }
-          return c;
-        }));
+      const latestExternalMessage = latestExternalPage.messages[0] ?? null;
+
+      if (!latestExternalMessage?.created_at) {
+        console.warn("[fetchNotesAndSideEffects] External history returned empty for active conversation", {
+          channelId: conversationChannelId,
+          phone: normalizedPhone,
+          phoneVariants,
+        });
+        setMessageWindowBaseTime(fallbackWindowBase);
+      } else {
+        const latestMessageTime = new Date(latestExternalMessage.created_at).getTime();
+        const conversationKey = getConversationKey(selectedConversation);
+        const latestPreview = getMessagePreviewText(latestExternalMessage);
+
+        setMessageWindowBaseTime(latestExternalMessage.created_at);
+
+        setSelectedConversation((prev) =>
+          prev
+            ? {
+                ...prev,
+                lastMessage: prev.lastMessage || latestPreview,
+                lastMessageTime:
+                  !prev.lastMessageTime || latestMessageTime > new Date(prev.lastMessageTime).getTime()
+                    ? latestExternalMessage.created_at
+                    : prev.lastMessageTime,
+                lastInboundTime:
+                  latestExternalMessage.direction === "inbound" &&
+                  (!prev.lastInboundTime || latestMessageTime > new Date(prev.lastInboundTime).getTime())
+                    ? latestExternalMessage.created_at
+                    : prev.lastInboundTime,
+              }
+            : null
+        );
+
+        setAllConversations((prev) =>
+          prev.map((conversation) => {
+            const key = getConversationKey(conversation);
+            if (key !== conversationKey) return conversation;
+
+            const currentLastMessageTime = new Date(conversation.lastMessageTime || 0).getTime();
+            const currentLastInboundTime = new Date(conversation.lastInboundTime || 0).getTime();
+
+            return {
+              ...conversation,
+              lastMessage: conversation.lastMessage || latestPreview,
+              lastMessageTime:
+                !conversation.lastMessageTime || latestMessageTime > currentLastMessageTime
+                  ? latestExternalMessage.created_at
+                  : conversation.lastMessageTime,
+              lastInboundTime:
+                latestExternalMessage.direction === "inbound" &&
+                (!conversation.lastInboundTime || latestMessageTime > currentLastInboundTime)
+                  ? latestExternalMessage.created_at
+                  : conversation.lastInboundTime,
+            };
+          })
+        );
       }
+    } catch (error) {
+      console.error("[fetchNotesAndSideEffects] Failed to fetch latest external history for active conversation:", {
+        channelId: conversationChannelId,
+        phone: normalizedPhone,
+        phoneVariants,
+        error,
+      });
+      setMessageWindowBaseTime(fallbackWindowBase);
     }
 
     // Mark unread messages as read (status update only — no new log records)
@@ -2287,11 +2338,21 @@ const AtendimentoV2 = () => {
           const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
-            queryFn: () =>
-              fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })
-                .catch(() => fetchInternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 })),
+            queryFn: async () => {
+              try {
+                return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
+              } catch (error) {
+                console.error("[prefetchMessages] External prefetch failed:", {
+                  channelId: conv.channelId,
+                  phone: conv.phone,
+                  error,
+                });
+                return fetchInternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
+              }
+            },
             initialPageParam: null as string | null,
-            staleTime: 60_000,
+            staleTime: 0,
+            gcTime: 60_000,
           });
         }
       });
@@ -3544,19 +3605,31 @@ const AtendimentoV2 = () => {
     return isMyConversation || isOrphanVisibleToMe;
   }).length;
 
-  // 24-hour window
-  const is24HourWindowExpired = (lastInboundTime: string | null) => {
-    if (!lastInboundTime) return true;
-    const lastInbound = new Date(lastInboundTime);
+  // 24-hour window — always based on the latest real external message timestamp.
+  const toLocalDate = (timestamp: string | null) => {
+    if (!timestamp) return null;
+    const utcDate = new Date(timestamp);
+    if (Number.isNaN(utcDate.getTime())) return null;
+
+    return new Date(
+      utcDate.toLocaleString("en-US", {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+    );
+  };
+
+  const is24HourWindowExpired = (baseTime: string | null) => {
+    const localBase = toLocalDate(baseTime);
+    if (!localBase) return true;
     const now = new Date();
-    const hoursDiff = (now.getTime() - lastInbound.getTime()) / (1000 * 60 * 60);
+    const hoursDiff = (now.getTime() - localBase.getTime()) / (1000 * 60 * 60);
     return hoursDiff > 24;
   };
 
-  const getWindowTimeRemaining = (lastInboundTime: string | null) => {
-    if (!lastInboundTime) return null;
-    const lastInbound = new Date(lastInboundTime);
-    const expireTime = new Date(lastInbound.getTime() + 24 * 60 * 60 * 1000);
+  const getWindowTimeRemaining = (baseTime: string | null) => {
+    const localBase = toLocalDate(baseTime);
+    if (!localBase) return null;
+    const expireTime = new Date(localBase.getTime() + 24 * 60 * 60 * 1000);
     const now = new Date();
     const remainingMs = expireTime.getTime() - now.getTime();
     if (remainingMs <= 0) return null;
@@ -3566,8 +3639,9 @@ const AtendimentoV2 = () => {
     return `${hours}h ${minutes}min`;
   };
 
-  const isWindowExpired = selectedConversation ? is24HourWindowExpired(selectedConversation.lastInboundTime) : false;
-  const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(selectedConversation.lastInboundTime) : null;
+  const windowBaseTime = messageWindowBaseTime || selectedConversation?.lastMessageTime || selectedConversation?.lastInboundTime || null;
+  const isWindowExpired = selectedConversation ? is24HourWindowExpired(windowBaseTime) : false;
+  const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(windowBaseTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
 
   // Handle paste event for images
@@ -3887,7 +3961,7 @@ const AtendimentoV2 = () => {
                               
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                                  {conv.lastMessage || (conv.lastInboundTime || conv.unreadCount > 0 ? "[Mensagem recebida]" : "Sem mensagens")}
+                                  {conv.lastMessage || "Carregando histórico…"}
                                 </p>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                                   {formatConversationDate(conv.lastMessageTime)}

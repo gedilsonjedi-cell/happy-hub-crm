@@ -43,7 +43,12 @@ async function fetchMessagePage(
     result = await fetchExternalMessages(requestParams);
     externalOk = true;
   } catch (e) {
-    console.warn("[fetchMessagePage] External fetch failed, falling back to internal:", e);
+    console.error("[fetchMessagePage] External fetch failed:", {
+      channelId,
+      conversationPhone,
+      phoneVariants,
+      error: e,
+    });
   }
 
   // If external succeeded but returned no messages, or if it failed, try internal
@@ -51,6 +56,15 @@ async function fetchMessagePage(
     try {
       const internalResult = await fetchInternalMessages(requestParams);
       if (internalResult.messages.length > 0) {
+        console.warn(
+          "[fetchMessagePage] Falling back to internal history because external history was unavailable or empty",
+          {
+            channelId,
+            conversationPhone,
+            phoneVariants,
+            externalOk,
+          }
+        );
         result = internalResult;
       }
     } catch (e) {
@@ -62,11 +76,28 @@ async function fetchMessagePage(
     try {
       const statsResult = await fetchConversationStatsMessages(requestParams);
       if (statsResult.messages.length > 0) {
+        console.warn(
+          "[fetchMessagePage] Falling back to synthetic conversation stats because no real history was returned",
+          {
+            channelId,
+            conversationPhone,
+            phoneVariants,
+          }
+        );
         result = statsResult;
       }
     } catch (e) {
       console.warn("[fetchMessagePage] Conversation stats fallback also failed:", e);
     }
+  }
+
+  if (!result?.messages?.length) {
+    console.warn("[fetchMessagePage] No messages available after external + fallbacks", {
+      channelId,
+      conversationPhone,
+      phoneVariants,
+      externalOk,
+    });
   }
 
   return {
@@ -106,9 +137,11 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone,
-    staleTime: 30_000,
-    gcTime: 3 * 60_000,
+    staleTime: 0,
+    gcTime: 60_000,
     refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
