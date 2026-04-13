@@ -607,53 +607,27 @@ async function handleBulkPreviews(
   const results = await Promise.all(
     batch.map(async (conv) => {
       try {
-        const inboundFilter = conv.phoneVariants
-          .map((p: string) => `sender_phone.eq.${p}`)
+          // channel_id in external DB is now the client's phone number
+          const phoneNormalized = conv.phoneVariants
+            .map((p: string) => p.replace(/\D/g, ""))
+            .filter(Boolean);
+          
+          if (phoneNormalized.length === 0) {
+            throw new Error("No valid phone variants");
+          }
+
+          const channelIdFilter = phoneNormalized
+            .map((p: string) => `channel_id.eq.${p}`)
           .join(",");
-        
-        // Build suffix-based filters for robust outbound matching
-        const suffixes = Array.from(
-          new Set(
-            conv.phoneVariants
-              .map((p: string) => p.replace(/\D/g, ""))
-              .filter((p: string) => p.length >= 8)
-              .flatMap((p: string) => [p.slice(-9), p.slice(-8)])
-          )
-        );
-        const outboundFilters = [
-          ...conv.phoneVariants.map((p: string) => `metadata->>destination.eq.${p}`),
-          ...suffixes.map((s: string) => `metadata->>destination.ilike.%${s}`),
-        ];
-        const outboundFilter = outboundFilters.join(",");
 
-        const chIdStr = String(conv.channelId);
-        const [inboundRes, outboundRes] = await Promise.all([
-          ext
+          const { data, error } = await ext
             .from("whatsapp_messages")
             .select("content, message_type, direction, created_at, sender_name, metadata")
-            .filter("channel_id", "eq", chIdStr)
-            .eq("direction", "inbound")
-            .or(inboundFilter)
+            .or(channelIdFilter)
             .order("created_at", { ascending: false })
-            .limit(1),
-          ext
-            .from("whatsapp_messages")
-            .select("content, message_type, direction, created_at, sender_name, metadata")
-            .filter("channel_id", "eq", chIdStr)
-            .eq("direction", "outbound")
-            .or(outboundFilter)
-            .order("created_at", { ascending: false })
-            .limit(1),
-        ]);
+            .limit(1);
 
-        const inbound = inboundRes.data?.[0] || null;
-        const outbound = outboundRes.data?.[0] || null;
-
-        // Pick whichever is more recent
-        let latest = inbound;
-        if (outbound && (!inbound || new Date(outbound.created_at) > new Date(inbound.created_at))) {
-          latest = outbound;
-        }
+          const latest = (!error && data?.length) ? data[0] : null;
 
         return {
           channelId: conv.channelId,
@@ -663,7 +637,7 @@ async function handleBulkPreviews(
           direction: latest?.direction || null,
           createdAt: latest?.created_at || null,
           senderName: latest?.sender_name || null,
-          lastInboundAt: inbound?.created_at || null,
+            lastInboundAt: latest?.direction === "inbound" ? latest?.created_at : null,
         };
       } catch {
         return {
