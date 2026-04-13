@@ -308,3 +308,151 @@ async function handleLeadByPhone(
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+/**
+ * Bulk preview fetcher: given an array of { channelId, phone } pairs,
+ * returns the latest message content + time for each conversation.
+ * This replaces N individual proxy calls with a single batch request.
+ */
+async function handleBulkPreviews(
+  ext: ReturnType<typeof createClient>,
+  body: Record<string, unknown>
+) {
+  const { conversations } = body as {
+    conversations: Array<{ channelId: string; phoneVariants: string[] }>;
+  };
+
+  if (!conversations?.length) {
+    return new Response(
+      JSON.stringify({ previews: [] }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Limit to 50 conversations per request to avoid timeouts
+  const batch = conversations.slice(0, 50);
+
+  const results = await Promise.all(
+    batch.map(async (conv) => {
+      try {
+        const inboundFilter = conv.phoneVariants
+          .map((p: string) => `sender_phone.eq.${p}`)
+          .join(",");
+        const outboundFilter = conv.phoneVariants
+          .map((p: string) => `metadata->>destination.eq.${p}`)
+          .join(",");
+
+        const [inboundRes, outboundRes] = await Promise.all([
+          ext
+            .from("whatsapp_messages")
+            .select("content, message_type, direction, created_at, sender_name, metadata")
+            .eq("channel_id", conv.channelId)
+            .eq("direction", "inbound")
+            .or(inboundFilter)
+            .order("created_at", { ascending: false })
+            .limit(1),
+          ext
+            .from("whatsapp_messages")
+            .select("content, message_type, direction, created_at, sender_name, metadata")
+            .eq("channel_id", conv.channelId)
+            .eq("direction", "outbound")
+            .or(outboundFilter)
+            .order("created_at", { ascending: false })
+            .limit(1),
+        ]);
+
+        const inbound = inboundRes.data?.[0] || null;
+        const outbound = outboundRes.data?.[0] || null;
+
+        // Pick whichever is more recent
+        let latest = inbound;
+        if (outbound && (!inbound || new Date(outbound.created_at) > new Date(inbound.created_at))) {
+          latest = outbound;
+        }
+
+        return {
+          channelId: conv.channelId,
+          phone: conv.phoneVariants[0] || "",
+          content: latest?.content || null,
+          messageType: latest?.message_type || null,
+          direction: latest?.direction || null,
+          createdAt: latest?.created_at || null,
+          senderName: latest?.sender_name || null,
+          lastInboundAt: inbound?.created_at || null,
+        };
+      } catch {
+        return {
+          channelId: conv.channelId,
+          phone: conv.phoneVariants[0] || "",
+          content: null,
+          messageType: null,
+          direction: null,
+          createdAt: null,
+          senderName: null,
+          lastInboundAt: null,
+        };
+      }
+    })
+  );
+
+  return new Response(
+    JSON.stringify({ previews: results }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+/**
+ * Upsert a contact in the external whatsapp_contacts table.
+ * Creates the table if it doesn't exist (idempotent).
+ */
+async function handleUpsertContact(
+  ext: ReturnType<typeof createClient>,
+  body: Record<string, unknown>
+) {
+  const { channelId, organizationId, senderPhone, senderName, lastMessageAt } =
+    body as {
+      channelId: string;
+      organizationId: string;
+      senderPhone: string;
+      senderName: string | null;
+      lastMessageAt: string;
+    };
+
+  if (!channelId || !senderPhone) {
+    return new Response(
+      JSON.stringify({ error: "channelId and senderPhone required" }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // Upsert the contact
+  const { error } = await ext
+    .from("whatsapp_contacts")
+    .upsert(
+      {
+        channel_id: channelId,
+        organization_id: organizationId,
+        sender_phone: senderPhone,
+        sender_name: senderName || null,
+        last_message_at: lastMessageAt || new Date().toISOString(),
+      },
+      { onConflict: "channel_id,sender_phone", ignoreDuplicates: false }
+    );
+
+  if (error) {
+    // Table might not exist yet — log but don't fail
+    console.warn("[upsert_contact] Error:", error.message);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ success: true }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
