@@ -43,15 +43,22 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
       : ((data.metadata as Record<string, unknown>)?.destination as string);
     if (phone) {
       const statsChannelId = internalChannelId || data.channel_id;
-      supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: statsChannelId,
-        _conversation_phone: phone,
-        _content: (data.content as string) || null,
-        _direction: data.direction as string,
-        _is_read: (data.is_read as boolean) ?? null,
-        _sender_name: (data.sender_name as string) || null,
-        _created_at: new Date().toISOString(),
-      }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+      try {
+        const { error: statsError } = await supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: statsChannelId,
+          _conversation_phone: phone,
+          _content: (data.content as string) || null,
+          _direction: data.direction as string,
+          _is_read: (data.is_read as boolean) ?? null,
+          _sender_name: (data.sender_name as string) || null,
+          _created_at: new Date().toISOString(),
+        });
+        if (statsError) {
+          console.error('[Stats] upsert_conversation_stats_manual failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+        }
+      } catch (e: unknown) {
+        console.error('[Stats] upsert_conversation_stats_manual exception:', e);
+      }
 
       // Upsert contact in external DB (fire-and-forget)
       if (externalSupabase && data.direction === 'inbound') {
@@ -519,7 +526,8 @@ async function handleConversationAssignment(
   }
 
   if (existing) {
-    const needsUpdate = existing.status === 'archived' || !existing.lead_id;
+    // Trigger update when: archived, missing lead, OR unassigned (e.g. campaign-created assignments)
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to;
     if (needsUpdate) {
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
@@ -535,13 +543,13 @@ async function handleConversationAssignment(
         }
       }
 
-      // If from ad and still no attendant, try global round-robin across ALL online attendants
-      if (!assignedTo && isFromAd) {
+      // If still no attendant (no sector or no one available in sector), try global round-robin
+      if (!assignedTo) {
         const attendant = await getNextAvailableAttendantGlobal(organizationId);
         if (attendant) {
           assignedTo = attendant.userId;
           newStatus = 'in_progress';
-          console.log(`[handleConversationAssignment] Ad lead global round-robin: ${normalizedPhone} → ${assignedTo}`);
+          console.log(`[handleConversationAssignment] Global round-robin assigned ${normalizedPhone} → ${assignedTo}`);
         }
       }
 
@@ -549,7 +557,7 @@ async function handleConversationAssignment(
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
-      console.log(`[handleConversationAssignment] Reactivated archived conversation for ${normalizedPhone} → ${newStatus} (sector: ${existing.sector_id})`);
+      console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${existing.sector_id})`);
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
