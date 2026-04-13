@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import {
+  fetchConversationStatsMessages,
   fetchExternalMessages,
   fetchInternalMessages,
   type ExternalMessageRow,
@@ -54,6 +55,17 @@ async function fetchMessagePage(
       }
     } catch (e) {
       console.warn("[fetchMessagePage] Internal fetch also failed:", e);
+    }
+  }
+
+  if (!result?.messages?.length) {
+    try {
+      const statsResult = await fetchConversationStatsMessages(requestParams);
+      if (statsResult.messages.length > 0) {
+        result = statsResult;
+      }
+    } catch (e) {
+      console.warn("[fetchMessagePage] Conversation stats fallback also failed:", e);
     }
   }
 

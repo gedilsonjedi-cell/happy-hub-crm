@@ -18,12 +18,24 @@ const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : nul
 /** DB where whatsapp_messages live (external preferred, internal fallback) */
 const messageDb = externalSupabase || supabase;
 
+function writeMessageRecord(
+  client: ReturnType<typeof createClient>,
+  data: Record<string, unknown>,
+  upsert: boolean
+) {
+  return upsert
+    ? client.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+    : client.from('whatsapp_messages').insert(data);
+}
+
 /** Write to whatsapp_messages on external DB only + update conversation_stats */
 async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
-  const op = upsert
-    ? messageDb.from('whatsapp_messages').upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
-    : messageDb.from('whatsapp_messages').insert(data);
-  const result = await op;
+  let result = await writeMessageRecord(messageDb, data, upsert);
+
+  if (result.error && externalSupabase) {
+    console.error('[Meta-Webhook] External message write failed, retrying locally:', result.error);
+    result = await writeMessageRecord(supabase, data, upsert);
+  }
 
   // Manually update conversation_stats (trigger won't fire on external DB)
   if (!result.error && data.channel_id && data.direction) {
@@ -48,7 +60,14 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
 
 /** Update whatsapp_messages on external DB only */
 async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
-  return messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
+  let result = await messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
+
+  if (result.error && externalSupabase) {
+    console.error('[Meta-Webhook] External message update failed, retrying locally:', result.error);
+    result = await supabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
+  }
+
+  return result;
 }
 
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
