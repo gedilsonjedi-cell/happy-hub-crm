@@ -6,21 +6,23 @@ const corsHeaders = {
 };
 
 /**
- * cleanup-old-data (v2 — otimizado)
+ * cleanup-old-data (v3 — otimizado + limpeza de arquivados e mensagens locais)
  *
  * POLÍTICA DE RETENÇÃO:
- * ✅ NUNCA apaga: leads manuais, mensagens WhatsApp, notas, campanhas.
+ * ✅ NUNCA apaga: leads manuais, mensagens WhatsApp do banco externo, notas, campanhas.
  * ✅ Limpa dados transitórios/operacionais:
  *    - conversation_memory expirada + sem interação >7 dias
  *    - flow_sessions inativas >7 dias
- *    - lead_activity_log >30 dias (reduzido de 90)
+ *    - lead_activity_log >30 dias
  *    - balance_transactions >180 dias
  *    - conversation_assignments resolvidas/fechadas >15 dias
  *    - campaign_recipients de campanhas concluídas >15 dias
- *    - conversation_metrics de conversas arquivadas >15 dias (NOVO)
- *    - follow_up_logs de sequências concluídas >30 dias (NOVO)
- *    - chat_messages (IA interna) >30 dias (NOVO)
+ *    - conversation_metrics de conversas arquivadas >15 dias
+ *    - follow_up_logs de sequências concluídas >30 dias
+ *    - chat_messages (IA interna) >30 dias
  *    - leads de campanha sem resposta >10 dias
+ *    - conversation_assignments arquivadas >30 dias (NOVO)
+ *    - whatsapp_messages locais >7 dias — SSoT é banco externo (NOVO)
  */
 
 interface CleanupResults {
@@ -35,6 +37,8 @@ interface CleanupResults {
   follow_up_logs_old: number;
   chat_messages_old: number;
   unresponsive_leads_deleted: number;
+  archived_assignments_deleted: number;
+  local_messages_deleted: number;
 }
 
 async function runBatchRpc(
@@ -97,6 +101,8 @@ Deno.serve(async (req) => {
       follow_up_logs_old: 0,
       chat_messages_old: 0,
       unresponsive_leads_deleted: 0,
+      archived_assignments_deleted: 0,
+      local_messages_deleted: 0,
     };
 
     // ─── 1. conversation_memory expirada ───
@@ -109,13 +115,10 @@ Deno.serve(async (req) => {
       else results.conversation_memory_expired = count || 0;
     }
 
-    // ─── 2. conversation_memory sem interação >7 dias (NOVO — independente de expires_at) ───
+    // ─── 2. conversation_memory sem interação >7 dias ───
     results.conversation_memory_stale = await runBatchRpc(
-      supabase,
-      "cleanup_stale_conversation_memory",
-      { cutoff_date: cutoff(7) },
-      2000,
-      "conversation_memory_stale",
+      supabase, "cleanup_stale_conversation_memory",
+      { cutoff_date: cutoff(7) }, 2000, "conversation_memory_stale",
     );
 
     // ─── 3. flow_sessions inativas >7 dias ───
@@ -128,7 +131,7 @@ Deno.serve(async (req) => {
       else results.flow_sessions_inactive = count || 0;
     }
 
-    // ─── 4. lead_activity_log >30 dias (REDUZIDO de 90) ───
+    // ─── 4. lead_activity_log >30 dias ───
     {
       const { count, error } = await supabase
         .from("lead_activity_log")
@@ -150,56 +153,50 @@ Deno.serve(async (req) => {
 
     // ─── 6. conversation_assignments resolvidas >15 dias ───
     results.conversation_assignments_resolved = await runBatchRpc(
-      supabase,
-      "cleanup_old_assignments",
-      { cutoff_date: cutoff(15) },
-      2000,
-      "assignments",
+      supabase, "cleanup_old_assignments",
+      { cutoff_date: cutoff(15) }, 2000, "assignments",
     );
 
     // ─── 7. campaign_recipients concluídos >15 dias ───
     results.campaign_recipients_completed = await runBatchRpc(
-      supabase,
-      "cleanup_old_campaign_recipients",
-      { cutoff_date: cutoff(15) },
-      2000,
-      "campaign_recipients",
+      supabase, "cleanup_old_campaign_recipients",
+      { cutoff_date: cutoff(15) }, 2000, "campaign_recipients",
     );
 
-    // ─── 8. conversation_metrics de conversas arquivadas >15 dias (NOVO) ───
+    // ─── 8. conversation_metrics de conversas arquivadas >15 dias ───
     results.conversation_metrics_orphaned = await runBatchRpc(
-      supabase,
-      "cleanup_old_conversation_metrics",
-      { cutoff_date: cutoff(15) },
-      2000,
-      "conversation_metrics",
+      supabase, "cleanup_old_conversation_metrics",
+      { cutoff_date: cutoff(15) }, 2000, "conversation_metrics",
     );
 
-    // ─── 9. follow_up_logs de sequências concluídas >30 dias (NOVO) ───
+    // ─── 9. follow_up_logs de sequências concluídas >30 dias ───
     results.follow_up_logs_old = await runBatchRpc(
-      supabase,
-      "cleanup_old_follow_up_logs",
-      { cutoff_date: cutoff(30) },
-      2000,
-      "follow_up_logs",
+      supabase, "cleanup_old_follow_up_logs",
+      { cutoff_date: cutoff(30) }, 2000, "follow_up_logs",
     );
 
-    // ─── 10. chat_messages (IA interna) >30 dias (NOVO) ───
+    // ─── 10. chat_messages (IA interna) >30 dias ───
     results.chat_messages_old = await runBatchRpc(
-      supabase,
-      "cleanup_old_chat_messages",
-      { cutoff_date: cutoff(30) },
-      2000,
-      "chat_messages",
+      supabase, "cleanup_old_chat_messages",
+      { cutoff_date: cutoff(30) }, 2000, "chat_messages",
     );
 
     // ─── 11. leads de campanha sem resposta >10 dias ───
     results.unresponsive_leads_deleted = await runBatchRpc(
-      supabase,
-      "cleanup_unresponsive_campaign_leads",
-      { days_threshold: 10 },
-      500,
-      "leads_sem_resposta",
+      supabase, "cleanup_unresponsive_campaign_leads",
+      { days_threshold: 10 }, 500, "leads_sem_resposta",
+    );
+
+    // ─── 12. conversation_assignments arquivadas >30 dias (NOVO) ───
+    results.archived_assignments_deleted = await runBatchRpc(
+      supabase, "cleanup_archived_assignments_batch",
+      { cutoff_date: cutoff(30) }, 2000, "archived_assignments",
+    );
+
+    // ─── 13. whatsapp_messages locais >7 dias — SSoT é banco externo (NOVO) ───
+    results.local_messages_deleted = await runBatchRpc(
+      supabase, "cleanup_local_messages_batch",
+      { cutoff_date: cutoff(7) }, 5000, "local_messages",
     );
 
     const totalDeleted = Object.values(results).reduce((a, b) => a + b, 0);
@@ -220,7 +217,9 @@ Deno.serve(async (req) => {
           conversation_metrics: "Conversas arquivadas >15 dias",
           follow_up_logs: "Sequências concluídas >30 dias",
           chat_messages: "Conversas IA >30 dias",
-          unresponsive_leads: "Sem resposta >10 dias (lead + histórico completo)",
+          unresponsive_leads: "Sem resposta >10 dias",
+          archived_assignments: "Arquivadas >30 dias (com stats órfãs)",
+          local_messages: "Mensagens locais >7 dias (SSoT é banco externo)",
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
