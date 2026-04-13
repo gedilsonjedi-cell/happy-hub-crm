@@ -3124,7 +3124,7 @@ const AtendimentoV2 = () => {
     return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
   };
 
-  const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
+  const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null || conv.status === "pending", []);
   const isArchivedLikeConversation = useCallback(
     (conv: Conversation) => conv.status === "archived" || !hasClientResponse(conv),
     [hasClientResponse]
