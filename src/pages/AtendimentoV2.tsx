@@ -3504,12 +3504,12 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          // "Novos" = conversations with client response, no assignee
+          // "Novos" = conversations with ACTUAL client response (lastInboundTime), no assignee
           // For admins: include all unassigned (with or without sector)
           // For attendants: only truly orphan (no sector) since sectored ones should be auto-distributed
           matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
         }
-        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && !isArchivedLikeConversation(conv);
+        else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && !isArchivedLikeConversation(conv);
         
         // Apply attendant filter (only for admins/supervisors)
