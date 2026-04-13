@@ -51,11 +51,11 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
 
       // Build day list for the range (using São Paulo timezone to match server)
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - daysBack);
+      startDate.setDate(startDate.getDate() - (daysBack - 1));
       startDate.setHours(0, 0, 0, 0);
 
       const daysList: { dayOfWeek: number; date: string; label: string }[] = [];
-      for (let i = 0; i <= daysBack; i++) {
+      for (let i = 0; i < daysBack; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
         const year = d.getFullYear();
