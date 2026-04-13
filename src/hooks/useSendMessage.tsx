@@ -217,25 +217,11 @@ export function useSendMessage(
       );
     },
 
-    onSettled: (data, error, payload, _context) => {
-      // Only invalidate on actual failure — on success the optimistic message
-      // stays in cache (status "sent") until Realtime brings the real record,
-      // which deduplicates via prependMessage.
-      if (error || (data && !data.success)) {
-        // No need to invalidate for errors — the optimistic message is already
-        // marked as "failed" in onError/onSuccess handlers above.
-        return;
-      }
-      // For successful sends, do a late reconciliation (8s) so the DB webhook
-      // has time to write the record. This syncs real IDs/timestamps.
-      const queryKey = [
-        "messages",
-        payload.channelId,
-        getCanonicalPhoneThreadKey(payload.destination),
-      ];
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey });
-      }, 8000);
+    onSettled: (_data, _error, _payload, _context) => {
+      // Do NOT invalidate the cache here. The optimistic message stays in cache
+      // with status "sent" until Realtime brings the real record, which
+      // deduplicates via prependMessage. Invalidating can cause messages to
+      // disappear if the external DB refetch fails or times out.
     },
   });
 
