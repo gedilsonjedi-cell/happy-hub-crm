@@ -1313,6 +1313,15 @@ const Conexoes = () => {
       // 9. Nullify channel_id in whatsapp_messages (preserve message history)
       await supabase.from("whatsapp_messages").update({ channel_id: null }).eq("channel_id", id);
       
+      // 10. Delete conversation_stats linked to this channel
+      await supabase.from("conversation_stats").delete().eq("channel_id", id);
+
+      // 11. Delete conversation_metrics linked to this channel
+      await supabase.from("conversation_metrics").delete().eq("channel_id", id);
+
+      // 12. Delete flow_sessions linked to this channel
+      await supabase.from("flow_sessions").update({ channel_id: null }).eq("channel_id", id);
+      
       // Finally delete the channel
       const { error } = await supabase.from("channels").delete().eq("id", id);
 
