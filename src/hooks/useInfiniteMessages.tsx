@@ -158,8 +158,7 @@ export function useInfiniteMessages(
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
     : [];
-  const isInitialLoading =
-    query.isPending || (query.isFetching && allMessages.length === 0);
+  const isInitialLoading = query.isPending && !query.data;
 
   /**
    * Prepend a new message received via Realtime without refetching.

@@ -120,6 +120,19 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
     );
   }
 
+  if (messages.length === 0) {
+    return (
+      <div
+        ref={containerRef}
+        className="flex-1 flex items-center justify-center p-6 text-center"
+      >
+        <p className="text-sm text-muted-foreground">
+          Sem histórico disponível para esta conversa.
+        </p>
+      </div>
+    );
+  }
+
   // Reset date tracking for each render
   datesShown.clear();
 
