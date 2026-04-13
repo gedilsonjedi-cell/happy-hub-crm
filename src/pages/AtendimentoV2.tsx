@@ -75,7 +75,11 @@ import {
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
-import { fetchExternalMessages, fetchInternalMessages } from "@/lib/externalDb";
+import {
+  fetchConversationStatsMessages,
+  fetchExternalMessages,
+  fetchInternalMessages,
+} from "@/lib/externalDb";
 import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
@@ -301,6 +305,27 @@ const getMessagePreviewText = (message: {
   return message.message_type ? `[${message.message_type}]` : "[Mensagem]";
 };
 
+const getSummaryPreviewText = (
+  row: Pick<
+    ConversationSummaryRow,
+    "last_message" | "last_message_at" | "last_inbound_at" | "unread_count"
+  >
+) => {
+  if (row.last_message?.trim()) {
+    return row.last_message;
+  }
+
+  if (row.last_inbound_at || Number(row.unread_count) > 0) {
+    return "[Mensagem recebida]";
+  }
+
+  if (row.last_message_at) {
+    return "[Mensagem enviada]";
+  }
+
+  return "";
+};
+
 const mapConversationSummaryRows = (
   rows: ConversationSummaryRow[]
 ): ConversationSummaryMapping => {
@@ -373,7 +398,7 @@ const mapConversationSummaryRows = (
         id: row.assignment_id,
         phone: displayPhone,
         name: resolvedLeadName || row.sender_name || null,
-        lastMessage: row.last_message || "",
+        lastMessage: getSummaryPreviewText(row),
         lastMessageTime: row.last_message_at || row.updated_at,
         lastInboundTime: row.last_inbound_at || null,
         unreadCount: Number(row.unread_count) || 0,
@@ -1126,6 +1151,17 @@ const AtendimentoV2 = () => {
 
                 if (internalResult?.messages.length) {
                   result = internalResult;
+                }
+              }
+
+              if (!result.messages.length) {
+                const statsResult = await fetchConversationStatsMessages({
+                  channelId: conversation.channelId!,
+                  phoneVariants,
+                }).catch(() => null);
+
+                if (statsResult?.messages.length) {
+                  result = statsResult;
                 }
               }
 
@@ -3903,7 +3939,7 @@ const AtendimentoV2 = () => {
                               
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                                  {conv.lastMessage || "Sem mensagens"}
+                                  {conv.lastMessage || (conv.lastInboundTime || conv.unreadCount > 0 ? "[Mensagem recebida]" : "Sem mensagens")}
                                 </p>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                                   {formatConversationDate(conv.lastMessageTime)}

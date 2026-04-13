@@ -46,6 +46,68 @@ async function callProxy<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+interface ConversationStatsFallbackRow {
+  conversation_phone: string;
+  last_message_content: string | null;
+  last_message_at: string | null;
+  last_inbound_at: string | null;
+  unread_count: number | null;
+  sender_name: string | null;
+}
+
+function getSyntheticMessageDirection(
+  row: ConversationStatsFallbackRow
+): "inbound" | "outbound" {
+  if (!row.last_inbound_at) {
+    return "outbound";
+  }
+
+  if (!row.last_message_at) {
+    return "inbound";
+  }
+
+  return new Date(row.last_inbound_at).getTime() >= new Date(row.last_message_at).getTime()
+    ? "inbound"
+    : "outbound";
+}
+
+function buildSyntheticMessageFromStats(
+  channelId: string,
+  row: ConversationStatsFallbackRow
+): ExternalMessageRow | null {
+  const createdAt = row.last_message_at ?? row.last_inbound_at;
+
+  if (!createdAt) {
+    return null;
+  }
+
+  const direction = getSyntheticMessageDirection(row);
+  const content =
+    row.last_message_content?.trim() ||
+    (direction === "inbound" ? "[Mensagem recebida]" : "[Mensagem enviada]");
+
+  return {
+    id: `stats_${channelId}_${row.conversation_phone}_${createdAt}`,
+    channel_id: channelId,
+    organization_id: null,
+    message_id: `stats_${channelId}_${row.conversation_phone}_${createdAt}`,
+    sender_phone: row.conversation_phone,
+    sender_name: row.sender_name,
+    message_type: content.startsWith("Template:") ? "template" : "text",
+    content,
+    media_url: null,
+    direction,
+    status: direction === "inbound" ? "received" : "sent",
+    created_at: createdAt,
+    metadata:
+      direction === "outbound"
+        ? { destination: row.conversation_phone, synthetic: true, source: "conversation_stats" }
+        : { synthetic: true, source: "conversation_stats" },
+    error_message: null,
+    is_read: direction === "outbound" || (row.unread_count ?? 0) === 0,
+  };
+}
+
 // ── Messages ──────────────────────────────────────────────────────
 
 export interface ExternalMessagePage {
@@ -159,6 +221,52 @@ export async function fetchInternalMessages(params: {
     messages: page as ExternalMessageRow[],
     nextCursor,
     hasMore,
+  };
+}
+
+export async function fetchConversationStatsMessages(params: {
+  channelId: string;
+  phoneVariants: string[];
+}): Promise<ExternalMessagePage> {
+  const statsPhoneVariants = Array.from(
+    new Set(params.phoneVariants.map((phone) => phone.replace(/\D/g, "")).filter(Boolean))
+  );
+
+  if (statsPhoneVariants.length === 0) {
+    return { messages: [], nextCursor: null, hasMore: false };
+  }
+
+  const statsPhoneFilter = statsPhoneVariants
+    .map((phone) => `conversation_phone.eq.${phone}`)
+    .join(",");
+
+  const { data, error } = await supabase
+    .from("conversation_stats")
+    .select(
+      "conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name"
+    )
+    .eq("channel_id", params.channelId)
+    .or(statsPhoneFilter)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(3);
+
+  if (error) {
+    throw new Error(`Conversation stats fallback error: ${error.message}`);
+  }
+
+  const message = (data ?? [])
+    .map((row) =>
+      buildSyntheticMessageFromStats(
+        params.channelId,
+        row as ConversationStatsFallbackRow
+      )
+    )
+    .find(Boolean) as ExternalMessageRow | undefined;
+
+  return {
+    messages: message ? [message] : [],
+    nextCursor: null,
+    hasMore: false,
   };
 }
 

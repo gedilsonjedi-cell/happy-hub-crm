@@ -24,10 +24,22 @@ const RETRYABLE_ERROR_CODES = [
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+const localMessageDb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 /** DB where whatsapp_messages live */
-const messageDb = externalSupabase || createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+const messageDb = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+async function insertMessageRecord(data: Record<string, unknown>) {
+  let result = await messageDb.from('whatsapp_messages').insert(data);
+
+  if (result.error && externalSupabase) {
+    console.error('[Meta-Send] External message write failed, retrying locally:', result.error);
+    result = await localMessageDb.from('whatsapp_messages').insert(data);
+  }
+
+  return result;
+}
 
 interface IntegrationWebhookPayload {
   organization_id: string;
@@ -941,7 +953,10 @@ Deno.serve(async (req) => {
             retryAttempts: MAX_RETRIES + 1
           }
         };
-      await messageDb.from('whatsapp_messages').insert(failedData);
+      const failedInsert = await insertMessageRecord(failedData);
+      if (failedInsert.error) {
+        console.error('[Meta-Send] Error storing failed message:', failedInsert.error);
+      }
       // Update conversation stats
       serviceRoleClient.rpc('upsert_conversation_stats_manual', {
         _channel_id: channelId, _conversation_phone: cleanDestination,
@@ -1011,7 +1026,10 @@ Deno.serve(async (req) => {
     // Use waitUntil to persist DB writes in background — respond instantly
     const dbWritePromise = (async () => {
       try {
-        await messageDb.from('whatsapp_messages').insert(outboundData);
+        const outboundInsert = await insertMessageRecord(outboundData);
+        if (outboundInsert.error) {
+          console.error('[Meta-Send] Error storing outbound message:', outboundInsert.error);
+        }
         // Update conversation stats
         serviceRoleClient.rpc('upsert_conversation_stats_manual', {
           _channel_id: channelId, _conversation_phone: cleanDestination,
