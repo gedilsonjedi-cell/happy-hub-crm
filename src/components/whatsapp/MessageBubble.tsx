@@ -89,7 +89,7 @@ const MessageBubble = memo(function MessageBubble({
           );
 
         case "audio":
-          return <audio src={message.media_url} controls preload="none" className="max-w-full" />;
+          return <AudioPlayer src={message.media_url!} />;
 
         case "document":
         case "file":
