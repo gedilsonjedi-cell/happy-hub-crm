@@ -450,15 +450,36 @@ async function getNextAvailableAttendantGlobal(
 async function handleConversationAssignment(
   channelId: string, leadId: string, normalizedPhone: string, organizationId: string, isFromAd: boolean = false
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
-  const { data: existing } = await supabase
+  const phoneVariants = getPhoneVariants(normalizedPhone);
+
+  // Try exact match first, then variants
+  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string } | null = null;
+  
+  const { data: exactMatch } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, is_bot_handling')
+    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
-
-  if (existing) {
-    const needsUpdate = existing.status === 'archived' || !existing.lead_id;
+  
+  existing = exactMatch;
+  
+  // If no exact match, try phone variants (with/without 9th digit)
+  if (!existing && phoneVariants.length > 1) {
+    for (const variant of phoneVariants.slice(1)) {
+      const { data: variantMatch } = await supabase
+        .from('conversation_assignments')
+        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
+        .eq('channel_id', channelId)
+        .eq('conversation_phone', variant)
+        .maybeSingle();
+      if (variantMatch) {
+        existing = variantMatch;
+        console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${variant} (assignment: ${variantMatch.id})`);
+        break;
+      }
+    }
+  }
     if (needsUpdate) {
       // Try round-robin if sector exists and no attendant assigned
       let assignedTo = existing.assigned_to;
