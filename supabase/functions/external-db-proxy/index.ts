@@ -174,13 +174,21 @@ async function fetchConversationMessagesByDirection(
   let scanCursor = cursorFilter;
   const matched: MessageRecord[] = [];
   const seen = new Set<string>();
-  const channelIdStr = String(channelId);
+
+  // channel_id in external DB is now the client's phone number
+  // Build an OR filter to match any phone variant as channel_id
+  const phoneVariantsForFilter = Array.from(lookup.exact);
+  if (phoneVariantsForFilter.length === 0) return [];
+
+  const channelIdFilter = phoneVariantsForFilter
+    .map((phone) => `channel_id.eq.${phone}`)
+    .join(",");
 
   for (let batchIndex = 0; batchIndex < HISTORY_SCAN_MAX_BATCHES; batchIndex += 1) {
     const { data, error } = await ext
       .from("whatsapp_messages")
       .select(selectFields)
-      .filter("channel_id", "eq", channelIdStr)
+      .or(channelIdFilter)
       .eq("direction", direction)
       .lt("created_at", scanCursor)
       .order("created_at", { ascending: false })
@@ -393,9 +401,9 @@ async function handleMessages(
     pageSize?: number;
   };
 
-  if (!channelId || !phoneVariants?.length) {
+  if (!phoneVariants?.length) {
     return new Response(
-      JSON.stringify({ error: "channelId and phoneVariants required" }),
+      JSON.stringify({ error: "phoneVariants required" }),
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
