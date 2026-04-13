@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { X, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 interface MediaPreviewDialogProps {
