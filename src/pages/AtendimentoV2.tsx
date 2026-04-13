@@ -1936,8 +1936,6 @@ const AtendimentoV2 = () => {
     } as Message;
 
     if (msg.direction === "inbound") {
-      showNotificationRef.current(newMsg);
-
       setRecentlyUpdatedConversations(prev => {
         const newSet = new Set(prev);
         newSet.add(msgConversationKey);
@@ -1951,22 +1949,35 @@ const AtendimentoV2 = () => {
         });
       }, 5000);
 
-      if (soundEnabledRef.current) {
-        playNotificationSoundRef.current();
-        toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
-          description: (msg.content || "").substring(0, 50) + ((msg.content?.length || 0) > 50 ? "..." : ""),
-          action: {
-            label: "Ver",
-            onClick: () => {
-              setAllConversations(convs => {
-                const targetConv = convs.find(isConversationMatch);
-                if (targetConv) setSelectedConversation(targetConv);
-                return convs;
-              });
-            }
+      // Only show notification/sound if the conversation is assigned to the current user
+      // or is unassigned (new/queue). This prevents attendants from being notified about
+      // conversations handled by other attendants.
+      setAllConversations(convs => {
+        const matchingConv = convs.find(isConversationMatch);
+        const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === user?.id;
+
+        if (isAssignedToMe) {
+          showNotificationRef.current(newMsg);
+
+          if (soundEnabledRef.current) {
+            playNotificationSoundRef.current();
+            toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
+              description: (msg.content || "").substring(0, 50) + ((msg.content?.length || 0) > 50 ? "..." : ""),
+              action: {
+                label: "Ver",
+                onClick: () => {
+                  setAllConversations(innerConvs => {
+                    const targetConv = innerConvs.find(isConversationMatch);
+                    if (targetConv) setSelectedConversation(targetConv);
+                    return innerConvs;
+                  });
+                }
+              }
+            });
           }
-        });
-      }
+        }
+        return convs; // no mutation
+      });
     }
 
     // Update messages panel if this is the active conversation

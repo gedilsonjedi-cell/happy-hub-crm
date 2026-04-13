@@ -40,14 +40,13 @@ const createNotificationSound = () => {
   }
 };
 
+
 export function useWhatsAppNotifications() {
   const { user } = useAuth();
   const playSound = useRef<() => void>(() => {});
   const isInitialized = useRef(false);
-  // Store the user's channel IDs to filter subscriptions properly
   const [channelIds, setChannelIds] = useState<string[]>([]);
 
-  // Initialize sound on first user interaction
   const initializeSound = useCallback(() => {
     if (!isInitialized.current) {
       playSound.current = createNotificationSound();
@@ -55,7 +54,6 @@ export function useWhatsAppNotifications() {
     }
   }, []);
 
-  // Add click listener to initialize audio (browser policy requires user interaction)
   useEffect(() => {
     const handleInteraction = () => {
       initializeSound();
@@ -72,8 +70,6 @@ export function useWhatsAppNotifications() {
     };
   }, [initializeSound]);
 
-  // Fetch user's channels once (to filter subscription by channel_id)
-  // This prevents receiving notifications from other organizations
   useEffect(() => {
     if (!user) return;
 
@@ -100,17 +96,12 @@ export function useWhatsAppNotifications() {
   }, [user]);
 
   useEffect(() => {
-    // Only subscribe if we have the user's channels
-    // This avoids a global subscription that receives ALL org messages
     if (!user || channelIds.length === 0) return;
 
-    // Request browser notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // Subscribe ONLY to the user's organization channels (filtered by channel_id)
-    // This replaces the unfiltered global subscription that was a security risk
     const channelFilter = channelIds.join(',');
     const channel = supabase
       .channel(`whatsapp-notifications-${channelFilter.slice(0, 40)}`)
@@ -122,17 +113,39 @@ export function useWhatsAppNotifications() {
           table: 'whatsapp_messages',
           filter: `channel_id=in.(${channelFilter})`,
         },
-        (payload) => {
+        async (payload) => {
           const message = payload.new as {
             sender_name?: string;
             sender_phone: string;
             content?: string;
             message_type: string;
             direction: string;
+            channel_id: string;
           };
 
-          // Only notify for inbound messages
+          // Only notify for inbound messages (client → us)
           if (message.direction !== 'inbound') return;
+
+          // Check if conversation is assigned to someone else
+          try {
+            const senderPhone = message.sender_phone.replace(/\D/g, '');
+            const phoneSuffix = senderPhone.slice(-9);
+            
+            const { data: phoneAssignment } = await supabase
+              .from('conversation_assignments')
+              .select('assigned_to')
+              .eq('channel_id', message.channel_id)
+              .neq('status', 'archived')
+              .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
+              return;
+            }
+          } catch (e) {
+            console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
+          }
 
           // Play notification sound
           try {
