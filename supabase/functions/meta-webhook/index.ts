@@ -43,15 +43,22 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
       : ((data.metadata as Record<string, unknown>)?.destination as string);
     if (phone) {
       const statsChannelId = internalChannelId || data.channel_id;
-      supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: statsChannelId,
-        _conversation_phone: phone,
-        _content: (data.content as string) || null,
-        _direction: data.direction as string,
-        _is_read: (data.is_read as boolean) ?? null,
-        _sender_name: (data.sender_name as string) || null,
-        _created_at: new Date().toISOString(),
-      }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+      try {
+        const { error: statsError } = await supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: statsChannelId,
+          _conversation_phone: phone,
+          _content: (data.content as string) || null,
+          _direction: data.direction as string,
+          _is_read: (data.is_read as boolean) ?? null,
+          _sender_name: (data.sender_name as string) || null,
+          _created_at: new Date().toISOString(),
+        });
+        if (statsError) {
+          console.error('[Stats] upsert_conversation_stats_manual failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+        }
+      } catch (e: unknown) {
+        console.error('[Stats] upsert_conversation_stats_manual exception:', e);
+      }
 
       // Upsert contact in external DB (fire-and-forget)
       if (externalSupabase && data.direction === 'inbound') {
