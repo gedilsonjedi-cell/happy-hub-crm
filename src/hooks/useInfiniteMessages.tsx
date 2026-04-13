@@ -3,7 +3,6 @@ import { useCallback } from "react";
 import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
-  fetchInternalMessages,
   type ExternalMessageRow,
 } from "@/lib/externalDb";
 import {
