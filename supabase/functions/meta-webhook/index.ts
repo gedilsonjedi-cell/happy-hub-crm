@@ -158,6 +158,26 @@ function normalizePhone(phone: string): string {
   return digits.startsWith('55') ? digits : '55' + digits;
 }
 
+/** Generate Brazilian phone variants (with/without 9th digit) for matching */
+function getPhoneVariants(phone: string): string[] {
+  const normalized = normalizePhone(phone);
+  const variants = [normalized];
+  if (normalized.startsWith('55') && normalized.length >= 12) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+    // If has 9th digit (9 digits local), add variant without it
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.push(`55${areaCode}${localNumber.slice(1)}`);
+    }
+    // If missing 9th digit (8 digits local), add variant with it
+    else if (localNumber.length === 8) {
+      variants.push(`55${areaCode}9${localNumber}`);
+    }
+  }
+  return variants;
+}
+
 // =============================================
 // BUSINESS HOURS + HOLIDAY CHECK (single parallelized call, fully cached)
 // =============================================
