@@ -380,7 +380,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
     },
   };
 
-  await dualWriteMessage(msgData);
+  await dualWriteMessage(msgData, channel.id);
 
   // Create or update conversation assignment
   const { data: existingAssignment } = await supabase
