@@ -82,9 +82,11 @@ function buildSyntheticMessageFromStats(
   }
 
   const direction = getSyntheticMessageDirection(row);
-  const content =
-    row.last_message_content?.trim() ||
-    (direction === "inbound" ? "[Mensagem recebida]" : "[Mensagem enviada]");
+  const content = row.last_message_content?.trim() || "";
+
+  if (!content) {
+    return null;
+  }
 
   return {
     id: `stats_${channelId}_${row.conversation_phone}_${createdAt}`,

@@ -317,14 +317,8 @@ const getSummaryPreviewText = (
     return row.last_message;
   }
 
-  if (row.last_inbound_at || Number(row.unread_count) > 0) {
-    return "[Mensagem recebida]";
-  }
-
-  if (row.last_message_at) {
-    return "[Mensagem enviada]";
-  }
-
+  // Don't use generic placeholders — leave empty so the enrichment system
+  // can fetch real content from the external DB via bulk previews
   return "";
 };
 
