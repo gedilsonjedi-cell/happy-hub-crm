@@ -1010,14 +1010,25 @@ Deno.serve(async (req) => {
     let storedMessageType = 'text';
 
     if (templateName) {
-      storedContent = `Template: ${templateName}`;
+      // Store rendered template body in content for chat history visibility
+      // Fall back to "Template: name" if no body text available
+      let renderedBody = templateContent || '';
+      if (renderedBody && Array.isArray(templateParams) && templateParams.length > 0) {
+        templateParams.forEach((param: string, index: number) => {
+          const placeholder = `{{${index + 1}}}`;
+          while (renderedBody.includes(placeholder)) {
+            renderedBody = renderedBody.replace(placeholder, param);
+          }
+        });
+      }
+      storedContent = renderedBody ? `📋 ${templateName}\n\n${renderedBody}` : `Template: ${templateName}`;
       storedMessageType = 'template';
     } else if (mediaUrl) {
       storedContent = mediaCaption || `[${effectiveMediaType || 'file'}]`;
       storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
     }
 
-    // Store outbound message in database (dual-write) — non-blocking
+    // Store outbound message in database — SYNCHRONOUS to guarantee persistence
     const outboundData = {
         channel_id: channelId,
         organization_id: channel.organization_id,
@@ -1044,48 +1055,45 @@ Deno.serve(async (req) => {
         }
       };
 
-    // Use waitUntil to persist DB writes in background — respond instantly
-    const dbWritePromise = (async () => {
-      try {
-        const outboundInsert = await insertMessageRecord(outboundData);
-        if (outboundInsert.error) {
-          console.error('[Meta-Send] Error storing outbound message:', outboundInsert.error);
-        }
-        // Update conversation stats
-        serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-          _channel_id: channelId, _conversation_phone: cleanDestination,
-          _content: storedContent, _direction: 'outbound', _is_read: null,
-          _sender_name: null, _created_at: new Date().toISOString(),
-        }).then(() => {}).catch(() => {});
+    // CRITICAL: Write message BEFORE returning response to guarantee it's persisted
+    const outboundInsert = await insertMessageRecord(outboundData);
+    if (outboundInsert.error) {
+      console.error('[Meta-Send] Error storing outbound message:', outboundInsert.error);
+    } else {
+      console.log('[Meta-Send] Outbound message persisted:', messageId);
+    }
 
-        if (channel.organization_id) {
-          await dispatchIntegrationWebhook({
-            organization_id: channel.organization_id,
-            event: 'message_created',
-            data: {
-              message_id: messageId,
-              phone: cleanDestination,
-              sender_phone: channel.phone,
-              content: storedContent,
-              direction: 'outbound',
-              status: 'sent',
-              channel_id: channelId,
-              channel_name: channel.name || null,
-              channel_phone: channel.phone || null,
-              message_type: storedMessageType,
-              media_url: mediaUrl || null,
-              template_name: templateName || null,
-              campaign_id: campaignId || null,
-              provider: 'meta',
-            },
-          });
-        }
-      } catch (e) {
-        console.error('[Meta-Send] Background DB write failed:', e);
-      }
-    })();
+    // Update conversation stats (synchronous to ensure sidebar preview)
+    await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+      _channel_id: channelId, _conversation_phone: cleanDestination,
+      _content: storedContent, _direction: 'outbound', _is_read: null,
+      _sender_name: null, _created_at: new Date().toISOString(),
+    }).catch((e: unknown) => console.error('[Meta-Send] Stats update error:', e));
 
-    runInBackground(dbWritePromise);
+    // Webhook dispatch can stay in background — non-critical
+    if (channel.organization_id) {
+      const webhookPromise = dispatchIntegrationWebhook({
+        organization_id: channel.organization_id,
+        event: 'message_created',
+        data: {
+          message_id: messageId,
+          phone: cleanDestination,
+          sender_phone: channel.phone,
+          content: storedContent,
+          direction: 'outbound',
+          status: 'sent',
+          channel_id: channelId,
+          channel_name: channel.name || null,
+          channel_phone: channel.phone || null,
+          message_type: storedMessageType,
+          media_url: mediaUrl || null,
+          template_name: templateName || null,
+          campaign_id: campaignId || null,
+          provider: 'meta',
+        },
+      }).catch((e: unknown) => console.error('[Meta-Send] Webhook dispatch error:', e));
+      runInBackground(webhookPromise);
+    }
 
     return new Response(
       JSON.stringify({ 
