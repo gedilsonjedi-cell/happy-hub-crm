@@ -961,7 +961,7 @@ Deno.serve(async (req) => {
       
       const failedMessageId = `failed_${Date.now()}`;
       const failedData = {
-          channel_id: channelId,
+          channel_id: cleanDestination,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
           sender_phone: channel.phone,
@@ -1044,7 +1044,7 @@ Deno.serve(async (req) => {
 
     // Store outbound message in database — SYNCHRONOUS to guarantee persistence
     const outboundData = {
-        channel_id: channelId,
+        channel_id: cleanDestination,
         organization_id: channel.organization_id,
         message_id: messageId,
         sender_phone: channel.phone,

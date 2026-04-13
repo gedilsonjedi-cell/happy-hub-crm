@@ -29,7 +29,7 @@ async function fetchMessagePage(
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
 
   const requestParams = {
-    channelId,
+    channelId: conversationPhone.replace(/\D/g, ""),
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
