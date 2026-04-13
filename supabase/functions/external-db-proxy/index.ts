@@ -218,7 +218,7 @@ async function fetchConversationMessagesByDirection(
 }
 
 async function fetchLatestConversationStatsMessage(
-  organizationId: string,
+  _organizationId: string,
   channelId: string,
   lookup: PhoneLookup
 ): Promise<MessageRecord | null> {
@@ -235,7 +235,6 @@ async function fetchLatestConversationStatsMessage(
     .select(
       "conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name"
     )
-    .eq("organization_id", organizationId)
     .eq("channel_id", channelId)
     .or(phoneFilter)
     .order("last_message_at", { ascending: false, nullsFirst: false })
