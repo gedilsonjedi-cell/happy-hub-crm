@@ -27,9 +27,19 @@ async function fetchMessagePage(
   cursor: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
+  const normalizedPhone = conversationPhone.replace(/\D/g, "");
 
-  const requestParams = {
-    channelId: conversationPhone.replace(/\D/g, ""),
+  // External DB uses phone as channel_id
+  const externalParams = {
+    channelId: normalizedPhone,
+    phoneVariants,
+    cursor,
+    pageSize: PAGE_SIZE,
+  };
+
+  // Internal DB still uses UUID as channel_id
+  const internalParams = {
+    channelId,
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
@@ -40,7 +50,7 @@ async function fetchMessagePage(
   let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
 
   try {
-    result = await fetchExternalMessages(requestParams);
+    result = await fetchExternalMessages(externalParams);
     externalOk = true;
   } catch (e) {
     console.error("[fetchMessagePage] External fetch failed:", {
@@ -54,7 +64,7 @@ async function fetchMessagePage(
   // If external succeeded but returned no messages, or if it failed, try internal
   if (!result?.messages?.length) {
     try {
-      const internalResult = await fetchInternalMessages(requestParams);
+      const internalResult = await fetchInternalMessages(internalParams);
       if (internalResult.messages.length > 0) {
         console.warn(
           "[fetchMessagePage] Falling back to internal history because external history was unavailable or empty",
@@ -74,7 +84,7 @@ async function fetchMessagePage(
 
   if (!result?.messages?.length) {
     try {
-      const statsResult = await fetchConversationStatsMessages(requestParams);
+      const statsResult = await fetchConversationStatsMessages(internalParams);
       if (statsResult.messages.length > 0) {
         console.warn(
           "[fetchMessagePage] Falling back to synthetic conversation stats because no real history was returned",
