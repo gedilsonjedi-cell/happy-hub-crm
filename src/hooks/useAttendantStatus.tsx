@@ -9,27 +9,57 @@ export function useAttendantStatus() {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [isOnline, setIsOnline] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [recordId, setRecordId] = useState<string | null>(null);
 
-  // Fetch current status
+  // Fetch current status - search by user_id first, then narrow by org
   useEffect(() => {
     async function fetchStatus() {
-      if (!user?.id || !effectiveOrganizationId) {
+      if (!user?.id) {
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
+      // First try with organization_id filter
+      let query = supabase
         .from("attendant_availability")
-        .select("is_available")
-        .eq("user_id", user.id)
-        .eq("organization_id", effectiveOrganizationId)
-        .maybeSingle();
+        .select("id, is_available, organization_id")
+        .eq("user_id", user.id);
+
+      if (effectiveOrganizationId) {
+        query = query.eq("organization_id", effectiveOrganizationId);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         console.error("Error fetching attendant status:", error);
+        // Fallback: try without org filter to find any record for this user
+        const { data: fallbackData } = await supabase
+          .from("attendant_availability")
+          .select("id, is_available, organization_id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (fallbackData) {
+          setRecordId(fallbackData.id);
+          setIsOnline(fallbackData.is_available ?? false);
+          // If record has no org, update it
+          if (!fallbackData.organization_id && effectiveOrganizationId) {
+            await supabase
+              .from("attendant_availability")
+              .update({ organization_id: effectiveOrganizationId })
+              .eq("id", fallbackData.id);
+          }
+        }
+      } else if (data) {
+        setRecordId(data.id);
+        setIsOnline(data.is_available ?? false);
+      } else {
+        setRecordId(null);
+        setIsOnline(false);
       }
 
-      setIsOnline(data?.is_available ?? false);
       setLoading(false);
     }
 
@@ -38,51 +68,52 @@ export function useAttendantStatus() {
 
   // Toggle status
   const toggleStatus = useCallback(async () => {
-    if (!user?.id || !effectiveOrganizationId) return;
+    if (!user?.id) {
+      toast.error("Usuário não autenticado");
+      return;
+    }
 
     const newStatus = !isOnline;
     setIsOnline(newStatus); // Optimistic update
 
-    // Check if record exists
-    const { data: existing } = await supabase
-      .from("attendant_availability")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("organization_id", effectiveOrganizationId)
-      .maybeSingle();
+    try {
+      if (recordId) {
+        // Update existing record
+        const { error } = await supabase
+          .from("attendant_availability")
+          .update({
+            is_available: newStatus,
+            organization_id: effectiveOrganizationId || undefined,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", recordId);
 
-    let error;
+        if (error) throw error;
+      } else {
+        // Insert new record
+        const { data: inserted, error } = await supabase
+          .from("attendant_availability")
+          .insert({
+            user_id: user.id,
+            organization_id: effectiveOrganizationId,
+            is_available: newStatus,
+            current_conversations: 0,
+            max_conversations: 10,
+          })
+          .select("id")
+          .single();
 
-    if (existing) {
-      // Update existing record
-      const result = await supabase
-        .from("attendant_availability")
-        .update({
-          is_available: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
-      error = result.error;
-    } else {
-      // Insert new record
-      const result = await supabase.from("attendant_availability").insert({
-        user_id: user.id,
-        organization_id: effectiveOrganizationId,
-        is_available: newStatus,
-        current_conversations: 0,
-        max_conversations: 10,
-      });
-      error = result.error;
-    }
+        if (error) throw error;
+        if (inserted) setRecordId(inserted.id);
+      }
 
-    if (error) {
-      console.error("Error updating status:", error);
-      setIsOnline(!newStatus); // Revert on error
-      toast.error("Erro ao atualizar status");
-    } else {
       toast.success(newStatus ? "Você está online" : "Você está offline");
+    } catch (err: any) {
+      console.error("Error updating status:", err);
+      setIsOnline(!newStatus); // Revert on error
+      toast.error(`Erro ao atualizar status: ${err.message || "tente novamente"}`);
     }
-  }, [user?.id, effectiveOrganizationId, isOnline]);
+  }, [user?.id, effectiveOrganizationId, isOnline, recordId]);
 
   return { isOnline, loading, toggleStatus };
 }
