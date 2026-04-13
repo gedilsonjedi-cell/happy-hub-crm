@@ -463,11 +463,17 @@ const mapConversationStatus = (
 
 type FilterStatus = "new" | "mine" | "others" | "unread";
 
-// Audio notification using Web Audio API
+// Audio notification using Web Audio API — with throttle to prevent audio stacking
 const useNotificationSound = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
+  const lastPlayedRef = useRef<number>(0);
+  const THROTTLE_MS = 2000; // Max 1 sound per 2 seconds
   
   const playNotificationSound = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPlayedRef.current < THROTTLE_MS) return; // Skip if too soon
+    lastPlayedRef.current = now;
+
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext();
