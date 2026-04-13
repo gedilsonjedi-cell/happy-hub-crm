@@ -480,7 +480,9 @@ async function handleConversationAssignment(
       }
     }
   }
-    if (needsUpdate) {
+
+  if (existing) {
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id;
       // Try round-robin if sector exists and no attendant assigned
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
