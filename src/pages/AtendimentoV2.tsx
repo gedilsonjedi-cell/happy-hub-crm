@@ -2166,8 +2166,9 @@ const AtendimentoV2 = () => {
                 return [newConv, ...currentPrev];
               });
             });
-        }
-        return prev; // no mutation in this pass
+      }
+      return prev; // no mutation in this pass
+      });
     }
   }, []);
 
