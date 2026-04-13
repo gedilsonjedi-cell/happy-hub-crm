@@ -135,12 +135,7 @@ export const ConversationItem = memo(function ConversationItem({
 
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-              {conversation.lastMessage || (
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Sem mensagens
-                </span>
-              )}
+              {conversation.lastMessage || "Carregando histórico…"}
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-muted-foreground whitespace-nowrap">

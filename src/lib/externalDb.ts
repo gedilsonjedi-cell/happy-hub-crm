@@ -31,19 +31,25 @@ async function withTimeout<T>(
 }
 
 async function callProxy<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await withTimeout(
-    supabase.functions.invoke(PROXY_FUNCTION, {
-      body,
-    }),
-    PROXY_TIMEOUT_MS,
-    "Timeout loading external history"
-  );
+  try {
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke(PROXY_FUNCTION, {
+        body,
+      }),
+      PROXY_TIMEOUT_MS,
+      "Timeout loading external history"
+    );
 
-  if (error) {
-    throw new Error(`External DB proxy error: ${error.message}`);
+    if (error) {
+      console.error("[externalDb] Proxy query failed:", { action: body.action, error });
+      throw new Error(`External DB proxy error: ${error.message}`);
+    }
+
+    return data as T;
+  } catch (error) {
+    console.error("[externalDb] Proxy query failed:", { action: body.action, error });
+    throw error;
   }
-
-  return data as T;
 }
 
 interface ConversationStatsFallbackRow {
@@ -324,7 +330,14 @@ export async function fetchBulkPreviews(
     conversations,
   });
 
-  return previews || [];
+  const safePreviews = previews || [];
+  if (safePreviews.length === 0 || safePreviews.every((preview) => !preview.createdAt)) {
+    console.warn("[fetchBulkPreviews] External preview query returned no content", {
+      conversations,
+    });
+  }
+
+  return safePreviews;
 }
 
 /**
