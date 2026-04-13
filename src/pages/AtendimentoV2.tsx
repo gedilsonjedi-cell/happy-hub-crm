@@ -508,6 +508,10 @@ const AtendimentoV2 = () => {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canSeeSector, canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [conversationOffset, setConversationOffset] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const CONVERSATIONS_PAGE_SIZE = 100;
   
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
