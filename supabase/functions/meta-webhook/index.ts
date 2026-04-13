@@ -158,6 +158,26 @@ function normalizePhone(phone: string): string {
   return digits.startsWith('55') ? digits : '55' + digits;
 }
 
+/** Generate Brazilian phone variants (with/without 9th digit) for matching */
+function getPhoneVariants(phone: string): string[] {
+  const normalized = normalizePhone(phone);
+  const variants = [normalized];
+  if (normalized.startsWith('55') && normalized.length >= 12) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+    // If has 9th digit (9 digits local), add variant without it
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.push(`55${areaCode}${localNumber.slice(1)}`);
+    }
+    // If missing 9th digit (8 digits local), add variant with it
+    else if (localNumber.length === 8) {
+      variants.push(`55${areaCode}9${localNumber}`);
+    }
+  }
+  return variants;
+}
+
 // =============================================
 // BUSINESS HOURS + HOLIDAY CHECK (single parallelized call, fully cached)
 // =============================================
@@ -430,17 +450,40 @@ async function getNextAvailableAttendantGlobal(
 async function handleConversationAssignment(
   channelId: string, leadId: string, normalizedPhone: string, organizationId: string, isFromAd: boolean = false
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
-  const { data: existing } = await supabase
+  const phoneVariants = getPhoneVariants(normalizedPhone);
+
+  // Try exact match first, then variants
+  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string } | null = null;
+  
+  const { data: exactMatch } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, is_bot_handling')
+    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
+  
+  existing = exactMatch;
+  
+  // If no exact match, try phone variants (with/without 9th digit)
+  if (!existing && phoneVariants.length > 1) {
+    for (const variant of phoneVariants.slice(1)) {
+      const { data: variantMatch } = await supabase
+        .from('conversation_assignments')
+        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
+        .eq('channel_id', channelId)
+        .eq('conversation_phone', variant)
+        .maybeSingle();
+      if (variantMatch) {
+        existing = variantMatch;
+        console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${variant} (assignment: ${variantMatch.id})`);
+        break;
+      }
+    }
+  }
 
   if (existing) {
     const needsUpdate = existing.status === 'archived' || !existing.lead_id;
     if (needsUpdate) {
-      // Try round-robin if sector exists and no attendant assigned
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
         ? (assignedTo ? 'in_progress' : 'pending')
@@ -481,11 +524,18 @@ async function handleConversationAssignment(
   }
 
   // New conversation — get sector from campaign history, then try round-robin
-  const campaignSectorResult = await supabase.rpc('get_campaign_sector_for_phone', {
-    _organization_id: organizationId,
-    _phone: normalizedPhone,
-  });
-  const sectorId = campaignSectorResult.data || null;
+  // Try all phone variants to find campaign sector
+  let sectorId: string | null = null;
+  for (const variant of phoneVariants) {
+    const campaignSectorResult = await supabase.rpc('get_campaign_sector_for_phone', {
+      _organization_id: organizationId,
+      _phone: variant,
+    });
+    if (campaignSectorResult.data) {
+      sectorId = campaignSectorResult.data;
+      break;
+    }
+  }
 
   let assignedTo: string | null = null;
   let finalStatus = 'pending';
