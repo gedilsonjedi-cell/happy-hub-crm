@@ -3374,6 +3374,14 @@ export type Database = {
           status: string
         }[]
       }
+      cleanup_archived_assignments_batch: {
+        Args: { batch_size?: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_local_messages_batch: {
+        Args: { batch_size?: number; cutoff_date: string }
+        Returns: number
+      }
       cleanup_old_assignments: {
         Args: { batch_size: number; cutoff_date: string }
         Returns: number
@@ -3510,6 +3518,35 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_conversations_summary_paginated: {
+        Args: {
+          p_channel_ids: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
+        Returns: {
+          assigned_to: string
+          assigned_to_name: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          lead_name: string
+          lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
@@ -3566,6 +3603,35 @@ export type Database = {
       restore_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
+      }
+      search_conversations_global: {
+        Args: {
+          p_channel_ids: string[]
+          p_limit?: number
+          p_organization_id: string
+          p_search_term: string
+        }
+        Returns: {
+          assigned_to: string
+          assigned_to_name: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          lead_name: string
+          lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
       }
       sync_all_failed_recipients: { Args: never; Returns: number }
       sync_failed_recipients_from_messages: {
