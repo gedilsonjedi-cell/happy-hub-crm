@@ -701,7 +701,7 @@ async function processInboundMessage(
 
   // Store message
   const { error: insertError } = await dualWriteMessage({
-      channel_id: channelId,
+      channel_id: normalizedPhone,
       organization_id: organizationId,
       message_id: messageId,
       sender_phone: normalizedPhone,

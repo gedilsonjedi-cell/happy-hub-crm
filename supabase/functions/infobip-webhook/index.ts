@@ -361,7 +361,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
 
   // Store inbound message
   const msgData = {
-    channel_id: channel.id,
+    channel_id: senderPhone,
     organization_id: channel.organization_id,
     message_id: messageId,
     sender_phone: senderPhone,

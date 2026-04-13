@@ -927,7 +927,7 @@ Deno.serve(async (req) => {
 
       // Store message with normalized phone
       const { error: insertError } = await dualWriteMessage({
-          channel_id: channel.id,
+          channel_id: normalizedPhone,
           organization_id: channel.organization_id,
           message_id: messageId,
           sender_phone: normalizedPhone,
