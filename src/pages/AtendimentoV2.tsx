@@ -1824,13 +1824,15 @@ const AtendimentoV2 = () => {
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
   const prependMessageRef = useRef(infiniteMessages.prependMessage);
+  const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
     prependMessageRef.current = infiniteMessages.prependMessage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage]);
+    refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage, infiniteMessages.refetchLatestPage]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
