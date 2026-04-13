@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -89,7 +89,7 @@ const MessageBubble = memo(function MessageBubble({
           );
 
         case "audio":
-          return <audio src={message.media_url} controls preload="none" className="max-w-full" />;
+          return <AudioPlayer src={message.media_url!} />;
 
         case "document":
         case "file":
@@ -344,7 +344,7 @@ const MessageBubble = memo(function MessageBubble({
 
 /**
  * ProgressiveImage — shows a sized placeholder while the image loads,
- * preventing layout shift. Fades in on load.
+ * preventing layout shift. Fades in on load. Shows error state on failure.
  */
 const ProgressiveImage = memo(function ProgressiveImage({
   src,
@@ -356,15 +356,30 @@ const ProgressiveImage = memo(function ProgressiveImage({
   onClick: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
 
   const handleLoad = useCallback(() => setLoaded(true), []);
+  const handleError = useCallback(() => { setError(true); setLoaded(true); }, []);
+
+  if (error) {
+    return (
+      <div
+        className="w-full max-w-[280px] rounded-lg bg-muted/60 flex flex-col items-center justify-center gap-2 p-4 cursor-pointer"
+        style={{ aspectRatio: "4/3", minHeight: 120 }}
+        onClick={() => window.open(src, '_blank')}
+      >
+        <AlertTriangle className="w-8 h-8 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground text-center">Imagem indisponível</span>
+        <span className="text-[10px] text-primary underline">Tentar abrir externamente</span>
+      </div>
+    );
+  }
 
   return (
     <div
       className="cursor-pointer group relative"
       onClick={onClick}
     >
-      {/* Placeholder skeleton — exact size via aspect-ratio */}
       {!loaded && (
         <div
           className="w-full max-w-[280px] rounded-lg bg-muted animate-pulse"
@@ -377,6 +392,7 @@ const ProgressiveImage = memo(function ProgressiveImage({
         loading="lazy"
         decoding="async"
         onLoad={handleLoad}
+        onError={handleError}
         className={cn(
           "max-w-full rounded-lg max-h-60 object-cover transition-opacity duration-300",
           loaded ? "opacity-100" : "opacity-0 absolute inset-0"
@@ -386,6 +402,40 @@ const ProgressiveImage = memo(function ProgressiveImage({
         <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
       </div>
     </div>
+  );
+});
+
+/**
+ * AudioPlayer — wraps <audio> with error state so broken URLs show feedback.
+ */
+const AudioPlayer = memo(function AudioPlayer({ src }: { src: string }) {
+  const [error, setError] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const handleError = useCallback(() => setError(true), []);
+
+  if (error) {
+    return (
+      <div
+        className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+        onClick={() => window.open(src, '_blank')}
+      >
+        <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Áudio indisponível</span>
+        <span className="text-[10px] text-primary underline ml-auto">Abrir</span>
+      </div>
+    );
+  }
+
+  return (
+    <audio
+      ref={audioRef}
+      src={src}
+      controls
+      preload="none"
+      className="max-w-full"
+      onError={handleError}
+    />
   );
 });
 

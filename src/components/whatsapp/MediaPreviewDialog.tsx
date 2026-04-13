@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { X, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 interface MediaPreviewDialogProps {
@@ -20,6 +20,7 @@ export function MediaPreviewDialog({
 }: MediaPreviewDialogProps) {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [imageError, setImageError] = useState(false);
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5));
@@ -138,7 +139,7 @@ export function MediaPreviewDialog({
             }
           }}
         >
-          {isImage && (
+          {isImage && !imageError && (
             <img
               src={mediaUrl}
               alt="Preview"
@@ -147,7 +148,20 @@ export function MediaPreviewDialog({
                 transform: `scale(${zoom}) rotate(${rotation}deg)`,
               }}
               onDoubleClick={resetView}
+              onError={() => setImageError(true)}
             />
+          )}
+
+          {isImage && imageError && (
+            <div className="flex flex-col items-center gap-4 text-white">
+              <AlertTriangle className="w-16 h-16 text-muted-foreground" />
+              <p className="text-lg font-medium">Imagem indisponível</p>
+              <p className="text-sm text-white/60">O link da imagem pode ter expirado</p>
+              <Button onClick={handleOpenExternal} variant="secondary">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Tentar abrir externamente
+              </Button>
+            </div>
           )}
 
           {isVideo && (
