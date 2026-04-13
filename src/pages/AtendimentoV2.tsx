@@ -3961,7 +3961,7 @@ const AtendimentoV2 = () => {
                               
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                                  {conv.lastMessage || "Carregando histórico…"}
+                                  {conv.lastMessage || "Sem histórico"}
                                 </p>
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                                   {formatConversationDate(conv.lastMessageTime)}
