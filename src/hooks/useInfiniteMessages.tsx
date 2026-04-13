@@ -5,7 +5,10 @@ import {
   fetchInternalMessages,
   type ExternalMessageRow,
 } from "@/lib/externalDb";
-import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
+import {
+  getCanonicalPhoneThreadKey,
+  getPhoneLookupVariants,
+} from "@/lib/phoneThreadKey";
 
 const PAGE_SIZE = 25;
 
@@ -17,45 +20,12 @@ export interface MessagePage {
 
 export type MessageRow = ExternalMessageRow;
 
-/**
- * Generate phone number variants to handle Brazilian number format differences.
- * Brazilian mobile numbers can have 8 or 9 digits (with/without the leading 9).
- * e.g. 558386640756 vs 5583986640756 (same number, different format)
- */
-function getPhoneVariants(phone: string): string[] {
-  const normalized = phone.replace(/\D/g, "");
-  const variants = new Set<string>();
-
-  variants.add(normalized);
-  variants.add(`+${normalized}`);
-
-  // Brazilian numbers: if starts with 55 (country code)
-  if (normalized.startsWith("55") && normalized.length >= 10) {
-    const withoutCountry = normalized.slice(2);
-    const areaCode = withoutCountry.slice(0, 2);
-    const localNumber = withoutCountry.slice(2);
-
-    if (localNumber.length === 9 && localNumber.startsWith("9")) {
-      const without9 = areaCode + localNumber.slice(1);
-      variants.add(`55${without9}`);
-      variants.add(`+55${without9}`);
-    } else if (localNumber.length === 8) {
-      const with9 = areaCode + "9" + localNumber;
-      variants.add(`55${with9}`);
-      variants.add(`+55${with9}`);
-    }
-  }
-
-  return Array.from(variants);
-}
-
 async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
   cursor: string | null
 ): Promise<MessagePage> {
-  const normalizedPhone = conversationPhone.replace(/\D/g, "");
-  const phoneVariants = getPhoneVariants(normalizedPhone);
+  const phoneVariants = getPhoneLookupVariants(conversationPhone);
 
   const requestParams = {
     channelId,
@@ -143,6 +113,8 @@ export function useInfiniteMessages(
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
     : [];
+  const isInitialLoading =
+    query.isPending || (query.isFetching && allMessages.length === 0);
 
   /**
    * Prepend a new message received via Realtime without refetching.
@@ -220,7 +192,7 @@ export function useInfiniteMessages(
 
   return {
     messages: allMessages,
-    isLoading: query.isLoading,
+    isLoading: isInitialLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage,
     fetchNextPage: query.fetchNextPage,

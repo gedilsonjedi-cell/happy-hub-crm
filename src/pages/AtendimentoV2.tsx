@@ -207,6 +207,14 @@ const normalizePhoneNumber = (phone: string): string => {
   return normalized;
 };
 
+const getConversationThreadKey = (
+  channelId: string | null | undefined,
+  phone: string
+): string => {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  return `${channelId || 'unknown'}_${getCanonicalPhoneThreadKey(normalizedPhone)}`;
+};
+
 const getPhoneComparisonVariants = (phone: string): string[] => {
   const normalized = normalizePhoneNumber(phone);
   const variants = new Set<string>([normalized]);
@@ -763,7 +771,7 @@ const AtendimentoV2 = () => {
             const resolvedTags = row.lead_tags && row.lead_tags.length > 0 ? row.lead_tags : null;
             const mappedStatus = mapConversationStatus(row.status);
 
-            nextStatuses[`${row.channel_id}_${normalizedPhone}`] = mappedStatus;
+            nextStatuses[getConversationThreadKey(row.channel_id, normalizedPhone)] = mappedStatus;
 
             if (normalizedPhone && (resolvedLeadName || resolvedTags)) {
               upsertLeadLookup(normalizedPhone, {
@@ -831,15 +839,14 @@ const AtendimentoV2 = () => {
       const assignmentMap = new Map<string, typeof assignments[0]>();
       assignments.forEach(a => {
         const normalizedPhone = a.conversation_phone.replace(/\D/g, '');
-        const key = `${a.channel_id}_${normalizedPhone}`;
+        const key = getConversationThreadKey(a.channel_id, normalizedPhone);
         assignmentMap.set(key, a);
       });
       
       setAllConversations(prev => {
         let hasChanges = false;
         const updated = prev.map(conv => {
-          const normalizedPhone = conv.phone.replace(/\D/g, '');
-          const key = `${conv.channelId}_${normalizedPhone}`;
+          const key = getConversationKey(conv);
           const dbAssignment = assignmentMap.get(key);
           
           if (dbAssignment) {
@@ -934,7 +941,7 @@ const AtendimentoV2 = () => {
 
             if (latestMessage && previewText) {
               updates.push({
-                key: `${conv.channelId}_${normalizedPhone}`,
+                  key: getConversationKey(conv),
                 lastMessage: previewText,
                 lastMessageTime: latestMessage.created_at,
               });
@@ -950,8 +957,7 @@ const AtendimentoV2 = () => {
           const updateMap = new Map(updates.map(u => [u.key, u]));
           let changed = false;
           const result = prev.map(c => {
-            const normalizedPhone = c.phone.replace(/\D/g, '');
-            const key = `${c.channelId}_${normalizedPhone}`;
+            const key = getConversationKey(c);
             const update = updateMap.get(key);
             if (update && !c.lastMessage) {
               changed = true;
@@ -1052,9 +1058,9 @@ const AtendimentoV2 = () => {
       
       // Merge archived into allConversations (avoid duplicates)
       setAllConversations(prev => {
-        const existingKeys = new Set(prev.map(c => `${c.channelId}_${c.phone.replace(/\D/g, '')}`));
+        const existingKeys = new Set(prev.map((c) => getConversationKey(c)));
         const newArchived = archivedConvs.filter(c => {
-          const key = `${c.channelId}_${c.phone.replace(/\D/g, '')}`;
+          const key = getConversationKey(c);
           return !existingKeys.has(key);
         });
         if (newArchived.length === 0) return prev;
@@ -1067,7 +1073,7 @@ const AtendimentoV2 = () => {
 
   // Helper function to get conversation key
   const getConversationKey = (conv: Conversation) => {
-    return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
+    return getConversationThreadKey(conv.channelId, conv.phone);
   };
 
   // Keep a stable key to recover selection after async list refreshes/re-renders
@@ -1096,7 +1102,7 @@ const AtendimentoV2 = () => {
   }, [allConversations, globalSearchResults, channels, selectedConversation, selectedConversationStableKey]);
 
   const markConversationAsRead = useCallback((conversation: { channelId: string | null; phone: string }) => {
-    const conversationKey = `${conversation.channelId || 'unknown'}_${conversation.phone.replace(/\D/g, '')}`;
+    const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
 
     setAllConversations(prev => prev.map(c => (
       getConversationKey(c) === conversationKey ? { ...c, unreadCount: 0 } : c
@@ -1651,7 +1657,7 @@ const AtendimentoV2 = () => {
 
     const normalizedContactPhone = normalizePhoneNumber(contactPhone);
     const currentSelectedConv = selectedConversationRef.current;
-    const msgConversationKey = `${msg.channelId}_${normalizedContactPhone}`;
+    const msgConversationKey = getConversationThreadKey(msg.channelId, normalizedContactPhone);
     const isConversationMatch = (conv: Conversation) =>
       conv.channelId === msg.channelId && phonesMatch(conv.phone, normalizedContactPhone);
     const isActiveConversation =
