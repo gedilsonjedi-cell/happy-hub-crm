@@ -352,9 +352,21 @@ async function handleBulkPreviews(
         const inboundFilter = conv.phoneVariants
           .map((p: string) => `sender_phone.eq.${p}`)
           .join(",");
-        const outboundFilter = conv.phoneVariants
-          .map((p: string) => `metadata->>destination.eq.${p}`)
-          .join(",");
+        
+        // Build suffix-based filters for robust outbound matching
+        const suffixes = Array.from(
+          new Set(
+            conv.phoneVariants
+              .map((p: string) => p.replace(/\D/g, ""))
+              .filter((p: string) => p.length >= 8)
+              .flatMap((p: string) => [p.slice(-9), p.slice(-8)])
+          )
+        );
+        const outboundFilters = [
+          ...conv.phoneVariants.map((p: string) => `metadata->>destination.eq.${p}`),
+          ...suffixes.map((s: string) => `metadata->>destination.ilike.%${s}`),
+        ];
+        const outboundFilter = outboundFilters.join(",");
 
         const [inboundRes, outboundRes] = await Promise.all([
           ext
