@@ -3393,7 +3393,7 @@ const AtendimentoV2 = () => {
   };
 
   const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
-  const hasActivity = useCallback((conv: Conversation) => conv.lastInboundTime !== null || conv.lastMessageTime !== null, []);
+  
   const isArchivedLikeConversation = useCallback(
     (conv: Conversation) => conv.status === "archived" || (!hasClientResponse(conv) && !conv.assignedTo),
     [hasClientResponse]
