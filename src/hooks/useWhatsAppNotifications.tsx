@@ -137,41 +137,22 @@ export function useWhatsAppNotifications() {
           // Only notify for inbound messages (client → us)
           if (message.direction !== 'inbound') return;
 
-          // Check if the conversation is assigned to the current user.
-          // Only notify if: unassigned (new/queue) OR assigned to me.
+          // Check if conversation is assigned to someone else
           try {
-            const { data: assignment } = await supabase
+            const senderPhone = message.sender_phone.replace(/\D/g, '');
+            const phoneSuffix = senderPhone.slice(-9);
+            
+            const { data: phoneAssignment } = await supabase
               .from('conversation_assignments')
               .select('assigned_to')
               .eq('channel_id', message.channel_id)
               .neq('status', 'archived')
-              .limit(100);
+              .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
+              .limit(1)
+              .maybeSingle();
 
-            if (assignment && assignment.length > 0) {
-              // Find the matching assignment by phone suffix
-              const matchingAssignment = assignment.find(a => {
-                // We need to check conversation_phone but we only selected assigned_to
-                // Re-query with phone match
-                return true; // will be filtered below
-              });
-
-              // More precise: query with phone filter
-              const senderPhone = message.sender_phone.replace(/\D/g, '');
-              const phoneSuffix = senderPhone.slice(-9);
-              
-              const { data: phoneAssignment } = await supabase
-                .from('conversation_assignments')
-                .select('assigned_to, conversation_phone')
-                .eq('channel_id', message.channel_id)
-                .neq('status', 'archived')
-                .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
-                .limit(1)
-                .maybeSingle();
-
-              if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
-                // Assigned to someone else — don't notify
-                return;
-              }
+            if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
+              return;
             }
           } catch (e) {
             console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
