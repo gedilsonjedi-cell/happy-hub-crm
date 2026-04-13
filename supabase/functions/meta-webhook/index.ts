@@ -524,11 +524,18 @@ async function handleConversationAssignment(
   }
 
   // New conversation — get sector from campaign history, then try round-robin
-  const campaignSectorResult = await supabase.rpc('get_campaign_sector_for_phone', {
-    _organization_id: organizationId,
-    _phone: normalizedPhone,
-  });
-  const sectorId = campaignSectorResult.data || null;
+  // Try all phone variants to find campaign sector
+  let sectorId: string | null = null;
+  for (const variant of phoneVariants) {
+    const campaignSectorResult = await supabase.rpc('get_campaign_sector_for_phone', {
+      _organization_id: organizationId,
+      _phone: variant,
+    });
+    if (campaignSectorResult.data) {
+      sectorId = campaignSectorResult.data;
+      break;
+    }
+  }
 
   let assignedTo: string | null = null;
   let finalStatus = 'pending';
