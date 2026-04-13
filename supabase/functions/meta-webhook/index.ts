@@ -29,7 +29,7 @@ function writeMessageRecord(
 }
 
 /** Write to whatsapp_messages on external DB only + update conversation_stats + upsert contact */
-async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
+async function dualWriteMessage(data: Record<string, unknown>, upsert = false, internalChannelId?: string) {
   let result = await writeMessageRecord(messageDb, data, upsert);
 
   if (result.error && externalSupabase) {
@@ -43,8 +43,9 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
       ? (data.sender_phone as string)
       : ((data.metadata as Record<string, unknown>)?.destination as string);
     if (phone) {
+      const statsChannelId = internalChannelId || (data as Record<string, unknown>)._internal_channel_id || data.channel_id;
       supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: data.channel_id,
+        _channel_id: statsChannelId,
         _conversation_phone: phone,
         _content: (data.content as string) || null,
         _direction: data.direction as string,
@@ -60,7 +61,7 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false) {
           .upsert(
             {
               channel_id: data.channel_id,
-              organization_id: data.organization_id || null,
+              organization_id: (data.organization_id as string) || null,
               sender_phone: phone,
               sender_name: (data.sender_name as string) || null,
               last_message_at: new Date().toISOString(),
@@ -776,7 +777,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const finalMediaUrl = storedMediaUrl || (mediaId ? mediaId : null);
 
   const { error: insertError } = await dualWriteMessage({
-    channel_id: channel.id,
+    channel_id: normalizedPhone,
     organization_id: organizationId,
     message_id: messageId,
     sender_phone: normalizedPhone,
@@ -791,7 +792,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
       ...(referralData ? { referral: referralData } : {}),
     },
-  }, true);
+  }, true, channel.id as string);
 
   if (insertError) {
     console.error('Error storing message:', insertError);
@@ -859,7 +860,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     ).then((sent) => {
       if (sent) {
         dualWriteMessage({
-          channel_id: channel.id,
+          channel_id: normalizedPhone,
           message_id: `away_${normalizedPhone}_${Date.now()}`,
           sender_phone: channel.phone,
           sender_name: 'Sistema',
@@ -869,7 +870,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
           status: 'sent',
           organization_id: organizationId,
           metadata: { provider: 'meta', away_message: true, destination: normalizedPhone },
-        }).then(() => {}).catch(() => {});
+        }, false, channel.id as string).then(() => {}).catch(() => {});
       }
     }).catch(console.error);
     return; // Don't invoke chatbot when away
@@ -888,7 +889,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
         Promise.all([
           markWelcomeSent(organizationId, normalizedPhone),
           dualWriteMessage({
-            channel_id: channel.id,
+            channel_id: normalizedPhone,
             message_id: `welcome_${normalizedPhone}_${Date.now()}`,
             sender_phone: channel.phone,
             sender_name: 'Sistema',
@@ -898,7 +899,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
             status: 'sent',
             organization_id: organizationId,
             metadata: { provider: 'meta', welcome_message: true, destination: normalizedPhone },
-          }),
+          }, false, channel.id as string),
         ]).catch(console.error);
       }
     }).catch(console.error);
