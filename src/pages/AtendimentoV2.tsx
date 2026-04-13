@@ -2084,72 +2084,50 @@ const AtendimentoV2 = () => {
     }
 
     if (msg.direction === "inbound") {
-      const fetchAndUpdateConversation = async () => {
-        const { data: assignment } = await supabase
-          .from('conversation_assignments')
-          .select('id, sector_id, assigned_to, status')
-          .eq('channel_id', msg.channelId)
-          .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
-          .maybeSingle();
+      const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
+      let leadNameFromSystem = cachedLeadMatch?.name || undefined;
+      let leadTagsFromSystem = cachedLeadMatch?.tags || null;
 
-        let assignedToNameFromDb: string | null = null;
-        if (assignment?.assigned_to) {
-          const { data: profile } = await supabase
-            .from('profiles').select('display_name, email').eq('user_id', assignment.assigned_to).single();
-          assignedToNameFromDb = profile?.display_name || profile?.email || 'Atendente';
-        }
-
-        let mappedStatusFromDb: Conversation["status"] = "pending";
-        if (assignment?.status === "active" || assignment?.status === "in_progress") mappedStatusFromDb = "in_progress";
-        else if (assignment?.status === "archived") mappedStatusFromDb = "archived";
-        else if (assignment?.status === "resolved") mappedStatusFromDb = "resolved";
-
-        const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
-        const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
-
-        let leadNameFromSystem: string | undefined;
-        let leadTagsFromSystem: string[] | null = null;
-        for (const match of matches) {
-          if (!match) continue;
-          if (!leadNameFromSystem && match.name) leadNameFromSystem = match.name;
-          if ((!leadTagsFromSystem || leadTagsFromSystem.length === 0) && match.tags && match.tags.length > 0) leadTagsFromSystem = match.tags;
-          if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
-        }
-
-        setAllConversations(prev => {
-          const existing = prev.find(isConversationMatch);
-          if (existing) {
-            let newStatus = mappedStatusFromDb;
-            if (existing.status === "archived" && assignment) {
-              const hadPreviousAttendant = assignment.assigned_to !== null;
-              newStatus = hadPreviousAttendant ? "in_progress" : "pending";
-              if (existing.channelId) {
-                supabase.from("conversation_assignments")
-                  .update({ status: newStatus, updated_at: new Date().toISOString() })
-                  .eq("id", assignment.id).then(() => {});
-              }
+      // OPTIMIZATION: Try to update from local state first (skip DB query for existing conversations)
+      setAllConversations(prev => {
+        const existing = prev.find(isConversationMatch);
+        if (existing) {
+          // Conversation exists in local state — update it directly without DB query
+          let newStatus = existing.status;
+          if (existing.status === "archived") {
+            newStatus = existing.assignedTo ? "in_progress" : "pending";
+            if (existing.channelId && existing.id) {
+              supabase.from("conversation_assignments")
+                .update({ status: newStatus, updated_at: new Date().toISOString() })
+                .eq("id", existing.id).then(() => {});
             }
-            const currentSelectedConvLocal = selectedConversationRef.current;
-            const isCurrentConversation =
-              !!currentSelectedConvLocal && isConversationMatch(currentSelectedConvLocal);
-            const updated = prev.map(c =>
-              isConversationMatch(c)
-                ? {
-                    ...c, id: assignment?.id || c.id,
-                    lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
-                    lastInboundTime: msg.createdAt,
-                    unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
-                    status: newStatus, assignedTo: assignment?.assigned_to ?? c.assignedTo,
-                    assignedToName: assignedToNameFromDb ?? c.assignedToName,
-                    sectorId: assignment?.sector_id ?? c.sectorId,
-                    name: leadNameFromSystem || c.name || contactName, tags: leadTagsFromSystem || c.tags
-                  }
-                : c
-            );
-            return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
           }
+          const currentSelectedConvLocal = selectedConversationRef.current;
+          const isCurrentConversation =
+            !!currentSelectedConvLocal && isConversationMatch(currentSelectedConvLocal);
+          const updated = prev.map(c =>
+            isConversationMatch(c)
+              ? {
+                  ...c,
+                  lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
+                  lastInboundTime: msg.createdAt,
+                  unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                  status: newStatus,
+                  name: leadNameFromSystem || c.name || contactName,
+                  tags: leadTagsFromSystem || c.tags
+                }
+              : c
+          );
+          return updated.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+        }
+        return prev;
+      });
 
-          // New conversation
+      // Only query DB for truly NEW conversations not in the list
+      setAllConversations(prev => {
+        const existing = prev.find(isConversationMatch);
+        if (!existing) {
+          // New conversation — need to fetch from DB (async, out of setState)
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
           supabase.from('conversation_assignments')
             .select('id, sector_id, assigned_to, status')
@@ -2188,6 +2166,9 @@ const AtendimentoV2 = () => {
                 return [newConv, ...currentPrev];
               });
             });
+        }
+        return prev; // no mutation in this pass
+      });
           return prev;
         });
       };
