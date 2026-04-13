@@ -64,25 +64,33 @@ async function fetchMessagePage(
     pageSize: PAGE_SIZE,
   };
 
-  // Primary source: external DB proxy
-  // Fallback: internal table read when external data is not available for this thread.
-  let result = await fetchExternalMessages(requestParams).catch(async () => {
-    return fetchInternalMessages(requestParams);
-  });
+  // Try external first, then internal. If external returns empty, also try internal.
+  let externalOk = false;
+  let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
 
-  if (!result.messages.length) {
-    const internalResult = await fetchInternalMessages(requestParams).catch(
-      () => null
-    );
-    if (internalResult && internalResult.messages.length) {
-      result = internalResult;
+  try {
+    result = await fetchExternalMessages(requestParams);
+    externalOk = true;
+  } catch (e) {
+    console.warn("[fetchMessagePage] External fetch failed, falling back to internal:", e);
+  }
+
+  // If external succeeded but returned no messages, or if it failed, try internal
+  if (!result?.messages?.length) {
+    try {
+      const internalResult = await fetchInternalMessages(requestParams);
+      if (internalResult.messages.length > 0) {
+        result = internalResult;
+      }
+    } catch (e) {
+      console.warn("[fetchMessagePage] Internal fetch also failed:", e);
     }
   }
 
   return {
-    messages: result.messages,
-    nextCursor: result.nextCursor,
-    hasMore: result.hasMore,
+    messages: result?.messages ?? [],
+    nextCursor: result?.nextCursor ?? null,
+    hasMore: result?.hasMore ?? false,
   };
 }
 
