@@ -309,6 +309,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Debug: log key prefix to verify it's the service_role key
+    console.log(`[external-db-proxy] extUrl=${extUrl}, keyPrefix=${extKey.substring(0, 30)}...`);
+
     const extSupabase = createClient(extUrl, extKey);
 
     // ── Get user's organization_id for tenant isolation ────────────
