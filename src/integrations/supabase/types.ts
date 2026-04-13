@@ -3347,6 +3347,7 @@ export type Database = {
         Args: { batch_size?: number }
         Returns: number
       }
+      backfill_missing_conversation_stats: { Args: never; Returns: number }
       calculate_subscription_total: {
         Args: { _organization_id: string }
         Returns: number
