@@ -139,7 +139,7 @@ export function MediaPreviewDialog({
             }
           }}
         >
-          {isImage && (
+          {isImage && !imageError && (
             <img
               src={mediaUrl}
               alt="Preview"
@@ -148,7 +148,20 @@ export function MediaPreviewDialog({
                 transform: `scale(${zoom}) rotate(${rotation}deg)`,
               }}
               onDoubleClick={resetView}
+              onError={() => setImageError(true)}
             />
+          )}
+
+          {isImage && imageError && (
+            <div className="flex flex-col items-center gap-4 text-white">
+              <AlertTriangle className="w-16 h-16 text-muted-foreground" />
+              <p className="text-lg font-medium">Imagem indisponível</p>
+              <p className="text-sm text-white/60">O link da imagem pode ter expirado</p>
+              <Button onClick={handleOpenExternal} variant="secondary">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Tentar abrir externamente
+              </Button>
+            </div>
           )}
 
           {isVideo && (
