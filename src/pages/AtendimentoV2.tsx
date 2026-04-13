@@ -315,11 +315,12 @@ const getMessagePreviewText = (message: {
 const getSummaryPreviewText = (
   row: Pick<
     ConversationSummaryRow,
-    "last_message" | "last_message_at" | "last_inbound_at" | "unread_count"
+    "last_message" | "last_message_content" | "last_message_at" | "last_inbound_at" | "unread_count"
   >
 ) => {
-  if (row.last_message?.trim()) {
-    return row.last_message;
+  const msg = row.last_message || row.last_message_content;
+  if (msg?.trim()) {
+    return msg;
   }
 
   // Don't use generic placeholders — leave empty so the enrichment system
