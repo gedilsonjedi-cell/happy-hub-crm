@@ -979,23 +979,36 @@ const AtendimentoV2 = () => {
       const channelIds = channels.map(c => c.id);
 
       try {
-        const { data: rows, error } = await supabase.rpc("get_conversations_summary", {
+        // Use paginated RPC — loads only first 100 conversations
+        const { data: rows, error } = await supabase.rpc("get_conversations_summary_paginated", {
           p_channel_ids: channelIds,
           p_organization_id: effectiveOrganizationId,
+          p_limit: CONVERSATIONS_PAGE_SIZE,
+          p_offset: 0,
         });
 
         if (error) {
           throw error;
         }
 
-        const mappedData = rows?.length
-          ? mapConversationSummaryRows(rows as ConversationSummaryRow[])
-          : await fetchConversationsFallback(channelIds);
-
-        previewHydrationAttemptsRef.current.clear();
-        leadsMapRef.current = mappedData.leadLookups;
-        setConversationStatuses(mappedData.statuses);
-        setAllConversations(mappedData.conversations);
+        if (rows?.length) {
+          const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+          previewHydrationAttemptsRef.current.clear();
+          leadsMapRef.current = mappedData.leadLookups;
+          setConversationStatuses(mappedData.statuses);
+          setAllConversations(mappedData.conversations);
+          setHasMoreConversations(rows.length >= CONVERSATIONS_PAGE_SIZE);
+          setConversationOffset(rows.length);
+        } else {
+          // Try legacy fallback
+          const fallbackData = await fetchConversationsFallback(channelIds);
+          previewHydrationAttemptsRef.current.clear();
+          leadsMapRef.current = fallbackData.leadLookups;
+          setConversationStatuses(fallbackData.statuses);
+          setAllConversations(fallbackData.conversations);
+          setHasMoreConversations(false);
+          setConversationOffset(0);
+        }
       } catch (error) {
         console.error("Error fetching conversations summary:", error);
 
@@ -1005,6 +1018,7 @@ const AtendimentoV2 = () => {
           leadsMapRef.current = fallbackData.leadLookups;
           setConversationStatuses(fallbackData.statuses);
           setAllConversations(fallbackData.conversations);
+          setHasMoreConversations(false);
         } catch (fallbackError) {
           console.error("Error fetching conversations fallback:", fallbackError);
         }
