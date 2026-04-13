@@ -32,7 +32,7 @@ interface VirtualizedConversationListProps {
   height: number;
 }
 
-const ITEM_HEIGHT = 90;
+const ITEM_HEIGHT = 100;
 
 interface RowData {
   conversations: Conversation[];
@@ -84,7 +84,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
   const sectorInfo = sectors.find((s) => s.id === conv.sectorId);
 
   return (
-    <div style={style} className="px-2 pb-1.5 cursor-pointer" onClick={() => onSelect(conv)}>
+    <div style={style} className="px-2 pb-2.5 cursor-pointer" onClick={() => onSelect(conv)}>
       <ConversationItem
         conversation={conv}
         isSelected={isSelected}
