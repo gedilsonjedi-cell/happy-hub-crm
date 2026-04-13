@@ -79,6 +79,8 @@ import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
   fetchInternalMessages,
+  fetchBulkPreviews,
+  getPreviewTextFromBulkResult,
 } from "@/lib/externalDb";
 import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
