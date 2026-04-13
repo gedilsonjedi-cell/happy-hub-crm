@@ -3953,6 +3953,8 @@ const AtendimentoV2 = () => {
                   sectors={sectors}
                   tagColors={tagColors}
                   onSelect={handleSelectConversation}
+                  onLoadMore={!searchTerm ? loadMoreConversations : undefined}
+                  hasMore={!searchTerm && hasMoreConversations}
                   formatDate={formatConversationDate}
                   getConversationKey={getConversationKey}
                   height={conversationListHeight}
