@@ -1418,8 +1418,43 @@ const AtendimentoV2 = () => {
     }
   };
 
-  // Global search function - searches directly in the database
-  // This allows finding ANY conversation, even old ones not in the initial load
+  // Load more conversations (pagination)
+  const loadMoreConversations = useCallback(async () => {
+    if (isLoadingMore || !hasMoreConversations || channels.length === 0) return;
+    setIsLoadingMore(true);
+    
+    const channelIds = channels.map(c => c.id);
+    try {
+      const { data: rows, error } = await supabase.rpc("get_conversations_summary_paginated", {
+        p_channel_ids: channelIds,
+        p_organization_id: effectiveOrganizationId,
+        p_limit: CONVERSATIONS_PAGE_SIZE,
+        p_offset: conversationOffset,
+      });
+      
+      if (error) throw error;
+      
+      if (rows?.length) {
+        const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+        // Merge new conversations avoiding duplicates
+        setAllConversations(prev => {
+          const existingKeys = new Set(prev.map(c => getConversationKey(c)));
+          const newConvs = mappedData.conversations.filter(c => !existingKeys.has(getConversationKey(c)));
+          return [...prev, ...newConvs];
+        });
+        setConversationOffset(prev => prev + rows.length);
+        setHasMoreConversations(rows.length >= CONVERSATIONS_PAGE_SIZE);
+      } else {
+        setHasMoreConversations(false);
+      }
+    } catch (error) {
+      console.error("Error loading more conversations:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, conversationOffset]);
+
+  // Global search function - uses RPC for efficient server-side search
   const searchConversationsGlobal = useCallback(async (term: string) => {
     if (!term.trim() || term.length < 3 || channels.length === 0 || !effectiveOrganizationId) {
       setGlobalSearchResults([]);
@@ -1429,197 +1464,56 @@ const AtendimentoV2 = () => {
 
     setIsSearchingGlobal(true);
     const channelIds = channels.map(c => c.id);
-    const normalizedSearch = term.replace(/\D/g, '');
-    
+
     try {
-      // Search conversation_assignments by phone
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
-        .or(`conversation_phone.ilike.%${normalizedSearch}%,conversation_phone.ilike.%${term}%`)
-        .order("updated_at", { ascending: false })
-        .limit(30);
+      // Use the dedicated search RPC — single query instead of 3-5
+      const { data: rows, error } = await supabase.rpc("search_conversations_global", {
+        p_channel_ids: channelIds,
+        p_organization_id: effectiveOrganizationId,
+        p_search_term: term,
+        p_limit: 50,
+      });
 
-      // Also search leads by name
-      const { data: leadsByName } = await supabase
-        .from("leads")
-        .select("id, phone, name, tags")
-        .eq("organization_id", effectiveOrganizationId)
-        .ilike("name", `%${term}%`)
-        .limit(30);
+      if (error) throw error;
 
-      // Find assignments for leads found by name
-      const leadPhones = (leadsByName || []).map(l => l.phone.replace(/\D/g, ''));
-      
-      let additionalAssignments: typeof assignments = [];
-      if (leadPhones.length > 0) {
-        const phoneConditions = leadPhones.slice(0, 10).map(p => `conversation_phone.ilike.%${p.slice(-8)}%`).join(',');
-        const { data: byLeadPhone } = await supabase
-          .from("conversation_assignments")
-          .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-          .in("channel_id", channelIds)
-          .or(phoneConditions)
-          .order("updated_at", { ascending: false })
-          .limit(30);
-        
-        additionalAssignments = byLeadPhone || [];
-      }
-
-      // Combine and deduplicate
-      const allAssignments = [...(assignments || []), ...additionalAssignments];
-      const uniqueAssignments = allAssignments.filter((a, idx, self) => 
-        idx === self.findIndex(b => b.id === a.id)
-      );
-
-      // Get profiles for assigned users
-      const assignedUserIds = [...new Set(uniqueAssignments.filter(a => a.assigned_to).map(a => a.assigned_to!))];
-      const { data: profiles } = assignedUserIds.length > 0 
-        ? await supabase
-            .from("profiles")
-            .select("user_id, display_name, email")
-            .in("user_id", assignedUserIds)
-        : { data: [] };
-
-      const profilesMap = new Map<string, string>();
-      profiles?.forEach(p => profilesMap.set(p.user_id, p.display_name || p.email || 'Atendente'));
-
-      // Build search results - resolve names using leadsMap for ALL results
-      const results: Conversation[] = uniqueAssignments.map(assignment => {
-        const normalizedPhone = assignment.conversation_phone.replace(/\D/g, '');
-        const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
-
-        // Find matching lead by name search results first
-        const matchingLeadByName = (leadsByName || []).find(l => 
-          l.phone.replace(/\D/g, '').slice(-8) === normalizedPhone.slice(-8)
-        );
-
-        // Also try resolving from existing leadsMap for conversations not found by name
-        let resolvedName = matchingLeadByName?.name || null;
-        let resolvedTags = matchingLeadByName?.tags || null;
-        
-        if (!resolvedName) {
-          const bestMatch = getLeadFromCache(normalizedPhone);
-          if (bestMatch) {
-            resolvedName = bestMatch.name || null;
-            resolvedTags = bestMatch.tags || null;
-          }
-        }
+      const results: Conversation[] = (rows || []).map((row: any) => {
+        const normalizedPhone = (row.conversation_phone || "").replace(/\D/g, "");
+        const displayPhone = normalizedPhone ? `+${normalizedPhone}` : "";
+        const leadName = row.lead_name?.trim() || "";
+        const isAutoGenerated = leadName.startsWith("LeadWhats-") || leadName.startsWith("WhatsApp ");
+        const resolvedLeadName = isAutoGenerated ? "" : leadName;
 
         let mappedStatus: Conversation["status"] = "pending";
-        if (assignment.status === "active" || assignment.status === "in_progress") mappedStatus = "in_progress";
-        else if (assignment.status === "archived") mappedStatus = "archived";
-        else if (assignment.status === "resolved") mappedStatus = "resolved";
+        if (row.status === "active" || row.status === "in_progress") mappedStatus = "in_progress";
+        else if (row.status === "archived") mappedStatus = "archived";
+        else if (row.status === "resolved") mappedStatus = "resolved";
 
         return {
-          id: assignment.id,
+          id: row.assignment_id,
           phone: displayPhone,
-          name: resolvedName,
-          lastMessage: "",
-          lastMessageTime: assignment.updated_at,
-          lastInboundTime: null,
-          unreadCount: 0,
-          channelId: assignment.channel_id,
+          name: resolvedLeadName || row.sender_name || null,
+          lastMessage: row.last_message_content || "",
+          lastMessageTime: row.last_message_at || row.assignment_updated_at || new Date().toISOString(),
+          lastInboundTime: row.last_inbound_at || null,
+          unreadCount: Number(row.unread_count) || 0,
+          channelId: row.channel_id,
           status: mappedStatus,
-          assignedTo: assignment.assigned_to,
-          assignedToName: assignment.assigned_to ? profilesMap.get(assignment.assigned_to) || null : null,
-          sectorId: assignment.sector_id,
-          tags: resolvedTags,
-          leadId: assignment.lead_id
+          assignedTo: row.assigned_to || null,
+          assignedToName: row.assigned_to_name || null,
+          sectorId: row.sector_id || null,
+          tags: row.lead_tags || null,
+          leadId: row.lead_id,
         };
       });
 
       setGlobalSearchResults(results);
       setIsSearchingGlobal(false);
-
-      // Fetch last messages for search results in background
-      const convsMissingMsg = results.filter(c => !c.lastMessage && c.channelId);
-      if (convsMissingMsg.length > 0) {
-        const msgResults = await Promise.all(convsMissingMsg.map(async (conv) => {
-          const phone = conv.phone.replace(/\D/g, '');
-          const phoneSuffix = phone.slice(-8);
-          
-          const [inboundRes, outboundRes] = await Promise.all([
-            supabase
-              .from("whatsapp_messages")
-              .select("content, created_at, direction, sender_name")
-              .eq("channel_id", conv.channelId!)
-              .eq("direction", "inbound")
-              .ilike("sender_phone", `%${phoneSuffix}`)
-              .order("created_at", { ascending: false })
-              .limit(1),
-            supabase
-              .from("whatsapp_messages")
-              .select("content, created_at, direction, metadata")
-              .eq("channel_id", conv.channelId!)
-              .eq("direction", "outbound")
-              .ilike("metadata->>destination", `%${phoneSuffix}`)
-              .order("created_at", { ascending: false })
-              .limit(1)
-          ]);
-          
-          const inMsg = inboundRes.data?.[0];
-          const outMsg = outboundRes.data?.[0];
-          
-          let lastMsg: { content: string | null; created_at: string; direction: string; sender_name?: string | null } | null = null;
-          if (inMsg && outMsg) {
-            lastMsg = new Date(inMsg.created_at) > new Date(outMsg.created_at) ? inMsg : outMsg;
-          } else {
-            lastMsg = inMsg || outMsg || null;
-          }
-          
-          return { phone: conv.phone, channelId: conv.channelId, lastMsg };
-        }));
-
-        setGlobalSearchResults(prev => {
-          let changed = false;
-          const updated = prev.map(c => {
-            const result = msgResults.find(r => r.phone === c.phone && r.channelId === c.channelId && r.lastMsg);
-            if (result && result.lastMsg && !c.lastMessage) {
-              changed = true;
-              return {
-                ...c,
-                lastMessage: result.lastMsg.content || "",
-                lastMessageTime: result.lastMsg.created_at,
-                lastInboundTime: result.lastMsg.direction === 'inbound' ? result.lastMsg.created_at : c.lastInboundTime,
-              };
-            }
-            return c;
-          });
-          return changed ? updated : prev;
-        });
-      }
-
     } catch (error) {
       console.error("Error searching conversations:", error);
       setGlobalSearchResults([]);
       setIsSearchingGlobal(false);
     }
   }, [channels, effectiveOrganizationId]);
-
-  // Debounced global search — local-first, then DB fallback
-  // Filters in-memory conversations instantly; only queries DB if local results are sparse
-  const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
-  
-  useEffect(() => {
-    if (!searchTerm || searchTerm.length < 2) {
-      setGlobalSearchResults([]);
-      setLocalSearchResults([]);
-      return;
-    }
-
-    // ── Step 1: Instant local filter (no DB hit) ──
-    const lowerTerm = searchTerm.toLowerCase();
-    const normalizedSearchDigits = searchTerm.replace(/\D/g, '');
-    
-    const localMatches = conversations.filter(conv => {
-      if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
-      if (normalizedSearchDigits && conv.phone.replace(/\D/g, '').includes(normalizedSearchDigits)) return true;
-      if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
-      return false;
-    });
-    
-    setLocalSearchResults(localMatches);
 
     // ── Step 2: If local results < 5, also query DB (debounced) ──
     if (searchTerm.length >= 3 && localMatches.length < 5) {
