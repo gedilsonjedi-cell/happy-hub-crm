@@ -46,8 +46,8 @@ async function insertMessageRecord(data: Record<string, unknown>) {
         .from('whatsapp_contacts')
         .upsert(
           {
-            channel_id: data.channel_id,
-            organization_id: data.organization_id || null,
+            channel_id: String(data.channel_id),
+            organization_id: data.organization_id ? String(data.organization_id) : null,
             sender_phone: destPhone,
             sender_name: null,
             last_message_at: new Date().toISOString(),
