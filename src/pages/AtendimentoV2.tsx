@@ -2168,11 +2168,6 @@ const AtendimentoV2 = () => {
             });
         }
         return prev; // no mutation in this pass
-      });
-          return prev;
-        });
-      };
-      fetchAndUpdateConversation();
     }
   }, []);
 
