@@ -991,12 +991,14 @@ Deno.serve(async (req) => {
       if (failedInsert.error) {
         console.error('[Meta-Send] Error storing failed message:', failedInsert.error);
       }
-      // Update conversation stats
-      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-        _channel_id: channelId, _conversation_phone: cleanDestination,
-        _content: storedContent, _direction: 'outbound', _is_read: null,
-        _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      // Update conversation stats (fire-and-forget, ignore errors)
+      try {
+        await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+          _channel_id: channelId, _conversation_phone: cleanDestination,
+          _content: storedContent, _direction: 'outbound', _is_read: null,
+          _sender_name: null, _created_at: new Date().toISOString(),
+        });
+      } catch (_e) { /* ignore */ }
       
       return new Response(
         JSON.stringify({ 
@@ -1077,11 +1079,15 @@ Deno.serve(async (req) => {
     }
 
     // Update conversation stats (synchronous to ensure sidebar preview)
-    await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-      _channel_id: channelId, _conversation_phone: cleanDestination,
-      _content: storedContent, _direction: 'outbound', _is_read: null,
-      _sender_name: null, _created_at: new Date().toISOString(),
-    }).catch((e: unknown) => console.error('[Meta-Send] Stats update error:', e));
+    try {
+      await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+        _channel_id: channelId, _conversation_phone: cleanDestination,
+        _content: storedContent, _direction: 'outbound', _is_read: null,
+        _sender_name: null, _created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('[Meta-Send] Stats update error:', e);
+    }
 
     // Webhook dispatch can stay in background — non-critical
     if (channel.organization_id) {
