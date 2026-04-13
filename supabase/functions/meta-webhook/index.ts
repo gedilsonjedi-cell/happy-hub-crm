@@ -519,7 +519,8 @@ async function handleConversationAssignment(
   }
 
   if (existing) {
-    const needsUpdate = existing.status === 'archived' || !existing.lead_id;
+    // Trigger update when: archived, missing lead, OR unassigned (e.g. campaign-created assignments)
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to;
     if (needsUpdate) {
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
@@ -535,13 +536,13 @@ async function handleConversationAssignment(
         }
       }
 
-      // If from ad and still no attendant, try global round-robin across ALL online attendants
-      if (!assignedTo && isFromAd) {
+      // If still no attendant (no sector or no one available in sector), try global round-robin
+      if (!assignedTo) {
         const attendant = await getNextAvailableAttendantGlobal(organizationId);
         if (attendant) {
           assignedTo = attendant.userId;
           newStatus = 'in_progress';
-          console.log(`[handleConversationAssignment] Ad lead global round-robin: ${normalizedPhone} → ${assignedTo}`);
+          console.log(`[handleConversationAssignment] Global round-robin assigned ${normalizedPhone} → ${assignedTo}`);
         }
       }
 
@@ -549,7 +550,7 @@ async function handleConversationAssignment(
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
-      console.log(`[handleConversationAssignment] Reactivated archived conversation for ${normalizedPhone} → ${newStatus} (sector: ${existing.sector_id})`);
+      console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${existing.sector_id})`);
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
