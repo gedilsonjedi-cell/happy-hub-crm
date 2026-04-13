@@ -6,6 +6,248 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const internalServiceRole = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
+
+const HISTORY_SCAN_BATCH_SIZE = 150;
+const HISTORY_SCAN_MAX_BATCHES = 8;
+
+type MessageRecord = {
+  id: string;
+  channel_id: string | null;
+  organization_id: string | null;
+  message_id: string;
+  sender_phone: string;
+  sender_name: string | null;
+  message_type: string;
+  content: string | null;
+  media_url: string | null;
+  direction: string;
+  status: string | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+  error_message?: string | null;
+  is_read?: boolean | null;
+};
+
+type ConversationStatsRow = {
+  conversation_phone: string;
+  last_message_content: string | null;
+  last_message_at: string | null;
+  last_inbound_at: string | null;
+  unread_count: number | null;
+  sender_name: string | null;
+};
+
+type PhoneLookup = {
+  exact: Set<string>;
+  suffixes: Set<string>;
+};
+
+function normalizePhoneValue(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\D/g, "") : "";
+}
+
+function buildPhoneLookup(phoneVariants: string[]): PhoneLookup {
+  const exact = new Set(
+    phoneVariants.map((phone) => normalizePhoneValue(phone)).filter(Boolean)
+  );
+
+  const suffixes = new Set<string>();
+  exact.forEach((phone) => {
+    if (phone.length >= 9) suffixes.add(phone.slice(-9));
+    if (phone.length >= 8) suffixes.add(phone.slice(-8));
+  });
+
+  return { exact, suffixes };
+}
+
+function phoneMatchesLookup(candidate: unknown, lookup: PhoneLookup): boolean {
+  const normalized = normalizePhoneValue(candidate);
+
+  if (!normalized) return false;
+  if (lookup.exact.has(normalized)) return true;
+
+  for (const suffix of lookup.suffixes) {
+    if (normalized.endsWith(suffix)) return true;
+  }
+
+  return false;
+}
+
+function getOutboundPhoneCandidates(message: MessageRecord): unknown[] {
+  const metadata = (message.metadata ?? {}) as Record<string, unknown>;
+
+  return [
+    metadata.destination,
+    metadata.to,
+    metadata.phone,
+    metadata.contact_phone,
+    metadata.contactPhone,
+    metadata.recipient_phone,
+    metadata.recipientPhone,
+  ];
+}
+
+function messageMatchesConversation(
+  message: MessageRecord,
+  direction: "inbound" | "outbound",
+  lookup: PhoneLookup
+): boolean {
+  if (direction === "inbound") {
+    return phoneMatchesLookup(message.sender_phone, lookup);
+  }
+
+  return getOutboundPhoneCandidates(message).some((candidate) =>
+    phoneMatchesLookup(candidate, lookup)
+  );
+}
+
+function getSyntheticMessageDirection(
+  row: ConversationStatsRow
+): "inbound" | "outbound" {
+  if (!row.last_inbound_at) {
+    return "outbound";
+  }
+
+  if (!row.last_message_at) {
+    return "inbound";
+  }
+
+  return new Date(row.last_inbound_at).getTime() >=
+    new Date(row.last_message_at).getTime()
+    ? "inbound"
+    : "outbound";
+}
+
+function buildSyntheticMessageFromStats(
+  channelId: string,
+  row: ConversationStatsRow
+): MessageRecord | null {
+  const createdAt = row.last_message_at ?? row.last_inbound_at;
+
+  if (!createdAt || !row.last_message_content?.trim()) {
+    return null;
+  }
+
+  const direction = getSyntheticMessageDirection(row);
+
+  return {
+    id: `stats_${channelId}_${row.conversation_phone}_${createdAt}`,
+    channel_id: channelId,
+    organization_id: null,
+    message_id: `stats_${channelId}_${row.conversation_phone}_${createdAt}`,
+    sender_phone: row.conversation_phone,
+    sender_name: row.sender_name,
+    message_type: row.last_message_content.startsWith("Template:")
+      ? "template"
+      : "text",
+    content: row.last_message_content,
+    media_url: null,
+    direction,
+    status: direction === "inbound" ? "received" : "sent",
+    created_at: createdAt,
+    metadata:
+      direction === "outbound"
+        ? {
+            destination: row.conversation_phone,
+            synthetic: true,
+            source: "conversation_stats",
+          }
+        : { synthetic: true, source: "conversation_stats" },
+    error_message: null,
+    is_read: direction === "outbound" || (row.unread_count ?? 0) === 0,
+  };
+}
+
+async function fetchConversationMessagesByDirection(
+  ext: ReturnType<typeof createClient>,
+  channelId: string,
+  direction: "inbound" | "outbound",
+  cursorFilter: string,
+  pageSize: number,
+  lookup: PhoneLookup,
+  selectFields: string
+): Promise<MessageRecord[]> {
+  let scanCursor = cursorFilter;
+  const matched: MessageRecord[] = [];
+  const seen = new Set<string>();
+
+  for (let batchIndex = 0; batchIndex < HISTORY_SCAN_MAX_BATCHES; batchIndex += 1) {
+    const { data, error } = await ext
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("channel_id", channelId)
+      .eq("direction", direction)
+      .lt("created_at", scanCursor)
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_SCAN_BATCH_SIZE);
+
+    if (error) {
+      console.warn(
+        `[external-db-proxy] Failed to read ${direction} history for channel ${channelId}: ${error.message}`
+      );
+      break;
+    }
+
+    const rows = (data ?? []) as MessageRecord[];
+    if (rows.length === 0) break;
+
+    rows.forEach((row) => {
+      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup)) {
+        seen.add(row.id);
+        matched.push(row);
+      }
+    });
+
+    if (matched.length >= pageSize || rows.length < HISTORY_SCAN_BATCH_SIZE) {
+      break;
+    }
+
+    const nextCursor = rows[rows.length - 1]?.created_at;
+    if (!nextCursor || nextCursor === scanCursor) {
+      break;
+    }
+
+    scanCursor = nextCursor;
+  }
+
+  return matched;
+}
+
+async function fetchLatestConversationStatsMessage(
+  _organizationId: string,
+  channelId: string,
+  lookup: PhoneLookup
+): Promise<MessageRecord | null> {
+  const phoneFilter = Array.from(lookup.exact)
+    .map((phone) => `conversation_phone.eq.${phone}`)
+    .join(",");
+
+  if (!phoneFilter) {
+    return null;
+  }
+
+  const { data, error } = await internalServiceRole
+    .from("conversation_stats")
+    .select(
+      "conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name"
+    )
+    .eq("channel_id", channelId)
+    .or(phoneFilter)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return buildSyntheticMessageFromStats(channelId, data as ConversationStatsRow);
+}
+
 /**
  * external-db-proxy
  *
@@ -131,7 +373,7 @@ Deno.serve(async (req: Request) => {
 
 async function handleMessages(
   ext: ReturnType<typeof createClient>,
-  _organizationId: string,
+  organizationId: string,
   body: Record<string, unknown>
 ) {
   const {
@@ -157,57 +399,60 @@ async function handleMessages(
   }
 
   const cursorFilter = cursor || new Date(Date.now() + 120_000).toISOString();
+  const phoneLookup = buildPhoneLookup(phoneVariants);
 
   const essentialSelect =
     "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
-  // Build phone suffix for robust matching (last 8-9 digits)
-  const suffixes = Array.from(
-    new Set(
-      phoneVariants
-        .map((p: string) => p.replace(/\D/g, ""))
-        .filter((p: string) => p.length >= 8)
-        .flatMap((p: string) => [p.slice(-9), p.slice(-8)])
-    )
-  );
-
-  const inboundPhoneFilter = phoneVariants
-    .map((p: string) => `sender_phone.eq.${p}`)
-    .join(",");
-  
-  // For outbound: use both exact match and suffix-based ilike for robustness
-  const outboundFilters = [
-    ...phoneVariants.map((p: string) => `metadata->>destination.eq.${p}`),
-    ...suffixes.map((s: string) => `metadata->>destination.ilike.%${s}`),
-  ];
-  const outboundPhoneFilter = outboundFilters.join(",");
-
-  const [inboundResult, outboundResult] = await Promise.all([
-    ext
-      .from("whatsapp_messages")
-      .select(essentialSelect)
-      .eq("channel_id", channelId)
-      .eq("direction", "inbound")
-      .or(inboundPhoneFilter)
-      .lt("created_at", cursorFilter)
-      .order("created_at", { ascending: false })
-      .limit(pageSize),
-    ext
-      .from("whatsapp_messages")
-      .select(essentialSelect)
-      .eq("channel_id", channelId)
-      .eq("direction", "outbound")
-      .or(outboundPhoneFilter)
-      .lt("created_at", cursorFilter)
-      .order("created_at", { ascending: false })
-      .limit(pageSize),
+  const [inbound, outbound, latestSyntheticMessage] = await Promise.all([
+    fetchConversationMessagesByDirection(
+      ext,
+      channelId,
+      "inbound",
+      cursorFilter,
+      pageSize,
+      phoneLookup,
+      essentialSelect
+    ),
+    fetchConversationMessagesByDirection(
+      ext,
+      channelId,
+      "outbound",
+      cursorFilter,
+      pageSize,
+      phoneLookup,
+      essentialSelect
+    ),
+    cursor
+      ? Promise.resolve(null)
+      : fetchLatestConversationStatsMessage(organizationId, channelId, phoneLookup),
   ]);
 
-  const inbound = inboundResult.data || [];
-  const outbound = outboundResult.data || [];
-
   // Merge, sort, dedup
-  const merged = [...inbound, ...outbound].sort(
+  const merged = [...inbound, ...outbound];
+
+  if (latestSyntheticMessage) {
+    const syntheticTime = new Date(latestSyntheticMessage.created_at).getTime();
+    const newestActualTime = merged.reduce((latest, message) => {
+      const current = new Date(message.created_at).getTime();
+      return Number.isFinite(current) && current > latest ? current : latest;
+    }, 0);
+
+    const hasEquivalentRealMessage = merged.some((message) => {
+      const messageTime = new Date(message.created_at).getTime();
+      return (
+        Math.abs(messageTime - syntheticTime) < 1000 &&
+        message.direction === latestSyntheticMessage.direction &&
+        message.content === latestSyntheticMessage.content
+      );
+    });
+
+    if (!hasEquivalentRealMessage && syntheticTime >= newestActualTime) {
+      merged.push(latestSyntheticMessage);
+    }
+  }
+
+  merged.sort(
     (a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
