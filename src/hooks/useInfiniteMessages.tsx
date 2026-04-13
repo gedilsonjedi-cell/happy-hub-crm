@@ -45,41 +45,11 @@ async function fetchMessagePage(
     pageSize: PAGE_SIZE,
   };
 
-  // Try external first, then internal. If external returns empty, also try internal.
-  let externalOk = false;
-  let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
-
+  // External DB is the single source of truth — no internal fallback
   try {
     result = await fetchExternalMessages(externalParams);
-    externalOk = true;
   } catch (e) {
-    console.error("[fetchMessagePage] External fetch failed:", {
-      channelId,
-      conversationPhone,
-      phoneVariants,
-      error: e,
-    });
-  }
-
-  // If external succeeded but returned no messages, or if it failed, try internal
-  if (!result?.messages?.length) {
-    try {
-      const internalResult = await fetchInternalMessages(internalParams);
-      if (internalResult.messages.length > 0) {
-        console.warn(
-          "[fetchMessagePage] Falling back to internal history because external history was unavailable or empty",
-          {
-            channelId,
-            conversationPhone,
-            phoneVariants,
-            externalOk,
-          }
-        );
-        result = internalResult;
-      }
-    } catch (e) {
-      console.warn("[fetchMessagePage] Internal fetch also failed:", e);
-    }
+    console.error("[fetchMessagePage] External fetch failed:", e);
   }
 
   if (!result?.messages?.length) {
