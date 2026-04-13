@@ -401,7 +401,7 @@ const mapConversationSummaryRows = (
         phone: displayPhone,
         name: resolvedLeadName || row.sender_name || null,
         lastMessage: getSummaryPreviewText(row),
-        lastMessageTime: row.last_message_at || row.updated_at,
+        lastMessageTime: row.last_message_at || row.assignment_updated_at || row.updated_at || new Date().toISOString(),
         lastInboundTime: row.last_inbound_at || null,
         unreadCount: Number(row.unread_count) || 0,
         channelId: row.channel_id,
