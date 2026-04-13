@@ -73,6 +73,16 @@ export function useAttendantStatus() {
       return;
     }
 
+    // Refresh session if JWT is expired
+    try {
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn("Session refresh failed, attempting toggle anyway:", refreshError.message);
+      }
+    } catch (e) {
+      console.warn("Session refresh exception:", e);
+    }
+
     const newStatus = !isOnline;
     setIsOnline(newStatus); // Optimistic update
 
