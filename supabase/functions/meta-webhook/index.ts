@@ -967,62 +967,107 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
   if (relevantGroups.length === 0) return;
 
   const allRelevantIds: string[] = relevantGroups.flatMap(([, ids]) => ids);
-  const { data: messages } = await messageDb
+
+  // Try to find messages in external DB — may fail if background write hasn't completed yet
+  let messages: Record<string, unknown>[] | null = null;
+  const { data: messagesData } = await messageDb
     .from('whatsapp_messages')
     .select('message_id, status, metadata, organization_id, channel_id, error_message')
     .in('message_id', allRelevantIds)
     .eq('direction', 'outbound');
+  messages = messagesData;
 
-  if (!messages || messages.length === 0) return;
+  // Dispatch integration webhooks if we found messages
+  if (messages && messages.length > 0) {
+    const uniqueChannelIds = [...new Set(messages.map(m => m.channel_id).filter(Boolean))];
+    const channelMap = new Map<string, { name: string; phone: string }>();
+    if (uniqueChannelIds.length > 0) {
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('id, name, phone')
+        .in('id', uniqueChannelIds);
+      channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+    }
 
-  // Fetch channel info for enriching webhook payloads
-  const uniqueChannelIds = [...new Set(messages.map(m => m.channel_id).filter(Boolean))];
-  const channelMap = new Map<string, { name: string; phone: string }>();
-  if (uniqueChannelIds.length > 0) {
-    const { data: channels } = await supabase
-      .from('channels')
-      .select('id, name, phone')
-      .in('id', uniqueChannelIds);
-    channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+    const dispatchPromises = messages
+      .filter((msg) => !!msg.organization_id)
+      .map((msg) => {
+        const metadata = (msg.metadata || {}) as Record<string, unknown>;
+        const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
+        return dispatchIntegrationWebhook({
+          organization_id: msg.organization_id as string,
+          event: 'message_updated',
+          data: {
+            message_id: msg.message_id,
+            status: msg.status,
+            channel_id: msg.channel_id,
+            channel_name: chInfo?.name || null,
+            channel_phone: chInfo?.phone || null,
+            destination: metadata.destination || null,
+            campaign_id: metadata.campaignId || null,
+            error_message: msg.error_message || null,
+            provider: 'meta',
+          },
+        });
+      });
+
+    if (dispatchPromises.length > 0) {
+      runInBackground(Promise.allSettled(dispatchPromises));
+    }
   }
 
-  const dispatchPromises = messages
-    .filter((msg) => !!msg.organization_id)
-    .map((msg) => {
+  // ─── CAMPAIGN RECIPIENTS SYNC ──────────────────────────────────────────
+  // Build a map of message_id → campaignId+destination from whatsapp_messages
+  const msgMetaMap = new Map<string, { campaignId: string; destination: string }>();
+  if (messages) {
+    for (const msg of messages) {
       const metadata = (msg.metadata || {}) as Record<string, unknown>;
-      const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
-      return dispatchIntegrationWebhook({
-        organization_id: msg.organization_id as string,
-        event: 'message_updated',
-        data: {
-          message_id: msg.message_id,
-          status: msg.status,
-          channel_id: msg.channel_id,
-          channel_name: chInfo?.name || null,
-          channel_phone: chInfo?.phone || null,
-          destination: metadata.destination || null,
-          campaign_id: metadata.campaignId || null,
-          error_message: msg.error_message || null,
-          provider: 'meta',
-        },
-      });
-    });
+      const campaignId = metadata.campaignId as string | null;
+      const destination = metadata.destination as string | null;
+      if (campaignId && destination && msg.message_id) {
+        msgMetaMap.set(msg.message_id as string, { campaignId, destination });
+      }
+    }
+  }
 
-  if (dispatchPromises.length > 0) {
-    runInBackground(Promise.allSettled(dispatchPromises));
+  // FALLBACK: For messages not found in DB (race condition with background writes),
+  // use recipient_id from the status payload to match campaign_recipients directly.
+  // This handles the case where meta-send writes asynchronously and the status
+  // callback arrives before the DB write completes.
+  const unmatchedStatuses: { msgId: string; recipientPhone: string; status: string }[] = [];
+  for (const s of statuses) {
+    const msgId = s.id as string;
+    const dbStatus = statusMap[s.status as string];
+    if (!msgId || !dbStatus || !relevantStatuses.includes(dbStatus)) continue;
+    if (msgMetaMap.has(msgId)) continue; // Already matched via DB
+    const recipientId = s.recipient_id as string;
+    if (recipientId) {
+      unmatchedStatuses.push({ msgId, recipientPhone: recipientId.replace(/\D/g, ''), status: dbStatus });
+    }
   }
 
   const updatePromises: Promise<unknown>[] = [];
-  for (const msg of messages) {
-    const campaignId = (msg.metadata as Record<string, unknown>)?.campaignId as string | null;
-    const destination = (msg.metadata as Record<string, unknown>)?.destination as string | null;
-    if (!campaignId || !destination) continue;
 
-    const cleanPhone = destination.replace(/\D/g, '');
+  // Update campaign_recipients from matched messages (DB lookup succeeded)
+  for (const [, meta] of msgMetaMap.entries()) {
+    const cleanPhone = meta.destination.replace(/\D/g, '');
     const suffix8 = cleanPhone.slice(-8);
     const suffix11 = cleanPhone.slice(-11);
+    const campaignId = meta.campaignId;
 
-    const recipientStatus = msg.status;
+    // Find the actual status for this message from the grouped map
+    let recipientStatus: string | null = null;
+    for (const [status, ids] of grouped.entries()) {
+      if (ids.some(id => {
+        const m = messages?.find(x => (x.message_id as string) === id);
+        return m && (m.metadata as Record<string, unknown>)?.campaignId === campaignId &&
+               (m.metadata as Record<string, unknown>)?.destination === meta.destination;
+      })) {
+        recipientStatus = status;
+        break;
+      }
+    }
+    if (!recipientStatus || !relevantStatuses.includes(recipientStatus)) continue;
 
     if (recipientStatus === 'delivered') {
       updatePromises.push(
@@ -1047,7 +1092,10 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
         .or(`phone.like.%${suffix8},phone.like.%${suffix11}`)
       );
     } else if (recipientStatus === 'failed') {
-      const errorDetails = statuses.find(s => s.id === msg.message_id);
+      const errorDetails = statuses.find(s => {
+        const m = messages?.find(x => (x.metadata as Record<string, unknown>)?.campaignId === campaignId);
+        return m && s.id === (m.message_id as string);
+      });
       const errorMsg = (errorDetails?.errors as Record<string, unknown>[])?.[0]?.title as string || 'Falha reportada pela Meta';
       const errorCode = String((errorDetails?.errors as Record<string, unknown>[])?.[0]?.code || 'WEBHOOK_FAILED');
       updatePromises.push(
@@ -1064,9 +1112,53 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     }
   }
 
+  // FALLBACK: Update campaign_recipients directly using phone from status payload
+  // when the whatsapp_messages record wasn't found (race condition)
+  for (const unmatched of unmatchedStatuses) {
+    const suffix8 = unmatched.recipientPhone.slice(-8);
+    const suffix11 = unmatched.recipientPhone.slice(-11);
+    const phoneFilter = `phone.like.%${suffix8},phone.like.%${suffix11}`;
+
+    if (unmatched.status === 'delivered') {
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'delivered',
+          delivered_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('status', 'sent')
+        .or(phoneFilter)
+      );
+    } else if (unmatched.status === 'read') {
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'read',
+          read_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .in('status', ['sent', 'delivered'])
+        .or(phoneFilter)
+      );
+    } else if (unmatched.status === 'failed') {
+      const errorDetails = statuses.find(s => s.id === unmatched.msgId);
+      const errorMsg = (errorDetails?.errors as Record<string, unknown>[])?.[0]?.title as string || 'Falha reportada pela Meta';
+      const errorCode = String((errorDetails?.errors as Record<string, unknown>[])?.[0]?.code || 'WEBHOOK_FAILED');
+      updatePromises.push(
+        supabase.from('campaign_recipients').update({
+          status: 'failed',
+          error_message: errorMsg,
+          last_error_code: errorCode,
+          updated_at: new Date().toISOString()
+        })
+        .in('status', ['sent', 'delivered'])
+        .or(phoneFilter)
+      );
+    }
+  }
+
   if (updatePromises.length > 0) {
     await Promise.all(updatePromises);
-    console.log(`[Webhook] Updated ${updatePromises.length} campaign_recipients status updates`);
+    console.log(`[Webhook] Updated ${updatePromises.length} campaign_recipients (${unmatchedStatuses.length} via fallback)`);
   }
 }
 
