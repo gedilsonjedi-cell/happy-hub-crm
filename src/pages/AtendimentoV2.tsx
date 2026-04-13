@@ -2040,12 +2040,9 @@ const AtendimentoV2 = () => {
       setAllConversations(prev => {
         const existing = prev.find(isConversationMatch);
         if (existing) {
-          return prev.map(c =>
-            isConversationMatch(c)
-              ? { ...c, lastMessage: msg.content || c.lastMessage, lastMessageTime: msg.createdAt, unreadCount: 0 }
-              : c
-          ).filter(c => !isConversationMatch(c));
-          return [prev.find(isConversationMatch)!, ...rest].filter(Boolean);
+          const updated = { ...existing, lastMessage: msg.content || existing.lastMessage, lastMessageTime: msg.createdAt, unreadCount: 0 };
+          const rest = prev.filter(c => !isConversationMatch(c));
+          return [updated, ...rest];
         } else if (isSentByHuman) {
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
           const cachedLeadMatch = getLeadFromCache(normalizedContactPhone);
