@@ -1676,11 +1676,9 @@ const AtendimentoV2 = () => {
       }));
     }
 
-    // Mark as in_progress when selected
-    if (selectedConversation.status === "pending") {
-      const key = getConversationKey(selectedConversation);
-      updateConversationStatus(key, "in_progress");
-    }
+    // NOTE: Do NOT auto-change status to in_progress just because the user clicked
+    // on the conversation. The conversation should only leave "Novos" when the
+    // attendant actually sends a message (handled by the send flow).
   }, [selectedConversation, infiniteMessages.messages]);
 
   useEffect(() => {
