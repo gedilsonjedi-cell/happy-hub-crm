@@ -2084,22 +2084,43 @@ const AtendimentoV2 = () => {
               else if (newAssignment?.status === "archived") mappedStatus = "archived";
               else if (newAssignment?.status === "resolved") mappedStatus = "resolved";
 
+              // If no lead name from cache, try DB lookup
+              let resolvedName = leadNameFromSystem || contactName;
+              let resolvedTags = leadTagsFromSystem;
+              if (!resolvedName || resolvedName === contactPhone || resolvedName.startsWith('+')) {
+                const phoneSuffix = normalizedContactPhone.slice(-8);
+                const { data: leadMatch } = await supabase
+                  .from('leads')
+                  .select('name, tags')
+                  .eq('organization_id', effectiveOrganizationId)
+                  .or(`phone.ilike.%${phoneSuffix}`)
+                  .limit(1)
+                  .maybeSingle();
+                if (leadMatch?.name) {
+                  resolvedName = leadMatch.name;
+                  resolvedTags = leadMatch.tags || resolvedTags;
+                  // Update cache for future lookups
+                  leadsMapRef.current.byPhone.set(normalizedContactPhone, { name: leadMatch.name, tags: leadMatch.tags });
+                  leadsMapRef.current.bySuffix.set(phoneSuffix, { name: leadMatch.name, tags: leadMatch.tags });
+                }
+              }
+
               setAllConversations(currentPrev => {
                 const alreadyExists = currentPrev.some(isConversationMatch);
                 if (alreadyExists) {
                   return currentPrev.map(c =>
                     isConversationMatch(c)
-                      ? { ...c, id: newAssignment?.id || c.id, sectorId: newAssignment?.sector_id || null, assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName, status: mappedStatus }
+                      ? { ...c, id: newAssignment?.id || c.id, sectorId: newAssignment?.sector_id || null, assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName, status: mappedStatus, name: resolvedName || c.name }
                       : c
                   );
                 }
                 const newConv: Conversation = {
                   id: newAssignment?.id, phone: displayPhone,
-                  name: leadNameFromSystem || contactName, lastMessage: msg.content || "",
+                  name: resolvedName, lastMessage: msg.content || "",
                   lastMessageTime: msg.createdAt, lastInboundTime: msg.createdAt, unreadCount: 1,
                   channelId: msg.channelId, status: mappedStatus,
                   assignedTo: newAssignment?.assigned_to || null, assignedToName: newAssignedToName,
-                  sectorId: newAssignment?.sector_id || null, tags: leadTagsFromSystem || null
+                  sectorId: newAssignment?.sector_id || null, tags: resolvedTags || null
                 };
                 return [newConv, ...currentPrev];
               });
