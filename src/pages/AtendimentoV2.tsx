@@ -3363,9 +3363,28 @@ const AtendimentoV2 = () => {
 
   const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
 
+  const hasOutgoingResponseAfterClient = useCallback((conv: Conversation) => {
+    if (!conv.lastInboundTime || !conv.lastMessageTime) return false;
+
+    return new Date(conv.lastMessageTime).getTime() > new Date(conv.lastInboundTime).getTime();
+  }, []);
+
+  const isHandledWithoutOwnerConversation = useCallback(
+    (conv: Conversation) =>
+      hasClientResponse(conv) &&
+      !hasAssignedAgent(conv) &&
+      conv.status === "pending" &&
+      hasOutgoingResponseAfterClient(conv),
+    [hasClientResponse, hasOutgoingResponseAfterClient]
+  );
+
   const isWaitingQueueConversation = useCallback(
-    (conv: Conversation) => hasClientResponse(conv) && !hasAssignedAgent(conv) && conv.status === "pending",
-    [hasClientResponse]
+    (conv: Conversation) =>
+      hasClientResponse(conv) &&
+      !hasAssignedAgent(conv) &&
+      conv.status === "pending" &&
+      !hasOutgoingResponseAfterClient(conv),
+    [hasClientResponse, hasOutgoingResponseAfterClient]
   );
   
   const isArchivedLikeConversation = useCallback(
@@ -3483,7 +3502,12 @@ const AtendimentoV2 = () => {
           matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
-        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && conv.status !== "archived";
+        else if (filterStatus === "others") {
+          matchesFilter = canSeeOthers && (
+            (conv.assignedTo !== null && conv.assignedTo !== user?.id) ||
+            isHandledWithoutOwnerConversation(conv)
+          ) && conv.status !== "archived";
+        }
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
@@ -3509,7 +3533,12 @@ const AtendimentoV2 = () => {
           matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
-        else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && conv.status !== "archived";
+        else if (filterStatus === "others") {
+          matchesFilter = canSeeOthers && (
+            (conv.assignedTo !== null && conv.assignedTo !== user?.id) ||
+            isHandledWithoutOwnerConversation(conv)
+          ) && conv.status !== "archived";
+        }
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
@@ -3568,7 +3597,9 @@ const AtendimentoV2 = () => {
   // Counts - "Novos" = waiting queue only
   const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId)).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
-  const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
+  const othersCount = canSeeOthers
+    ? visibleConversations.filter(c => (c.assignedTo && c.assignedTo !== user?.id) || isHandledWithoutOwnerConversation(c)).length
+    : 0;
   const unreadCount = visibleConversations.filter(c => {
     if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
     const isMyConversation = c.assignedTo === user?.id;
