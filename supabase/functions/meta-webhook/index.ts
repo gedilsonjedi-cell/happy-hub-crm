@@ -497,11 +497,11 @@ async function handleConversationAssignment(
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
   // Try exact match first, then variants
-  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string } | null = null;
+  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
   const { data: exactMatch } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
+    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
@@ -513,7 +513,7 @@ async function handleConversationAssignment(
     for (const variant of phoneVariants.slice(1)) {
       const { data: variantMatch } = await supabase
         .from('conversation_assignments')
-        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone')
+        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
         .eq('channel_id', channelId)
         .eq('conversation_phone', variant)
         .maybeSingle();
@@ -526,6 +526,16 @@ async function handleConversationAssignment(
   }
 
   if (existing) {
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    // This prevents race conditions with stale webhook events arriving after manual archival
+    const wasRecentlyArchived = existing.status === 'archived' && existing.updated_at &&
+      (Date.now() - new Date(existing.updated_at).getTime()) < 2 * 60 * 1000;
+
+    if (wasRecentlyArchived) {
+      console.log(`[handleConversationAssignment] Skipping reactivation for recently archived conversation: ${normalizedPhone} (archived ${Math.round((Date.now() - new Date(existing.updated_at!).getTime()) / 1000)}s ago)`);
+      return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
+    }
+
     // Trigger update when: archived, missing lead, OR unassigned (e.g. campaign-created assignments)
     const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to;
     if (needsUpdate) {

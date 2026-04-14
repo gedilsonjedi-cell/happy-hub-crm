@@ -454,7 +454,7 @@ async function handleConversationAssignment(
   // PRIMARY LOOKUP: By lead_id + channel_id (most reliable)
   let { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, conversation_phone')
+    .select('id, assigned_to, status, sector_id, conversation_phone, updated_at')
     .eq('lead_id', leadId)
     .eq('channel_id', channelId)
     .single();
@@ -464,7 +464,7 @@ async function handleConversationAssignment(
     const phoneEnd8 = normalizedPhone.slice(-8);
     const { data: phoneMatch } = await supabase
       .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
       .eq('channel_id', channelId)
       .like('conversation_phone', `%${phoneEnd8}`)
       .single();
@@ -491,6 +491,15 @@ async function handleConversationAssignment(
     // EXISTING assignment found
     const wasArchived = existingAssignment.status === 'archived';
     const hasAttendant = !!existingAssignment.assigned_to;
+
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    const wasRecentlyArchived = wasArchived && existingAssignment.updated_at &&
+      (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
+
+    if (wasRecentlyArchived) {
+      console.log(`[Z-API Webhook] Skipping reactivation for recently archived conversation: ${normalizedPhone}`);
+      return;
+    }
     
     // Update conversation_phone to normalized format if different
     if (existingAssignment.conversation_phone !== normalizedPhone) {

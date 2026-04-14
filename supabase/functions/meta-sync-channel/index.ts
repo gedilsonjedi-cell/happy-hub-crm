@@ -201,12 +201,12 @@ Deno.serve(async (req) => {
 
               if (existing) {
                 if (existing.status === 'archived') {
-                  // Reactivate to 'pending' so attendants see it
-                  await supabase
-                    .from('conversation_assignments')
-                    .update({ status: 'pending', updated_at: new Date().toISOString() })
-                    .eq('id', existing.id);
-                  reactivated++;
+                  // DO NOT reactivate archived conversations on read receipts.
+                  // If the lead replies, the inbound webhook handler will reactivate it.
+                  // Reactivating on read receipts caused confusion for attendants who
+                  // manually archived conversations only to see them come back.
+                  console.log(`[meta-sync-channel] Skipping reactivation for archived conversation ${normalizedPhone} (read receipt only)`);
+                  alreadyActive++;
                 } else {
                   alreadyActive++;
                 }

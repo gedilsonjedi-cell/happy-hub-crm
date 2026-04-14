@@ -336,7 +336,7 @@ async function handleConversationAssignment(
   // Look up existing assignment by lead_id + channel_id
   let { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+    .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
     .eq('lead_id', leadId)
     .eq('channel_id', channelId)
     .single();
@@ -346,7 +346,7 @@ async function handleConversationAssignment(
     const phoneEnd8 = normalizedPhone.slice(-8);
     const { data: phoneMatch } = await supabase
       .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
       .eq('channel_id', channelId)
       .like('conversation_phone', `%${phoneEnd8}`)
       .single();
@@ -364,6 +364,15 @@ async function handleConversationAssignment(
 
   if (existingAssignment) {
     const wasArchived = existingAssignment.status === 'archived';
+
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    const wasRecentlyArchived = wasArchived && existingAssignment.updated_at &&
+      (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
+
+    if (wasRecentlyArchived) {
+      console.log(`[Gupshup Webhook] Skipping reactivation for recently archived conversation: ${normalizedPhone}`);
+      return;
+    }
 
     if (existingAssignment.conversation_phone !== normalizedPhone) {
       await supabase
