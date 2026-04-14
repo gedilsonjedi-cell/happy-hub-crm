@@ -365,6 +365,15 @@ async function handleConversationAssignment(
   if (existingAssignment) {
     const wasArchived = existingAssignment.status === 'archived';
 
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    const wasRecentlyArchived = wasArchived && existingAssignment.updated_at &&
+      (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
+
+    if (wasRecentlyArchived) {
+      console.log(`[Gupshup Webhook] Skipping reactivation for recently archived conversation: ${normalizedPhone}`);
+      return;
+    }
+
     if (existingAssignment.conversation_phone !== normalizedPhone) {
       await supabase
         .from('conversation_assignments')

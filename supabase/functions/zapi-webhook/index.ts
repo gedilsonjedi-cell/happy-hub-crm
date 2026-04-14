@@ -491,6 +491,15 @@ async function handleConversationAssignment(
     // EXISTING assignment found
     const wasArchived = existingAssignment.status === 'archived';
     const hasAttendant = !!existingAssignment.assigned_to;
+
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    const wasRecentlyArchived = wasArchived && existingAssignment.updated_at &&
+      (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
+
+    if (wasRecentlyArchived) {
+      console.log(`[Z-API Webhook] Skipping reactivation for recently archived conversation: ${normalizedPhone}`);
+      return;
+    }
     
     // Update conversation_phone to normalized format if different
     if (existingAssignment.conversation_phone !== normalizedPhone) {

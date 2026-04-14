@@ -391,23 +391,31 @@ async function handleInboundMessage(result: Record<string, unknown>) {
     .maybeSingle();
 
   if (existingAssignment) {
-    // Reopen if archived
-    const updates: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
+    // Grace period: don't reactivate conversations archived less than 2 minutes ago
+    const wasRecentlyArchived = existingAssignment.status === 'archived' && existingAssignment.updated_at &&
+      (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
 
-    if (existingAssignment.status === 'archived') {
-      updates.status = 'in_progress';
+    if (wasRecentlyArchived) {
+      console.log('[Infobip-Webhook] Skipping reactivation for recently archived conversation:', senderPhone);
+    } else {
+      // Reopen if archived
+      const updates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingAssignment.status === 'archived') {
+        updates.status = 'in_progress';
+      }
+
+      if (leadId) {
+        updates.lead_id = leadId;
+      }
+
+      await supabase
+        .from('conversation_assignments')
+        .update(updates)
+        .eq('id', existingAssignment.id);
     }
-
-    if (leadId) {
-      updates.lead_id = leadId;
-    }
-
-    await supabase
-      .from('conversation_assignments')
-      .update(updates)
-      .eq('id', existingAssignment.id);
   } else {
     // Create new assignment
     await supabase
