@@ -22,6 +22,7 @@ interface Profile {
   user_id: string;
   display_name: string | null;
   email: string | null;
+  is_online?: boolean;
 }
 
 interface AssignAttendantDialogProps {
