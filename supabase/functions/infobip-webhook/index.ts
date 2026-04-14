@@ -385,7 +385,7 @@ async function handleInboundMessage(result: Record<string, unknown>) {
   // Create or update conversation assignment
   const { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, status, is_bot_handling, bot_paused_until')
+    .select('id, status, is_bot_handling, bot_paused_until, updated_at')
     .eq('channel_id', channel.id)
     .eq('conversation_phone', senderPhone)
     .maybeSingle();

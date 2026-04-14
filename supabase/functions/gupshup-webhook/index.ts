@@ -336,7 +336,7 @@ async function handleConversationAssignment(
   // Look up existing assignment by lead_id + channel_id
   let { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+    .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
     .eq('lead_id', leadId)
     .eq('channel_id', channelId)
     .single();
@@ -346,7 +346,7 @@ async function handleConversationAssignment(
     const phoneEnd8 = normalizedPhone.slice(-8);
     const { data: phoneMatch } = await supabase
       .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id')
+      .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
       .eq('channel_id', channelId)
       .like('conversation_phone', `%${phoneEnd8}`)
       .single();
