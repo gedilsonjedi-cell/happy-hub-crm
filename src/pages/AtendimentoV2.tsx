@@ -2048,7 +2048,7 @@ const AtendimentoV2 = () => {
                   lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
                   lastInboundTime: msg.createdAt,
                   unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
-                  status: newStatus,
+                  status: existing.status,
                   name: leadNameFromSystem || c.name || contactName,
                   tags: leadTagsFromSystem || c.tags
                 }
