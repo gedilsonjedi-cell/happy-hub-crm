@@ -4061,9 +4061,11 @@ const AtendimentoV2 = () => {
                     <Button variant={showSalesAssistant ? "default" : "outline"} size="sm" onClick={() => setShowSalesAssistant(!showSalesAssistant)} className="gap-1 h-8 px-2" title="Assistente de vendas IA">
                       <Sparkles className="w-3 h-3" /><span className="hidden sm:inline">Assistente</span>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setShowAssignAttendantDialog(true)} className="gap-1 h-8 px-2" title="Transferir atendimento">
-                      <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Transferir</span>
-                    </Button>
+                    {(isSuperAdmin || isAdmin || isSupervisor || selectedConversation?.assignedTo === user?.id) && (
+                      <Button variant="outline" size="sm" onClick={() => setShowAssignAttendantDialog(true)} className="gap-1 h-8 px-2" title="Transferir atendimento">
+                        <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Transferir</span>
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
