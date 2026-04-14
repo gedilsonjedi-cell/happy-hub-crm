@@ -2197,15 +2197,26 @@ const AtendimentoV2 = () => {
           });
         } else if (assignment.assignedTo && assignment.channelId) {
           const cachedLeadMatch = getLeadFromCache(normalizedPhone);
-          const matches = cachedLeadMatch ? [cachedLeadMatch] : [];
 
-          let leadName: string | null = null;
-          let leadTags: string[] | null = null;
-          for (const m of matches) {
-            if (!m) continue;
-            if (!leadName && m.name) leadName = m.name;
-            if ((!leadTags || leadTags.length === 0) && m.tags && m.tags.length > 0) leadTags = m.tags;
-            if (leadName && leadTags && leadTags.length > 0) break;
+          let leadName: string | null = cachedLeadMatch?.name || null;
+          let leadTags: string[] | null = cachedLeadMatch?.tags || null;
+
+          // If no name from cache, fetch from DB
+          if (!leadName) {
+            const phoneSuffix = normalizedPhone.slice(-8);
+            const { data: leadMatch } = await supabase
+              .from('leads')
+              .select('name, tags')
+              .eq('organization_id', effectiveOrganizationId)
+              .or(`phone.ilike.%${phoneSuffix}`)
+              .limit(1)
+              .maybeSingle();
+            if (leadMatch?.name) {
+              leadName = leadMatch.name;
+              leadTags = leadMatch.tags || leadTags;
+              leadsMapRef.current.byPhone.set(normalizedPhone, { name: leadMatch.name, tags: leadMatch.tags });
+              leadsMapRef.current.bySuffix.set(phoneSuffix, { name: leadMatch.name, tags: leadMatch.tags });
+            }
           }
 
           const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
