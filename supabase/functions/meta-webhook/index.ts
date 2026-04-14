@@ -527,8 +527,8 @@ async function handleConversationAssignment(
 
   if (existing) {
     // Grace period: don't reactivate conversations archived less than 2 minutes ago
-    // This prevents race conditions with stale webhook events arriving after manual archival
-    const wasRecentlyArchived = existing.status === 'archived' && existing.updated_at &&
+    // Only applies to MANUALLY archived conversations (has assigned_to), not campaign-created ones
+    const wasRecentlyArchived = existing.status === 'archived' && existing.assigned_to && existing.updated_at &&
       (Date.now() - new Date(existing.updated_at).getTime()) < 2 * 60 * 1000;
 
     if (wasRecentlyArchived) {

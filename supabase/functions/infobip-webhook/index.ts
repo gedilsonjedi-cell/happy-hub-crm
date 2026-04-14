@@ -392,7 +392,8 @@ async function handleInboundMessage(result: Record<string, unknown>) {
 
   if (existingAssignment) {
     // Grace period: don't reactivate conversations archived less than 2 minutes ago
-    const wasRecentlyArchived = existingAssignment.status === 'archived' && existingAssignment.updated_at &&
+    // Only applies to MANUALLY archived conversations (has assigned_to), not campaign-created ones
+    const wasRecentlyArchived = existingAssignment.status === 'archived' && existingAssignment.assigned_to && existingAssignment.updated_at &&
       (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
 
     if (wasRecentlyArchived) {
