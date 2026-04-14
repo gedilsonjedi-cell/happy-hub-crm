@@ -345,7 +345,12 @@ export const AssignAttendantDialog = ({
                         )} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{displayName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-sm truncate">{displayName}</p>
+                          <span className={cn("text-[10px] font-medium", attendant.is_online ? "text-green-600" : "text-muted-foreground")}>
+                            {attendant.is_online ? "Online" : "Offline"}
+                          </span>
+                        </div>
                         {attendant.email && attendant.display_name && (
                           <p className="text-xs text-muted-foreground truncate">{attendant.email}</p>
                         )}
