@@ -3709,10 +3709,10 @@ const AtendimentoV2 = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <button 
-                  onClick={() => setFilterStatus("new")} 
+                  onClick={() => { setFilterStatus("new"); setShowArchived(false); }} 
                   className={cn(
                     "text-sm font-medium flex items-center gap-1.5 transition-colors",
-                    filterStatus === "new" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    filterStatus === "new" && !showArchived ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Novos
@@ -3723,10 +3723,10 @@ const AtendimentoV2 = () => {
                   )}
                 </button>
                 <button 
-                  onClick={() => setFilterStatus("unread")} 
+                  onClick={() => { setFilterStatus("unread"); setShowArchived(false); }} 
                   className={cn(
                     "text-sm font-medium flex items-center gap-1.5 transition-colors",
-                    filterStatus === "unread" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    filterStatus === "unread" && !showArchived ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Não Lidos
@@ -3737,20 +3737,20 @@ const AtendimentoV2 = () => {
                   )}
                 </button>
                 <button 
-                  onClick={() => setFilterStatus("mine")} 
+                  onClick={() => { setFilterStatus("mine"); setShowArchived(false); }} 
                   className={cn(
                     "text-sm font-medium transition-colors",
-                    filterStatus === "mine" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    filterStatus === "mine" && !showArchived ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Meus
                 </button>
                 {canSeeOthers && (
                   <button 
-                    onClick={() => setFilterStatus("others")} 
+                    onClick={() => { setFilterStatus("others"); setShowArchived(false); }} 
                     className={cn(
                       "text-sm font-medium transition-colors",
-                      filterStatus === "others" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                      filterStatus === "others" && !showArchived ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     Outros
