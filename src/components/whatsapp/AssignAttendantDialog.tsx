@@ -22,6 +22,7 @@ interface Profile {
   user_id: string;
   display_name: string | null;
   email: string | null;
+  is_online?: boolean;
 }
 
 interface AssignAttendantDialogProps {
@@ -75,10 +76,9 @@ export const AssignAttendantDialog = ({
         .single();
 
       if (userProfile?.organization_id) {
-        // Se a conversa tem um setor, filtrar atendentes por setor
-        // Admins podem transferir para qualquer pessoa, mas a conversa continua no setor original
+        let profilesData: Profile[] = [];
+        
         if (conversationSectorId && !isSuperAdmin && !isAdmin) {
-          // Buscar usuários do setor da conversa
           const { data: sectorUsers } = await supabase
             .from("user_sectors")
             .select("user_id")
@@ -93,25 +93,43 @@ export const AssignAttendantDialog = ({
               .eq("organization_id", userProfile.organization_id)
               .eq("is_active", true)
               .in("user_id", sectorUserIds);
-
-            if (data) {
-              setAttendants(data);
-            }
-          } else {
-            setAttendants([]);
+            if (data) profilesData = data;
           }
         } else {
-          // Admins podem ver todos
           const { data } = await supabase
             .from("profiles")
             .select("user_id, display_name, email")
             .eq("organization_id", userProfile.organization_id)
             .eq("is_active", true);
-
-          if (data) {
-            setAttendants(data);
-          }
+          if (data) profilesData = data;
         }
+
+        // Fetch availability status
+        if (profilesData.length > 0) {
+          const { data: availData } = await supabase
+            .from("attendant_availability")
+            .select("user_id, is_available")
+            .eq("organization_id", userProfile.organization_id);
+          
+          const availMap = new Map<string, boolean>();
+          availData?.forEach(a => availMap.set(a.user_id, a.is_available ?? false));
+          
+          profilesData = profilesData.map(p => ({
+            ...p,
+            is_online: availMap.get(p.user_id) ?? false,
+          }));
+          
+          // Sort: online first, then alphabetical
+          profilesData.sort((a, b) => {
+            if (a.is_online && !b.is_online) return -1;
+            if (!a.is_online && b.is_online) return 1;
+            const nameA = a.display_name || a.email || "";
+            const nameB = b.display_name || b.email || "";
+            return nameA.localeCompare(nameB);
+          });
+        }
+
+        setAttendants(profilesData);
       }
       
       setLoading(false);
@@ -312,16 +330,27 @@ export const AssignAttendantDialog = ({
                           : "hover:bg-muted/50 border border-transparent"
                       )}
                     >
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className={cn(
-                          "text-sm font-medium",
-                          isCurrentAssigned ? "bg-primary text-primary-foreground" : "bg-muted"
-                        )}>
-                          {initials}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div className="relative">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className={cn(
+                            "text-sm font-medium",
+                            isCurrentAssigned ? "bg-primary text-primary-foreground" : "bg-muted"
+                          )}>
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className={cn(
+                          "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background",
+                          attendant.is_online ? "bg-green-500" : "bg-destructive"
+                        )} />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{displayName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-sm truncate">{displayName}</p>
+                          <span className={cn("text-[10px] font-medium", attendant.is_online ? "text-green-600" : "text-muted-foreground")}>
+                            {attendant.is_online ? "Online" : "Offline"}
+                          </span>
+                        </div>
                         {attendant.email && attendant.display_name && (
                           <p className="text-xs text-muted-foreground truncate">{attendant.email}</p>
                         )}
