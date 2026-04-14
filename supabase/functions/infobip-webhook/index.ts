@@ -385,14 +385,15 @@ async function handleInboundMessage(result: Record<string, unknown>) {
   // Create or update conversation assignment
   const { data: existingAssignment } = await supabase
     .from('conversation_assignments')
-    .select('id, status, is_bot_handling, bot_paused_until, updated_at')
+    .select('id, status, is_bot_handling, bot_paused_until, updated_at, assigned_to')
     .eq('channel_id', channel.id)
     .eq('conversation_phone', senderPhone)
     .maybeSingle();
 
   if (existingAssignment) {
     // Grace period: don't reactivate conversations archived less than 2 minutes ago
-    const wasRecentlyArchived = existingAssignment.status === 'archived' && existingAssignment.updated_at &&
+    // Only applies to MANUALLY archived conversations (has assigned_to), not campaign-created ones
+    const wasRecentlyArchived = existingAssignment.status === 'archived' && existingAssignment.assigned_to && existingAssignment.updated_at &&
       (Date.now() - new Date(existingAssignment.updated_at).getTime()) < 2 * 60 * 1000;
 
     if (wasRecentlyArchived) {
