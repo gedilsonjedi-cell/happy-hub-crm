@@ -330,14 +330,20 @@ export const AssignAttendantDialog = ({
                           : "hover:bg-muted/50 border border-transparent"
                       )}
                     >
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className={cn(
-                          "text-sm font-medium",
-                          isCurrentAssigned ? "bg-primary text-primary-foreground" : "bg-muted"
-                        )}>
-                          {initials}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div className="relative">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className={cn(
+                            "text-sm font-medium",
+                            isCurrentAssigned ? "bg-primary text-primary-foreground" : "bg-muted"
+                          )}>
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className={cn(
+                          "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background",
+                          attendant.is_online ? "bg-green-500" : "bg-destructive"
+                        )} />
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate">{displayName}</p>
                         {attendant.email && attendant.display_name && (
