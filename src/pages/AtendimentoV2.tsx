@@ -2032,14 +2032,11 @@ const AtendimentoV2 = () => {
         const existing = prev.find(isConversationMatch);
         if (existing) {
           // Conversation exists in local state — update it directly without DB query
-          let newStatus = existing.status;
+          // If conversation is archived, don't reactivate from the frontend.
+          // The webhook handler will reactivate it server-side and send a
+          // realtime event via onAssignmentChange, which updates the UI.
           if (existing.status === "archived") {
-            newStatus = existing.assignedTo ? "in_progress" : "pending";
-            if (existing.channelId && existing.id) {
-              supabase.from("conversation_assignments")
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq("id", existing.id).then(() => {});
-            }
+            return prev; // skip — let server handle reactivation
           }
           const currentSelectedConvLocal = selectedConversationRef.current;
           const isCurrentConversation =
