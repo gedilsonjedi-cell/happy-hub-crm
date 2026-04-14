@@ -3362,6 +3362,11 @@ const AtendimentoV2 = () => {
   };
 
   const hasClientResponse = useCallback((conv: Conversation) => conv.lastInboundTime !== null, []);
+
+  const isWaitingQueueConversation = useCallback(
+    (conv: Conversation) => hasClientResponse(conv) && !hasAssignedAgent(conv) && conv.status === "pending",
+    [hasClientResponse]
+  );
   
   const isArchivedLikeConversation = useCallback(
     (conv: Conversation) => conv.status === "archived" || (!hasClientResponse(conv) && !conv.assignedTo),
@@ -3473,10 +3478,9 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          // "Novos" = conversations with ACTUAL client response (lastInboundTime), no assignee
-          // For admins: include all unassigned (with or without sector)
-          // For attendants: only truly orphan (no sector) since sectored ones should be auto-distributed
-          matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
+          // "Novos" = waiting queue only: replied conversations still pending and without owner
+          // Anything already in progress must leave this queue immediately
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && conv.status !== "archived";
@@ -3501,8 +3505,8 @@ const AtendimentoV2 = () => {
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
-          // "Novos" = conversations with ACTUAL client response (lastInboundTime), no assignee
-          matchesFilter = hasClientResponse(conv) && !conv.assignedTo && (canSeeOthers || !conv.sectorId);
+          // "Novos" = waiting queue only: replied conversations still pending and without owner
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") matchesFilter = canSeeOthers && conv.assignedTo !== null && conv.assignedTo !== user?.id && conv.status !== "archived";
@@ -3561,9 +3565,8 @@ const AtendimentoV2 = () => {
           return timeB - timeA;
         });
 
-  // Counts - "Novos" = unassigned conversations visible to the user
-  // Admins see all unassigned (with or without sector), attendants see only truly orphan
-  const newCount = visibleConversations.filter(c => hasClientResponse(c) && !c.assignedTo && (canSeeOthers || !c.sectorId)).length;
+  // Counts - "Novos" = waiting queue only
+  const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId)).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers ? visibleConversations.filter(c => c.assignedTo && c.assignedTo !== user?.id).length : 0;
   const unreadCount = visibleConversations.filter(c => {
