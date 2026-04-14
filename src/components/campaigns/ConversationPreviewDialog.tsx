@@ -21,6 +21,8 @@ import {
   Calendar,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchExternalMessages, type ExternalMessageRow } from "@/lib/externalDb";
+import { getPhoneLookupVariants } from "@/lib/phoneThreadKey";
 import { useAuth } from "@/hooks/useAuth";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -99,8 +101,56 @@ export function ConversationPreviewDialog({
       if (!channels || channels.length === 0) return;
 
       const channelIds = channels.map((c) => c.id);
+      const phoneVariants = getPhoneLookupVariants(normalizedPhone);
 
-      // Query inbound messages by sender_phone suffix
+      // Try external DB first for each channel
+      let allExternalMessages: ExternalMessageRow[] = [];
+      for (const chId of channelIds) {
+        try {
+          const result = await fetchExternalMessages({
+            channelId: chId,
+            phoneVariants,
+            cursor: null,
+            pageSize: 200,
+          });
+          if (result.messages.length > 0) {
+            allExternalMessages.push(...result.messages);
+          }
+        } catch (e) {
+          console.warn("[ConversationPreview] External fetch failed for channel", chId, e);
+        }
+      }
+
+      if (allExternalMessages.length > 0) {
+        // De-duplicate and sort chronologically
+        const seen = new Set<string>();
+        const unique = allExternalMessages
+          .filter((m) => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+          })
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        const displayMessages: Message[] = unique.map((msg) => ({
+          id: msg.id,
+          content: msg.content,
+          direction: msg.direction,
+          created_at: msg.created_at,
+          status: msg.status,
+          message_type: msg.message_type,
+          media_url: msg.media_url,
+          channel_id: msg.channel_id,
+        }));
+
+        setMessages(displayMessages);
+        if (displayMessages.length > 0) {
+          setFoundChannelId(displayMessages[displayMessages.length - 1].channel_id);
+        }
+        return;
+      }
+
+      // Fallback: query internal whatsapp_messages table
       const inboundPromise = supabase
         .from("whatsapp_messages")
         .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
@@ -110,7 +160,6 @@ export function ConversationPreviewDialog({
         .order("created_at", { ascending: true })
         .limit(200);
 
-      // Query outbound messages by metadata destination suffix
       const outboundPromise = supabase
         .from("whatsapp_messages")
         .select("id, content, direction, created_at, status, message_type, media_url, channel_id, sender_phone, metadata")
@@ -125,11 +174,9 @@ export function ConversationPreviewDialog({
       if (inboundResult.error) throw inboundResult.error;
       if (outboundResult.error) throw outboundResult.error;
 
-      // Merge and sort by created_at ascending
       const filteredMessages = [...(inboundResult.data || []), ...(outboundResult.data || [])]
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      // Map to remove metadata from the display object but keep content
       const displayMessages = filteredMessages.map((msg) => {
         const msgMetadata = msg.metadata as Record<string, unknown> | null;
         const templateContent = msgMetadata?.templateContent as string | undefined;
@@ -148,10 +195,8 @@ export function ConversationPreviewDialog({
 
       setMessages(displayMessages);
       
-      // Store the channel_id from the most recent message
       if (displayMessages.length > 0) {
-        const lastMessage = displayMessages[displayMessages.length - 1];
-        setFoundChannelId(lastMessage.channel_id);
+        setFoundChannelId(displayMessages[displayMessages.length - 1].channel_id);
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
