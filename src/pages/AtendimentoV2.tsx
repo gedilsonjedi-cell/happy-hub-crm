@@ -2175,13 +2175,34 @@ const AtendimentoV2 = () => {
         return;
       }
 
+      // Pre-fetch lead name if not in cache
+      const cachedLeadMatch = getLeadFromCache(normalizedPhone);
+      let prefetchedLeadName: string | null = cachedLeadMatch?.name || null;
+      let prefetchedLeadTags: string[] | null = cachedLeadMatch?.tags || null;
+
+      if (!prefetchedLeadName) {
+        const phoneSuffix = normalizedPhone.slice(-8);
+        const { data: leadMatch } = await supabase
+          .from('leads')
+          .select('name, tags')
+          .eq('organization_id', effectiveOrganizationId)
+          .or(`phone.ilike.%${phoneSuffix}`)
+          .limit(1)
+          .maybeSingle();
+        if (leadMatch?.name) {
+          prefetchedLeadName = leadMatch.name;
+          prefetchedLeadTags = leadMatch.tags || prefetchedLeadTags;
+          leadsMapRef.current.byPhone.set(normalizedPhone, { name: leadMatch.name, tags: leadMatch.tags });
+          leadsMapRef.current.bySuffix.set(phoneSuffix, { name: leadMatch.name, tags: leadMatch.tags });
+        }
+      }
+
       setAllConversations(prev => {
         let existing = assignment.id ? prev.find(c => c.id === assignment.id) : null;
         if (!existing) {
           existing = prev.find(c => {
             const cNormalized = normalizePhoneNumber(c.phone);
             const assignmentNormalized = normalizePhoneNumber(normalizedPhone);
-            // Match by phone + channel, or by phone alone if assignment has no channel
             return cNormalized === assignmentNormalized && (c.channelId === assignment.channelId || !assignment.channelId);
           });
         }
@@ -2191,41 +2212,18 @@ const AtendimentoV2 = () => {
             const isMatch = c.id === assignment.id ||
               (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && (c.channelId === assignment.channelId || !assignment.channelId));
             if (isMatch) {
-              return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
+              return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus, name: prefetchedLeadName || c.name };
             }
             return c;
           });
         } else if (assignment.assignedTo && assignment.channelId) {
-          const cachedLeadMatch = getLeadFromCache(normalizedPhone);
-
-          let leadName: string | null = cachedLeadMatch?.name || null;
-          let leadTags: string[] | null = cachedLeadMatch?.tags || null;
-
-          // If no name from cache, fetch from DB
-          if (!leadName) {
-            const phoneSuffix = normalizedPhone.slice(-8);
-            const { data: leadMatch } = await supabase
-              .from('leads')
-              .select('name, tags')
-              .eq('organization_id', effectiveOrganizationId)
-              .or(`phone.ilike.%${phoneSuffix}`)
-              .limit(1)
-              .maybeSingle();
-            if (leadMatch?.name) {
-              leadName = leadMatch.name;
-              leadTags = leadMatch.tags || leadTags;
-              leadsMapRef.current.byPhone.set(normalizedPhone, { name: leadMatch.name, tags: leadMatch.tags });
-              leadsMapRef.current.bySuffix.set(phoneSuffix, { name: leadMatch.name, tags: leadMatch.tags });
-            }
-          }
-
           const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
           const newConv: Conversation = {
-            id: assignment.id, phone: displayPhone, name: leadName,
+            id: assignment.id, phone: displayPhone, name: prefetchedLeadName,
             lastMessage: "Template enviado", lastMessageTime: new Date().toISOString(),
             lastInboundTime: null, unreadCount: 0, channelId: assignment.channelId,
             status: mappedStatus, assignedTo: assignment.assignedTo, assignedToName,
-            sectorId: assignment.sectorId || null, tags: leadTags
+            sectorId: assignment.sectorId || null, tags: prefetchedLeadTags
           };
           return [newConv, ...prev];
         }
