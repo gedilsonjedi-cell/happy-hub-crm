@@ -78,7 +78,6 @@ import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
-  fetchInternalMessages,
   fetchBulkPreviews,
   getPreviewTextFromBulkResult,
 } from "@/lib/externalDb";
@@ -2306,16 +2305,7 @@ const AtendimentoV2 = () => {
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
             queryFn: async () => {
-              try {
-                return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
-              } catch (error) {
-                console.error("[prefetchMessages] External prefetch failed:", {
-                  channelId: conv.channelId,
-                  phone: conv.phone,
-                  error,
-                });
-                return fetchInternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
-              }
+              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
             },
             initialPageParam: null as string | null,
             staleTime: 0,
