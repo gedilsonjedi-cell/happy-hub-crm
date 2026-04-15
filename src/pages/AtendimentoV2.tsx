@@ -1040,7 +1040,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id]);
+  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id, conversationRefetchTrigger]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
@@ -4489,7 +4489,7 @@ const AtendimentoV2 = () => {
         onTransferred={() => {
           setBulkSelectMode(false);
           setBulkSelectedKeys(new Set());
-          window.location.reload();
+          setConversationRefetchTrigger(prev => prev + 1);
         }}
       />
     </TopNavLayout>
