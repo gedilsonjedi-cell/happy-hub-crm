@@ -75,26 +75,10 @@ function runInBackground(promise: Promise<unknown>) {
   }
 }
 
-async function dispatchIntegrationWebhook(payload: IntegrationWebhookPayload) {
-  if (!payload.organization_id || !serviceRoleKey) return;
-
-  try {
-    const response = await fetch(webhookDispatcherUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'apikey': serviceRoleKey,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      console.error('[Meta-Send] Webhook dispatch failed:', response.status, await response.text());
-    }
-  } catch (error) {
-    console.error('[Meta-Send] Webhook dispatch error:', error);
-  }
+async function dispatchIntegrationWebhook(_payload: IntegrationWebhookPayload) {
+  // Disabled to reduce Cloud compute consumption — no external webhooks are configured.
+  // Re-enable when integration webhooks (n8n, Make, etc.) are needed.
+  return;
 }
 
 async function sleep(ms: number): Promise<void> {
