@@ -75,10 +75,53 @@ function runInBackground(promise: Promise<unknown>) {
   }
 }
 
-async function dispatchIntegrationWebhook(_payload: IntegrationWebhookPayload) {
-  // Disabled to reduce Cloud compute consumption — no external webhooks are configured.
-  // Re-enable when integration webhooks (n8n, Make, etc.) are needed.
-  return;
+// In-memory cache of orgs that have active webhooks (TTL 5 min)
+const orgWebhookCache = new Map<string, { hasWebhooks: boolean; expiry: number }>();
+
+async function orgHasActiveWebhooks(orgId: string): Promise<boolean> {
+  const now = Date.now();
+  const cached = orgWebhookCache.get(orgId);
+  if (cached && cached.expiry > now) return cached.hasWebhooks;
+
+  try {
+    const { count, error } = await supabase
+      .from('webhooks')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('is_active', true)
+      .limit(1);
+
+    const has = !error && (count ?? 0) > 0;
+    orgWebhookCache.set(orgId, { hasWebhooks: has, expiry: now + 300_000 });
+    return has;
+  } catch {
+    return false;
+  }
+}
+
+async function dispatchIntegrationWebhook(payload: IntegrationWebhookPayload) {
+  if (!payload.organization_id || !serviceRoleKey) return;
+
+  const hasWebhooks = await orgHasActiveWebhooks(payload.organization_id);
+  if (!hasWebhooks) return;
+
+  try {
+    const response = await fetch(webhookDispatcherUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error('[Meta-Send] Webhook dispatch failed:', response.status, await response.text());
+    }
+  } catch (error) {
+    console.error('[Meta-Send] Webhook dispatch error:', error);
+  }
 }
 
 async function sleep(ms: number): Promise<void> {
