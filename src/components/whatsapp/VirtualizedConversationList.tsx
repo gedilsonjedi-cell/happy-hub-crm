@@ -30,6 +30,9 @@ interface VirtualizedConversationListProps {
   formatDate: (date: string) => string;
   getConversationKey: (conv: Conversation) => string;
   height: number;
+  bulkMode?: boolean;
+  bulkSelectedKeys?: Set<string>;
+  onBulkToggle?: (conv: Conversation) => void;
 }
 
 const ITEM_HEIGHT = 100;
@@ -45,6 +48,9 @@ interface RowData {
   getConversationKey: (conv: Conversation) => string;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  bulkMode?: boolean;
+  bulkSelectedKeys?: Set<string>;
+  onBulkToggle?: (conv: Conversation) => void;
 }
 
 const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
@@ -59,6 +65,9 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
     getConversationKey,
     hasMore,
     onLoadMore,
+    bulkMode,
+    bulkSelectedKeys,
+    onBulkToggle,
   } = data;
 
   // Last item is the "load more" button
@@ -82,9 +91,12 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
   const isSelected = convKey === selectedConversationKey;
   const isRecentlyUpdated = recentlyUpdatedConversations.has(convKey);
   const sectorInfo = sectors.find((s) => s.id === conv.sectorId);
+  const isBulkSelected = bulkSelectedKeys?.has(convKey) ?? false;
 
   return (
-    <div style={style} className="px-2 pb-2.5 cursor-pointer" onClick={() => onSelect(conv)}>
+    <div style={style} className="px-2 pb-2.5 cursor-pointer" onClick={() => {
+      if (!bulkMode) onSelect(conv);
+    }}>
       <ConversationItem
         conversation={conv}
         isSelected={isSelected}
@@ -93,6 +105,9 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
         tagColors={tagColors}
         onSelect={onSelect}
         formatDate={formatDate}
+        bulkMode={bulkMode}
+        isBulkSelected={isBulkSelected}
+        onBulkToggle={onBulkToggle}
       />
     </div>
   );
@@ -110,6 +125,9 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
   formatDate,
   getConversationKey,
   height,
+  bulkMode,
+  bulkSelectedKeys,
+  onBulkToggle,
 }: VirtualizedConversationListProps) {
   const itemCount = conversations.length + (hasMore && onLoadMore ? 1 : 0);
 
@@ -124,6 +142,9 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     getConversationKey,
     hasMore,
     onLoadMore,
+    bulkMode,
+    bulkSelectedKeys,
+    onBulkToggle,
   };
 
   const handleItemsRendered = useCallback(
