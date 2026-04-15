@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { clearExternalClient } from "@/lib/externalSupabaseClient";
 import { toast } from "sonner";
 
 export const useAuth = () => {
@@ -10,6 +11,7 @@ export const useAuth = () => {
 
   const signOut = useCallback(async () => {
     try {
+      clearExternalClient();
       const { error } = await supabase.auth.signOut();
       
       if (error) {
