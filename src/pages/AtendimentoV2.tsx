@@ -98,6 +98,8 @@ import { ScheduleMessageDialog } from "@/components/whatsapp/ScheduleMessageDial
 import { ConversationNotesDialog } from "@/components/whatsapp/ConversationNotesDialog";
 import { LeadDetailsDialog } from "@/components/whatsapp/LeadDetailsDialog";
 import { AssignAttendantDialog } from "@/components/whatsapp/AssignAttendantDialog";
+import { BulkTransferDialog } from "@/components/whatsapp/BulkTransferDialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SaleConfirmationDialog } from "@/components/whatsapp/SaleConfirmationDialog";
 import { MediaPreviewDialog } from "@/components/whatsapp/MediaPreviewDialog";
 import { AttendantFilter } from "@/components/whatsapp/AttendantFilter";
