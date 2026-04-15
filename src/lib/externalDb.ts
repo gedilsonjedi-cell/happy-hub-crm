@@ -112,9 +112,10 @@ async function fetchDirectionMessages(
   direction: "inbound" | "outbound",
   cursorFilter: string,
   pageSize: number,
-  lookup: PhoneLookup
+  lookup: PhoneLookup,
+  impersonatedOrgId?: string | null
 ): Promise<ExternalMessageRow[]> {
-  const ext = await getExternalClient();
+  const ext = await getExternalClient(impersonatedOrgId);
 
   const phoneVariantsForFilter = Array.from(lookup.exact);
   const channelIdParts = phoneVariantsForFilter.map((phone) => `channel_id.eq.${phone}`);
