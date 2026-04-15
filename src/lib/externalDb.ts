@@ -168,14 +168,29 @@ export async function fetchExternalMessages(params: {
   phoneVariants: string[];
   cursor: string | null;
   pageSize?: number;
+  impersonatedOrgId?: string | null;
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
   const lookup = buildPhoneLookup(params.phoneVariants);
 
   const [inbound, outbound] = await Promise.all([
-    fetchDirectionMessages(params.channelId, "inbound", cursorFilter, pageSize, lookup),
-    fetchDirectionMessages(params.channelId, "outbound", cursorFilter, pageSize, lookup),
+    fetchDirectionMessages(
+      params.channelId,
+      "inbound",
+      cursorFilter,
+      pageSize,
+      lookup,
+      params.impersonatedOrgId
+    ),
+    fetchDirectionMessages(
+      params.channelId,
+      "outbound",
+      cursorFilter,
+      pageSize,
+      lookup,
+      params.impersonatedOrgId
+    ),
   ]);
 
   const merged = [...inbound, ...outbound].sort(
