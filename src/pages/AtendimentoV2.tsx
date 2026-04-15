@@ -52,7 +52,8 @@ import {
   UserCheck,
   ZoomIn,
   History,
-  Download
+  Download,
+  Users
 } from "lucide-react";
 import { TopNavLayout } from "@/components/layout/TopNavLayout";
 import { Button } from "@/components/ui/button";
@@ -4487,7 +4488,7 @@ const AtendimentoV2 = () => {
         onTransferred={() => {
           setBulkSelectMode(false);
           setBulkSelectedKeys(new Set());
-          fetchConversations();
+          window.location.reload();
         }}
       />
     </TopNavLayout>
