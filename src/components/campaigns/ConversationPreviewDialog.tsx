@@ -72,21 +72,21 @@ export function ConversationPreviewDialog({
       setMessages([]);
       setFoundChannelId(null);
     }
-  }, [open, phone]);
+  }, [open, phone, organizationId]);
 
   const fetchMessages = async () => {
     setLoading(true);
     try {
       // Use provided organizationId or fetch from user profile
       let orgId = organizationId;
-      
+
       if (!orgId) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("organization_id")
           .eq("user_id", user?.id)
           .single();
-        
+
         orgId = profile?.organization_id;
       }
 
@@ -112,6 +112,7 @@ export function ConversationPreviewDialog({
             phoneVariants,
             cursor: null,
             pageSize: 200,
+            impersonatedOrgId: orgId,
           });
           if (result.messages.length > 0) {
             allExternalMessages.push(...result.messages);

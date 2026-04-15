@@ -112,9 +112,10 @@ async function fetchDirectionMessages(
   direction: "inbound" | "outbound",
   cursorFilter: string,
   pageSize: number,
-  lookup: PhoneLookup
+  lookup: PhoneLookup,
+  impersonatedOrgId?: string | null
 ): Promise<ExternalMessageRow[]> {
-  const ext = await getExternalClient();
+  const ext = await getExternalClient(impersonatedOrgId);
 
   const phoneVariantsForFilter = Array.from(lookup.exact);
   const channelIdParts = phoneVariantsForFilter.map((phone) => `channel_id.eq.${phone}`);
@@ -167,14 +168,29 @@ export async function fetchExternalMessages(params: {
   phoneVariants: string[];
   cursor: string | null;
   pageSize?: number;
+  impersonatedOrgId?: string | null;
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
   const lookup = buildPhoneLookup(params.phoneVariants);
 
   const [inbound, outbound] = await Promise.all([
-    fetchDirectionMessages(params.channelId, "inbound", cursorFilter, pageSize, lookup),
-    fetchDirectionMessages(params.channelId, "outbound", cursorFilter, pageSize, lookup),
+    fetchDirectionMessages(
+      params.channelId,
+      "inbound",
+      cursorFilter,
+      pageSize,
+      lookup,
+      params.impersonatedOrgId
+    ),
+    fetchDirectionMessages(
+      params.channelId,
+      "outbound",
+      cursorFilter,
+      pageSize,
+      lookup,
+      params.impersonatedOrgId
+    ),
   ]);
 
   const merged = [...inbound, ...outbound].sort(
@@ -330,11 +346,12 @@ export async function findExternalLeadByPhone(
 // ── Bulk Previews (direct external read) ──────────────────────────
 
 export async function fetchBulkPreviews(
-  conversations: Array<{ channelId: string; phoneVariants: string[] }>
+  conversations: Array<{ channelId: string; phoneVariants: string[] }>,
+  impersonatedOrgId?: string | null
 ): Promise<BulkPreviewResult[]> {
   if (conversations.length === 0) return [];
 
-  const ext = await getExternalClient();
+  const ext = await getExternalClient(impersonatedOrgId);
   const results: BulkPreviewResult[] = [];
 
   // Process in small parallel batches to avoid overwhelming the DB

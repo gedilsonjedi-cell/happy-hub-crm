@@ -5,6 +5,7 @@ import {
   fetchExternalMessages,
   type ExternalMessageRow,
 } from "@/lib/externalDb";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import {
   getCanonicalPhoneThreadKey,
   getPhoneLookupVariants,
@@ -23,7 +24,8 @@ export type MessageRow = ExternalMessageRow;
 async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
-  cursor: string | null
+  cursor: string | null,
+  effectiveOrganizationId: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
 
@@ -32,6 +34,7 @@ async function fetchMessagePage(
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
+    impersonatedOrgId: effectiveOrganizationId,
   };
 
   let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
@@ -67,7 +70,7 @@ async function fetchMessagePage(
  *
  * - Fetches ONLY the 40 most recent messages on mount
  * - `fetchNextPage()` loads the previous 40 (scrolling up)
- * - Uses channel_id + conversation_phone as multi-tenant keys
+ * - Uses organization scope + channel_id + conversation_phone as cache keys
  * - Selects only essential fields to minimize JSON payload
  */
 export function useInfiniteMessages(
@@ -75,11 +78,12 @@ export function useInfiniteMessages(
   conversationPhone: string | null
 ) {
   const queryClient = useQueryClient();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const conversationThreadKey = conversationPhone
     ? getCanonicalPhoneThreadKey(conversationPhone)
     : null;
 
-  const queryKey = ["messages", channelId, conversationThreadKey];
+  const queryKey = ["messages", effectiveOrganizationId, channelId, conversationThreadKey];
 
   const query = useInfiniteQuery<MessagePage, Error>({
     queryKey,
@@ -87,11 +91,12 @@ export function useInfiniteMessages(
       fetchMessagePage(
         channelId!,
         conversationPhone!,
-        pageParam as string | null
+        pageParam as string | null,
+        effectiveOrganizationId
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    enabled: !!channelId && !!conversationPhone,
+    enabled: !!channelId && !!conversationPhone && !!effectiveOrganizationId,
     staleTime: 0,
     gcTime: 60_000,
     refetchOnMount: "always",
