@@ -12,7 +12,15 @@ import {
 } from "@/lib/phoneThreadKey";
 
 const PAGE_SIZE = 25;
-...
+
+export interface MessagePage {
+  messages: MessageRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export type MessageRow = ExternalMessageRow;
+
 async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
@@ -28,7 +36,43 @@ async function fetchMessagePage(
     pageSize: PAGE_SIZE,
     impersonatedOrgId: effectiveOrganizationId,
   };
-...
+
+  let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
+
+  // External DB is the single source of truth
+  try {
+    result = await fetchExternalMessages(externalParams);
+  } catch (e) {
+    console.error("[fetchMessagePage] External fetch failed:", e);
+  }
+
+  // Fallback to conversation_stats synthetic message if external is empty
+  if (!result?.messages?.length) {
+    try {
+      const statsResult = await fetchConversationStatsMessages(externalParams);
+      if (statsResult.messages.length > 0) {
+        result = statsResult;
+      }
+    } catch (e) {
+      console.warn("[fetchMessagePage] Stats fallback failed:", e);
+    }
+  }
+
+  return {
+    messages: result?.messages ?? [],
+    nextCursor: result?.nextCursor ?? null,
+    hasMore: result?.hasMore ?? false,
+  };
+}
+
+/**
+ * useInfiniteMessages — Paginated message loading for the chat panel.
+ *
+ * - Fetches ONLY the 40 most recent messages on mount
+ * - `fetchNextPage()` loads the previous 40 (scrolling up)
+ * - Uses organization scope + channel_id + conversation_phone as cache keys
+ * - Selects only essential fields to minimize JSON payload
+ */
 export function useInfiniteMessages(
   channelId: string | null,
   conversationPhone: string | null

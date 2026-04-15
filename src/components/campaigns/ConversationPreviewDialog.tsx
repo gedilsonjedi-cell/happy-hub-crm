@@ -73,7 +73,40 @@ export function ConversationPreviewDialog({
       setFoundChannelId(null);
     }
   }, [open, phone, organizationId]);
-...
+
+  const fetchMessages = async () => {
+    setLoading(true);
+    try {
+      // Use provided organizationId or fetch from user profile
+      let orgId = organizationId;
+
+      if (!orgId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("user_id", user?.id)
+          .single();
+
+        orgId = profile?.organization_id;
+      }
+
+      if (!orgId) return;
+
+      // Get channels for this organization
+      const { data: channels } = await supabase
+        .from("channels")
+        .select("id")
+        .eq("organization_id", orgId);
+
+      if (!channels || channels.length === 0) return;
+
+      const channelIds = channels.map((c) => c.id);
+      const phoneVariants = getPhoneLookupVariants(normalizedPhone);
+
+      // Try external DB first for each channel
+      let allExternalMessages: ExternalMessageRow[] = [];
+      for (const chId of channelIds) {
+        try {
           const result = await fetchExternalMessages({
             channelId: chId,
             phoneVariants,
