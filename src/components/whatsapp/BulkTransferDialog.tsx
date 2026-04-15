@@ -44,8 +44,7 @@ export const BulkTransferDialog = ({
   selectedConversations,
   onTransferred,
 }: BulkTransferDialogProps) => {
-  const { user } = useAuth();
-  const { isSuperAdmin, isAdmin } = useUserRole();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [attendants, setAttendants] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [transferring, setTransferring] = useState(false);
