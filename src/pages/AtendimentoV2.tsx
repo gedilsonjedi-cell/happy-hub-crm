@@ -3810,6 +3810,18 @@ const AtendimentoV2 = () => {
                       <Archive className="w-4 h-4 mr-2" />
                       {showArchived ? "Ocultar arquivados" : "Ver arquivados"}
                     </DropdownMenuItem>
+                    {canSeeOthers && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => {
+                          setBulkSelectMode(!bulkSelectMode);
+                          setBulkSelectedKeys(new Set());
+                        }}>
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          {bulkSelectMode ? "Sair da seleção em lote" : "Selecionar em lote"}
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -3988,9 +4000,56 @@ const AtendimentoV2 = () => {
             </div>
           )}
 
-          {/* Conversations list - virtualized for high-scale performance */}
           {!showArchived && (
-            <div ref={conversationListContainerRef} className="flex-1 min-h-0 overflow-hidden">
+            <div ref={conversationListContainerRef} className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {/* Bulk selection bar */}
+              {bulkSelectMode && (
+                <div className="px-3 py-2 border-b border-border bg-muted/30 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={bulkSelectedKeys.size > 0 && bulkSelectedKeys.size === filteredConversations.length}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          const allKeys = new Set(filteredConversations.map(c => getConversationKey(c)));
+                          setBulkSelectedKeys(allKeys);
+                        } else {
+                          setBulkSelectedKeys(new Set());
+                        }
+                      }}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {bulkSelectedKeys.size > 0 
+                        ? `${bulkSelectedKeys.size} selecionada${bulkSelectedKeys.size > 1 ? "s" : ""}`
+                        : "Selecionar todos"
+                      }
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      disabled={bulkSelectedKeys.size === 0}
+                      onClick={() => setShowBulkTransferDialog(true)}
+                    >
+                      <Users className="w-3 h-3" />
+                      Transferir ({bulkSelectedKeys.size})
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setBulkSelectMode(false);
+                        setBulkSelectedKeys(new Set());
+                      }}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {loading ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Carregando...
@@ -4012,7 +4071,18 @@ const AtendimentoV2 = () => {
                   hasMore={!searchTerm && hasMoreConversations}
                   formatDate={formatConversationDate}
                   getConversationKey={getConversationKey}
-                  height={conversationListHeight}
+                  height={conversationListHeight - (bulkSelectMode ? 44 : 0)}
+                  bulkMode={bulkSelectMode}
+                  bulkSelectedKeys={bulkSelectedKeys}
+                  onBulkToggle={(conv) => {
+                    const key = getConversationKey(conv);
+                    setBulkSelectedKeys(prev => {
+                      const next = new Set(prev);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    });
+                  }}
                 />
               )}
             </div>
@@ -4399,6 +4469,27 @@ const AtendimentoV2 = () => {
       />
 
       <MediaPreviewDialog isOpen={mediaPreview.isOpen} onClose={() => setMediaPreview(prev => ({ ...prev, isOpen: false }))} mediaUrl={mediaPreview.url} mediaType={mediaPreview.type} fileName={mediaPreview.fileName} />
+
+      <BulkTransferDialog
+        open={showBulkTransferDialog}
+        onOpenChange={setShowBulkTransferDialog}
+        selectedConversations={
+          filteredConversations
+            .filter(c => bulkSelectedKeys.has(getConversationKey(c)))
+            .map(c => ({
+              id: c.id,
+              phone: c.phone,
+              channelId: c.channelId,
+              assignedTo: c.assignedTo,
+              sectorId: c.sectorId,
+            }))
+        }
+        onTransferred={() => {
+          setBulkSelectMode(false);
+          setBulkSelectedKeys(new Set());
+          fetchConversations();
+        }}
+      />
     </TopNavLayout>
   );
 };
