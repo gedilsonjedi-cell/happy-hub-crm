@@ -520,6 +520,13 @@ const AtendimentoV2 = () => {
   const [conversationOffset, setConversationOffset] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const CONVERSATIONS_PAGE_SIZE = 100;
+  const AUTO_LOAD_PAGES_PER_CONTEXT = 5;
+  const MIN_VISIBLE_CONVERSATIONS_BY_FILTER: Record<FilterStatus, number> = {
+    new: 1,
+    unread: 1,
+    mine: 12,
+    others: 12,
+  };
   
   // Ref to track locally created conversations to prevent realtime duplicates
   const locallyCreatedConversationsRef = useRef<Set<string>>(new Set());
@@ -861,6 +868,7 @@ const AtendimentoV2 = () => {
     bySuffix: Map<string, { id?: string; name: string; tags: string[] | null }>;
   }>({ byPhone: new Map(), bySuffix: new Map() });
   const previewHydrationAttemptsRef = useRef<Map<string, number>>(new Map());
+  const autoLoadAttemptsRef = useRef<Map<string, number>>(new Map());
 
   const fetchConversationsFallback = useCallback(async (channelIds: string[]) => {
     const assignments: Array<{
@@ -1442,6 +1450,22 @@ const AtendimentoV2 = () => {
       
       if (rows?.length) {
         const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+        setConversationStatuses(prev => ({ ...prev, ...mappedData.statuses }));
+
+        mappedData.leadLookups.byPhone.forEach((value, key) => {
+          const existing = leadsMapRef.current.byPhone.get(key);
+          if (!existing || (!existing.name && value.name) || (!existing.tags?.length && value.tags?.length)) {
+            leadsMapRef.current.byPhone.set(key, value);
+          }
+        });
+
+        mappedData.leadLookups.bySuffix.forEach((value, key) => {
+          const existing = leadsMapRef.current.bySuffix.get(key);
+          if (!existing || (!existing.name && value.name) || (!existing.tags?.length && value.tags?.length)) {
+            leadsMapRef.current.bySuffix.set(key, value);
+          }
+        });
+
         // Merge new conversations avoiding duplicates
         setAllConversations(prev => {
           const existingKeys = new Set(prev.map(c => getConversationKey(c)));
@@ -3602,6 +3626,48 @@ const AtendimentoV2 = () => {
     const isOrphanVisibleToMe = !c.assignedTo && (!c.sectorId || sectorIds.includes(c.sectorId));
     return isMyConversation || isOrphanVisibleToMe;
   }).length;
+
+  const autoLoadContextKey = useMemo(
+    () =>
+      [
+        effectiveOrganizationId ?? "no-org",
+        user?.id ?? "no-user",
+        filterStatus,
+        filterByAttendant ?? "all-attendants",
+        filterBySector ?? "all-sectors",
+        showArchived ? "archived" : "active",
+      ].join("|"),
+    [effectiveOrganizationId, user?.id, filterStatus, filterByAttendant, filterBySector, showArchived]
+  );
+
+  useEffect(() => {
+    autoLoadAttemptsRef.current.delete(autoLoadContextKey);
+  }, [autoLoadContextKey]);
+
+  useEffect(() => {
+    if (showArchived || searchTerm.trim().length > 0) return;
+    if (loading || isLoadingMore || !hasMoreConversations || channels.length === 0) return;
+
+    const minimumVisibleConversations = MIN_VISIBLE_CONVERSATIONS_BY_FILTER[filterStatus];
+    if (filteredConversations.length >= minimumVisibleConversations) return;
+
+    const attempts = autoLoadAttemptsRef.current.get(autoLoadContextKey) ?? 0;
+    if (attempts >= AUTO_LOAD_PAGES_PER_CONTEXT) return;
+
+    autoLoadAttemptsRef.current.set(autoLoadContextKey, attempts + 1);
+    loadMoreConversations();
+  }, [
+    autoLoadContextKey,
+    channels.length,
+    filteredConversations.length,
+    filterStatus,
+    hasMoreConversations,
+    isLoadingMore,
+    loadMoreConversations,
+    loading,
+    searchTerm,
+    showArchived,
+  ]);
 
   // 24-hour window — always based on the latest real external message timestamp.
   const toLocalDate = (timestamp: string | null) => {
