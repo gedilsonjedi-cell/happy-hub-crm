@@ -52,55 +52,47 @@ export const BulkTransferDialog = ({
 
   useEffect(() => {
     const fetchAttendants = async () => {
-      if (!open) return;
+      if (!open || !effectiveOrganizationId) return;
       setLoading(true);
       setSelectedAttendant(null);
 
-      const { data: userProfile } = await supabase
+      const { data } = await supabase
         .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user?.id || "")
-        .single();
+        .select("user_id, display_name, email")
+        .eq("organization_id", effectiveOrganizationId)
+        .eq("is_active", true);
 
-      if (userProfile?.organization_id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("user_id, display_name, email")
-          .eq("organization_id", userProfile.organization_id)
-          .eq("is_active", true);
+      let profilesData: Profile[] = data || [];
 
-        let profilesData: Profile[] = data || [];
+      if (profilesData.length > 0) {
+        const { data: availData } = await supabase
+          .from("attendant_availability")
+          .select("user_id, is_available")
+          .eq("organization_id", effectiveOrganizationId);
 
-        if (profilesData.length > 0) {
-          const { data: availData } = await supabase
-            .from("attendant_availability")
-            .select("user_id, is_available")
-            .eq("organization_id", userProfile.organization_id);
+        const availMap = new Map<string, boolean>();
+        availData?.forEach(a => availMap.set(a.user_id, a.is_available ?? false));
 
-          const availMap = new Map<string, boolean>();
-          availData?.forEach(a => availMap.set(a.user_id, a.is_available ?? false));
+        profilesData = profilesData.map(p => ({
+          ...p,
+          is_online: availMap.get(p.user_id) ?? false,
+        }));
 
-          profilesData = profilesData.map(p => ({
-            ...p,
-            is_online: availMap.get(p.user_id) ?? false,
-          }));
-
-          profilesData.sort((a, b) => {
-            if (a.is_online && !b.is_online) return -1;
-            if (!a.is_online && b.is_online) return 1;
-            const nameA = a.display_name || a.email || "";
-            const nameB = b.display_name || b.email || "";
-            return nameA.localeCompare(nameB);
-          });
-        }
-
-        setAttendants(profilesData);
+        profilesData.sort((a, b) => {
+          if (a.is_online && !b.is_online) return -1;
+          if (!a.is_online && b.is_online) return 1;
+          const nameA = a.display_name || a.email || "";
+          const nameB = b.display_name || b.email || "";
+          return nameA.localeCompare(nameB);
+        });
       }
+
+      setAttendants(profilesData);
       setLoading(false);
     };
 
     fetchAttendants();
-  }, [open, user?.id]);
+  }, [open, effectiveOrganizationId]);
 
   const handleBulkTransfer = async () => {
     if (!selectedAttendant) return;
