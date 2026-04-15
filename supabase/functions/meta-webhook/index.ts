@@ -1110,21 +1110,27 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     .eq('direction', 'outbound');
   messages = messagesData;
 
-  // Dispatch integration webhooks if we found messages
+  // Dispatch integration webhooks only if org has active webhooks
   if (messages && messages.length > 0) {
-    const uniqueChannelIds = [...new Set(messages.map(m => m.channel_id).filter(Boolean))];
-    const channelMap = new Map<string, { name: string; phone: string }>();
-    if (uniqueChannelIds.length > 0) {
-      const { data: channels } = await supabase
-        .from('channels')
-        .select('id, name, phone')
-        .in('id', uniqueChannelIds);
-      channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
-    }
+    // Check if ANY org in this batch has webhooks before doing channel lookup
+    const orgIds = [...new Set(messages.map(m => m.organization_id).filter(Boolean))] as string[];
+    const orgsWithWebhooks = (await Promise.all(
+      orgIds.map(async (oid) => ({ id: oid, has: await orgHasActiveWebhooks(oid) }))
+    )).filter(o => o.has).map(o => o.id);
 
-    const dispatchPromises = messages
-      .filter((msg) => !!msg.organization_id)
-      .map((msg) => {
+    if (orgsWithWebhooks.length > 0) {
+      const msgsToDispatch = messages.filter(m => orgsWithWebhooks.includes(m.organization_id as string));
+      const uniqueChannelIds = [...new Set(msgsToDispatch.map(m => m.channel_id).filter(Boolean))];
+      const channelMap = new Map<string, { name: string; phone: string }>();
+      if (uniqueChannelIds.length > 0) {
+        const { data: channels } = await supabase
+          .from('channels')
+          .select('id, name, phone')
+          .in('id', uniqueChannelIds);
+        channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+      }
+
+      const dispatchPromises = msgsToDispatch.map((msg) => {
         const metadata = (msg.metadata || {}) as Record<string, unknown>;
         const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
         return dispatchIntegrationWebhook({
@@ -1144,8 +1150,9 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
         });
       });
 
-    if (dispatchPromises.length > 0) {
-      runInBackground(Promise.allSettled(dispatchPromises));
+      if (dispatchPromises.length > 0) {
+        runInBackground(Promise.allSettled(dispatchPromises));
+      }
     }
   }
 
