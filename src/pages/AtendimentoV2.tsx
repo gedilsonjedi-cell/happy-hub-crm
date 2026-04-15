@@ -1152,7 +1152,7 @@ const AtendimentoV2 = () => {
       }));
 
       try {
-        const results = await fetchBulkPreviews(bulkRequest);
+        const results = await fetchBulkPreviews(bulkRequest, effectiveOrganizationId);
 
         if (cancelled) return;
 
@@ -1584,6 +1584,7 @@ const AtendimentoV2 = () => {
         phoneVariants,
         cursor: null,
         pageSize: 1,
+        impersonatedOrgId: effectiveOrganizationId,
       });
 
       const latestExternalMessage = latestExternalPage.messages[0] ?? null;
@@ -2298,14 +2299,14 @@ const AtendimentoV2 = () => {
       adjacentConvs.forEach(conv => {
         if (!conv.channelId || !conv.phone) return;
         const threadKey = getCanonicalPhoneThreadKey(conv.phone);
-        const qk = ["messages", conv.channelId, threadKey];
+        const qk = ["messages", effectiveOrganizationId, conv.channelId, threadKey];
         // Only prefetch if not already cached
         if (!prefetchQueryClient.getQueryData(qk)) {
           const phoneVariants = buildMessageLookupVariants(conv.phone.replace(/\D/g, ''));
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
             queryFn: async () => {
-              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25 });
+              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25, impersonatedOrgId: effectiveOrganizationId });
             },
             initialPageParam: null as string | null,
             staleTime: 0,
