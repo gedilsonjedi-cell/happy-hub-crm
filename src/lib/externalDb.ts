@@ -107,6 +107,22 @@ function messageMatchesConversation(
 const SELECT_FIELDS =
   "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function invokeExternalProxy<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("external-db-proxy", {
+    body,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as T;
+}
+
 async function fetchDirectionMessages(
   channelId: string,
   direction: "inbound" | "outbound",
@@ -138,7 +154,7 @@ async function fetchDirectionMessages(
 
     if (error) {
       console.warn(`[externalDb] Direct ${direction} fetch failed:`, error.message);
-      break;
+      throw new Error(error.message);
     }
 
     const rows = (data ?? []) as ExternalMessageRow[];
@@ -174,41 +190,71 @@ export async function fetchExternalMessages(params: {
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
   const lookup = buildPhoneLookup(params.phoneVariants);
 
-  const [inbound, outbound] = await Promise.all([
-    fetchDirectionMessages(
-      params.channelId,
-      "inbound",
-      cursorFilter,
+  try {
+    const [inbound, outbound] = await Promise.all([
+      fetchDirectionMessages(
+        params.channelId,
+        "inbound",
+        cursorFilter,
+        pageSize,
+        lookup,
+        params.impersonatedOrgId
+      ),
+      fetchDirectionMessages(
+        params.channelId,
+        "outbound",
+        cursorFilter,
+        pageSize,
+        lookup,
+        params.impersonatedOrgId
+      ),
+    ]);
+
+    const merged = [...inbound, ...outbound].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    const seen = new Set<string>();
+    const unique = merged.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+
+    const page = unique.slice(0, pageSize);
+    const hasMore = unique.length >= pageSize;
+    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
+
+    return { messages: page, nextCursor, hasMore };
+  } catch (error) {
+    console.warn("[externalDb] Falling back to external-db-proxy for messages:", getErrorMessage(error));
+  }
+
+  try {
+    return await invokeExternalProxy<ExternalMessagePage>({
+      action: "messages",
+      channelId: params.channelId,
+      phoneVariants: params.phoneVariants,
+      cursor: params.cursor,
       pageSize,
-      lookup,
-      params.impersonatedOrgId
-    ),
-    fetchDirectionMessages(
-      params.channelId,
-      "outbound",
-      cursorFilter,
-      pageSize,
-      lookup,
-      params.impersonatedOrgId
-    ),
-  ]);
+      impersonatedOrgId: params.impersonatedOrgId,
+    });
+  } catch (proxyError) {
+    console.error("[externalDb] Proxy fallback failed for messages:", getErrorMessage(proxyError));
+  }
 
-  const merged = [...inbound, ...outbound].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  if (!params.cursor) {
+    try {
+      return await fetchConversationStatsMessages({
+        channelId: params.channelId,
+        phoneVariants: params.phoneVariants,
+      });
+    } catch (statsError) {
+      console.warn("[externalDb] Conversation stats fallback failed:", getErrorMessage(statsError));
+    }
+  }
 
-  const seen = new Set<string>();
-  const unique = merged.filter((m) => {
-    if (seen.has(m.id)) return false;
-    seen.add(m.id);
-    return true;
-  });
-
-  const page = unique.slice(0, pageSize);
-  const hasMore = unique.length >= pageSize;
-  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
-
-  return { messages: page, nextCursor, hasMore };
+  return { messages: [], nextCursor: null, hasMore: false };
 }
 
 // ── Conversation stats fallback (reads from INTERNAL DB) ──────────
@@ -351,61 +397,81 @@ export async function fetchBulkPreviews(
 ): Promise<BulkPreviewResult[]> {
   if (conversations.length === 0) return [];
 
-  const ext = await getExternalClient(impersonatedOrgId);
-  const results: BulkPreviewResult[] = [];
+  try {
+    const ext = await getExternalClient(impersonatedOrgId);
+    const results: BulkPreviewResult[] = [];
 
-  // Process in small parallel batches to avoid overwhelming the DB
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < conversations.length; i += BATCH_SIZE) {
-    const batch = conversations.slice(i, i + BATCH_SIZE);
-    const promises = batch.map(async (conv) => {
-      const lookup = buildPhoneLookup(conv.phoneVariants);
-      const phoneVariantsForFilter = Array.from(lookup.exact);
-      const channelIdParts = phoneVariantsForFilter.map((phone) => `channel_id.eq.${phone}`);
-      channelIdParts.push(`channel_id.eq.${conv.channelId}`);
-      const channelIdFilter = channelIdParts.join(",");
+    // Process in small parallel batches to avoid overwhelming the DB
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < conversations.length; i += BATCH_SIZE) {
+      const batch = conversations.slice(i, i + BATCH_SIZE);
+      const promises = batch.map(async (conv) => {
+        const lookup = buildPhoneLookup(conv.phoneVariants);
+        const phoneVariantsForFilter = Array.from(lookup.exact);
+        const channelIdParts = phoneVariantsForFilter.map((phone) => `channel_id.eq.${phone}`);
+        channelIdParts.push(`channel_id.eq.${conv.channelId}`);
+        const channelIdFilter = channelIdParts.join(",");
 
-      const { data } = await ext
-        .from("whatsapp_messages")
-        .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
-        .or(channelIdFilter)
-        .order("created_at", { ascending: false })
-        .limit(5);
+        const { data, error } = await ext
+          .from("whatsapp_messages")
+          .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
+          .or(channelIdFilter)
+          .order("created_at", { ascending: false })
+          .limit(5);
 
-      const rows = (data ?? []) as ExternalMessageRow[];
-      // Find first matching message
-      for (const row of rows) {
-        const dir = row.direction as "inbound" | "outbound";
-        if (messageMatchesConversation(row, dir, lookup)) {
-          return {
-            channelId: conv.channelId,
-            phone: conv.phoneVariants[0] ?? "",
-            content: row.content,
-            messageType: row.message_type,
-            direction: row.direction,
-            createdAt: row.created_at,
-            senderName: row.sender_name,
-            lastInboundAt: dir === "inbound" ? row.created_at : null,
-          };
+        if (error) {
+          throw new Error(error.message);
         }
-      }
-      return {
-        channelId: conv.channelId,
-        phone: conv.phoneVariants[0] ?? "",
-        content: null,
-        messageType: null,
-        direction: null,
-        createdAt: null,
-        senderName: null,
-        lastInboundAt: null,
-      };
-    });
 
-    const batchResults = await Promise.all(promises);
-    results.push(...batchResults);
+        const rows = (data ?? []) as ExternalMessageRow[];
+        // Find first matching message
+        for (const row of rows) {
+          const dir = row.direction as "inbound" | "outbound";
+          if (messageMatchesConversation(row, dir, lookup)) {
+            return {
+              channelId: conv.channelId,
+              phone: conv.phoneVariants[0] ?? "",
+              content: row.content,
+              messageType: row.message_type,
+              direction: row.direction,
+              createdAt: row.created_at,
+              senderName: row.sender_name,
+              lastInboundAt: dir === "inbound" ? row.created_at : null,
+            };
+          }
+        }
+        return {
+          channelId: conv.channelId,
+          phone: conv.phoneVariants[0] ?? "",
+          content: null,
+          messageType: null,
+          direction: null,
+          createdAt: null,
+          senderName: null,
+          lastInboundAt: null,
+        };
+      });
+
+      const batchResults = await Promise.all(promises);
+      results.push(...batchResults);
+    }
+
+    return results;
+  } catch (error) {
+    console.warn("[externalDb] Falling back to external-db-proxy for bulk previews:", getErrorMessage(error));
+
+    try {
+      const data = await invokeExternalProxy<{ previews: BulkPreviewResult[] }>({
+        action: "bulk_previews",
+        conversations,
+        impersonatedOrgId,
+      });
+      return data.previews ?? [];
+    } catch (proxyError) {
+      console.error("[externalDb] Proxy fallback failed for bulk previews:", getErrorMessage(proxyError));
+      return [];
+    }
   }
-
-  return results;
 }
 
 /**
