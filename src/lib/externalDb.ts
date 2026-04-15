@@ -187,6 +187,20 @@ export async function fetchExternalMessages(params: {
   impersonatedOrgId?: string | null;
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
+
+  try {
+    return await invokeExternalProxy<ExternalMessagePage>({
+      action: "messages",
+      channelId: params.channelId,
+      phoneVariants: params.phoneVariants,
+      cursor: params.cursor,
+      pageSize,
+      impersonatedOrgId: params.impersonatedOrgId,
+    });
+  } catch (proxyError) {
+    console.warn("[externalDb] Proxy fetch failed for messages, trying direct read:", getErrorMessage(proxyError));
+  }
+
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
   const lookup = buildPhoneLookup(params.phoneVariants);
 
@@ -227,20 +241,7 @@ export async function fetchExternalMessages(params: {
 
     return { messages: page, nextCursor, hasMore };
   } catch (error) {
-    console.warn("[externalDb] Falling back to external-db-proxy for messages:", getErrorMessage(error));
-  }
-
-  try {
-    return await invokeExternalProxy<ExternalMessagePage>({
-      action: "messages",
-      channelId: params.channelId,
-      phoneVariants: params.phoneVariants,
-      cursor: params.cursor,
-      pageSize,
-      impersonatedOrgId: params.impersonatedOrgId,
-    });
-  } catch (proxyError) {
-    console.error("[externalDb] Proxy fallback failed for messages:", getErrorMessage(proxyError));
+    console.error("[externalDb] Direct fallback failed for messages:", getErrorMessage(error));
   }
 
   if (!params.cursor) {
@@ -398,6 +399,17 @@ export async function fetchBulkPreviews(
   if (conversations.length === 0) return [];
 
   try {
+    const data = await invokeExternalProxy<{ previews: BulkPreviewResult[] }>({
+      action: "bulk_previews",
+      conversations,
+      impersonatedOrgId,
+    });
+    return data.previews ?? [];
+  } catch (proxyError) {
+    console.warn("[externalDb] Proxy fetch failed for bulk previews, trying direct read:", getErrorMessage(proxyError));
+  }
+
+  try {
     const ext = await getExternalClient(impersonatedOrgId);
     const results: BulkPreviewResult[] = [];
 
@@ -458,19 +470,8 @@ export async function fetchBulkPreviews(
 
     return results;
   } catch (error) {
-    console.warn("[externalDb] Falling back to external-db-proxy for bulk previews:", getErrorMessage(error));
-
-    try {
-      const data = await invokeExternalProxy<{ previews: BulkPreviewResult[] }>({
-        action: "bulk_previews",
-        conversations,
-        impersonatedOrgId,
-      });
-      return data.previews ?? [];
-    } catch (proxyError) {
-      console.error("[externalDb] Proxy fallback failed for bulk previews:", getErrorMessage(proxyError));
-      return [];
-    }
+    console.error("[externalDb] Direct fallback failed for bulk previews:", getErrorMessage(error));
+    return [];
   }
 }
 

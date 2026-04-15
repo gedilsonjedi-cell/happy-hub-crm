@@ -11,8 +11,8 @@ const internalServiceRole = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
 
-const HISTORY_SCAN_BATCH_SIZE = 150;
-const HISTORY_SCAN_MAX_BATCHES = 8;
+const HISTORY_SCAN_BATCH_SIZE = 300;
+const HISTORY_SCAN_MAX_BATCHES = 40;
 
 type MessageRecord = {
   id: string;
@@ -172,27 +172,51 @@ async function fetchConversationMessagesByDirection(
   lookup: PhoneLookup,
   selectFields: string
 ): Promise<MessageRecord[]> {
-  let scanCursor = cursorFilter;
   const matched: MessageRecord[] = [];
   const seen = new Set<string>();
+  const exactConversationIds = Array.from(lookup.exact);
 
-  // channel_id in external DB can be phone number (new) or UUID (legacy)
-  // Build an OR filter to match any phone variant AND the internal UUID as channel_id
-  const phoneVariantsForFilter = Array.from(lookup.exact);
-  if (phoneVariantsForFilter.length === 0 && !channelId) return [];
+  const appendMatches = (rows: MessageRecord[]) => {
+    rows.forEach((row) => {
+      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup)) {
+        seen.add(row.id);
+        matched.push(row);
+      }
+    });
+  };
 
-  const channelIdParts = phoneVariantsForFilter
-    .map((phone) => `channel_id.eq.${phone}`);
-  // Also include the internal UUID so legacy records are found
-  channelIdParts.push(`channel_id.eq.${channelId}`);
-  const channelIdFilter = channelIdParts.join(",");
+  if (exactConversationIds.length > 0) {
+    const { data, error } = await ext
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("organization_id", String(organizationId))
+      .in("channel_id", exactConversationIds)
+      .eq("direction", direction)
+      .lt("created_at", cursorFilter)
+      .order("created_at", { ascending: false })
+      .limit(pageSize + 1);
+
+    if (error) {
+      console.warn(
+        `[external-db-proxy] Failed exact ${direction} lookup for conversation ${exactConversationIds.join(",")}: ${error.message}`
+      );
+    } else {
+      appendMatches((data ?? []) as MessageRecord[]);
+    }
+  }
+
+  if (matched.length >= pageSize + 1 || !channelId) {
+    return matched;
+  }
+
+  let scanCursor = cursorFilter;
 
   for (let batchIndex = 0; batchIndex < HISTORY_SCAN_MAX_BATCHES; batchIndex += 1) {
     const { data, error } = await ext
       .from("whatsapp_messages")
       .select(selectFields)
       .eq("organization_id", String(organizationId))
-      .or(channelIdFilter)
+      .eq("channel_id", String(channelId))
       .eq("direction", direction)
       .lt("created_at", scanCursor)
       .order("created_at", { ascending: false })
@@ -208,14 +232,9 @@ async function fetchConversationMessagesByDirection(
     const rows = (data ?? []) as MessageRecord[];
     if (rows.length === 0) break;
 
-    rows.forEach((row) => {
-      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup)) {
-        seen.add(row.id);
-        matched.push(row);
-      }
-    });
+    appendMatches(rows);
 
-    if (matched.length >= pageSize || rows.length < HISTORY_SCAN_BATCH_SIZE) {
+    if (matched.length >= pageSize + 1 || rows.length < HISTORY_SCAN_BATCH_SIZE) {
       break;
     }
 
@@ -629,30 +648,59 @@ async function handleBulkPreviews(
   const results = await Promise.all(
     batch.map(async (conv) => {
       try {
-          // channel_id in external DB can be phone (new) or UUID (legacy)
-          const phoneNormalized = conv.phoneVariants
-            .map((p: string) => p.replace(/\D/g, ""))
-            .filter(Boolean);
-          
+          const lookup = buildPhoneLookup(conv.phoneVariants);
+          const phoneNormalized = Array.from(lookup.exact);
+
           if (phoneNormalized.length === 0 && !conv.channelId) {
             throw new Error("No valid phone variants");
           }
 
-          const channelIdParts = phoneNormalized
-            .map((p: string) => `channel_id.eq.${p}`);
-          // Also include the internal UUID channel_id for legacy records
-          if (conv.channelId) channelIdParts.push(`channel_id.eq.${conv.channelId}`);
-          const channelIdFilter = channelIdParts.join(",");
+          let latest: MessageRecord | null = null;
 
-          const { data, error } = await ext
-            .from("whatsapp_messages")
-            .select("content, message_type, direction, created_at, sender_name, metadata")
-            .eq("organization_id", String(organizationId))
-            .or(channelIdFilter)
-            .order("created_at", { ascending: false })
-            .limit(1);
+          if (phoneNormalized.length > 0) {
+            const { data, error } = await ext
+              .from("whatsapp_messages")
+              .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
+              .eq("organization_id", String(organizationId))
+              .in("channel_id", phoneNormalized)
+              .order("created_at", { ascending: false })
+              .limit(1);
 
-          const latest = (!error && data?.length) ? data[0] : null;
+            if (!error && data?.length) {
+              latest = data[0] as MessageRecord;
+            }
+          }
+
+          if (!latest && conv.channelId) {
+            let scanCursor = new Date(Date.now() + 120_000).toISOString();
+
+            for (let batchIndex = 0; batchIndex < 8; batchIndex += 1) {
+              const { data, error } = await ext
+                .from("whatsapp_messages")
+                .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
+                .eq("organization_id", String(organizationId))
+                .eq("channel_id", String(conv.channelId))
+                .lt("created_at", scanCursor)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              if (error) break;
+
+              const rows = (data ?? []) as MessageRecord[];
+              if (rows.length === 0) break;
+
+              latest = rows.find((row) => {
+                const rowDirection = row.direction === "outbound" ? "outbound" : "inbound";
+                return messageMatchesConversation(row, rowDirection, lookup);
+              }) ?? null;
+
+              if (latest || rows.length < 50) break;
+
+              const nextCursor = rows[rows.length - 1]?.created_at;
+              if (!nextCursor || nextCursor === scanCursor) break;
+              scanCursor = nextCursor;
+            }
+          }
 
         return {
           channelId: conv.channelId,
