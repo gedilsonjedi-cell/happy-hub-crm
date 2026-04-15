@@ -27,6 +27,7 @@ Deno.serve(async (req: Request) => {
     // Validate internal auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
+      console.error("[external-auth-token] Missing or invalid Authorization header");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers,
@@ -36,30 +37,35 @@ Deno.serve(async (req: Request) => {
     const internalSupabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } =
-      await internalSupabase.auth.getClaims(token);
+    // Use getUser() which is universally available across all supabase-js versions
+    const { data: userData, error: userError } =
+      await internalSupabase.auth.getUser();
 
-    if (claimsError || !claimsData?.claims) {
+    if (userError || !userData?.user) {
+      console.error("[external-auth-token] Auth validation failed:", userError?.message ?? "No user");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers,
       });
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
 
     // Get organization_id from profile
-    const { data: profile } = await internalSupabase
+    const { data: profile, error: profileError } = await internalSupabase
       .from("profiles")
       .select("organization_id")
       .eq("user_id", userId)
       .single();
 
-    if (!profile?.organization_id) {
+    if (profileError || !profile?.organization_id) {
+      console.error("[external-auth-token] Profile lookup failed:", profileError?.message ?? "No org", "userId:", userId);
       return new Response(
         JSON.stringify({ error: "No organization found" }),
         { status: 403, headers }
@@ -88,6 +94,7 @@ Deno.serve(async (req: Request) => {
 
         if (roleData) {
           effectiveOrgId = body.impersonatedOrgId;
+          console.log("[external-auth-token] Super admin impersonating org:", effectiveOrgId);
         }
       }
     } catch {
@@ -100,6 +107,7 @@ Deno.serve(async (req: Request) => {
     const extJwtSecret = Deno.env.get("EXTERNAL_SUPABASE_JWT_SECRET");
 
     if (!extUrl || !extAnonKey || !extJwtSecret) {
+      console.error("[external-auth-token] External DB not configured. URL:", !!extUrl, "AnonKey:", !!extAnonKey, "JWTSecret:", !!extJwtSecret);
       return new Response(
         JSON.stringify({ error: "External DB not configured" }),
         { status: 500, headers }
@@ -123,6 +131,8 @@ Deno.serve(async (req: Request) => {
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .sign(secret);
 
+    console.log("[external-auth-token] Token generated for user:", userId, "org:", effectiveOrgId);
+
     return new Response(
       JSON.stringify({
         token: externalToken,
@@ -134,7 +144,7 @@ Deno.serve(async (req: Request) => {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[external-auth-token]", message);
+    console.error("[external-auth-token] Unhandled error:", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers,
