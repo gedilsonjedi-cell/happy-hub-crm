@@ -164,6 +164,7 @@ function buildSyntheticMessageFromStats(
 
 async function fetchConversationMessagesByDirection(
   ext: ReturnType<typeof createClient>,
+  organizationId: string,
   channelId: string,
   direction: "inbound" | "outbound",
   cursorFilter: string,
@@ -190,6 +191,7 @@ async function fetchConversationMessagesByDirection(
     const { data, error } = await ext
       .from("whatsapp_messages")
       .select(selectFields)
+      .eq("organization_id", String(organizationId))
       .or(channelIdFilter)
       .eq("direction", direction)
       .lt("created_at", scanCursor)
@@ -286,43 +288,33 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Validate JWT via internal Supabase
     const internalSupabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } =
-      await internalSupabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: userData, error: userError } =
+      await internalSupabase.auth.getUser();
+
+    if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
 
-    // ── External DB client ─────────────────────────────────────────
-    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!extUrl || !extKey) {
-      return new Response(
-        JSON.stringify({ error: "External database not configured" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Debug: log key prefix to verify it's the service_role key
-    // Debug logging removed to reduce noise
-
-    const extSupabase = createClient(extUrl, extKey);
+    // ── Parse request body ─────────────────────────────────────────
+    const body = await req.json();
+    const { action, impersonatedOrgId } = body as {
+      action?: string;
+      impersonatedOrgId?: string | null;
+    };
 
     // ── Get user's organization_id for tenant isolation ────────────
     const { data: profile } = await internalSupabase
@@ -341,11 +333,36 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const organizationId = profile.organization_id;
+    let organizationId = String(profile.organization_id);
 
-    // ── Parse request body ─────────────────────────────────────────
-    const body = await req.json();
-    const { action } = body;
+    if (typeof impersonatedOrgId === "string" && impersonatedOrgId.trim()) {
+      const { data: roleData } = await internalServiceRole
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "super_admin")
+        .maybeSingle();
+
+      if (roleData) {
+        organizationId = impersonatedOrgId;
+      }
+    }
+
+    // ── External DB client ─────────────────────────────────────────
+    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!extUrl || !extKey) {
+      return new Response(
+        JSON.stringify({ error: "External database not configured" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const extSupabase = createClient(extUrl, extKey);
 
     switch (action) {
       case "messages": {
@@ -358,7 +375,7 @@ Deno.serve(async (req: Request) => {
         return await handleLeadByPhone(extSupabase, organizationId, body);
       }
       case "bulk_previews": {
-        return await handleBulkPreviews(extSupabase, body);
+        return await handleBulkPreviews(extSupabase, organizationId, body);
       }
       case "upsert_contact": {
         return await handleUpsertContact(extSupabase, body);
@@ -422,6 +439,7 @@ async function handleMessages(
   const [inbound, outbound, latestSyntheticMessage] = await Promise.all([
     fetchConversationMessagesByDirection(
       ext,
+      organizationId,
       channelId,
       "inbound",
       cursorFilter,
@@ -431,6 +449,7 @@ async function handleMessages(
     ),
     fetchConversationMessagesByDirection(
       ext,
+      organizationId,
       channelId,
       "outbound",
       cursorFilter,
@@ -590,6 +609,7 @@ async function handleLeadByPhone(
  */
 async function handleBulkPreviews(
   ext: ReturnType<typeof createClient>,
+  organizationId: string,
   body: Record<string, unknown>
 ) {
   const { conversations } = body as {
@@ -627,6 +647,7 @@ async function handleBulkPreviews(
           const { data, error } = await ext
             .from("whatsapp_messages")
             .select("content, message_type, direction, created_at, sender_name, metadata")
+            .eq("organization_id", String(organizationId))
             .or(channelIdFilter)
             .order("created_at", { ascending: false })
             .limit(1);
