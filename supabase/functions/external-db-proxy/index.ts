@@ -320,7 +320,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Debug: log key prefix to verify it's the service_role key
-    console.log(`[external-db-proxy] extUrl=${extUrl}, keyPrefix=${extKey.substring(0, 30)}...`);
+    // Debug logging removed to reduce noise
 
     const extSupabase = createClient(extUrl, extKey);
 
