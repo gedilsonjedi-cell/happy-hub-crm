@@ -4075,8 +4075,8 @@ const AtendimentoV2 = () => {
                   height={conversationListHeight - (bulkSelectMode ? 44 : 0)}
                   bulkMode={bulkSelectMode}
                   bulkSelectedKeys={bulkSelectedKeys}
-                  onBulkToggle={(conv) => {
-                    const key = getConversationKey(conv);
+                  onBulkToggle={(conv: any) => {
+                    const key = getConversationKey(conv as Conversation);
                     setBulkSelectedKeys(prev => {
                       const next = new Set(prev);
                       if (next.has(key)) next.delete(key);
