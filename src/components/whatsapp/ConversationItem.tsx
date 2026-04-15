@@ -1,6 +1,7 @@
 import React, { memo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MessageSquare, User, UserCheck, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,9 @@ interface ConversationItemProps {
   tagColors: Map<string, string>;
   onSelect: (conv: Conversation) => void;
   formatDate: (date: string) => string;
+  bulkMode?: boolean;
+  isBulkSelected?: boolean;
+  onBulkToggle?: (conv: Conversation) => void;
 }
 
 function getInitials(name: string | null): string {
@@ -46,19 +50,43 @@ export const ConversationItem = memo(function ConversationItem({
   tagColors,
   onSelect,
   formatDate,
+  bulkMode,
+  isBulkSelected,
+  onBulkToggle,
 }: ConversationItemProps) {
   const initials = getInitials(conversation.name);
+
+  const handleClick = () => {
+    if (bulkMode && onBulkToggle) {
+      onBulkToggle(conversation);
+    } else {
+      onSelect(conversation);
+    }
+  };
 
   return (
     <div
       className={cn(
         "w-full p-3 text-left transition-all rounded-lg hover:bg-muted/40",
-        isSelected && "bg-primary/10 border border-primary/20",
-        !isSelected && "border border-transparent",
-        isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary"
+        isSelected && !bulkMode && "bg-primary/10 border border-primary/20",
+        !isSelected && !bulkMode && "border border-transparent",
+        isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary",
+        bulkMode && isBulkSelected && "bg-primary/10 border border-primary/30",
+        bulkMode && !isBulkSelected && "border border-transparent"
       )}
+      onClick={handleClick}
     >
       <div className="flex items-start gap-3">
+        {/* Checkbox for bulk mode */}
+        {bulkMode && (
+          <div className="shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={isBulkSelected}
+              onCheckedChange={() => onBulkToggle?.(conversation)}
+            />
+          </div>
+        )}
+
         {/* Avatar with initials */}
         <div className="relative shrink-0">
           <Avatar className="w-10 h-10">
@@ -168,6 +196,8 @@ export const ConversationItem = memo(function ConversationItem({
     prev.conversation.tags === next.conversation.tags &&
     prev.isSelected === next.isSelected &&
     prev.isRecentlyUpdated === next.isRecentlyUpdated &&
-    prev.sectorName === next.sectorName
+    prev.sectorName === next.sectorName &&
+    prev.bulkMode === next.bulkMode &&
+    prev.isBulkSelected === next.isBulkSelected
   );
 });
