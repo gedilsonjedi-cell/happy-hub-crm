@@ -596,6 +596,9 @@ const AtendimentoV2 = () => {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [isConvertingAudio, setIsConvertingAudio] = useState(false);
   const [pastedImage, setPastedImage] = useState<{ file: File; preview: string } | null>(null);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [bulkSelectedKeys, setBulkSelectedKeys] = useState<Set<string>>(new Set());
+  const [showBulkTransferDialog, setShowBulkTransferDialog] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
