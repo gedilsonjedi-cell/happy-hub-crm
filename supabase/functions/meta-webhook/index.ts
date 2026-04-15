@@ -581,13 +581,14 @@ async function handleConversationAssignment(
         }
       }
 
-      // If still no attendant (no sector or no one available in sector), try global round-robin
-      if (!assignedTo) {
+      // If still no attendant and this is from an ad, try global round-robin
+      // Otherwise (no sector = no department campaign), leave as pending → "Novos"
+      if (!assignedTo && isFromAd) {
         const attendant = await getNextAvailableAttendantGlobal(organizationId);
         if (attendant) {
           assignedTo = attendant.userId;
           newStatus = 'in_progress';
-          console.log(`[handleConversationAssignment] Global round-robin assigned ${normalizedPhone} → ${assignedTo}`);
+          console.log(`[handleConversationAssignment] Global round-robin assigned (ad lead) ${normalizedPhone} → ${assignedTo}`);
         }
       }
 
