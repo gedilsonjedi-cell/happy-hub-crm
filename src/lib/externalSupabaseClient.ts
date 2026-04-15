@@ -1,12 +1,12 @@
 /**
  * External Supabase Client
  *
- * Creates and manages a Supabase client that connects directly to the
- * external database using a short-lived JWT (5 min) obtained from the
+ * Creates and manages Supabase clients that connect directly to the
+ * external database using short-lived JWTs obtained from the
  * external-auth-token edge function.
  *
- * This eliminates the need for the external-db-proxy edge function,
- * reducing Cloud compute costs significantly.
+ * Supports separate cache scopes per effective organization so Super Admin
+ * impersonation never reuses a token from a different client/org.
  */
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,12 +18,17 @@ interface ExternalAuthResponse {
   expiresAt: number; // ms timestamp
 }
 
-let cachedAuth: ExternalAuthResponse | null = null;
-let cachedClient: SupabaseClient | null = null;
-let refreshPromise: Promise<ExternalAuthResponse> | null = null;
+const authCache = new Map<string, ExternalAuthResponse>();
+const clientCache = new Map<string, SupabaseClient>();
+const refreshPromises = new Map<string, Promise<ExternalAuthResponse>>();
 
 // Refresh 60s before expiry
 const REFRESH_BUFFER_MS = 60_000;
+const DEFAULT_SCOPE = "__self__";
+
+function getScopeKey(impersonatedOrgId?: string | null): string {
+  return impersonatedOrgId ?? DEFAULT_SCOPE;
+}
 
 async function fetchExternalAuth(
   impersonatedOrgId?: string | null
@@ -42,35 +47,38 @@ async function fetchExternalAuth(
   return data as ExternalAuthResponse;
 }
 
-function isTokenValid(): boolean {
+function isTokenValid(scopeKey: string): boolean {
+  const cachedAuth = authCache.get(scopeKey);
   if (!cachedAuth) return false;
   return Date.now() < cachedAuth.expiresAt - REFRESH_BUFFER_MS;
 }
 
 /**
  * Get a Supabase client connected to the external database.
- * Automatically handles token refresh and caching.
+ * Automatically handles token refresh and caching per effective org scope.
  */
 export async function getExternalClient(
   impersonatedOrgId?: string | null
 ): Promise<SupabaseClient> {
-  // If token is still valid and client exists, return cached
-  if (isTokenValid() && cachedClient) {
+  const scopeKey = getScopeKey(impersonatedOrgId);
+  const cachedClient = clientCache.get(scopeKey);
+
+  if (cachedClient && isTokenValid(scopeKey)) {
     return cachedClient;
   }
 
-  // Deduplicate concurrent refresh calls
+  let refreshPromise = refreshPromises.get(scopeKey);
   if (!refreshPromise) {
     refreshPromise = fetchExternalAuth(impersonatedOrgId).finally(() => {
-      refreshPromise = null;
+      refreshPromises.delete(scopeKey);
     });
+    refreshPromises.set(scopeKey, refreshPromise);
   }
 
   const auth = await refreshPromise;
-  cachedAuth = auth;
+  authCache.set(scopeKey, auth);
 
-  // Create a new client with the fresh token
-  cachedClient = createClient(auth.url, auth.anonKey, {
+  const client = createClient(auth.url, auth.anonKey, {
     global: {
       headers: {
         Authorization: `Bearer ${auth.token}`,
@@ -82,14 +90,23 @@ export async function getExternalClient(
     },
   });
 
-  return cachedClient;
+  clientCache.set(scopeKey, client);
+  return client;
 }
 
 /**
- * Invalidate cached client (e.g., on logout or org switch).
+ * Invalidate cached client(s) (e.g., on logout or org switch).
  */
-export function clearExternalClient(): void {
-  cachedAuth = null;
-  cachedClient = null;
-  refreshPromise = null;
+export function clearExternalClient(impersonatedOrgId?: string | null): void {
+  if (impersonatedOrgId) {
+    const scopeKey = getScopeKey(impersonatedOrgId);
+    authCache.delete(scopeKey);
+    clientCache.delete(scopeKey);
+    refreshPromises.delete(scopeKey);
+    return;
+  }
+
+  authCache.clear();
+  clientCache.clear();
+  refreshPromises.clear();
 }
