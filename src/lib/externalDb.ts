@@ -346,11 +346,12 @@ export async function findExternalLeadByPhone(
 // ── Bulk Previews (direct external read) ──────────────────────────
 
 export async function fetchBulkPreviews(
-  conversations: Array<{ channelId: string; phoneVariants: string[] }>
+  conversations: Array<{ channelId: string; phoneVariants: string[] }>,
+  impersonatedOrgId?: string | null
 ): Promise<BulkPreviewResult[]> {
   if (conversations.length === 0) return [];
 
-  const ext = await getExternalClient();
+  const ext = await getExternalClient(impersonatedOrgId);
   const results: BulkPreviewResult[] = [];
 
   // Process in small parallel batches to avoid overwhelming the DB
