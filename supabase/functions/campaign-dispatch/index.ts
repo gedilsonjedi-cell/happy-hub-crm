@@ -112,6 +112,10 @@ async function processCampaignDispatch(
   const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
   const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
   
+  // External Supabase URL for meta-send
+  const externalMetaSendUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || supabaseUrl;
+  const externalMetaSendKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey;
+
   console.log(`[Campaign] Starting campaign ${campaignId} with ${recipients.length} recipients`);
 
   try {
@@ -233,11 +237,11 @@ async function processCampaignDispatch(
           }
         }
 
-        const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
+        const metaSendResponse = await fetch(`${externalMetaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Authorization': `Bearer ${externalMetaSendKey}`,
           },
           body: JSON.stringify({
             channelId: channel.id,

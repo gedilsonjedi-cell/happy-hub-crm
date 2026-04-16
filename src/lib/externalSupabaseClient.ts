@@ -95,6 +95,24 @@ export async function getExternalClient(
 }
 
 /**
+ * Get the external Supabase base URL (e.g. https://<ref>.supabase.co).
+ * Reuses the auth cache when possible.
+ */
+export async function getExternalUrl(
+  impersonatedOrgId?: string | null
+): Promise<string> {
+  const scopeKey = getScopeKey(impersonatedOrgId);
+  const cached = authCache.get(scopeKey);
+  if (cached && isTokenValid(scopeKey)) {
+    return cached.url;
+  }
+  // Force a refresh to get the URL
+  const auth = await fetchExternalAuth(impersonatedOrgId);
+  authCache.set(scopeKey, auth);
+  return auth.url;
+}
+
+/**
  * Invalidate cached client(s) (e.g., on logout or org switch).
  */
 export function clearExternalClient(impersonatedOrgId?: string | null): void {
