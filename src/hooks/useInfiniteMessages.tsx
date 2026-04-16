@@ -25,7 +25,8 @@ async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
   cursor: string | null,
-  effectiveOrganizationId: string | null
+  effectiveOrganizationId: string | null,
+  channelPhone?: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
 
@@ -35,6 +36,7 @@ async function fetchMessagePage(
     cursor,
     pageSize: PAGE_SIZE,
     impersonatedOrgId: effectiveOrganizationId,
+    channelPhone: channelPhone || null,
   };
 
   let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
@@ -75,7 +77,8 @@ async function fetchMessagePage(
  */
 export function useInfiniteMessages(
   channelId: string | null,
-  conversationPhone: string | null
+  conversationPhone: string | null,
+  channelPhone?: string | null
 ) {
   const queryClient = useQueryClient();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
@@ -92,7 +95,8 @@ export function useInfiniteMessages(
         channelId!,
         conversationPhone!,
         pageParam as string | null,
-        effectiveOrganizationId
+        effectiveOrganizationId,
+        channelPhone
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
