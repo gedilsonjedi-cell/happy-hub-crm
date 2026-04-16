@@ -1754,6 +1754,8 @@ const Conexoes = () => {
                         onClick={() => {
                           setShowAccessToken(false);
                           setShowApiToken(false);
+                          setShowAppSecret(false);
+                          setEditableAppSecret(channel.meta_app_secret || "");
                           setShowChannelConfig(channel);
                         }}
                       >
@@ -2070,7 +2072,7 @@ const Conexoes = () => {
                       variant="outline" 
                       size="sm" 
                       className="w-full gap-2 text-xs"
-                      onClick={() => setShowChannelConfig(channel)}
+                      onClick={() => { setEditableAppSecret(channel.meta_app_secret || ""); setShowAppSecret(false); setShowChannelConfig(channel); }}
                     >
                       <Info className="w-3 h-3" />
                       Ver Configuração Webhook
