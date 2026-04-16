@@ -633,9 +633,16 @@ const AtendimentoV2 = () => {
   // ─── Infinite message loading ──────────────────────────────────────────────
   // Replaces the old fetchMessagesAndNotes + setMessages pattern.
   // Loads 40 messages per page; scrolling up fetches older pages automatically.
+  const selectedChannelPhone = useMemo(() => {
+    if (!selectedConversation?.channelId) return null;
+    const ch = channels.find(c => c.id === selectedConversation.channelId);
+    return ch?.phone ?? null;
+  }, [selectedConversation?.channelId, channels]);
+
   const infiniteMessages = useInfiniteMessages(
     selectedConversation?.channelId ?? null,
-    selectedConversation?.phone ?? null
+    selectedConversation?.phone ?? null,
+    selectedChannelPhone
   );
   const messages = useMemo(
     () => infiniteMessages.messages as Message[],
