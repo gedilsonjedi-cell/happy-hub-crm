@@ -92,7 +92,7 @@ interface MetaPhoneNumber {
   customName?: string;
 }
 
-const META_WEBHOOK_URL = `https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/meta-webhook`;
+const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
 
 // Generate a random verify token
 const generateVerifyToken = () => {
