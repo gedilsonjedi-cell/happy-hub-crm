@@ -5,9 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// This function runs continuously as a cron job (every 30 seconds)
-// It processes ALL running campaigns independently
-// NEW: Also processes scheduled retries for completed campaigns
+// This function runs as a cron job every minute.
+// It loops internally for up to ~50 seconds, processing ALL running campaigns
+// with their configured intervals — so campaigns don't depend on the frontend.
+
+const MAX_EXECUTION_MS = 50_000; // 50 seconds max per invocation
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,158 +37,164 @@ Deno.serve(async (req) => {
       
       for (const scheduled of scheduledCampaigns) {
         console.log(`[Processor] Starting scheduled campaign: ${scheduled.name}`)
-        
-        // Update status to running
-        const { error: updateError } = await supabase
+        await supabase
           .from('campaigns')
-          .update({ 
-            status: 'running', 
-            started_at: now,
-            updated_at: now 
-          })
+          .update({ status: 'running', started_at: now, updated_at: now })
           .eq('id', scheduled.id)
-        
-        if (updateError) {
-          console.error(`[Processor] Error starting scheduled campaign ${scheduled.name}:`, updateError)
-        } else {
-          console.log(`[Processor] Successfully started scheduled campaign: ${scheduled.name}`)
-        }
       }
     }
 
-    // Get all running campaigns
-    const { data: runningCampaigns, error: campError } = await supabase
-      .from('campaigns')
-      .select('id, name, min_interval, max_interval, sent_count, total_recipients, updated_at')
-      .eq('status', 'running')
+    // Track per-campaign state across iterations
+    const campaignLastSentAt = new Map<string, number>()
+    let totalBatchesSent = 0
+    let iteration = 0
 
-    if (campError) {
-      console.error('[Processor] Error fetching running campaigns:', campError)
-    }
+    // Main processing loop — runs until time budget is exhausted
+    while (Date.now() - startTime < MAX_EXECUTION_MS) {
+      iteration++
 
-    // NEW: Check for campaigns with pending retries (even if "completed")
-    // This allows us to continue processing retries after initial send is done
-    const { data: campaignsWithRetries, error: retryError } = await supabase
-      .from('campaign_recipients')
-      .select('campaign_id')
-      .eq('status', 'waiting_retry')
-      .lte('next_retry_at', now)
-      .limit(100)
+      // Refresh running campaigns list each iteration (status may change)
+      const { data: runningCampaigns, error: campError } = await supabase
+        .from('campaigns')
+        .select('id, name, min_interval, max_interval, sent_count, total_recipients, status')
+        .eq('status', 'running')
 
-    // Get unique campaign IDs with ready retries
-    const retryCAmpignIds = [...new Set((campaignsWithRetries || []).map(r => r.campaign_id))];
-    
-    // Fetch details for campaigns with retries that aren't already running
-    let retriableCampaigns: any[] = [];
-    if (retryCAmpignIds.length > 0) {
-      const runningIds = (runningCampaigns || []).map(c => c.id);
-      const onlyRetryIds = retryCAmpignIds.filter(id => !runningIds.includes(id));
-      
+      if (campError) {
+        console.error('[Processor] Error fetching campaigns:', campError)
+        break
+      }
+
+      // Also check for campaigns with pending retries
+      const nowIso = new Date().toISOString()
+      const { data: retryRecipients } = await supabase
+        .from('campaign_recipients')
+        .select('campaign_id')
+        .eq('status', 'waiting_retry')
+        .lte('next_retry_at', nowIso)
+        .limit(50)
+
+      const retryIds = [...new Set((retryRecipients || []).map(r => r.campaign_id))]
+      const runningIds = (runningCampaigns || []).map(c => c.id)
+      const onlyRetryIds = retryIds.filter(id => !runningIds.includes(id))
+
+      let retriableCampaigns: any[] = []
       if (onlyRetryIds.length > 0) {
         const { data: retryCamps } = await supabase
           .from('campaigns')
-          .select('id, name, min_interval, max_interval, sent_count, total_recipients, updated_at')
+          .select('id, name, min_interval, max_interval, sent_count, total_recipients, status')
           .in('id', onlyRetryIds)
-          .in('status', ['completed', 'paused']) // Process retries for completed/paused campaigns too
-        
-        retriableCampaigns = retryCamps || [];
-        console.log(`[Processor] Found ${retriableCampaigns.length} campaign(s) with ready retries`)
-      }
-    }
-
-    // Combine all campaigns to process
-    const allCampaigns = [...(runningCampaigns || []), ...retriableCampaigns];
-
-    if (allCampaigns.length === 0) {
-      console.log('[Processor] No campaigns to process')
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'No campaigns to process',
-        processed: 0,
-        scheduledStarted: scheduledCampaigns?.length || 0
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    console.log(`[Processor] Processing ${allCampaigns.length} campaign(s) (${runningCampaigns?.length || 0} running, ${retriableCampaigns.length} with retries)`)
-
-    const results: any[] = []
-
-    // Process each campaign
-    for (const campaign of allCampaigns) {
-      const lastUpdate = new Date(campaign.updated_at).getTime()
-      const nowMs = Date.now()
-      const minWait = (campaign.min_interval || 5) * 1000
-      const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0;
-      
-      // For retry campaigns, process immediately
-      const isRetryOnly = retriableCampaigns.some(c => c.id === campaign.id);
-      
-      // Check if enough time has passed since last update (skip for retry-only and full mode)
-      if (!isRetryOnly && !isFullMode && nowMs - lastUpdate < minWait) {
-        console.log(`[Processor] ${campaign.name}: waiting (${Math.round((nowMs - lastUpdate) / 1000)}s < ${campaign.min_interval}s)`)
-        results.push({ 
-          campaign: campaign.name, 
-          status: 'waiting',
-          waitedSeconds: Math.round((nowMs - lastUpdate) / 1000)
-        })
-        continue
+          .in('status', ['completed', 'paused'])
+        retriableCampaigns = retryCamps || []
       }
 
-      console.log(`[Processor] Processing ${campaign.name}${isRetryOnly ? ' (retries only)' : ''}${isFullMode ? ' (FULL MODE)' : ''}...`)
+      const allCampaigns = [...(runningCampaigns || []), ...retriableCampaigns]
 
-      try {
-        const requestBody = isFullMode
-          ? { campaignId: campaign.id, batchSize: 99, processRetries: isRetryOnly }
-          : { campaignId: campaign.id, processRetries: isRetryOnly }
+      if (allCampaigns.length === 0) {
+        console.log(`[Processor] No campaigns to process, exiting loop after ${iteration} iterations`)
+        break
+      }
 
-        const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
-          body: requestBody
-        })
+      let anyProcessed = false
 
-        if (invokeError) {
-          console.error(`[Processor] Error invoking for ${campaign.name}:`, invokeError)
-          results.push({
-            campaign: campaign.name,
-            status: 'error',
-            error: invokeError.message
-          })
+      for (const campaign of allCampaigns) {
+        // Check time budget
+        if (Date.now() - startTime >= MAX_EXECUTION_MS) break
+
+        const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0
+        const isRetryOnly = retriableCampaigns.some((c: any) => c.id === campaign.id)
+
+        // Calculate wait time for this campaign
+        const lastSent = campaignLastSentAt.get(campaign.id) || 0
+        const elapsed = Date.now() - lastSent
+
+        let requiredWait: number
+        if (isRetryOnly || isFullMode) {
+          requiredWait = isFullMode ? 500 : 0
+        } else {
+          const minInterval = campaign.min_interval || 5
+          const maxInterval = campaign.max_interval || 120
+          // Use random interval within the configured range
+          requiredWait = (Math.floor(Math.random() * (maxInterval - minInterval + 1)) + minInterval) * 1000
+        }
+
+        // Skip if not enough time has passed
+        if (lastSent > 0 && elapsed < requiredWait) {
           continue
         }
 
-        console.log(`[Processor] ${campaign.name}: ${JSON.stringify(result)}`)
+        // Send a batch
+        try {
+          const requestBody = isFullMode
+            ? { campaignId: campaign.id, batchSize: 99, processRetries: isRetryOnly }
+            : { campaignId: campaign.id, processRetries: isRetryOnly }
 
-        results.push({
-          campaign: campaign.name,
-          status: result?.done ? 'completed' : (result?.status || 'sent'),
-          pendingRetries: result?.pendingRetries || 0,
-          ...result
-        })
-      } catch (err) {
-        console.error(`[Processor] Error processing ${campaign.name}:`, err)
-        results.push({
-          campaign: campaign.name,
-          status: 'error',
-          error: String(err)
-        })
+          const { data: result, error: invokeError } = await supabase.functions.invoke('send-campaign-batch', {
+            body: requestBody
+          })
+
+          campaignLastSentAt.set(campaign.id, Date.now())
+
+          if (invokeError) {
+            console.error(`[Processor] Error for ${campaign.name}:`, invokeError.message)
+            continue
+          }
+
+          totalBatchesSent++
+          anyProcessed = true
+
+          if (result?.done) {
+            console.log(`[Processor] ${campaign.name}: COMPLETED`)
+            campaignLastSentAt.delete(campaign.id)
+          } else {
+            const sentInfo = `sent=${result?.sent || 0}, failed=${result?.failed || 0}`
+            if (iteration <= 3 || totalBatchesSent % 10 === 0) {
+              console.log(`[Processor] ${campaign.name}: ${sentInfo} (iter ${iteration})`)
+            }
+          }
+
+          // If waiting_retry status, add extra delay
+          if (result?.status === 'waiting_retry') {
+            campaignLastSentAt.set(campaign.id, Date.now() + 55_000) // wait ~60s
+          }
+        } catch (err) {
+          console.error(`[Processor] Error processing ${campaign.name}:`, err)
+        }
+      }
+
+      // If nothing was ready to process, sleep briefly to avoid tight loop
+      if (!anyProcessed) {
+        // Find minimum time until next campaign is ready
+        let minWait = 5000
+        for (const campaign of allCampaigns) {
+          const lastSent = campaignLastSentAt.get(campaign.id) || 0
+          if (lastSent > 0) {
+            const minInterval = campaign.min_interval || 5
+            const remaining = (minInterval * 1000) - (Date.now() - lastSent)
+            if (remaining > 0 && remaining < minWait) {
+              minWait = remaining
+            }
+          }
+        }
+        // Cap sleep to avoid wasting too much time
+        const sleepTime = Math.min(minWait, 5000)
+        await new Promise(resolve => setTimeout(resolve, sleepTime))
       }
     }
 
     const elapsed = Date.now() - startTime
-    console.log(`[Processor] Cycle complete in ${elapsed}ms`)
+    console.log(`[Processor] Cycle complete: ${totalBatchesSent} batches in ${elapsed}ms (${iteration} iterations)`)
 
     return new Response(JSON.stringify({
       success: true,
-      processed: allCampaigns.length,
-      results,
+      totalBatchesSent,
+      iterations: iteration,
       elapsedMs: elapsed
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error) {
-    console.error('[Processor] Error:', error)
+    console.error('[Processor] Fatal error:', error)
     return new Response(JSON.stringify({ error: String(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
