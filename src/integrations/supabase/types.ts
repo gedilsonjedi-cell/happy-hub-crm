@@ -654,6 +654,7 @@ export type Database = {
           connected: boolean
           created_at: string
           id: string
+          meta_app_secret: string | null
           name: string
           organization_id: string | null
           phone: string
@@ -670,6 +671,7 @@ export type Database = {
           connected?: boolean
           created_at?: string
           id?: string
+          meta_app_secret?: string | null
           name: string
           organization_id?: string | null
           phone: string
@@ -686,6 +688,7 @@ export type Database = {
           connected?: boolean
           created_at?: string
           id?: string
+          meta_app_secret?: string | null
           name?: string
           organization_id?: string | null
           phone?: string
