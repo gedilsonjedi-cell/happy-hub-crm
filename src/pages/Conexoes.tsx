@@ -2843,6 +2843,33 @@ const Conexoes = () => {
                 </div>
               )}
 
+              {/* Meta App Secret */}
+              <div className="space-y-2">
+                <Label className="text-foreground text-sm flex items-center gap-2">
+                  🔐 Meta App Secret
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Essencial para validar a assinatura das mensagens recebidas via webhook.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type={showAppSecret ? "text" : "password"}
+                    placeholder="Cole o App Secret do seu Meta App"
+                    className="flex-1 bg-muted/30 border-border text-xs font-mono"
+                    value={editableAppSecret}
+                    onChange={(e) => setEditableAppSecret(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAppSecret(!showAppSecret)}
+                    className="gap-1.5"
+                  >
+                    {showAppSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
               <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                 <p className="text-sm text-emerald-400">
                   <strong>Após configurar:</strong> Clique em "Verify and Save" no Meta, depois ative o canal aqui.
@@ -2852,6 +2879,30 @@ const Conexoes = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={() => setShowChannelConfig(null)}>
                   Fechar
+                </Button>
+                <Button
+                  disabled={isSavingChannelConfig}
+                  onClick={async () => {
+                    setIsSavingChannelConfig(true);
+                    try {
+                      const { error } = await supabase
+                        .from("channels")
+                        .update({ meta_app_secret: editableAppSecret || null })
+                        .eq("id", showChannelConfig.id);
+                      if (error) throw error;
+                      setChannels(prev => prev.map(ch => ch.id === showChannelConfig.id ? { ...ch, meta_app_secret: editableAppSecret || null } : ch));
+                      toast.success("App Secret salvo com sucesso!");
+                    } catch (err) {
+                      console.error("Erro ao salvar App Secret:", err);
+                      toast.error("Erro ao salvar App Secret");
+                    } finally {
+                      setIsSavingChannelConfig(false);
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  {isSavingChannelConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Salvar
                 </Button>
                 {!showChannelConfig.connected && (
                   <Button 
