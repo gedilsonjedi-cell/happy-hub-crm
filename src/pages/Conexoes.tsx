@@ -2885,11 +2885,26 @@ const Conexoes = () => {
                   onClick={async () => {
                     setIsSavingChannelConfig(true);
                     try {
+                      // Save to internal DB
                       const { error } = await supabase
                         .from("channels")
                         .update({ meta_app_secret: editableAppSecret || null })
                         .eq("id", showChannelConfig.id);
                       if (error) throw error;
+
+                      // Sync to external DB (where meta-webhook reads from)
+                      try {
+                        const { getExternalClient } = await import("@/lib/externalSupabaseClient");
+                        const ext = await getExternalClient();
+                        const phoneDigits = showChannelConfig.phone.replace(/\D/g, "");
+                        await ext
+                          .from("channels")
+                          .update({ meta_app_secret: editableAppSecret || null })
+                          .eq("phone", phoneDigits);
+                      } catch (extErr) {
+                        console.warn("[Conexoes] Failed to sync meta_app_secret to external DB:", extErr);
+                      }
+
                       setChannels(prev => prev.map(ch => ch.id === showChannelConfig.id ? { ...ch, meta_app_secret: editableAppSecret || null } : ch));
                       toast.success("App Secret salvo com sucesso!");
                     } catch (err) {
