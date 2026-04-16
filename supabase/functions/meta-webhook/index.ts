@@ -836,6 +836,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     is_read: false,
     metadata: { 
       timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
+      channel_phone: channel.phone || null,
       ...(referralData ? { referral: referralData } : {}),
     },
   }, true, channel.id as string);

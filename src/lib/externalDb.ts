@@ -92,14 +92,32 @@ function phoneMatchesLookup(candidate: unknown, lookup: PhoneLookup): boolean {
 function messageMatchesConversation(
   message: ExternalMessageRow,
   direction: "inbound" | "outbound",
-  lookup: PhoneLookup
+  lookup: PhoneLookup,
+  channelPhoneLookup?: PhoneLookup | null
 ): boolean {
   if (direction === "inbound") {
-    return phoneMatchesLookup(message.sender_phone, lookup);
+    if (!phoneMatchesLookup(message.sender_phone, lookup)) return false;
+    // Filter by channel phone if available (stored in metadata.channel_phone)
+    if (channelPhoneLookup) {
+      const meta = (message.metadata ?? {}) as Record<string, unknown>;
+      const msgChannelPhone = meta.channel_phone;
+      // If the message has channel_phone metadata, filter by it
+      if (msgChannelPhone) {
+        return phoneMatchesLookup(msgChannelPhone, channelPhoneLookup);
+      }
+      // Legacy messages without channel_phone: include them (can't distinguish)
+    }
+    return true;
   }
   const meta = (message.metadata ?? {}) as Record<string, unknown>;
-  return [meta.destination, meta.to, meta.phone, meta.contact_phone, meta.contactPhone, meta.recipient_phone, meta.recipientPhone]
+  const destinationMatch = [meta.destination, meta.to, meta.phone, meta.contact_phone, meta.contactPhone, meta.recipient_phone, meta.recipientPhone]
     .some((c) => phoneMatchesLookup(c, lookup));
+  if (!destinationMatch) return false;
+  // Filter outbound by sender_phone matching channel phone
+  if (channelPhoneLookup) {
+    return phoneMatchesLookup(message.sender_phone, channelPhoneLookup);
+  }
+  return true;
 }
 
 // ── Direct external DB fetch ──────────────────────────────────────
@@ -129,7 +147,8 @@ async function fetchDirectionMessages(
   cursorFilter: string,
   pageSize: number,
   lookup: PhoneLookup,
-  impersonatedOrgId?: string | null
+  impersonatedOrgId?: string | null,
+  channelPhoneLookup?: PhoneLookup | null
 ): Promise<ExternalMessageRow[]> {
   const ext = await getExternalClient(impersonatedOrgId);
 
@@ -161,7 +180,7 @@ async function fetchDirectionMessages(
     if (rows.length === 0) break;
 
     rows.forEach((row) => {
-      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup)) {
+      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup, channelPhoneLookup)) {
         seen.add(row.id);
         matched.push(row);
       }
@@ -185,11 +204,17 @@ export async function fetchExternalMessages(params: {
   cursor: string | null;
   pageSize?: number;
   impersonatedOrgId?: string | null;
+  channelPhone?: string | null;
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
 
+  // Build channel phone lookup for filtering messages by specific channel
+  const channelPhoneLookup = params.channelPhone
+    ? buildPhoneLookup([params.channelPhone])
+    : null;
+
   try {
-    return await invokeExternalProxy<ExternalMessagePage>({
+    const proxyResult = await invokeExternalProxy<ExternalMessagePage>({
       action: "messages",
       channelId: params.channelId,
       phoneVariants: params.phoneVariants,
@@ -197,6 +222,15 @@ export async function fetchExternalMessages(params: {
       pageSize,
       impersonatedOrgId: params.impersonatedOrgId,
     });
+    // Apply channel phone filtering to proxy results
+    if (channelPhoneLookup && proxyResult.messages.length > 0) {
+      const lookup = buildPhoneLookup(params.phoneVariants);
+      proxyResult.messages = proxyResult.messages.filter((msg) => {
+        const dir = msg.direction as "inbound" | "outbound";
+        return messageMatchesConversation(msg, dir, lookup, channelPhoneLookup);
+      });
+    }
+    return proxyResult;
   } catch (proxyError) {
     console.warn("[externalDb] Proxy fetch failed for messages, trying direct read:", getErrorMessage(proxyError));
   }
@@ -212,7 +246,8 @@ export async function fetchExternalMessages(params: {
         cursorFilter,
         pageSize,
         lookup,
-        params.impersonatedOrgId
+        params.impersonatedOrgId,
+        channelPhoneLookup
       ),
       fetchDirectionMessages(
         params.channelId,
@@ -220,7 +255,8 @@ export async function fetchExternalMessages(params: {
         cursorFilter,
         pageSize,
         lookup,
-        params.impersonatedOrgId
+        params.impersonatedOrgId,
+        channelPhoneLookup
       ),
     ]);
 
