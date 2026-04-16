@@ -9,11 +9,10 @@ const corsHeaders = {
 const META_API_VERSION = 'v22.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
-// Retry configuration for transient errors
+// Retry configuration only for transient infra/provider errors.
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1500;
 const RETRYABLE_ERROR_CODES = [
-  135000, // Generic user error - often transient
   1,      // Internal error
   2,      // Service unavailable
   4,      // Rate limit (but we add exponential backoff)
@@ -877,7 +876,7 @@ Deno.serve(async (req) => {
 
     console.log('Meta API payload:', JSON.stringify(messagePayload));
 
-    // Retry logic for transient errors (especially #135000)
+    // Retry logic for transient infra/provider errors only.
     let lastError: unknown = null;
     let lastResponseData: Record<string, unknown> | null = null;
     let metaResponse: Response | null = null;
