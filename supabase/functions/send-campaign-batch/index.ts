@@ -144,9 +144,9 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // External Supabase URL for meta-send calls
-  const externalUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || supabaseUrl;
-  const externalServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey;
+  // meta-send runs on the internal Supabase (Lovable Cloud)
+  const metaSendUrl = supabaseUrl;
+  const metaSendKey = supabaseServiceKey;
 
   try {
     const { campaignId, batchSize = 1, processRetries = false } = await req.json();
@@ -529,9 +529,9 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const response = await fetch(`${externalUrl}/functions/v1/meta-send`, {
+        const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${externalServiceKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${metaSendKey}` },
           body: JSON.stringify({
             channelId: channel.id, destination: formattedPhone, templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
