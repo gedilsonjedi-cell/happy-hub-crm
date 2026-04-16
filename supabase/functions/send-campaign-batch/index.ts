@@ -529,9 +529,9 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const response = await fetch(`${externalUrl}/functions/v1/meta-send`, {
+        const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${externalServiceKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${metaSendKey}` },
           body: JSON.stringify({
             channelId: channel.id, destination: formattedPhone, templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
