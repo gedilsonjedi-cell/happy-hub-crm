@@ -72,6 +72,7 @@ interface Channel {
   webhook_verify_token: string | null;
   waba_id: string | null;
   api_token: string | null;
+  meta_app_secret: string | null;
   connected: boolean;
   created_at: string;
   user_id: string;
@@ -91,7 +92,7 @@ interface MetaPhoneNumber {
   customName?: string;
 }
 
-const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
+const META_WEBHOOK_URL = `https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/meta-webhook`;
 
 // Generate a random verify token
 const generateVerifyToken = () => {
