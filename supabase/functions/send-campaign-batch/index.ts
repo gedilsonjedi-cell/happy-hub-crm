@@ -33,12 +33,12 @@ const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[
   '130472': { maxRetries: 2, delayHours: [1, 3] },
 };
 
-// Errors caused by Meta throttling - recipient goes back to 'pending' immediately
-// so the normal dispatch cycle picks it up seconds later
-const THROTTLE_ERRORS = ['135000'];
+// No Meta business error should bounce back to pending automatically.
+// This was causing looping recipients and unstable counters.
+const THROTTLE_ERRORS: string[] = [];
 
 const PERMANENT_ERRORS = [
-  '131026', '131042', '131021', '131047', '132001', '132000', '100',
+  '131026', '131042', '131021', '131047', '132001', '132000', '100', '135000',
 ];
 
 function getFirstName(fullName: string | undefined): string {
@@ -258,8 +258,38 @@ Deno.serve(async (req) => {
     const effectiveBatchSize = isFullMode
       ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
       : standardTickSize;
-    const recoverableFailedCodes = ['EXCEPTION', 'UNKNOWN', '135000'];
+    const recoverableFailedCodes = ['EXCEPTION', 'UNKNOWN'];
     const nowIso = () => new Date().toISOString();
+
+    const releaseStaleProcessingRecipients = async () => {
+      const staleBefore = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+
+      const { data, error } = await supabase
+        .from('campaign_recipients')
+        .update({
+          status: 'pending',
+          next_retry_at: null,
+          error_message: null,
+          last_error_code: null,
+          updated_at: nowIso()
+        })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'processing')
+        .lt('updated_at', staleBefore)
+        .select('id');
+
+      if (error) {
+        console.error('[Batch] Error releasing stale processing recipients:', error);
+        return 0;
+      }
+
+      const releasedCount = data?.length || 0;
+      if (releasedCount > 0) {
+        console.warn(`[Batch] Released ${releasedCount} stale processing recipient(s) for campaign ${campaign.name}`);
+      }
+
+      return releasedCount;
+    };
 
     const getCounts = async () => {
       const { data } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
@@ -274,7 +304,7 @@ Deno.serve(async (req) => {
         status,
         sent_count: Number(counts.total_sent) || 0,
         delivered_count: Number(counts.total_delivered) || 0,
-        failed_count: (Number(counts.total_failed) || 0) + (Number(counts.total_waiting_retry) || 0),
+        failed_count: Number(counts.total_failed) || 0,
         completed_at: status === 'completed' ? nowIso() : null,
         updated_at: nowIso()
       }).eq('id', campaignId);
@@ -324,6 +354,7 @@ Deno.serve(async (req) => {
     };
 
     console.log(`[Batch] Campaign ${campaign.name} using tick size ${effectiveBatchSize} (${isFullMode ? 'FULL MODE' : `${standardTickSize} selected channel(s)`})`);
+    await releaseStaleProcessingRecipients();
 
     // ===== ATOMIC CLAIM: Use DB function to prevent race conditions =====
     // This atomically marks recipients as 'processing' so concurrent calls can't grab the same ones
@@ -369,7 +400,7 @@ Deno.serve(async (req) => {
             status: 'running',
             sent: Number(recoveredCounts.total_sent) || 0,
             delivered: Number(recoveredCounts.total_delivered) || 0,
-            failed: (Number(recoveredCounts.total_failed) || 0) + (Number(recoveredCounts.total_waiting_retry) || 0),
+            failed: Number(recoveredCounts.total_failed) || 0,
             total: campaign.total_recipients,
             recoveredFailed,
             pendingRetries: Number(recoveredCounts.total_waiting_retry) || 0
@@ -395,7 +426,7 @@ Deno.serve(async (req) => {
           status: isComplete ? 'completed' : (hasFutureRetries && !hasPending ? 'waiting_retry' : 'running'),
           sent: Number(c.total_sent) || 0,
           delivered: Number(c.total_delivered) || 0,
-          failed: (Number(c.total_failed) || 0) + (Number(c.total_waiting_retry) || 0),
+          failed: Number(c.total_failed) || 0,
           total: campaign.total_recipients,
           pendingRetries: Number(c.total_waiting_retry) || 0
         }),
@@ -684,7 +715,7 @@ Deno.serve(async (req) => {
             status: 'running',
             sent: Number(recoveredCounts.total_sent) || 0,
             delivered: Number(recoveredCounts.total_delivered) || 0,
-            failed: (Number(recoveredCounts.total_failed) || 0) + (Number(recoveredCounts.total_waiting_retry) || 0),
+            failed: Number(recoveredCounts.total_failed) || 0,
             total: campaign.total_recipients,
             batchProcessed: sentThisBatch,
             scheduledRetries: scheduledRetryThisBatch,
@@ -715,7 +746,7 @@ Deno.serve(async (req) => {
         status: isComplete ? 'completed' : (hasRetries && !hasPending ? 'waiting_retry' : 'running'),
         sent: Number(fc.total_sent) || 0,
         delivered: Number(fc.total_delivered) || 0,
-        failed: (Number(fc.total_failed) || 0) + (Number(fc.total_waiting_retry) || 0),
+        failed: Number(fc.total_failed) || 0,
         total: campaign.total_recipients,
         batchProcessed: sentThisBatch,
         scheduledRetries: scheduledRetryThisBatch,

@@ -356,15 +356,11 @@ const Disparos = () => {
                   return c;
                 }
 
-                const mergedCampaign = { ...c, ...newCampaign };
-
-                if (newCampaign.status === "running") {
-                  mergedCampaign.sent_count = Math.max(c.sent_count ?? 0, newCampaign.sent_count ?? 0);
-                  mergedCampaign.delivered_count = Math.max(c.delivered_count ?? 0, newCampaign.delivered_count ?? 0);
-                  mergedCampaign.failed_count = Math.max(c.failed_count ?? 0, newCampaign.failed_count ?? 0);
-                }
-
-                return mergedCampaign;
+                return {
+                  ...c,
+                  ...newCampaign,
+                  status: newCampaign.status as Campaign["status"]
+                };
               })
             );
           } else if (payload.eventType === 'INSERT') {
