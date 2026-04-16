@@ -3518,9 +3518,9 @@ const AtendimentoV2 = () => {
         let matchesFilter = false;
         if (filterStatus === "unread") {
           // "Não Lidos" - conversations with unread messages that belong to this user
-          // Assigned to me OR unassigned (orphan visible to me)
+          // Assigned to me OR unassigned AND not in_progress (not being handled by anyone)
           const isMyConversation = conv.assignedTo === user?.id;
-          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
@@ -3551,8 +3551,9 @@ const AtendimentoV2 = () => {
         let matchesFilter = false;
         if (filterStatus === "unread") {
           // "Não Lidos" - conversations with unread messages that belong to this user
+          // Assigned to me OR unassigned AND not in_progress (not being handled by anyone)
           const isMyConversation = conv.assignedTo === user?.id;
-          const isOrphanVisibleToMe = !conv.assignedTo && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+          const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
           matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
         }
         else if (filterStatus === "new") {
@@ -3630,7 +3631,7 @@ const AtendimentoV2 = () => {
   const unreadCount = visibleConversations.filter(c => {
     if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
     const isMyConversation = c.assignedTo === user?.id;
-    const isOrphanVisibleToMe = !c.assignedTo && (!c.sectorId || sectorIds.includes(c.sectorId));
+    const isOrphanVisibleToMe = !c.assignedTo && c.status !== "in_progress" && (!c.sectorId || sectorIds.includes(c.sectorId));
     return isMyConversation || isOrphanVisibleToMe;
   }).length;
 
