@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { MessageRow, MessagePage } from "@/hooks/useInfiniteMessages";
 import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
+import { getExternalUrl } from "@/lib/externalSupabaseClient";
 
 export interface SendMessagePayload {
   channelId: string;
@@ -43,10 +44,14 @@ export function useSendMessage(
     { tempId: string; queryKey: unknown[] }
   >({
     mutationFn: async (payload) => {
-      const sendFunction = payload.channelProvider === "zapi" 
-        ? "zapi-send" 
-        : payload.channelProvider === "gupshup" 
-          ? "gupshup-send" 
+      const isMeta = payload.channelProvider !== "zapi" &&
+        payload.channelProvider !== "gupshup" &&
+        payload.channelProvider !== "infobip";
+
+      const sendFunction = payload.channelProvider === "zapi"
+        ? "zapi-send"
+        : payload.channelProvider === "gupshup"
+          ? "gupshup-send"
           : payload.channelProvider === "infobip"
             ? "infobip-send"
             : "meta-send";
@@ -68,10 +73,25 @@ export function useSendMessage(
         body.fileName = payload.fileName;
       }
 
+      // Meta provider → call external Supabase edge function
+      if (isMeta) {
+        const extUrl = await getExternalUrl();
+        const session = await supabase.auth.getSession();
+        const token = session.data.session?.access_token;
+        const res = await fetch(`${extUrl}/functions/v1/meta-send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error("Erro de conexão ao enviar mensagem");
+        return (await res.json()) as SendMessageResult;
+      }
+
       const { data, error } = await supabase.functions.invoke(sendFunction, { body });
-
       if (error) throw new Error("Erro de conexão ao enviar mensagem");
-
       return data as SendMessageResult;
     },
 
