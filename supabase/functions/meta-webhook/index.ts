@@ -190,12 +190,21 @@ const channelCache = new Map<string, { data: unknown; expiry: number }>();
 async function getChannelByPhoneNumberId(phoneNumberId: string) {
   const cached = channelCache.get(phoneNumberId);
   if (cached && cached.expiry > Date.now()) return cached.data;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('channels')
-    .select('id, organization_id, user_id, phone, name, app_name, access_token, provider')
+    .select('id, organization_id, user_id, phone, name, app_name, access_token, provider, connected, updated_at')
     .eq('app_name', phoneNumberId)
     .eq('provider', 'meta')
+    .eq('connected', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
+
+  if (error) {
+    console.error('[getChannelByPhoneNumberId] Failed to resolve active channel:', error.message, { phoneNumberId });
+    return null;
+  }
+
   // Only cache successful lookups — never cache null to avoid blocking status updates
   if (data) {
     const jitter = Math.random() * 10_000;
