@@ -3603,6 +3603,13 @@ export type Database = {
         Args: { p_channel_id: string; p_phone_variants: string[] }
         Returns: undefined
       }
+      resolve_redirect_link: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+        }[]
+      }
       restore_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
