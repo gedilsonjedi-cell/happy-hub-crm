@@ -61,19 +61,19 @@ export function URAConfigPanel() {
     setIsLoading(true);
     
     // Fetch channels with waba_id
-    const { data: channelsData } = await supabase
-      .from("channels")
+    const { data: channelsData } = await (supabase as any)
+      .from("channels_public")
       .select("id, name, phone, waba_id")
       .eq("organization_id", orgId)
       .eq("connected", true)
       .order("name");
     
     // Get unique waba_ids from channels
-    const wabaIds = [...new Set((channelsData || []).map(c => c.waba_id).filter(Boolean))];
+    const wabaIds = [...new Set((channelsData || []).map((c: any) => c.waba_id).filter(Boolean))] as string[];
     
     // Find all channel IDs that share these waba_ids (to get all templates for each waba)
-    const { data: allChannelsWithSameWaba } = await supabase
-      .from("channels")
+    const { data: allChannelsWithSameWaba } = await (supabase as any)
+      .from("channels_public")
       .select("id, waba_id")
       .in("waba_id", wabaIds);
     
