@@ -81,8 +81,8 @@ export const ChatbotConfigPanel = () => {
     setLoading(true);
     
     // Fetch channels
-    const { data: channelsData } = await supabase
-      .from("channels")
+    const { data: channelsData } = await (supabase as any)
+      .from("channels_public")
       .select("id, name, phone")
       .eq("provider", "gupshup")
       .eq("connected", true);

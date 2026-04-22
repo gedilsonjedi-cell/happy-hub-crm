@@ -239,8 +239,8 @@ const Templates = () => {
   const fetchChannels = async () => {
     if (!effectiveOrganizationId) return;
     
-    const { data: channelsData, error: channelsError } = await supabase
-      .from("channels")
+    const { data: channelsData, error: channelsError } = await (supabase as any)
+      .from("channels_public")
       .select("id, name, phone")
       .eq("organization_id", effectiveOrganizationId);
 

@@ -76,15 +76,15 @@ export function ChatbotChannelAssignment({
     setIsLoading(true);
     try {
       // First fetch channels
-      const { data: channelsData, error: channelsError } = await supabase
-        .from("channels")
+      const { data: channelsData, error: channelsError } = await (supabase as any)
+        .from("channels_public")
         .select("id, name, phone, user_id, organization_id")
         .eq("connected", true);
 
       if (channelsError) throw channelsError;
       
       // Get unique organization IDs from channels
-      const orgIds = [...new Set(channelsData?.map(c => c.organization_id).filter(Boolean))];
+      const orgIds = [...new Set(channelsData?.map((c: any) => c.organization_id).filter(Boolean))] as string[];
       
       // Fetch agents and flow bots for those organizations
       const [agentsRes, flowBotsRes] = await Promise.all([

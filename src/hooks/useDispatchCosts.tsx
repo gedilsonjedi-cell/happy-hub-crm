@@ -37,8 +37,8 @@ export function useDispatchCosts() {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
       // Buscar canais da organização primeiro
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
 
@@ -50,7 +50,7 @@ export function useDispatchCosts() {
         };
       }
 
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       // Buscar apenas mensagens do mês atual com limite razoável
       const { data: messages, error } = await supabase

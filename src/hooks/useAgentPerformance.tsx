@@ -22,13 +22,13 @@ export function useAgentPerformance() {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
 
       if (!channels?.length) { setLoading(false); return; }
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       const { data: allAssignments } = await supabase
         .from("conversation_assignments")

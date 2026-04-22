@@ -203,8 +203,8 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
   const calculateMetricsFromMessages = async (todayStart: Date) => {
     try {
       // Get channels for this org
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
 
@@ -213,7 +213,7 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
         return;
       }
 
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       // Calculate from whatsapp_messages (reduced limit)
       const { data: messages } = await supabase

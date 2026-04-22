@@ -147,8 +147,8 @@ export function RecycleFailuresDialog({
 
       setTemplates((templatesData as MessageTemplate[]) || []);
 
-      const { data: channelsData } = await supabase
-        .from("channels")
+      const { data: channelsData } = await (supabase as any)
+        .from("channels_public")
         .select("id, name, phone")
         .eq("organization_id", effectiveOrganizationId)
         .eq("connected", true)
