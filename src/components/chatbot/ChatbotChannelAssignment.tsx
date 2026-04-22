@@ -76,8 +76,8 @@ export function ChatbotChannelAssignment({
     setIsLoading(true);
     try {
       // First fetch channels
-      const { data: channelsData, error: channelsError } = await supabase
-        .from("channels")
+      const { data: channelsData, error: channelsError } = await (supabase as any)
+        .from("channels_public")
         .select("id, name, phone, user_id, organization_id")
         .eq("connected", true);
 
