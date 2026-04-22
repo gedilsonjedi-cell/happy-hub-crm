@@ -142,7 +142,7 @@ const Index = () => {
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
       
-      const channelIds = orgChannels?.map(c => c.id) || [];
+      const channelIds = orgChannels?.map((c: any) => c.id) || [];
 
       // Fetch conversation assignments for metrics - filtered by organization's channels
       const { data: assignments } = channelIds.length > 0 
