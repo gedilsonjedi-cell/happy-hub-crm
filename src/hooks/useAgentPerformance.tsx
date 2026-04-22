@@ -22,8 +22,8 @@ export function useAgentPerformance() {
     if (!effectiveOrganizationId) return;
     setLoading(true);
     try {
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
 
