@@ -28,7 +28,7 @@ export function useAgentPerformance() {
         .eq("organization_id", effectiveOrganizationId);
 
       if (!channels?.length) { setLoading(false); return; }
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       const { data: allAssignments } = await supabase
         .from("conversation_assignments")
