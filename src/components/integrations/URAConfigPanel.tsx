@@ -88,7 +88,7 @@ export function URAConfigPanel() {
     });
     
     // Get all channel IDs from all WABAs
-    const allChannelIds = [...new Set((allChannelsWithSameWaba || []).map(c => c.id))];
+    const allChannelIds = [...new Set((allChannelsWithSameWaba || []).map((c: any) => c.id))] as string[];
     
     // Fetch channel templates with their template details for ALL channels in the same WABAs
     const { data: channelTemplatesData } = await supabase
