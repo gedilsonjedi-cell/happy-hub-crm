@@ -414,6 +414,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "campaign_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "campaign_channels_template_id_fkey"
             columns: ["template_id"]
             isOneToOne: false
@@ -610,6 +617,51 @@ export type Database = {
           },
         ]
       }
+      channel_secrets: {
+        Row: {
+          access_token: string | null
+          api_token: string | null
+          channel_id: string
+          created_at: string
+          meta_app_secret: string | null
+          updated_at: string
+          webhook_verify_token: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          api_token?: string | null
+          channel_id: string
+          created_at?: string
+          meta_app_secret?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          api_token?: string | null
+          channel_id?: string
+          created_at?: string
+          meta_app_secret?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_secrets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_secrets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_templates: {
         Row: {
           approved_at: string
@@ -635,6 +687,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
           {
@@ -852,6 +911,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "chatbot_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "chatbot_config_flow_bot_id_fkey"
             columns: ["flow_bot_id"]
             isOneToOne: false
@@ -985,6 +1051,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "conversation_assignments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "conversation_assignments_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -1043,6 +1116,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_memory_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
           {
@@ -1124,6 +1204,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "conversation_metrics_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "conversation_metrics_conversation_assignment_id_fkey"
             columns: ["conversation_assignment_id"]
             isOneToOne: false
@@ -1190,6 +1277,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "conversation_notes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "conversation_notes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -1251,6 +1345,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
           {
@@ -1538,6 +1639,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "flow_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "flow_sessions_current_node_id_fkey"
             columns: ["current_node_id"]
             isOneToOne: false
@@ -1602,6 +1710,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
           {
@@ -1943,6 +2058,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
           {
@@ -2771,6 +2893,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "scheduled_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "scheduled_messages_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -2991,6 +3120,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ura_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ura_config_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3043,6 +3179,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
             referencedColumns: ["id"]
           },
         ]
@@ -3240,6 +3383,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "welcome_message_sent_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "welcome_message_sent_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3312,6 +3462,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "whatsapp_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "whatsapp_messages_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3322,7 +3479,56 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      channels_public: {
+        Row: {
+          app_name: string | null
+          connected: boolean | null
+          created_at: string | null
+          id: string | null
+          name: string | null
+          organization_id: string | null
+          phone: string | null
+          provider: string | null
+          updated_at: string | null
+          user_id: string | null
+          waba_id: string | null
+        }
+        Insert: {
+          app_name?: string | null
+          connected?: boolean | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          provider?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Update: {
+          app_name?: string | null
+          connected?: boolean | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          provider?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       _resolve_auth_role: { Args: never; Returns: string }
@@ -3672,6 +3878,10 @@ export type Database = {
       }
       user_can_access_conversation: {
         Args: { conversation_sector_id: string }
+        Returns: boolean
+      }
+      user_in_same_organization: {
+        Args: { _target_user_id: string }
         Returns: boolean
       }
       validate_user_session: {
