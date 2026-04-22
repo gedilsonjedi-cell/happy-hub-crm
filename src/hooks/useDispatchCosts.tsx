@@ -50,7 +50,7 @@ export function useDispatchCosts() {
         };
       }
 
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       // Buscar apenas mensagens do mês atual com limite razoável
       const { data: messages, error } = await supabase
