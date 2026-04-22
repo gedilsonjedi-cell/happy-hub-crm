@@ -137,8 +137,8 @@ const Index = () => {
         .eq("status", "completed");
 
       // Fetch channels for this organization to filter messages
-      const { data: orgChannels } = await supabase
-        .from("channels")
+      const { data: orgChannels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", effectiveOrganizationId);
       
