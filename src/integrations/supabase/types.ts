@@ -3562,6 +3562,10 @@ export type Database = {
         Returns: number
       }
       cancel_addon: { Args: { _addon_id: string }; Returns: boolean }
+      channel_belongs_to_user_org: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
       check_organization_balance: {
         Args: { _amount: number; _organization_id: string }
         Returns: boolean
