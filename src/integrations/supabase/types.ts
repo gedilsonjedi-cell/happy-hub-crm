@@ -3824,6 +3824,16 @@ export type Database = {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
       }
+      run_rls_visibility_check: {
+        Args: { _user_id: string }
+        Returns: {
+          check_name: string
+          details: string
+          expected: string
+          passed: boolean
+          result: string
+        }[]
+      }
       search_conversations_global: {
         Args: {
           p_channel_ids: string[]

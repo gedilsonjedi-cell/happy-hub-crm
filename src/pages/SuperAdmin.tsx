@@ -23,6 +23,7 @@ import {
   Clock,
   ShoppingBag,
   Wallet,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,7 @@ import { SubscriptionPricingConfig } from "@/components/admin/SubscriptionPricin
 import { StoreManagementPanel } from "@/components/admin/StoreManagementPanel";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
+import { RlsRegressionPanel } from "@/components/admin/RlsRegressionPanel";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -813,6 +815,10 @@ export default function SuperAdmin() {
               <Settings className="w-4 h-4" />
               Configurações
             </TabsTrigger>
+            <TabsTrigger value="security" className="gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              Segurança
+            </TabsTrigger>
           </TabsList>
 
           {/* Payments Tab */}
@@ -1024,6 +1030,11 @@ export default function SuperAdmin() {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security">
+            <RlsRegressionPanel />
           </TabsContent>
         </Tabs>
 
