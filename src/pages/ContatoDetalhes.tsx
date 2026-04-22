@@ -99,8 +99,8 @@ const ContatoDetalhes = () => {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      const { data, error } = await supabase
-        .from("channels")
+      const { data, error } = await (supabase as any)
+        .from("channels_public")
         .select("id, name, phone, provider")
         .eq("organization_id", organizationId)
         .in("provider", ["meta", "zapi", "gupshup"])
