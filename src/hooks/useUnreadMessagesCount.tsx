@@ -75,8 +75,8 @@ export function useUnreadMessagesCount() {
 
     try {
       // Get channels for this organization first
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", organizationId);
 
