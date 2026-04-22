@@ -2513,15 +2513,19 @@ const AtendimentoV2 = () => {
   // Export conversation as text file
   const handleExportConversation = async (conversation: Conversation) => {
     if (!conversation) return;
-    
+
     try {
       toast.info("Exportando conversa...");
-      
+
       const channelId = conversation.channelId;
+      if (!channelId) {
+        toast.error("Conversa sem canal vinculado");
+        return;
+      }
       const phone = conversation.phone.replace(/\D/g, "");
-      
-      // Fetch ALL messages for this conversation (no pagination limit)
-      let allMessages: Array<{
+      const phoneVariants = buildMessageLookupVariants(phone);
+
+      type ExportMsg = {
         sender_phone: string;
         sender_name: string | null;
         content: string | null;
@@ -2529,37 +2533,81 @@ const AtendimentoV2 = () => {
         direction: string;
         created_at: string;
         media_url: string | null;
-      }> = [];
-      
-      const pageSize = 1000;
-      let offset = 0;
-      let hasMore = true;
-      
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from("whatsapp_messages")
-          .select("sender_phone, sender_name, content, message_type, direction, created_at, media_url")
-          .eq("channel_id", channelId)
-          .or(`sender_phone.ilike.%${phone.slice(-8)}%,metadata->>destination.ilike.%${phone.slice(-8)}%`)
-          .order("created_at", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          allMessages = [...allMessages, ...data];
-          offset += pageSize;
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
+      };
+
+      let allMessages: ExportMsg[] = [];
+
+      // 1) Try external DB (SSoT) with cursor pagination
+      try {
+        let cursor: string | null = null;
+        let safetyCounter = 0;
+        const seen = new Set<string>();
+        while (safetyCounter < 200) {
+          safetyCounter += 1;
+          const page = await fetchExternalMessages({
+            channelId: String(channelId),
+            phoneVariants,
+            cursor,
+            pageSize: 200,
+            impersonatedOrgId: effectiveOrganizationId,
+          });
+
+          for (const m of page.messages) {
+            if (seen.has(m.id)) continue;
+            seen.add(m.id);
+            allMessages.push({
+              sender_phone: m.sender_phone,
+              sender_name: m.sender_name,
+              content: m.content,
+              message_type: m.message_type,
+              direction: m.direction,
+              created_at: m.created_at,
+              media_url: m.media_url,
+            });
+          }
+
+          if (!page.hasMore || !page.nextCursor) break;
+          cursor = page.nextCursor;
+        }
+      } catch (extErr) {
+        console.warn("[Export] External fetch failed, falling back to internal:", extErr);
+      }
+
+      // 2) Fallback to internal table if external returned nothing
+      if (allMessages.length === 0) {
+        const pageSize = 1000;
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("whatsapp_messages")
+            .select("sender_phone, sender_name, content, message_type, direction, created_at, media_url")
+            .eq("channel_id", channelId)
+            .or(`sender_phone.ilike.%${phone.slice(-8)}%,metadata->>destination.ilike.%${phone.slice(-8)}%`)
+            .order("created_at", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            allMessages = [...allMessages, ...data];
+            offset += pageSize;
+            hasMore = data.length === pageSize;
+          } else {
+            hasMore = false;
+          }
         }
       }
-      
+
       if (allMessages.length === 0) {
         toast.warning("Nenhuma mensagem encontrada para exportar");
         return;
       }
-      
+
+      // Sort chronologically (external returns desc; internal asc — normalize)
+      allMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
       // Build text content
       const contactName = conversation.name || conversation.phone;
       let textContent = `=== Exportação de Conversa ===\n`;
@@ -2567,24 +2615,24 @@ const AtendimentoV2 = () => {
       textContent += `Data da exportação: ${format(new Date(), "dd/MM/yyyy HH:mm:ss")}\n`;
       textContent += `Total de mensagens: ${allMessages.length}\n`;
       textContent += `${"=".repeat(40)}\n\n`;
-      
+
       let lastDate = "";
-      
+
       for (const msg of allMessages) {
         const msgDate = format(new Date(msg.created_at), "dd/MM/yyyy");
         const msgTime = format(new Date(msg.created_at), "HH:mm:ss");
-        
+
         if (msgDate !== lastDate) {
           textContent += `\n--- ${msgDate} ---\n\n`;
           lastDate = msgDate;
         }
-        
-        const sender = msg.direction === "inbound" 
+
+        const sender = msg.direction === "inbound"
           ? (msg.sender_name || contactName)
           : "Atendente";
-        
+
         let messageContent = msg.content || "";
-        
+
         if (msg.message_type === "image") {
           messageContent = `[Imagem]${msg.media_url ? ` ${msg.media_url}` : ""}${messageContent ? ` - ${messageContent}` : ""}`;
         } else if (msg.message_type === "video") {
@@ -2600,10 +2648,10 @@ const AtendimentoV2 = () => {
         } else if (msg.message_type === "template") {
           messageContent = `[Template] ${messageContent}`;
         }
-        
+
         textContent += `[${msgTime}] ${sender}: ${messageContent}\n`;
       }
-      
+
       // Download as .txt file
       const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -2614,7 +2662,7 @@ const AtendimentoV2 = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       toast.success(`Conversa exportada com ${allMessages.length} mensagens`);
     } catch (error) {
       console.error("Error exporting conversation:", error);
