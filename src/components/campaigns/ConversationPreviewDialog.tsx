@@ -93,8 +93,8 @@ export function ConversationPreviewDialog({
       if (!orgId) return;
 
       // Get channels for this organization
-      const { data: channels } = await supabase
-        .from("channels")
+      const { data: channels } = await (supabase as any)
+        .from("channels_public")
         .select("id")
         .eq("organization_id", orgId);
 
