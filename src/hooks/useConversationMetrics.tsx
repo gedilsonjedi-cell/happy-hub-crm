@@ -213,7 +213,7 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
         return;
       }
 
-      const channelIds = channels.map(c => c.id);
+      const channelIds = channels.map((c: any) => c.id);
 
       // Calculate from whatsapp_messages (reduced limit)
       const { data: messages } = await supabase
