@@ -541,13 +541,11 @@ const AtendimentoV2 = () => {
   // Final conversation list shown by the UI:
   // - only channel-backed threads that belong to this organization
   // - deduplicated by channel + canonical phone thread key
+  // - visibility is organization-wide for active/pending conversations
+  // Interaction permissions remain enforced separately via canInteractWithSector.
   const conversations = useMemo(
-    () =>
-      sanitizeConversationCollection(
-        allConversations.filter((conversation) => canSeeSector(conversation.sectorId)),
-        validChannelIds
-      ),
-    [allConversations, canSeeSector, validChannelIds]
+    () => sanitizeConversationCollection(allConversations, validChannelIds),
+    [allConversations, validChannelIds]
   );
   
   // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
