@@ -514,7 +514,7 @@ const AtendimentoV2 = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
-  const { canSeeSector, canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
+  const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [conversationOffset, setConversationOffset] = useState(0);
