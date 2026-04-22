@@ -253,8 +253,8 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
 
       if (ccData && ccData.length > 0) {
         const channelIds = ccData.map(cc => cc.channel_id);
-        const { data: channelsData } = await supabase
-          .from("channels")
+        const { data: channelsData } = await (supabase as any)
+          .from("channels_public")
           .select("id, name, phone")
           .in("id", channelIds);
 
