@@ -84,7 +84,7 @@ export function ChatbotChannelAssignment({
       if (channelsError) throw channelsError;
       
       // Get unique organization IDs from channels
-      const orgIds = [...new Set(channelsData?.map(c => c.organization_id).filter(Boolean))];
+      const orgIds = [...new Set(channelsData?.map((c: any) => c.organization_id).filter(Boolean))] as string[];
       
       // Fetch agents and flow bots for those organizations
       const [agentsRes, flowBotsRes] = await Promise.all([
