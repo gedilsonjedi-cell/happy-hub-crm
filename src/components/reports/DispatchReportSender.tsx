@@ -100,8 +100,8 @@ export function DispatchReportSender() {
 
   const getChannelIds = useCallback(async () => {
     if (!effectiveOrganizationId) return [];
-    const { data: channels } = await supabase
-      .from("channels")
+    const { data: channels } = await (supabase as any)
+      .from("channels_public")
       .select("id")
       .eq("organization_id", effectiveOrganizationId);
     return (channels || []).map(c => c.id);
