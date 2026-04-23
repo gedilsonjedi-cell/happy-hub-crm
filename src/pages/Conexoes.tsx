@@ -1260,83 +1260,45 @@ const Conexoes = () => {
     setChannels(prev => prev.filter(c => c.id !== id));
     
     try {
-      // Delete related records first to avoid foreign key constraint errors
-      // Order matters: delete children before parent
-      
-      // 1. Delete chatbot config linked to this channel
-      await supabase.from("chatbot_config").delete().eq("channel_id", id);
-      
-      // 2. Delete campaign_channels references
-      await supabase.from("campaign_channels").delete().eq("channel_id", id);
-      
-      // 3. Delete channel_templates
-      await supabase.from("channel_templates").delete().eq("channel_id", id);
-      
-      // 3.1 Delete orphan templates (templates without any channel_templates links)
-      // Get templates that were linked to this organization and now have no channel links
-      const { data: organizationTemplates } = await supabase
-        .from("message_templates")
-        .select("id")
-        .eq("organization_id", channelToDelete?.organization_id);
-      
-      if (organizationTemplates && organizationTemplates.length > 0) {
-        const templateIds = organizationTemplates.map(t => t.id);
-        
-        // Get templates that still have channel links
-        const { data: linkedTemplates } = await supabase
-          .from("channel_templates")
-          .select("template_id")
-          .in("template_id", templateIds);
-        
-        const linkedTemplateIds = new Set(linkedTemplates?.map(lt => lt.template_id) || []);
-        
-        // Find orphan templates (no channel links)
-        const orphanTemplateIds = templateIds.filter(tId => !linkedTemplateIds.has(tId));
-        
-        if (orphanTemplateIds.length > 0) {
-          console.log(`Deleting ${orphanTemplateIds.length} orphan templates after channel deletion`);
-          await supabase.from("message_templates").delete().in("id", orphanTemplateIds);
-        }
-      }
-      
-      // 4. Nullify channel_id in conversation_assignments (preserve history)
-      await supabase.from("conversation_assignments").update({ channel_id: null }).eq("channel_id", id);
-      
-      // 5. Delete conversation_memory
-      await supabase.from("conversation_memory").delete().eq("channel_id", id);
-      
-      // 6. Delete conversation_notes
-      await supabase.from("conversation_notes").delete().eq("channel_id", id);
-      
-      // 7. Nullify channel_id in follow_up_instances (preserve history)
-      await supabase.from("follow_up_instances").update({ channel_id: null }).eq("channel_id", id);
-      
-      // 8. Delete scheduled_messages for this channel
-      await supabase.from("scheduled_messages").delete().eq("channel_id", id);
-      
-      // 9. Nullify channel_id in whatsapp_messages (preserve message history)
-      await supabase.from("whatsapp_messages").update({ channel_id: null }).eq("channel_id", id);
-      
-      // 10. Delete conversation_stats linked to this channel
-      await supabase.from("conversation_stats").delete().eq("channel_id", id);
-
-      // 11. Delete conversation_metrics linked to this channel
-      await supabase.from("conversation_metrics").delete().eq("channel_id", id);
-
-      // 12. Delete flow_sessions linked to this channel
-      await supabase.from("flow_sessions").update({ channel_id: null }).eq("channel_id", id);
-      
-      // Finally delete the channel
-      const { error } = await supabase.from("channels").delete().eq("id", id);
+      // Atomic cascade delete in the database (single RPC).
+      // Cleans children + nulls history references; FKs were also adjusted to
+      // ON DELETE SET NULL where history must be preserved (assignments, stats,
+      // notes, flow_sessions, follow_up_instances).
+      const { error } = await supabase.rpc("delete_channel_cascade", { _channel_id: id });
 
       if (error) {
         console.error('Delete channel error:', error);
-        // Revert optimistic update
         if (channelToDelete) {
           setChannels(prev => [...prev, channelToDelete]);
         }
         toast.error("Erro ao excluir canal: " + error.message);
         return;
+      }
+
+      // After channel removal, opportunistically clean orphan message templates
+      // for the org (templates that no longer have any channel link).
+      if (channelToDelete?.organization_id) {
+        try {
+          const { data: organizationTemplates } = await supabase
+            .from("message_templates")
+            .select("id")
+            .eq("organization_id", channelToDelete.organization_id);
+
+          if (organizationTemplates && organizationTemplates.length > 0) {
+            const templateIds = organizationTemplates.map(t => t.id);
+            const { data: linkedTemplates } = await supabase
+              .from("channel_templates")
+              .select("template_id")
+              .in("template_id", templateIds);
+            const linkedTemplateIds = new Set(linkedTemplates?.map(lt => lt.template_id) || []);
+            const orphanTemplateIds = templateIds.filter(tId => !linkedTemplateIds.has(tId));
+            if (orphanTemplateIds.length > 0) {
+              await supabase.from("message_templates").delete().in("id", orphanTemplateIds);
+            }
+          }
+        } catch (cleanupErr) {
+          console.warn('Orphan template cleanup skipped:', cleanupErr);
+        }
       }
 
       toast.success("Canal excluído com sucesso");
