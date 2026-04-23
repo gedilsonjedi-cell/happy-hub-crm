@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { MessageRow, MessagePage } from "@/hooks/useInfiniteMessages";
 import { getCanonicalPhoneThreadKey } from "@/lib/phoneThreadKey";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 export interface SendMessagePayload {
   channelId: string;
@@ -35,6 +36,7 @@ export function useSendMessage(
   onRestoreInput?: (text: string) => void
 ) {
   const queryClient = useQueryClient();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
 
   const mutation = useMutation<
     SendMessageResult,
@@ -74,8 +76,14 @@ export function useSendMessage(
     },
 
     onMutate: async (payload) => {
+      // CRITICAL: queryKey MUST match exactly the one used by useInfiniteMessages,
+      // which is ["messages", effectiveOrganizationId, channelId, conversationThreadKey].
+      // Otherwise the optimistic message is written to a different cache slot and
+      // the UI shows nothing until realtime arrives (creating the "delay" + duplicate
+      // bubbles the user reported).
       const queryKey = [
         "messages",
+        effectiveOrganizationId,
         payload.channelId,
         getCanonicalPhoneThreadKey(payload.destination),
       ];
