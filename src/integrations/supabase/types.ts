@@ -3765,6 +3765,13 @@ export type Database = {
         }[]
       }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
+      get_redirect_link_public: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+        }[]
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
