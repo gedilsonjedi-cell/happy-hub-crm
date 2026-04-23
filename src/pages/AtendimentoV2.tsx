@@ -4489,6 +4489,7 @@ const AtendimentoV2 = () => {
                           
                           if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation && !showQuickResponsesAutocomplete) {
                             e.preventDefault();
+                            if (isSendingMessage) return;
                             handleSendMessage();
                           }
                           
