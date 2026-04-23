@@ -135,27 +135,72 @@ export function useInfiniteMessages(
         (old: { pages: MessagePage[]; pageParams: unknown[] } | undefined) => {
           if (!old) return old;
           const firstPage = old.pages[0];
-          // Avoid exact duplicate
+          // Avoid exact duplicate by id
           if (firstPage?.messages.some((m) => m.id === msg.id)) return old;
 
-          // Remove optimistic (temp_*) messages that match this real message
-          // by checking direction + approximate timestamp (within 30s)
           const msgTime = new Date(msg.created_at).getTime();
-          const cleanedMessages = (firstPage?.messages ?? []).filter((m) => {
-            if (!m.id.startsWith("temp_")) return true;
-            if (m.direction !== msg.direction) return true;
-            const timeDiff = Math.abs(new Date(m.created_at).getTime() - msgTime);
-            // Same direction, similar time, same content → it's the optimistic twin
-            if (timeDiff < 30000 && m.content === msg.content) return false;
-            return true;
-          });
+          const normalize = (s?: string | null) => (s ?? "").trim();
+          const incomingContent = normalize(msg.content);
+
+          // Detect optimistic twin: same direction + same content within 60s.
+          // This covers BOTH temp_* optimistic bubbles AND realtime sync messages
+          // (rt_*) that may arrive when an outbound message is echoed back from
+          // conversation_stats. Without this we end up showing the same message
+          // twice (once as the optimistic green bubble, once as the realtime echo).
+          const TWIN_WINDOW_MS = 60_000;
+          const findTwinIndex = (messages: MessageRow[]) =>
+            messages.findIndex((m) => {
+              if (m.id === msg.id) return true;
+              if (m.direction !== msg.direction) return false;
+              const sameContent = normalize(m.content) === incomingContent;
+              if (!sameContent) return false;
+              const diff = Math.abs(new Date(m.created_at).getTime() - msgTime);
+              return diff < TWIN_WINDOW_MS;
+            });
+
+          const twinIndex = findTwinIndex(firstPage?.messages ?? []);
+          if (twinIndex >= 0) {
+            // Replace the optimistic / synthetic twin with the authoritative copy,
+            // preferring real ids and keeping the latest status.
+            const existing = firstPage.messages[twinIndex];
+            const isExistingTemp = existing.id.startsWith("temp_");
+            const isExistingSynthetic = existing.id.startsWith("rt_") || existing.id.startsWith("stats_");
+            const isIncomingSynthetic = msg.id.startsWith("rt_") || msg.id.startsWith("stats_");
+
+            // If the existing one is a real persisted message and the incoming is
+            // synthetic/realtime, keep the existing — just refresh status if better.
+            if (!isExistingTemp && !isExistingSynthetic && isIncomingSynthetic) {
+              return old;
+            }
+
+            const merged: MessageRow = {
+              ...existing,
+              ...msg,
+              // Prefer the existing id when the incoming one is synthetic and the
+              // existing one is already real, otherwise take incoming.
+              id: !isIncomingSynthetic ? msg.id : existing.id,
+              message_id: !isIncomingSynthetic ? msg.message_id : existing.message_id,
+              status: msg.status || existing.status,
+              created_at: existing.created_at, // keep original timestamp to avoid reordering
+            };
+
+            const newMessages = [...firstPage.messages];
+            newMessages[twinIndex] = merged;
+            return {
+              ...old,
+              pages: [
+                { ...firstPage, messages: newMessages },
+                ...old.pages.slice(1),
+              ],
+            };
+          }
 
           return {
             ...old,
             pages: [
               {
                 ...firstPage,
-                messages: [msg, ...cleanedMessages],
+                messages: [msg, ...(firstPage?.messages ?? [])],
               },
               ...old.pages.slice(1),
             ],
