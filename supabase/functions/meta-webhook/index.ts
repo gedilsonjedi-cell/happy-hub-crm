@@ -775,6 +775,22 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     return;
   }
 
+  const context = msg.context as Record<string, unknown> | undefined;
+  const echoedMessageId = typeof context?.id === 'string' ? context.id : null;
+  if (echoedMessageId) {
+    const { data: existingOutboundEcho } = await messageDb
+      .from('whatsapp_messages')
+      .select('message_id')
+      .eq('message_id', echoedMessageId)
+      .eq('direction', 'outbound')
+      .maybeSingle();
+
+    if (existingOutboundEcho) {
+      console.log('[processMessage] Ignoring webhook echo for outbound message:', echoedMessageId);
+      return;
+    }
+  }
+
   // ── PHASE 1: Parallel pre-checks ─────────────────────────────────
   // Run all lookups simultaneously before any business logic
   const [existingMessage, orgConfig, chatbotConfig] = await Promise.all([
@@ -832,7 +848,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const finalMediaUrl = storedMediaUrl || (mediaId ? mediaId : null);
 
   const { error: insertError } = await dualWriteMessage({
-    channel_id: normalizedPhone,
+    channel_id: channel.id as string,
     organization_id: organizationId,
     message_id: messageId,
     sender_phone: normalizedPhone,
@@ -846,6 +862,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     metadata: { 
       timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
       channel_phone: channel.phone || null,
+      context_message_id: echoedMessageId,
       ...(referralData ? { referral: referralData } : {}),
     },
   }, true, channel.id as string);
@@ -916,7 +933,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     ).then((sent) => {
       if (sent) {
         dualWriteMessage({
-          channel_id: normalizedPhone,
+          channel_id: channel.id as string,
           message_id: `away_${normalizedPhone}_${Date.now()}`,
           sender_phone: channel.phone,
           sender_name: 'Sistema',
@@ -945,7 +962,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
         Promise.all([
           markWelcomeSent(organizationId, normalizedPhone),
           dualWriteMessage({
-            channel_id: normalizedPhone,
+            channel_id: channel.id as string,
             message_id: `welcome_${normalizedPhone}_${Date.now()}`,
             sender_phone: channel.phone,
             sender_name: 'Sistema',
