@@ -3654,6 +3654,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      delete_channel_cascade: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
       delete_old_whatsapp_status_logs: { Args: never; Returns: undefined }
       delete_organization_cascade: {
         Args: { _organization_id: string }
