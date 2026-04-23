@@ -1971,15 +1971,18 @@ const AtendimentoV2 = () => {
     // Update messages panel if this is the active conversation
     if (isActiveConversation) {
       // Use the ref to always call the latest prependMessage (avoids stale closure)
+      // For outbound messages we already have an optimistic green bubble in the
+      // cache; prependMessage will dedupe/merge against it. We deliberately skip
+      // the auto-refetch here to avoid the "gray bubble first, then green" flicker
+      // and the duplicated bubble the user reported. Inbound still refetches to
+      // pull the full message body from the external DB.
       prependMessageRef.current(newMsg);
 
-      // Refetch from external DB after a short delay to get the full message
-      // (the prepended message is synthetic from conversation_stats)
-      setTimeout(() => refetchLatestPageRef.current(), 250);
-
-      // If inbound and user is viewing this conversation, mark as read immediately in DB
-      if (msg.direction === "inbound" && currentSelectedConv) {
-        markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
+      if (msg.direction === "inbound") {
+        setTimeout(() => refetchLatestPageRef.current(), 250);
+        if (currentSelectedConv) {
+          markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
+        }
       }
     }
 
