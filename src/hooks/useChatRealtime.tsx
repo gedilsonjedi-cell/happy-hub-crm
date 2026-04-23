@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface RealtimeCallbacks {
   onNewMessage: (payload: {
     channelId: string;
+    messageId: string;
     senderPhone: string;
     content: string;
     direction: string;
@@ -99,6 +100,18 @@ export function useChatRealtime(
     });
   }, []);
 
+  const inferStatsDirection = useCallback((data: {
+    last_message_at: string | null;
+    last_inbound_at: string | null;
+  }) => {
+    if (!data.last_inbound_at) return "outbound";
+    if (!data.last_message_at) return "inbound";
+
+    return new Date(data.last_inbound_at).getTime() >= new Date(data.last_message_at).getTime()
+      ? "inbound"
+      : "outbound";
+  }, []);
+
   /**
    * Handle conversation_stats changes — this is the PRIMARY source of
    * new-message events after the external DB migration.
@@ -121,28 +134,24 @@ export function useChatRealtime(
 
     if (!data?.channel_id || !data.conversation_phone) return;
 
-    // Deduplicate by channel + phone + timestamp
-    const dedupKey = `stats_${data.channel_id}_${data.conversation_phone}_${data.updated_at}`;
-    if (processedStatsRef.current.has(dedupKey)) return;
-    processedStatsRef.current.add(dedupKey);
-
     const oldData = payload.old as {
       last_message_at: string | null;
       last_inbound_at: string | null;
       unread_count: number;
     } | undefined;
 
-    // Determine direction from the change:
-    // If last_inbound_at changed, it's an inbound message
-    // If only last_message_at changed, it's outbound
-    const inboundChanged = data.last_inbound_at !== oldData?.last_inbound_at;
-    const direction = inboundChanged ? "inbound" : "outbound";
-
     // Only emit if last_message_at actually changed (new message arrived)
     if (data.last_message_at === oldData?.last_message_at) return;
 
+    const syntheticMessageId = `stats_${data.channel_id}_${data.conversation_phone}_${data.last_message_at || data.updated_at}`;
+    if (processedStatsRef.current.has(syntheticMessageId)) return;
+    processedStatsRef.current.add(syntheticMessageId);
+
+    const direction = inferStatsDirection(data);
+
     callbacksRef.current.onNewMessage({
       channelId: data.channel_id,
+      messageId: syntheticMessageId,
       senderPhone: data.conversation_phone,
       content: data.last_message_content || "",
       direction,
@@ -150,10 +159,10 @@ export function useChatRealtime(
       isRead: direction === "outbound" || data.unread_count === 0,
       senderName: data.sender_name,
       metadata: direction === "outbound"
-        ? { destination: data.conversation_phone }
-        : null,
+        ? { destination: data.conversation_phone, synthetic: true, source: "conversation_stats" }
+        : { synthetic: true, source: "conversation_stats" },
     });
-  }, []);
+  }, [inferStatsDirection]);
 
   const setupSubscription = useCallback(() => {
     if (channelIdsRef.current.length === 0) return;
@@ -179,6 +188,8 @@ export function useChatRealtime(
         },
         (payload) => {
           const msg = payload.new as {
+            id?: string;
+            message_id?: string;
             channel_id: string;
             sender_phone: string;
             content: string;
@@ -191,6 +202,7 @@ export function useChatRealtime(
 
           callbacksRef.current.onNewMessage({
             channelId: msg.channel_id,
+            messageId: msg.message_id || msg.id || `local_${msg.channel_id}_${msg.created_at}`,
             senderPhone: msg.sender_phone,
             content: msg.content,
             direction: msg.direction,
