@@ -18,11 +18,10 @@ const RedirectPage = () => {
     const fetchLink = async () => {
       if (!slug) { setError(true); return; }
 
+      // Use SECURITY DEFINER RPC so anonymous visitors can resolve the link
+      // (RLS on redirect_links blocks unauthenticated reads)
       const { data, error: fetchError } = await supabase
-        .from("redirect_links")
-        .select("*")
-        .eq("slug", slug)
-        .eq("is_active", true)
+        .rpc("resolve_redirect_link", { _slug: slug })
         .maybeSingle();
 
       if (fetchError || !data) {
@@ -30,7 +29,7 @@ const RedirectPage = () => {
         return;
       }
 
-      const destinations = (data.destinations as unknown as Destination[]) || [];
+      const destinations = ((data as any).destinations as unknown as Destination[]) || [];
       if (destinations.length === 0) {
         setError(true);
         return;
