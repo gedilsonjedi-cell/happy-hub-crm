@@ -1877,6 +1877,7 @@ const AtendimentoV2 = () => {
 
   const handleNewMessageRealtime = useCallback((msg: {
     channelId: string;
+    messageId: string;
     senderPhone: string;
     content: string;
     direction: string;
@@ -1909,9 +1910,9 @@ const AtendimentoV2 = () => {
 
     // Build a full Message-like object for compatibility
     const newMsg = {
-      id: `rt_${Date.now()}`,
+      id: msg.messageId,
       channel_id: msg.channelId,
-      message_id: `rt_${Date.now()}`,
+      message_id: msg.messageId,
       sender_phone: msg.senderPhone,
       sender_name: msg.senderName || null,
       message_type: 'text',
@@ -1922,6 +1923,9 @@ const AtendimentoV2 = () => {
       created_at: msg.createdAt,
       metadata: msg.metadata || null,
     } as Message;
+
+    const messageMetadata = msg.metadata as { synthetic?: boolean; source?: string; sent_by_human?: boolean } | null;
+    const isSyntheticStatsEcho = messageMetadata?.synthetic === true && messageMetadata?.source === "conversation_stats";
 
     if (msg.direction === "inbound") {
       setRecentlyUpdatedConversations(prev => {
@@ -1978,7 +1982,7 @@ const AtendimentoV2 = () => {
       // pull the full message body from the external DB.
       prependMessageRef.current(newMsg);
 
-      if (msg.direction === "inbound") {
+      if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
         if (currentSelectedConv) {
           markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
