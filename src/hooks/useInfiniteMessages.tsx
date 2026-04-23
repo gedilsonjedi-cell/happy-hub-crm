@@ -151,6 +151,7 @@ export function useInfiniteMessages(
           const findTwinIndex = (messages: MessageRow[]) =>
             messages.findIndex((m) => {
               if (m.id === msg.id) return true;
+              if (msg.message_id && m.message_id === msg.message_id) return true;
               if (m.direction !== msg.direction) return false;
               const sameContent = normalize(m.content) === incomingContent;
               if (!sameContent) return false;
