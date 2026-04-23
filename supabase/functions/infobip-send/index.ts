@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
       // Store failed message
       const failedMessageId = `infobip_failed_${Date.now()}`;
       const failedData = {
-        channel_id: cleanDestination,
+        channel_id: channelId,
         organization_id: channel.organization_id,
         message_id: failedMessageId,
         sender_phone: senderPhone,
@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
       };
 
       const msgDb = (extUrl && extKey) ? createClient(extUrl, extKey) : serviceRoleClient;
-      await msgDb.from('whatsapp_messages').insert(failedData);
+      await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
       serviceRoleClient.rpc('upsert_conversation_stats_manual', {
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
@@ -341,7 +341,7 @@ Deno.serve(async (req) => {
 
     // Store outbound message
     const successData = {
-      channel_id: cleanDestination,
+      channel_id: channelId,
       organization_id: channel.organization_id,
       message_id: messageId,
       sender_phone: senderPhone,
@@ -355,12 +355,13 @@ Deno.serve(async (req) => {
         mediaType: messageType,
         fileName,
         provider: 'infobip',
+        external_persisted_first: true,
         sent_by_human: userId !== 'service_role',
       },
     };
 
     const msgDb2 = (extUrl && extKey) ? createClient(extUrl, extKey) : serviceRoleClient;
-    await msgDb2.from('whatsapp_messages').insert(successData);
+    await msgDb2.from('whatsapp_messages').upsert(successData, { onConflict: 'message_id', ignoreDuplicates: true });
     serviceRoleClient.rpc('upsert_conversation_stats_manual', {
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,

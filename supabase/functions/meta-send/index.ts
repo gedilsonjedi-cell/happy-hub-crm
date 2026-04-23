@@ -30,7 +30,11 @@ const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 async function insertMessageRecord(data: Record<string, unknown>) {
-  const result = await messageDb.from('whatsapp_messages').insert(data);
+  const result = await messageDb
+    .from('whatsapp_messages')
+    .upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+    .select('id, message_id')
+    .maybeSingle();
 
   if (result.error) {
     console.error('[Meta-Send] Message write failed:', result.error);
@@ -986,7 +990,7 @@ Deno.serve(async (req) => {
       
       const failedMessageId = `failed_${Date.now()}`;
       const failedData = {
-          channel_id: cleanDestination,
+          channel_id: channelId,
           organization_id: channel.organization_id,
           message_id: failedMessageId,
           sender_phone: channel.phone,
@@ -1071,7 +1075,7 @@ Deno.serve(async (req) => {
 
     // Store outbound message in database — SYNCHRONOUS to guarantee persistence
     const outboundData = {
-        channel_id: cleanDestination,
+        channel_id: channelId,
         organization_id: channel.organization_id,
         message_id: messageId,
         sender_phone: channel.phone,
@@ -1091,6 +1095,7 @@ Deno.serve(async (req) => {
           fileName,
           cost: pricePerMessage,
           provider: 'meta',
+          external_persisted_first: true,
           sent_by_human: userId !== 'service_role',
           campaignId: campaignId || null
         }
