@@ -574,6 +574,9 @@ const AtendimentoV2 = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [filterByAttendant, setFilterByAttendant] = useState<string | null>(null);
   const [filterBySector, setFilterBySector] = useState<string | null>(null);
+  // Ordenação por tempo de espera (apenas aba "Não Lidos"). null = padrão (sem reordenação extra).
+  // 'desc' = maior tempo de espera primeiro · 'asc' = menor tempo de espera primeiro
+  const [unreadWaitSort, setUnreadWaitSort] = useState<"desc" | "asc" | null>(null);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showQuickResponsesAutocomplete, setShowQuickResponsesAutocomplete] = useState(false);
