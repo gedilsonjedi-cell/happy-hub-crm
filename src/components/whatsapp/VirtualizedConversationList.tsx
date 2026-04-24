@@ -33,9 +33,11 @@ interface VirtualizedConversationListProps {
   bulkMode?: boolean;
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
 }
 
 const ITEM_HEIGHT = 100;
+const ITEM_HEIGHT_UNREAD = 124;
 
 interface RowData {
   conversations: Conversation[];
@@ -51,6 +53,7 @@ interface RowData {
   bulkMode?: boolean;
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
 }
 
 const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
@@ -68,6 +71,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
     bulkMode,
     bulkSelectedKeys,
     onBulkToggle,
+    unreadMode,
   } = data;
 
   // Last item is the "load more" button
@@ -108,6 +112,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
         bulkMode={bulkMode}
         isBulkSelected={isBulkSelected}
         onBulkToggle={onBulkToggle}
+        unreadMode={unreadMode}
       />
     </div>
   );
@@ -128,6 +133,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
   bulkMode,
   bulkSelectedKeys,
   onBulkToggle,
+  unreadMode,
 }: VirtualizedConversationListProps) {
   const itemCount = conversations.length + (hasMore && onLoadMore ? 1 : 0);
 
@@ -145,6 +151,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     bulkMode,
     bulkSelectedKeys,
     onBulkToggle,
+    unreadMode,
   };
 
   const handleItemsRendered = useCallback(
@@ -165,7 +172,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     <FixedSizeList
       height={height}
       itemCount={itemCount}
-      itemSize={ITEM_HEIGHT}
+      itemSize={unreadMode ? ITEM_HEIGHT_UNREAD : ITEM_HEIGHT}
       width="100%"
       itemData={itemData}
       overscanCount={5}

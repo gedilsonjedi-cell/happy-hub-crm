@@ -1,8 +1,8 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MessageSquare, User, UserCheck, Clock } from "lucide-react";
+import { MessageSquare, User, UserCheck, Clock, AlertCircle, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Conversation {
@@ -32,6 +32,37 @@ interface ConversationItemProps {
   bulkMode?: boolean;
   isBulkSelected?: boolean;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
+}
+
+// Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese)
+function formatWaitingTime(fromIso: string | null): string {
+  if (!fromIso) return "—";
+  const ms = Date.now() - new Date(fromIso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return "—";
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `${minutes}min`;
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  if (hours < 24) return remMin > 0 ? `${hours}h ${remMin}min` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+// Returns Tailwind classes for the waiting time badge based on severity
+function getWaitingTimeSeverity(fromIso: string | null): {
+  className: string;
+  label: string;
+} {
+  if (!fromIso) return { className: "bg-muted text-muted-foreground", label: "—" };
+  const ms = Date.now() - new Date(fromIso).getTime();
+  const minutes = ms / 60000;
+  if (minutes < 5) return { className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30", label: "ok" };
+  if (minutes < 30) return { className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30", label: "atenção" };
+  if (minutes < 120) return { className: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30", label: "atraso" };
+  return { className: "bg-destructive/15 text-destructive border-destructive/30", label: "crítico" };
 }
 
 function getInitials(name: string | null): string {
@@ -53,8 +84,17 @@ export const ConversationItem = memo(function ConversationItem({
   bulkMode,
   isBulkSelected,
   onBulkToggle,
+  unreadMode,
 }: ConversationItemProps) {
   const initials = getInitials(conversation.name);
+
+  // Lightweight ticker so the waiting time badge updates roughly every 30s while in unread mode
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!unreadMode) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, [unreadMode]);
 
   const handleClick = () => {
     if (bulkMode && onBulkToggle) {
@@ -63,6 +103,12 @@ export const ConversationItem = memo(function ConversationItem({
       onSelect(conversation);
     }
   };
+
+  // Unread mode metadata (waiting time + agent badge)
+  const waitingFrom = conversation.lastInboundTime || conversation.lastMessageTime;
+  const waitingSeverity = getWaitingTimeSeverity(waitingFrom);
+  const waitingLabel = formatWaitingTime(waitingFrom);
+  const hasAgent = !!conversation.assignedToName;
 
   return (
     <div
@@ -152,13 +198,51 @@ export const ConversationItem = memo(function ConversationItem({
             </div>
           )}
 
-          {conversation.assignedToName && (
-            <div className="flex items-center gap-1 mb-0.5">
-              <UserCheck className="w-3 h-3 text-blue-400" />
-              <span className="text-[11px] text-blue-400 font-medium truncate">
-                {conversation.assignedToName}
-              </span>
+          {unreadMode ? (
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+              {/* Atendente responsável */}
+              {hasAgent ? (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-5 px-2 gap-1 bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 max-w-[140px]"
+                  title={`Atendente: ${conversation.assignedToName}`}
+                >
+                  <UserCheck className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{conversation.assignedToName}</span>
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-5 px-2 gap-1 bg-destructive/15 text-destructive border-destructive/30"
+                  title="Sem atendente atribuído"
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  Sem atendente
+                </Badge>
+              )}
+
+              {/* Tempo aguardando resposta */}
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] h-5 px-2 gap-1",
+                  waitingSeverity.className
+                )}
+                title={`Aguardando há ${waitingLabel}`}
+              >
+                <Timer className="w-3 h-3" />
+                {waitingLabel}
+              </Badge>
             </div>
+          ) : (
+            conversation.assignedToName && (
+              <div className="flex items-center gap-1 mb-0.5">
+                <UserCheck className="w-3 h-3 text-blue-400" />
+                <span className="text-[11px] text-blue-400 font-medium truncate">
+                  {conversation.assignedToName}
+                </span>
+              </div>
+            )
           )}
 
           <div className="flex items-center justify-between gap-2">
@@ -194,10 +278,12 @@ export const ConversationItem = memo(function ConversationItem({
     prev.conversation.assignedToName === next.conversation.assignedToName &&
     prev.conversation.sectorId === next.conversation.sectorId &&
     prev.conversation.tags === next.conversation.tags &&
+    prev.conversation.lastInboundTime === next.conversation.lastInboundTime &&
     prev.isSelected === next.isSelected &&
     prev.isRecentlyUpdated === next.isRecentlyUpdated &&
     prev.sectorName === next.sectorName &&
     prev.bulkMode === next.bulkMode &&
-    prev.isBulkSelected === next.isBulkSelected
+    prev.isBulkSelected === next.isBulkSelected &&
+    prev.unreadMode === next.unreadMode
   );
 });
