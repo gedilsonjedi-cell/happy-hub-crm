@@ -198,6 +198,66 @@ Deno.serve(async (req) => {
       );
     }
 
+    const nowIso = () => new Date().toISOString();
+
+    async function getCounts() {
+      const { data } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
+      return data?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
+    }
+
+    async function persistCampaignState(
+      counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
+      status: 'running' | 'completed'
+    ) {
+      await supabase.from('campaigns').update({
+        status,
+        sent_count: Number(counts.total_sent) || 0,
+        delivered_count: Number(counts.total_delivered) || 0,
+        failed_count: Number(counts.total_failed) || 0,
+        completed_at: status === 'completed' ? nowIso() : null,
+        updated_at: nowIso()
+      }).eq('id', campaignId);
+    }
+
+    async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
+      const { data: updatedRecipients, error: failOpenError } = await supabase
+        .from('campaign_recipients')
+        .update({
+          status: 'failed',
+          error_message: reason,
+          last_error_code: errorCode,
+          next_retry_at: null,
+          updated_at: nowIso()
+        })
+        .eq('campaign_id', campaignId)
+        .in('status', ['pending', 'processing', 'waiting_retry'])
+        .select('id');
+
+      if (failOpenError) {
+        console.error('[Batch] Error failing open recipients:', failOpenError);
+      }
+
+      const counts = await getCounts();
+      await persistCampaignState(counts, 'completed');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          fallback: true,
+          done: true,
+          status: 'completed',
+          error: reason,
+          failedOpenRecipients: updatedRecipients?.length || 0,
+          sent: Number(counts.total_sent) || 0,
+          delivered: Number(counts.total_delivered) || 0,
+          failed: Number(counts.total_failed) || 0,
+          total: (campaign as { total_recipients: number }).total_recipients,
+          pendingRetries: Number(counts.total_waiting_retry) || 0
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const channelIds = [...new Set(campaignChannels.map((cc: { channel_id: string }) => cc.channel_id))];
     const templateIds = [...new Set(campaignChannels.map((cc: { template_id: string }) => cc.template_id))];
 
@@ -245,7 +305,6 @@ Deno.serve(async (req) => {
       ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
       : standardTickSize;
     const recoverableFailedCodes: string[] = [];
-    const nowIso = () => new Date().toISOString();
 
     const releaseStaleProcessingRecipients = async () => {
       const staleBefore = new Date(Date.now() - 3 * 60 * 1000).toISOString();
@@ -277,63 +336,6 @@ Deno.serve(async (req) => {
       return releasedCount;
     };
 
-    const getCounts = async () => {
-      const { data } = await supabase.rpc('get_campaign_counts', { p_campaign_id: campaignId });
-      return data?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
-    };
-
-    const persistCampaignState = async (
-      counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
-      status: 'running' | 'completed'
-    ) => {
-      await supabase.from('campaigns').update({
-        status,
-        sent_count: Number(counts.total_sent) || 0,
-        delivered_count: Number(counts.total_delivered) || 0,
-        failed_count: Number(counts.total_failed) || 0,
-        completed_at: status === 'completed' ? nowIso() : null,
-        updated_at: nowIso()
-      }).eq('id', campaignId);
-    };
-
-    async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
-      const { data: updatedRecipients, error: failOpenError } = await supabase
-        .from('campaign_recipients')
-        .update({
-          status: 'failed',
-          error_message: reason,
-          last_error_code: errorCode,
-          next_retry_at: null,
-          updated_at: nowIso()
-        })
-        .eq('campaign_id', campaignId)
-        .in('status', ['pending', 'processing', 'waiting_retry'])
-        .select('id');
-
-      if (failOpenError) {
-        console.error('[Batch] Error failing open recipients:', failOpenError);
-      }
-
-      const counts = await getCounts();
-      await persistCampaignState(counts, 'completed');
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          fallback: true,
-          done: true,
-          status: 'completed',
-          error: reason,
-          failedOpenRecipients: updatedRecipients?.length || 0,
-          sent: Number(counts.total_sent) || 0,
-          delivered: Number(counts.total_delivered) || 0,
-          failed: Number(counts.total_failed) || 0,
-          total: campaign.total_recipients,
-          pendingRetries: Number(counts.total_waiting_retry) || 0
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     const recoverFailedRecipients = async () => {
       if (recoverableFailedCodes.length === 0) {
