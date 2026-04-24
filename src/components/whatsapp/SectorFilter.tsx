@@ -69,7 +69,7 @@ export function SectorFilter({ value, onChange }: SectorFilterProps) {
       ? "Sem departamento"
       : value
       ? sectors.find((s) => s.id === value)?.name || "Departamento"
-      : "Todos os departamentos";
+      : "Departamentos";
 
   const handleSelect = (next: string | null) => {
     onChange(next);
