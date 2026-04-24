@@ -3802,7 +3802,8 @@ const AtendimentoV2 = () => {
     ? visibleConversations.filter(c => (c.assignedTo && c.assignedTo !== user?.id) || isHandledWithoutOwnerConversation(c)).length
     : 0;
   const unreadCount = visibleConversations.filter(c => {
-    if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
+    // Conta apenas conversas onde o cliente é quem mandou a última mensagem (não-lida real)
+    if (!isTrulyUnread(c)) return false;
     if (canSeeOthers) return true; // Admins/supervisores: contam todas as não lidas da org
     const isMyConversation = c.assignedTo === user?.id;
     const isOrphanVisibleToMe = !c.assignedTo && c.status !== "in_progress" && (!c.sectorId || sectorIds.includes(c.sectorId));
