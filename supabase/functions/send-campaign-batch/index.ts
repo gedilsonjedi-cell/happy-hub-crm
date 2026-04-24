@@ -26,12 +26,9 @@ const variableFieldMap: Record<string, string> = {
   'contact_notes': 'notes',
 };
 
-// Errors that get scheduled for later retry with delay
-const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {
-  '131049': { maxRetries: 3, delayHours: [12, 24, 48] },
-  '131000': { maxRetries: 2, delayHours: [0.5, 1] },
-  '130472': { maxRetries: 2, delayHours: [1, 3] },
-};
+// Campaign sends must always reach a terminal state.
+// External provider failures are marked as failed immediately so the campaign can finish.
+const RETRYABLE_ERRORS: Record<string, { maxRetries: number; delayHours: number[] }> = {};
 
 // No Meta business error should bounce back to pending automatically.
 // This was causing looping recipients and unstable counters.
@@ -258,7 +255,7 @@ Deno.serve(async (req) => {
     const effectiveBatchSize = isFullMode
       ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
       : standardTickSize;
-    const recoverableFailedCodes = ['EXCEPTION', 'UNKNOWN'];
+    const recoverableFailedCodes: string[] = [];
     const nowIso = () => new Date().toISOString();
 
     const releaseStaleProcessingRecipients = async () => {
@@ -310,7 +307,50 @@ Deno.serve(async (req) => {
       }).eq('id', campaignId);
     };
 
+    const failOpenRecipientsAndComplete = async (reason: string, errorCode: string) => {
+      const { data: updatedRecipients, error: failOpenError } = await supabase
+        .from('campaign_recipients')
+        .update({
+          status: 'failed',
+          error_message: reason,
+          last_error_code: errorCode,
+          next_retry_at: null,
+          updated_at: nowIso()
+        })
+        .eq('campaign_id', campaignId)
+        .in('status', ['pending', 'processing', 'waiting_retry'])
+        .select('id');
+
+      if (failOpenError) {
+        console.error('[Batch] Error failing open recipients:', failOpenError);
+      }
+
+      const counts = await getCounts();
+      await persistCampaignState(counts, 'completed');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          fallback: true,
+          done: true,
+          status: 'completed',
+          error: reason,
+          failedOpenRecipients: updatedRecipients?.length || 0,
+          sent: Number(counts.total_sent) || 0,
+          delivered: Number(counts.total_delivered) || 0,
+          failed: Number(counts.total_failed) || 0,
+          total: campaign.total_recipients,
+          pendingRetries: Number(counts.total_waiting_retry) || 0
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    };
+
     const recoverFailedRecipients = async () => {
+      if (recoverableFailedCodes.length === 0) {
+        return 0;
+      }
+
       const { count, error: recoverableError } = await supabase
         .from('campaign_recipients')
         .select('id', { count: 'exact', head: true })
