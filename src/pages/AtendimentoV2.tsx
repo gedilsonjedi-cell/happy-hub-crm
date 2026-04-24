@@ -4212,6 +4212,7 @@ const AtendimentoV2 = () => {
                   height={conversationListHeight - (bulkSelectMode ? 44 : 0)}
                   bulkMode={bulkSelectMode}
                   bulkSelectedKeys={bulkSelectedKeys}
+                  unreadMode={filterStatus === "unread" && !showArchived}
                   onBulkToggle={(conv: any) => {
                     const key = getConversationKey(conv as Conversation);
                     setBulkSelectedKeys(prev => {
