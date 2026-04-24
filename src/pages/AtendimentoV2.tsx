@@ -3633,9 +3633,14 @@ const AtendimentoV2 = () => {
           ) && conv.status !== "archived";
         }
         
-        // Apply attendant filter (only for admins/supervisors)
-        // Para "Não Lidos" admins podem filtrar por atendente para ver performance individual
-        const matchesAttendant = filterStatus === "new" || (filterStatus === "unread" && !canSeeOthers) || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // Apply attendant filter (only for admins/supervisors).
+        // Filter is scoped to the current tab — never auto-switches the active tab.
+        // "none" = sem atendente (assignedTo nulo)
+        const matchesAttendant = !filterByAttendant
+          ? true
+          : filterByAttendant === "none"
+            ? !conv.assignedTo
+            : conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
