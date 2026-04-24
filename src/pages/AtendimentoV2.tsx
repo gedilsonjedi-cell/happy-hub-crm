@@ -3670,7 +3670,11 @@ const AtendimentoV2 = () => {
   const filteredArchived = hasSearchResults
     ? archivedFromGlobalSearch
         .filter(conv => {
-          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          const matchesAttendant = !filterByAttendant
+            ? true
+            : filterByAttendant === "none"
+              ? !conv.assignedTo
+              : conv.assignedTo === filterByAttendant;
           const matchesSector = matchesSectorFilter(conv);
           return matchesAttendant && matchesSector;
         })
