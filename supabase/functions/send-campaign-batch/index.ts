@@ -476,6 +476,7 @@ Deno.serve(async (req) => {
     });
 
     const leadCustomFieldsMap = new Map<string, Record<string, any>>();
+    const leadCustomFieldsByPhoneKey = new Map<string, Record<string, any>>();
     const leadNameById = new Map<string, string>();
     const leadNameByPhoneKey = new Map<string, string>();
     const recipientLeadIds = [...new Set(recipientsToSend.map((r: typeof recipientsToSend[number]) => r.leadId).filter(Boolean))] as string[];
@@ -498,6 +499,12 @@ Deno.serve(async (req) => {
     for (const lead of leadRecords) {
       if (lead.custom_fields) {
         leadCustomFieldsMap.set(lead.id, lead.custom_fields as Record<string, any>);
+        // Also map by phone keys so recipients without lead_id can resolve custom fields
+        getPhoneLookupKeys(lead.phone).forEach((key) => {
+          if (!leadCustomFieldsByPhoneKey.has(key)) {
+            leadCustomFieldsByPhoneKey.set(key, lead.custom_fields as Record<string, any>);
+          }
+        });
       }
 
       if (lead.name) {
