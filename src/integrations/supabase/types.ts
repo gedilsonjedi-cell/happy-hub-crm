@@ -3772,6 +3772,30 @@ export type Database = {
           id: string
         }[]
       }
+      get_unread_conversations_full: {
+        Args: { p_channel_ids: string[]; p_organization_id: string }
+        Returns: {
+          assigned_to: string
+          assigned_to_name: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          lead_name: string
+          lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
