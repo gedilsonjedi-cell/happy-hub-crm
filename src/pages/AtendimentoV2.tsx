@@ -574,6 +574,9 @@ const AtendimentoV2 = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [filterByAttendant, setFilterByAttendant] = useState<string | null>(null);
   const [filterBySector, setFilterBySector] = useState<string | null>(null);
+  // Ordenação por tempo de espera (apenas aba "Não Lidos"). null = padrão (sem reordenação extra).
+  // 'desc' = maior tempo de espera primeiro · 'asc' = menor tempo de espera primeiro
+  const [unreadWaitSort, setUnreadWaitSort] = useState<"desc" | "asc" | null>(null);
   
   const [showQuickResponses, setShowQuickResponses] = useState(false);
   const [showQuickResponsesAutocomplete, setShowQuickResponsesAutocomplete] = useState(false);
@@ -3565,7 +3568,7 @@ const AtendimentoV2 = () => {
 
   const hasSearchResults = combinedSearchResults.length > 0 && searchTerm.length >= 2;
   
-  const filteredConversations = hasSearchResults 
+  let filteredConversations = hasSearchResults 
     ? combinedSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
@@ -3648,8 +3651,26 @@ const AtendimentoV2 = () => {
         return matchesSearch && matchesFilter && matchesAttendant && matchesSector;
       });
 
-  const visibleArchivedConversations = canSeeOthers 
+  // Reordenação por tempo de espera — exclusiva da aba "Não Lidos".
+  // Tempo de espera = idade da última mensagem do cliente (lastInboundTime).
+  // Fallback para lastMessageTime quando não houver inbound registrado.
+  if (filterStatus === "unread" && !showArchived && unreadWaitSort) {
+    const getWaitReference = (conv: Conversation) => {
+      const ref = conv.lastInboundTime || conv.lastMessageTime;
+      return ref ? new Date(ref).getTime() : 0;
+    };
+    filteredConversations = [...filteredConversations].sort((a, b) => {
+      const ta = getWaitReference(a);
+      const tb = getWaitReference(b);
+      // 'desc' = maior espera primeiro = timestamp MAIS ANTIGO no topo
+      // 'asc'  = menor espera primeiro = timestamp MAIS RECENTE no topo
+      return unreadWaitSort === "desc" ? ta - tb : tb - ta;
+    });
+  }
+
+  const visibleArchivedConversations = canSeeOthers
     ? archivedConversations 
+
     : archivedConversations.filter(conv => {
         // Attendants can see archived conversations that were:
         // 1. Assigned to them
@@ -3988,7 +4009,7 @@ const AtendimentoV2 = () => {
               
             {/* Filters for admins/supervisors */}
             {canSeeOthers && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <AttendantFilter 
                   value={filterByAttendant} 
                   onChange={setFilterByAttendant}
@@ -3998,6 +4019,55 @@ const AtendimentoV2 = () => {
                   value={filterBySector} 
                   onChange={setFilterBySector}
                 />
+                {filterStatus === "unread" && !showArchived && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-9 gap-1.5",
+                          unreadWaitSort && "border-primary text-primary"
+                        )}
+                      >
+                        <Clock className="w-4 h-4" />
+                        <span className="text-xs">
+                          {unreadWaitSort === "desc"
+                            ? "Maior espera"
+                            : unreadWaitSort === "asc"
+                              ? "Menor espera"
+                              : "Tempo"}
+                        </span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56 bg-popover">
+                      <DropdownMenuItem onClick={() => setUnreadWaitSort("desc")}>
+                        <Clock className="w-4 h-4 mr-2" />
+                        Maior tempo de espera
+                        {unreadWaitSort === "desc" && (
+                          <Check className="w-4 h-4 ml-auto" />
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setUnreadWaitSort("asc")}>
+                        <Clock className="w-4 h-4 mr-2" />
+                        Menor tempo de espera
+                        {unreadWaitSort === "asc" && (
+                          <Check className="w-4 h-4 ml-auto" />
+                        )}
+                      </DropdownMenuItem>
+                      {unreadWaitSort && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setUnreadWaitSort(null)}>
+                            <X className="w-4 h-4 mr-2" />
+                            Limpar ordenação
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             )}
           </div>
