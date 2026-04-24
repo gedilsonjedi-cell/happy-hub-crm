@@ -631,86 +631,22 @@ Deno.serve(async (req) => {
           }
           return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
-          const errorCode = extractMetaErrorCode(result.error || '');
-          
-          // Throttle errors (135000): put back as pending so normal dispatch retries in seconds
-          if (isThrottleError(errorCode)) {
-            const currentRetryCount = recipient.retryCount || 0;
-            const MAX_THROTTLE_RETRIES = 5;
-            if (currentRetryCount < MAX_THROTTLE_RETRIES) {
-              console.log(`[Batch] Throttle error for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_THROTTLE_RETRIES})`);
-              await supabase.from('campaign_recipients').update({
-                status: 'pending', retry_count: currentRetryCount + 1,
-                next_retry_at: null, error_message: null, last_error_code: null
-              }).eq('id', recipient.recipientId);
-              return { sent: false, failed: false, retry: false };
-            }
-            // Max throttle retries exhausted - mark as failed
-            await supabase.from('campaign_recipients').update({
-              status: 'failed', error_message: 'Meta throttle persistente após ' + MAX_THROTTLE_RETRIES + ' tentativas',
-              last_error_code: errorCode
-            }).eq('id', recipient.recipientId);
-            return { sent: false, failed: true, retry: false };
-          }
-          
-          // Standard retryable errors: schedule for later
-          if (isRetryableError(errorCode)) {
-            const currentRetryCount = recipient.retryCount || 0;
-            const config = getRetryConfig(errorCode!);
-            if (config && currentRetryCount < config.maxRetries) {
-              const nextRetryAt = calculateNextRetryTime(errorCode!, currentRetryCount);
-              await supabase.from('campaign_recipients').update({
-                status: 'waiting_retry', retry_count: currentRetryCount + 1,
-                next_retry_at: nextRetryAt?.toISOString(), error_message: result.error || 'Erro temporário',
-                last_error_code: errorCode
-              }).eq('id', recipient.recipientId);
-              return { sent: !recipient.isRetry, failed: false, retry: true };
-            }
-          }
+          const rawErrorCode = result.errorCode ?? extractMetaErrorCode(result.error || '');
+          const errorCode = rawErrorCode ? String(rawErrorCode) : null;
+
           await supabase.from('campaign_recipients').update({
             status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN'
           }).eq('id', recipient.recipientId);
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
-        const currentRetryCount = recipient.retryCount || 0;
         const errorMessage = String(error);
-        const isRateLimitException = /RateLimitError|rate limit exceeded/i.test(errorMessage);
-
-        if (isRateLimitException) {
-          const nextRetryAt = new Date(Date.now() + 60_000).toISOString();
-          console.log(`[Batch] Invocation rate limit for ${formattedPhone}, scheduling retry at ${nextRetryAt}`);
-          await supabase.from('campaign_recipients').update({
-            status: 'waiting_retry',
-            retry_count: currentRetryCount + 1,
-            next_retry_at: nextRetryAt,
-            error_message: errorMessage,
-            last_error_code: 'EXCEPTION'
-          }).eq('id', recipient.recipientId);
-          return { sent: false, failed: false, retry: true };
-        }
-
-        const MAX_EXCEPTION_RETRIES = 10;
-        if (currentRetryCount < MAX_EXCEPTION_RETRIES) {
-          console.log(`[Batch] Exception for ${formattedPhone}, returning to pending (attempt ${currentRetryCount + 1}/${MAX_EXCEPTION_RETRIES}): ${errorMessage}`);
-          await supabase.from('campaign_recipients').update({
-            status: 'pending',
-            retry_count: currentRetryCount + 1,
-            next_retry_at: null,
-            error_message: null,
-            last_error_code: null
-          }).eq('id', recipient.recipientId);
-          return { sent: false, failed: false, retry: false };
-        }
-
         await supabase.from('campaign_recipients').update({
-          status: 'waiting_retry',
-          retry_count: currentRetryCount + 1,
-          next_retry_at: new Date(Date.now() + 300_000).toISOString(),
+          status: 'failed',
           error_message: errorMessage,
           last_error_code: 'EXCEPTION'
         }).eq('id', recipient.recipientId);
-        return { sent: false, failed: false, retry: true };
+        return { sent: !recipient.isRetry, failed: true, retry: false };
       }
     }
 
