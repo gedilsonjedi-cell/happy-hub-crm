@@ -1,8 +1,8 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MessageSquare, User, UserCheck, Clock } from "lucide-react";
+import { MessageSquare, User, UserCheck, Clock, AlertCircle, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Conversation {
