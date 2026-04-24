@@ -33,9 +33,11 @@ interface VirtualizedConversationListProps {
   bulkMode?: boolean;
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
 }
 
 const ITEM_HEIGHT = 100;
+const ITEM_HEIGHT_UNREAD = 124;
 
 interface RowData {
   conversations: Conversation[];
@@ -51,6 +53,7 @@ interface RowData {
   bulkMode?: boolean;
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
 }
 
 const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
