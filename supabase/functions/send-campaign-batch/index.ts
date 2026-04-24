@@ -247,7 +247,6 @@ Deno.serve(async (req) => {
       ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
       : standardTickSize;
     const recoverableFailedCodes: string[] = [];
-    const nowIso = () => new Date().toISOString();
 
     const releaseStaleProcessingRecipients = async () => {
       const staleBefore = new Date(Date.now() - 3 * 60 * 1000).toISOString();
