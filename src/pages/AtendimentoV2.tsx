@@ -4082,7 +4082,7 @@ const AtendimentoV2 = () => {
               
             {/* Filters for admins/supervisors */}
             {canSeeOthers && (
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-col gap-2">
                 <AttendantFilter 
                   value={filterByAttendant} 
                   onChange={setFilterByAttendant}
@@ -4097,24 +4097,23 @@ const AtendimentoV2 = () => {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="outline"
-                        size="sm"
                         className={cn(
-                          "h-9 gap-1.5",
+                          "h-10 w-full justify-between bg-muted/30 border-border font-normal",
                           unreadWaitSort && "border-primary text-primary"
                         )}
                       >
-                        <Clock className="w-4 h-4" />
-                        <span className="text-xs">
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
                           {unreadWaitSort === "desc"
-                            ? "Maior espera"
+                            ? "Maior tempo de espera"
                             : unreadWaitSort === "asc"
-                              ? "Menor espera"
+                              ? "Menor tempo de espera"
                               : "Tempo"}
                         </span>
-                        <ChevronDown className="w-3 h-3 opacity-60" />
+                        <ChevronDown className="w-4 h-4 opacity-60" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-56 bg-popover">
+                    <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] bg-popover">
                       <DropdownMenuItem onClick={() => setUnreadWaitSort("desc")}>
                         <Clock className="w-4 h-4 mr-2" />
                         Maior tempo de espera
