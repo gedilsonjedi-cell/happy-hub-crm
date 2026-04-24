@@ -476,7 +476,7 @@ async function getNextAvailableAttendant(
 
   if (!sectorUsers || sectorUsers.length === 0) return null;
 
-  const userIds = sectorUsers.map(u => u.user_id);
+  const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
 
   const { data: availableAttendants } = await supabase
     .from('attendant_availability')
@@ -905,14 +905,16 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       .or(`phone.like.%${suffix8}`)
       .order('created_at', { ascending: false })
       .limit(1)
-      .then(({ error: btnError, count }) => {
-        if (btnError) {
-          console.error('[Webhook] Error updating button_clicked:', btnError);
-        } else {
-          console.log(`[Webhook] 🔘 Button click tracked: "${buttonText}" from ${normalizedPhone}`);
-        }
-      })
-      .catch(console.error);
+      .then(
+        ({ error: btnError }: { error: unknown }) => {
+          if (btnError) {
+            console.error('[Webhook] Error updating button_clicked:', btnError);
+          } else {
+            console.log(`[Webhook] 🔘 Button click tracked: "${buttonText}" from ${normalizedPhone}`);
+          }
+        },
+        (e: unknown) => console.error(e)
+      );
   }
 
   // ── PHASE 4: Post-processing actions (fire and forget where possible) ─
@@ -989,7 +991,7 @@ async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
 
   if (!campaignChannelsData || campaignChannelsData.length === 0) return;
 
-  const campaignIds = campaignChannelsData.map(cc => cc.campaign_id);
+  const campaignIds = campaignChannelsData.map((cc: { campaign_id: string }) => cc.campaign_id);
 
   // Pause all running campaigns for these channels
   // SKIP campaigns where the user already acknowledged the quality risk
@@ -1148,12 +1150,14 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
           .from('channels')
           .select('id, name, phone')
           .in('id', uniqueChannelIds);
-        channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+        channels?.forEach((ch: { id: string; name: string; phone: string }) =>
+          channelMap.set(ch.id, { name: ch.name, phone: ch.phone })
+        );
       }
 
       const dispatchPromises = msgsToDispatch.map((msg) => {
         const metadata = (msg.metadata || {}) as Record<string, unknown>;
-        const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
+        const chInfo = msg.channel_id ? channelMap.get(String(msg.channel_id)) : null;
         return dispatchIntegrationWebhook({
           organization_id: msg.organization_id as string,
           event: 'message_updated',

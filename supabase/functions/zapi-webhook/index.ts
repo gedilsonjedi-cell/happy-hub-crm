@@ -449,7 +449,7 @@ async function handleConversationAssignment(
   channelId: string,
   leadId: string,
   normalizedPhone: string
-): Promise<{ assignmentId: string; assignedTo: string | null; status: string }> {
+): Promise<{ assignmentId: string; assignedTo: string | null; status: string } | undefined> {
   
   // PRIMARY LOOKUP: By lead_id + channel_id (most reliable)
   let { data: existingAssignment } = await supabase
