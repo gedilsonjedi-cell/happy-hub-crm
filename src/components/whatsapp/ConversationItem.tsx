@@ -278,10 +278,12 @@ export const ConversationItem = memo(function ConversationItem({
     prev.conversation.assignedToName === next.conversation.assignedToName &&
     prev.conversation.sectorId === next.conversation.sectorId &&
     prev.conversation.tags === next.conversation.tags &&
+    prev.conversation.lastInboundTime === next.conversation.lastInboundTime &&
     prev.isSelected === next.isSelected &&
     prev.isRecentlyUpdated === next.isRecentlyUpdated &&
     prev.sectorName === next.sectorName &&
     prev.bulkMode === next.bulkMode &&
-    prev.isBulkSelected === next.isBulkSelected
+    prev.isBulkSelected === next.isBulkSelected &&
+    prev.unreadMode === next.unreadMode
   );
 });
