@@ -1492,6 +1492,65 @@ const AtendimentoV2 = () => {
     }
   }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, conversationOffset]);
 
+  // Load ALL unread conversations (no pagination, no time limit).
+  // Usado exclusivamente pela aba "Não Lidos" para garantir que mensagens
+  // não lidas de qualquer idade (horas, dias, semanas) sejam carregadas
+  // independentemente da posição no ranking de "última mensagem".
+  const isLoadingAllUnreadRef = useRef(false);
+  const lastUnreadLoadAtRef = useRef<number>(0);
+  const loadAllUnreadConversations = useCallback(async (force = false) => {
+    if (channels.length === 0 || !effectiveOrganizationId) return;
+    if (isLoadingAllUnreadRef.current) return;
+    // Throttle: no máximo 1 carga completa a cada 30s (a menos que force=true)
+    const now = Date.now();
+    if (!force && now - lastUnreadLoadAtRef.current < 30_000) return;
+
+    isLoadingAllUnreadRef.current = true;
+    const channelIds = channels.map(c => c.id);
+    try {
+      const { data: rows, error } = await supabase.rpc("get_unread_conversations_full", {
+        p_channel_ids: channelIds,
+        p_organization_id: effectiveOrganizationId,
+      });
+
+      if (error) throw error;
+
+      if (rows?.length) {
+        const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+        setConversationStatuses(prev => ({ ...prev, ...mappedData.statuses }));
+
+        mappedData.leadLookups.byPhone.forEach((value, key) => {
+          const existing = leadsMapRef.current.byPhone.get(key);
+          if (!existing || (!existing.name && value.name) || (!existing.tags?.length && value.tags?.length)) {
+            leadsMapRef.current.byPhone.set(key, value);
+          }
+        });
+
+        mappedData.leadLookups.bySuffix.forEach((value, key) => {
+          const existing = leadsMapRef.current.bySuffix.get(key);
+          if (!existing || (!existing.name && value.name) || (!existing.tags?.length && value.tags?.length)) {
+            leadsMapRef.current.bySuffix.set(key, value);
+          }
+        });
+
+        // Merge: para conversas já presentes, mantém a versão existente
+        // (que pode ter dados mais recentes via realtime).
+        // Para novas, adiciona ao final.
+        setAllConversations(prev => {
+          const existingKeys = new Set(prev.map(c => getConversationKey(c)));
+          const newConvs = mappedData.conversations.filter(c => !existingKeys.has(getConversationKey(c)));
+          if (newConvs.length === 0) return prev;
+          return [...prev, ...newConvs];
+        });
+      }
+      lastUnreadLoadAtRef.current = Date.now();
+    } catch (error) {
+      console.error("Error loading all unread conversations:", error);
+    } finally {
+      isLoadingAllUnreadRef.current = false;
+    }
+  }, [channels, effectiveOrganizationId]);
+
   // Global search function - uses RPC for efficient server-side search
   const searchConversationsGlobal = useCallback(async (term: string) => {
     if (!term.trim() || term.length < 3 || channels.length === 0 || !effectiveOrganizationId) {
