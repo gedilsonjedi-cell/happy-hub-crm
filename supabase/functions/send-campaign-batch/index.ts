@@ -198,6 +198,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const nowIso = () => new Date().toISOString();
+
     const channelIds = [...new Set(campaignChannels.map((cc: { channel_id: string }) => cc.channel_id))];
     const templateIds = [...new Set(campaignChannels.map((cc: { template_id: string }) => cc.template_id))];
 
