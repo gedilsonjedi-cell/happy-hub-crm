@@ -3691,6 +3691,7 @@ const AtendimentoV2 = () => {
     : 0;
   const unreadCount = visibleConversations.filter(c => {
     if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
+    if (canSeeOthers) return true; // Admins/supervisores: contam todas as não lidas da org
     const isMyConversation = c.assignedTo === user?.id;
     const isOrphanVisibleToMe = !c.assignedTo && c.status !== "in_progress" && (!c.sectorId || sectorIds.includes(c.sectorId));
     return isMyConversation || isOrphanVisibleToMe;
