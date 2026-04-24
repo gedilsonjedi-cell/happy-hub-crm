@@ -84,8 +84,17 @@ export const ConversationItem = memo(function ConversationItem({
   bulkMode,
   isBulkSelected,
   onBulkToggle,
+  unreadMode,
 }: ConversationItemProps) {
   const initials = getInitials(conversation.name);
+
+  // Lightweight ticker so the waiting time badge updates roughly every 30s while in unread mode
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!unreadMode) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, [unreadMode]);
 
   const handleClick = () => {
     if (bulkMode && onBulkToggle) {
@@ -94,6 +103,12 @@ export const ConversationItem = memo(function ConversationItem({
       onSelect(conversation);
     }
   };
+
+  // Unread mode metadata (waiting time + agent badge)
+  const waitingFrom = conversation.lastInboundTime || conversation.lastMessageTime;
+  const waitingSeverity = getWaitingTimeSeverity(waitingFrom);
+  const waitingLabel = formatWaitingTime(waitingFrom);
+  const hasAgent = !!conversation.assignedToName;
 
   return (
     <div
