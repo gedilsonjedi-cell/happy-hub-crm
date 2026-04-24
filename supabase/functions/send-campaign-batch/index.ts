@@ -478,8 +478,8 @@ Deno.serve(async (req) => {
     const leadCustomFieldsMap = new Map<string, Record<string, any>>();
     const leadNameById = new Map<string, string>();
     const leadNameByPhoneKey = new Map<string, string>();
-    const recipientLeadIds = [...new Set(recipientsToSend.map(r => r.leadId).filter(Boolean))] as string[];
-    const recipientPhones = [...new Set(recipientsToSend.map(r => formatPhoneNumber(r.phone)))];
+    const recipientLeadIds = [...new Set(recipientsToSend.map((r: typeof recipientsToSend[number]) => r.leadId).filter(Boolean))] as string[];
+    const recipientPhones = [...new Set(recipientsToSend.map((r: typeof recipientsToSend[number]) => formatPhoneNumber(r.phone)))];
 
     const [leadsByIdResult, leadsByPhoneResult] = await Promise.all([
       recipientLeadIds.length > 0
