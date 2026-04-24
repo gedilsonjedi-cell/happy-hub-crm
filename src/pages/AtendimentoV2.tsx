@@ -3651,7 +3651,23 @@ const AtendimentoV2 = () => {
         return matchesSearch && matchesFilter && matchesAttendant && matchesSector;
       });
 
-  const visibleArchivedConversations = canSeeOthers 
+  // Reordenação por tempo de espera — exclusiva da aba "Não Lidos".
+  // Tempo de espera = idade da última mensagem do cliente (lastInboundTime).
+  // Fallback para lastMessageTime quando não houver inbound registrado.
+  if (filterStatus === "unread" && !showArchived && unreadWaitSort) {
+    const getWaitReference = (conv: Conversation) => {
+      const ref = conv.lastInboundTime || conv.lastMessageTime;
+      return ref ? new Date(ref).getTime() : 0;
+    };
+    filteredConversations = [...filteredConversations].sort((a, b) => {
+      const ta = getWaitReference(a);
+      const tb = getWaitReference(b);
+      // 'desc' = maior espera primeiro = timestamp MAIS ANTIGO no topo
+      // 'asc'  = menor espera primeiro = timestamp MAIS RECENTE no topo
+      return unreadWaitSort === "desc" ? ta - tb : tb - ta;
+    });
+  }
+
     ? archivedConversations 
     : archivedConversations.filter(conv => {
         // Attendants can see archived conversations that were:
