@@ -5,7 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-hub-signature-256',
 };
 
-const supabase = createClient(
+// deno-lint-ignore no-explicit-any
+const supabase: any = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
@@ -13,13 +14,16 @@ const supabase = createClient(
 // External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
-const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+// deno-lint-ignore no-explicit-any
+const externalSupabase: any = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
-const messageDb = externalSupabase || supabase;
+// deno-lint-ignore no-explicit-any
+const messageDb: any = externalSupabase || supabase;
 
 function writeMessageRecord(
-  client: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  client: any,
   data: Record<string, unknown>,
   upsert: boolean
 ) {

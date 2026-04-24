@@ -63,17 +63,19 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // deno-lint-ignore no-explicit-any
+    const supabase: any = createClient(supabaseUrl, supabaseKey);
 
     // External DB for whatsapp_messages
     const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
     const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
-    const messageDb = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
+    // deno-lint-ignore no-explicit-any
+    const messageDb: any = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : supabase;
 
     // Helper: create response AND send messages via Meta API
     async function respondWithMessages(messages: FlowMessage[], extra?: Record<string, unknown>) {
       // Send messages via Meta API (fire-and-forget safe — errors logged internally)
-      await sendFlowMessages(messages, channel_id, contact_phone, organization_id, supabase);
+      await sendFlowMessages(messages, channel_id, contact_phone, organization_id, supabase, messageDb);
       return new Response(JSON.stringify({
         response_type: 'messages',
         messages,
@@ -791,7 +793,10 @@ async function sendFlowMessages(
   channelId: string,
   contactPhone: string,
   organizationId: string,
-  supabase: ReturnType<typeof createClient>
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  // deno-lint-ignore no-explicit-any
+  messageDb: any
 ) {
   if (!messages.length) return;
 
@@ -906,8 +911,10 @@ async function sendTextMessage(
   organizationId: string,
   channelPhone: string,
   contactPhone: string,
-  supabase: ReturnType<typeof createClient>,
-  msgDb?: ReturnType<typeof createClient>
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  // deno-lint-ignore no-explicit-any
+  msgDb?: any
 ) {
   const db = msgDb || supabase;
   const resp = await fetch(
