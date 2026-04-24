@@ -3974,13 +3974,7 @@ const AtendimentoV2 = () => {
               <div className="flex gap-2">
                 <AttendantFilter 
                   value={filterByAttendant} 
-                  onChange={(v) => {
-                    setFilterByAttendant(v);
-                    // Auto-switch to "Outros" when filtering by specific attendant
-                    if (v && v !== user?.id) {
-                      setFilterStatus("others");
-                    }
-                  }}
+                  onChange={setFilterByAttendant}
                   selectedSectorId={filterBySector}
                 />
                 <SectorFilter 
