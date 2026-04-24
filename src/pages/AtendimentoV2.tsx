@@ -3689,12 +3689,13 @@ const AtendimentoV2 = () => {
         let matchesFilter = false;
         if (filterStatus === "unread") {
           // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
+          // Só conta como não-lida se o cliente é quem mandou a última mensagem.
           if (canSeeOthers) {
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && !isArchivedLikeConversation(conv);
           } else {
             const isMyConversation = conv.assignedTo === user?.id;
             const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
           }
         }
         else if (filterStatus === "new") {
