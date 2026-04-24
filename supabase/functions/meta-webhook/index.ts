@@ -496,7 +496,7 @@ async function getNextAvailableAttendant(
     .update({ last_assignment_at: new Date().toISOString() })
     .eq('user_id', nextAttendant.user_id)
     .eq('organization_id', organizationId)
-    .then(() => {}).catch(() => {});
+    .then(() => {}, () => {});
 
   return { userId: nextAttendant.user_id };
 }
@@ -524,7 +524,7 @@ async function getNextAvailableAttendantGlobal(
     .update({ last_assignment_at: new Date().toISOString() })
     .eq('user_id', nextAttendant.user_id)
     .eq('organization_id', organizationId)
-    .then(() => {}).catch(() => {});
+    .then(() => {}, () => {});
 
   return { userId: nextAttendant.user_id };
 }
@@ -616,7 +616,7 @@ async function handleConversationAssignment(
     supabase.from('conversation_assignments')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', existing.id)
-      .then(() => {}).catch(() => {});
+      .then(() => {}, () => {});
     return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status || 'pending', sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
   }
 
@@ -936,7 +936,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
           status: 'sent',
           organization_id: organizationId,
           metadata: { provider: 'meta', away_message: true, destination: normalizedPhone },
-        }, false, channel.id as string).then(() => {}).catch(() => {});
+        }, false, channel.id as string).then(() => {}, () => {});
       }
     }).catch(console.error);
     return; // Don't invoke chatbot when away

@@ -337,7 +337,7 @@ async function sendFollowUpMessage(
         _channel_id: channel.id, _conversation_phone: contactPhone,
         _content: message, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
 
       return { success: true };
     } else if (channel.provider === "zapi") {
@@ -379,7 +379,7 @@ async function sendFollowUpMessage(
         _channel_id: channel.id, _conversation_phone: contactPhone,
         _content: message, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
 
       return { success: true };
     }

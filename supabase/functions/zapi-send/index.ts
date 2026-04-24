@@ -310,7 +310,7 @@ Deno.serve(async (req) => {
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
       
       return new Response(
         JSON.stringify({ 
@@ -357,7 +357,7 @@ Deno.serve(async (req) => {
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,
       _sender_name: null, _created_at: new Date().toISOString(),
-    }).then(() => {}).catch(() => {});
+    }).then(() => {}, () => {});
     
     // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
     // This prevents the bot from responding while a human is handling the conversation

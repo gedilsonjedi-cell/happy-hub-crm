@@ -875,7 +875,7 @@ async function sendFlowMessages(
           _channel_id: channelId, _conversation_phone: contactPhone,
           _content: msg.message || `[${msg.media_type}]`, _direction: 'outbound',
           _is_read: null, _sender_name: null, _created_at: new Date().toISOString(),
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
 
         // If audio + text message, send text separately after audio with a 5s delay
         if (msg.media_type === 'audio' && msg.message) {
@@ -952,5 +952,5 @@ async function sendTextMessage(
     _channel_id: channelId, _conversation_phone: contactPhone,
     _content: text, _direction: 'outbound', _is_read: null,
     _sender_name: null, _created_at: new Date().toISOString(),
-  }).then(() => {}).catch(() => {});
+  }).then(() => {}, () => {});
 }

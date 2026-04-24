@@ -38,7 +38,7 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
           _is_read: (data.is_read as boolean) ?? null,
           _sender_name: (data.sender_name as string) || null,
           _created_at: new Date().toISOString(),
-        }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+        }).then(() => {}, (e: unknown) => console.error('[Stats] Error:', e));
       }
     }
     return result;
@@ -48,7 +48,7 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
 /** Dual-write lead to external */
 function dualWriteLead(data: Record<string, unknown>) {
   const ops = [supabase.from('leads').insert(data).select('id').single()];
-  if (externalSupabase) externalSupabase.from('leads').upsert(data, { onConflict: 'id' }).then(() => {}).catch(() => {});
+  if (externalSupabase) externalSupabase.from('leads').upsert(data, { onConflict: 'id' }).then(() => {}, () => {});
   return ops[0];
 }
 

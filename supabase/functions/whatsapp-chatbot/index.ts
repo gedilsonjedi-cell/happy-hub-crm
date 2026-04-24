@@ -644,7 +644,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           _channel_id: channelId, _conversation_phone: cleanDestination,
           _content: responseMessage, _direction: 'outbound', _is_read: null,
           _sender_name: null, _created_at: new Date().toISOString(),
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
       }
     }
 
