@@ -198,13 +198,51 @@ export const ConversationItem = memo(function ConversationItem({
             </div>
           )}
 
-          {conversation.assignedToName && (
-            <div className="flex items-center gap-1 mb-0.5">
-              <UserCheck className="w-3 h-3 text-blue-400" />
-              <span className="text-[11px] text-blue-400 font-medium truncate">
-                {conversation.assignedToName}
-              </span>
+          {unreadMode ? (
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+              {/* Atendente responsável */}
+              {hasAgent ? (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-5 px-2 gap-1 bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 max-w-[140px]"
+                  title={`Atendente: ${conversation.assignedToName}`}
+                >
+                  <UserCheck className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{conversation.assignedToName}</span>
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-5 px-2 gap-1 bg-destructive/15 text-destructive border-destructive/30"
+                  title="Sem atendente atribuído"
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  Sem atendente
+                </Badge>
+              )}
+
+              {/* Tempo aguardando resposta */}
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] h-5 px-2 gap-1",
+                  waitingSeverity.className
+                )}
+                title={`Aguardando há ${waitingLabel}`}
+              >
+                <Timer className="w-3 h-3" />
+                {waitingLabel}
+              </Badge>
             </div>
+          ) : (
+            conversation.assignedToName && (
+              <div className="flex items-center gap-1 mb-0.5">
+                <UserCheck className="w-3 h-3 text-blue-400" />
+                <span className="text-[11px] text-blue-400 font-medium truncate">
+                  {conversation.assignedToName}
+                </span>
+              </div>
+            )
           )}
 
           <div className="flex items-center justify-between gap-2">
