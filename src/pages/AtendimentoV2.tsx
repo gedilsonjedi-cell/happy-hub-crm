@@ -3570,11 +3570,15 @@ const AtendimentoV2 = () => {
         // Apply filter status to global results too
         let matchesFilter = false;
         if (filterStatus === "unread") {
-          // "Não Lidos" - conversations with unread messages that belong to this user
-          // Assigned to me OR unassigned AND not in_progress (not being handled by anyone)
-          const isMyConversation = conv.assignedTo === user?.id;
-          const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-          matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+          // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
+          // (para acompanhar performance dos atendentes). Atendentes veem só as suas + órfãs do setor.
+          if (canSeeOthers) {
+            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+          } else {
+            const isMyConversation = conv.assignedTo === user?.id;
+            const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+          }
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
@@ -3591,7 +3595,8 @@ const AtendimentoV2 = () => {
         
         // Apply attendant filter (only for admins/supervisors)
         // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        const matchesAttendant = filterStatus === "new" || filterStatus === "unread" || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // Para "Não Lidos" admins podem filtrar por atendente para ver performance individual
+        const matchesAttendant = filterStatus === "new" || (filterStatus === "unread" && !canSeeOthers) || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
@@ -3603,11 +3608,14 @@ const AtendimentoV2 = () => {
         
         let matchesFilter = false;
         if (filterStatus === "unread") {
-          // "Não Lidos" - conversations with unread messages that belong to this user
-          // Assigned to me OR unassigned AND not in_progress (not being handled by anyone)
-          const isMyConversation = conv.assignedTo === user?.id;
-          const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-          matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+          // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
+          if (canSeeOthers) {
+            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+          } else {
+            const isMyConversation = conv.assignedTo === user?.id;
+            const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
+            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+          }
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
@@ -3622,8 +3630,8 @@ const AtendimentoV2 = () => {
         }
         
         // Apply attendant filter (only for admins/supervisors)
-        // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        const matchesAttendant = filterStatus === "new" || filterStatus === "unread" || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // Para "Não Lidos" admins podem filtrar por atendente para ver performance individual
+        const matchesAttendant = filterStatus === "new" || (filterStatus === "unread" && !canSeeOthers) || !filterByAttendant || conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
