@@ -32,6 +32,37 @@ interface ConversationItemProps {
   bulkMode?: boolean;
   isBulkSelected?: boolean;
   onBulkToggle?: (conv: Conversation) => void;
+  unreadMode?: boolean;
+}
+
+// Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese)
+function formatWaitingTime(fromIso: string | null): string {
+  if (!fromIso) return "—";
+  const ms = Date.now() - new Date(fromIso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return "—";
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `${minutes}min`;
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  if (hours < 24) return remMin > 0 ? `${hours}h ${remMin}min` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+// Returns Tailwind classes for the waiting time badge based on severity
+function getWaitingTimeSeverity(fromIso: string | null): {
+  className: string;
+  label: string;
+} {
+  if (!fromIso) return { className: "bg-muted text-muted-foreground", label: "—" };
+  const ms = Date.now() - new Date(fromIso).getTime();
+  const minutes = ms / 60000;
+  if (minutes < 5) return { className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30", label: "ok" };
+  if (minutes < 30) return { className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30", label: "atenção" };
+  if (minutes < 120) return { className: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30", label: "atraso" };
+  return { className: "bg-destructive/15 text-destructive border-destructive/30", label: "crítico" };
 }
 
 function getInitials(name: string | null): string {
