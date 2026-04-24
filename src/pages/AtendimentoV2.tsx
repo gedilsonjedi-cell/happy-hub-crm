@@ -3668,7 +3668,9 @@ const AtendimentoV2 = () => {
     });
   }
 
+  const visibleArchivedConversations = canSeeOthers
     ? archivedConversations 
+
     : archivedConversations.filter(conv => {
         // Attendants can see archived conversations that were:
         // 1. Assigned to them
