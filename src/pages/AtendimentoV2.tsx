@@ -3686,7 +3686,11 @@ const AtendimentoV2 = () => {
     : visibleArchivedConversations
         .filter(conv => {
           const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
-          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          const matchesAttendant = !filterByAttendant
+            ? true
+            : filterByAttendant === "none"
+              ? !conv.assignedTo
+              : conv.assignedTo === filterByAttendant;
           const matchesSector = matchesSectorFilter(conv);
           return matchesSearch && matchesAttendant && matchesSector;
         })
