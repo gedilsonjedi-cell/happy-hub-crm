@@ -71,6 +71,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
     bulkMode,
     bulkSelectedKeys,
     onBulkToggle,
+    unreadMode,
   } = data;
 
   // Last item is the "load more" button
@@ -111,6 +112,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
         bulkMode={bulkMode}
         isBulkSelected={isBulkSelected}
         onBulkToggle={onBulkToggle}
+        unreadMode={unreadMode}
       />
     </div>
   );
