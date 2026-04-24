@@ -133,6 +133,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
   bulkMode,
   bulkSelectedKeys,
   onBulkToggle,
+  unreadMode,
 }: VirtualizedConversationListProps) {
   const itemCount = conversations.length + (hasMore && onLoadMore ? 1 : 0);
 
@@ -150,6 +151,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     bulkMode,
     bulkSelectedKeys,
     onBulkToggle,
+    unreadMode,
   };
 
   const handleItemsRendered = useCallback(
@@ -170,7 +172,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     <FixedSizeList
       height={height}
       itemCount={itemCount}
-      itemSize={ITEM_HEIGHT}
+      itemSize={unreadMode ? ITEM_HEIGHT_UNREAD : ITEM_HEIGHT}
       width="100%"
       itemData={itemData}
       overscanCount={5}
