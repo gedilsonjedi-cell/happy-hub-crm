@@ -117,7 +117,7 @@ export function AttendantFilter({ value, onChange, selectedSectorId }: Attendant
       ? "Sem atendente"
       : value
       ? attendants.find((a) => a.id === value)?.name || "Atendente"
-      : "Todos os atendentes";
+      : "Atendentes";
 
   const handleSelect = (next: string | null) => {
     onChange(next);
