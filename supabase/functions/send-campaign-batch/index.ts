@@ -205,21 +205,14 @@ Deno.serve(async (req) => {
     const { data: templates } = await supabase.from('message_templates').select('*').in('id', templateIds);
 
     if (!channels || channels.length === 0 || !templates || templates.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Missing channels or templates' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return await failOpenRecipientsAndComplete('Canais ou templates da campanha não estão mais disponíveis.', 'CONFIG_MISSING');
     }
 
     // IMPORTANT: avoid blocking dispatch only because `connected` flag is stale.
     // If channel has credentials, we can still attempt sending.
     const dispatchableChannels = channels.filter(c => !!c.access_token);
     if (dispatchableChannels.length === 0) {
-      await supabase.from('campaigns').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', campaignId);
-      return new Response(
-        JSON.stringify({ error: 'Nenhum canal com credenciais válidas para envio.', done: true, needsReconnection: true }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return await failOpenRecipientsAndComplete('Nenhum canal da campanha possui credenciais válidas para envio.', 'CHANNEL_UNAVAILABLE');
     }
 
     const dispatchableChannelIds = new Set(dispatchableChannels.map(c => c.id));
@@ -228,11 +221,7 @@ Deno.serve(async (req) => {
     );
 
     if (activeCampaignChannels.length === 0) {
-      await supabase.from('campaigns').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', campaignId);
-      return new Response(
-        JSON.stringify({ error: 'Nenhum dos canais da campanha está disponível para envio.', done: true, needsReconnection: true }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return await failOpenRecipientsAndComplete('Nenhum dos canais vinculados à campanha está disponível para envio.', 'CHANNEL_REMOVED');
     }
 
     // Auto-subscribe webhooks on first batch
