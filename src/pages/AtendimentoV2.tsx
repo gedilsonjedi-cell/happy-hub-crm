@@ -3646,12 +3646,14 @@ const AtendimentoV2 = () => {
         if (filterStatus === "unread") {
           // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
           // (para acompanhar performance dos atendentes). Atendentes veem só as suas + órfãs do setor.
+          // IMPORTANTE: só conta como não-lida se a última mensagem veio do cliente
+          // (atendente ainda não respondeu depois). isTrulyUnread garante isso.
           if (canSeeOthers) {
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && !isArchivedLikeConversation(conv);
           } else {
             const isMyConversation = conv.assignedTo === user?.id;
             const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
           }
         }
         else if (filterStatus === "new") {
