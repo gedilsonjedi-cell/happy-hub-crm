@@ -3511,6 +3511,18 @@ const AtendimentoV2 = () => {
     return new Date(conv.lastMessageTime).getTime() > new Date(conv.lastInboundTime).getTime();
   }, []);
 
+  // "Não Lido" REAL: conversa só é considerada não-lida quando a última mensagem
+  // veio do cliente (inbound) e ainda não houve resposta posterior do atendente.
+  // Se o atendente já respondeu DEPOIS da última mensagem do cliente, a conversa
+  // já foi efetivamente lida/respondida e NÃO deve aparecer no filtro de não lidos.
+  const isTrulyUnread = useCallback(
+    (conv: Conversation) =>
+      hasClientResponse(conv) &&
+      conv.unreadCount > 0 &&
+      !hasOutgoingResponseAfterClient(conv),
+    [hasClientResponse, hasOutgoingResponseAfterClient]
+  );
+
   const isHandledWithoutOwnerConversation = useCallback(
     (conv: Conversation) =>
       hasClientResponse(conv) &&
