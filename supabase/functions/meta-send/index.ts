@@ -32,6 +32,8 @@ const supabase: any = localMessageDb;
 /** DB where whatsapp_messages live — external only, NO internal fallback */
 // deno-lint-ignore no-explicit-any
 const messageDb: any = externalSupabase || localMessageDb;
+const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 async function insertMessageRecord(data: Record<string, unknown>) {
   const result = await messageDb
