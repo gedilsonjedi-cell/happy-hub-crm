@@ -22,12 +22,16 @@ const RETRYABLE_ERROR_CODES = [
 // External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
-const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
-const localMessageDb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+// deno-lint-ignore no-explicit-any
+const externalSupabase: any = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+// deno-lint-ignore no-explicit-any
+const localMessageDb: any = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+// Internal DB client (alias) used for non-message tables (webhooks, etc.)
+// deno-lint-ignore no-explicit-any
+const supabase: any = localMessageDb;
 /** DB where whatsapp_messages live — external only, NO internal fallback */
-const messageDb = externalSupabase || localMessageDb;
-const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+// deno-lint-ignore no-explicit-any
+const messageDb: any = externalSupabase || localMessageDb;
 
 async function insertMessageRecord(data: Record<string, unknown>) {
   const result = await messageDb
