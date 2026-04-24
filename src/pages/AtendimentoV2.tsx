@@ -3511,6 +3511,18 @@ const AtendimentoV2 = () => {
     return new Date(conv.lastMessageTime).getTime() > new Date(conv.lastInboundTime).getTime();
   }, []);
 
+  // "Não Lido" REAL: conversa só é considerada não-lida quando a última mensagem
+  // veio do cliente (inbound) e ainda não houve resposta posterior do atendente.
+  // Se o atendente já respondeu DEPOIS da última mensagem do cliente, a conversa
+  // já foi efetivamente lida/respondida e NÃO deve aparecer no filtro de não lidos.
+  const isTrulyUnread = useCallback(
+    (conv: Conversation) =>
+      hasClientResponse(conv) &&
+      conv.unreadCount > 0 &&
+      !hasOutgoingResponseAfterClient(conv),
+    [hasClientResponse, hasOutgoingResponseAfterClient]
+  );
+
   const isHandledWithoutOwnerConversation = useCallback(
     (conv: Conversation) =>
       hasClientResponse(conv) &&
@@ -3634,12 +3646,14 @@ const AtendimentoV2 = () => {
         if (filterStatus === "unread") {
           // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
           // (para acompanhar performance dos atendentes). Atendentes veem só as suas + órfãs do setor.
+          // IMPORTANTE: só conta como não-lida se a última mensagem veio do cliente
+          // (atendente ainda não respondeu depois). isTrulyUnread garante isso.
           if (canSeeOthers) {
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && !isArchivedLikeConversation(conv);
           } else {
             const isMyConversation = conv.assignedTo === user?.id;
             const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
           }
         }
         else if (filterStatus === "new") {
@@ -3675,12 +3689,13 @@ const AtendimentoV2 = () => {
         let matchesFilter = false;
         if (filterStatus === "unread") {
           // "Não Lidos" - admins/supervisores veem TODAS as conversas não lidas da organização
+          // Só conta como não-lida se o cliente é quem mandou a última mensagem.
           if (canSeeOthers) {
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && !isArchivedLikeConversation(conv);
           } else {
             const isMyConversation = conv.assignedTo === user?.id;
             const isOrphanVisibleToMe = !conv.assignedTo && conv.status !== "in_progress" && (!conv.sectorId || sectorIds.includes(conv.sectorId));
-            matchesFilter = hasClientResponse(conv) && conv.unreadCount > 0 && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
+            matchesFilter = isTrulyUnread(conv) && (isMyConversation || isOrphanVisibleToMe) && !isArchivedLikeConversation(conv);
           }
         }
         else if (filterStatus === "new") {
@@ -3787,7 +3802,8 @@ const AtendimentoV2 = () => {
     ? visibleConversations.filter(c => (c.assignedTo && c.assignedTo !== user?.id) || isHandledWithoutOwnerConversation(c)).length
     : 0;
   const unreadCount = visibleConversations.filter(c => {
-    if (c.unreadCount <= 0 || !hasClientResponse(c)) return false;
+    // Conta apenas conversas onde o cliente é quem mandou a última mensagem (não-lida real)
+    if (!isTrulyUnread(c)) return false;
     if (canSeeOthers) return true; // Admins/supervisores: contam todas as não lidas da org
     const isMyConversation = c.assignedTo === user?.id;
     const isOrphanVisibleToMe = !c.assignedTo && c.status !== "in_progress" && (!c.sectorId || sectorIds.includes(c.sectorId));
