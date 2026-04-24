@@ -476,6 +476,7 @@ Deno.serve(async (req) => {
     });
 
     const leadCustomFieldsMap = new Map<string, Record<string, any>>();
+    const leadCustomFieldsByPhoneKey = new Map<string, Record<string, any>>();
     const leadNameById = new Map<string, string>();
     const leadNameByPhoneKey = new Map<string, string>();
     const recipientLeadIds = [...new Set(recipientsToSend.map((r: typeof recipientsToSend[number]) => r.leadId).filter(Boolean))] as string[];
@@ -498,6 +499,12 @@ Deno.serve(async (req) => {
     for (const lead of leadRecords) {
       if (lead.custom_fields) {
         leadCustomFieldsMap.set(lead.id, lead.custom_fields as Record<string, any>);
+        // Also map by phone keys so recipients without lead_id can resolve custom fields
+        getPhoneLookupKeys(lead.phone).forEach((key) => {
+          if (!leadCustomFieldsByPhoneKey.has(key)) {
+            leadCustomFieldsByPhoneKey.set(key, lead.custom_fields as Record<string, any>);
+          }
+        });
       }
 
       if (lead.name) {
@@ -555,10 +562,21 @@ Deno.serve(async (req) => {
           } else if (mapping.startsWith('custom_field:')) {
             // Resolve custom field from lead's custom_fields JSONB
             const fieldName = mapping.replace('custom_field:', '');
+            let customFields: Record<string, any> | undefined;
             if (recipient.leadId) {
-              const customFields = leadCustomFieldsMap.get(recipient.leadId);
-              value = customFields?.[fieldName] ? String(customFields[fieldName]) : '';
+              customFields = leadCustomFieldsMap.get(recipient.leadId);
             }
+            // Fallback: lookup by phone keys when leadId is missing or didn't resolve the field
+            if (!customFields || customFields[fieldName] === undefined || customFields[fieldName] === null || customFields[fieldName] === '') {
+              for (const key of getPhoneLookupKeys(formattedPhone)) {
+                const candidate = leadCustomFieldsByPhoneKey.get(key);
+                if (candidate && candidate[fieldName] !== undefined && candidate[fieldName] !== null && candidate[fieldName] !== '') {
+                  customFields = candidate;
+                  break;
+                }
+              }
+            }
+            value = customFields?.[fieldName] ? String(customFields[fieldName]) : '';
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || '');
