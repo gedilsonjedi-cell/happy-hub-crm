@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
       }).eq('id', campaignId);
     };
 
-    const failOpenRecipientsAndComplete = async (reason: string, errorCode: string) => {
+    async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
       const { data: updatedRecipients, error: failOpenError } = await supabase
         .from('campaign_recipients')
         .update({
@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    };
+    }
 
     const recoverFailedRecipients = async () => {
       if (recoverableFailedCodes.length === 0) {
