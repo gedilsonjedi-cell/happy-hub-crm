@@ -562,10 +562,21 @@ Deno.serve(async (req) => {
           } else if (mapping.startsWith('custom_field:')) {
             // Resolve custom field from lead's custom_fields JSONB
             const fieldName = mapping.replace('custom_field:', '');
+            let customFields: Record<string, any> | undefined;
             if (recipient.leadId) {
-              const customFields = leadCustomFieldsMap.get(recipient.leadId);
-              value = customFields?.[fieldName] ? String(customFields[fieldName]) : '';
+              customFields = leadCustomFieldsMap.get(recipient.leadId);
             }
+            // Fallback: lookup by phone keys when leadId is missing or didn't resolve the field
+            if (!customFields || customFields[fieldName] === undefined || customFields[fieldName] === null || customFields[fieldName] === '') {
+              for (const key of getPhoneLookupKeys(formattedPhone)) {
+                const candidate = leadCustomFieldsByPhoneKey.get(key);
+                if (candidate && candidate[fieldName] !== undefined && candidate[fieldName] !== null && candidate[fieldName] !== '') {
+                  customFields = candidate;
+                  break;
+                }
+              }
+            }
+            value = customFields?.[fieldName] ? String(customFields[fieldName]) : '';
           } else if (variableFieldMap[mapping]) {
             const field = variableFieldMap[mapping] as keyof Recipient;
             value = String((recipient as unknown as Recipient)[field] || '');
