@@ -4009,7 +4009,7 @@ const AtendimentoV2 = () => {
               
             {/* Filters for admins/supervisors */}
             {canSeeOthers && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <AttendantFilter 
                   value={filterByAttendant} 
                   onChange={setFilterByAttendant}
@@ -4019,6 +4019,55 @@ const AtendimentoV2 = () => {
                   value={filterBySector} 
                   onChange={setFilterBySector}
                 />
+                {filterStatus === "unread" && !showArchived && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-9 gap-1.5",
+                          unreadWaitSort && "border-primary text-primary"
+                        )}
+                      >
+                        <Clock className="w-4 h-4" />
+                        <span className="text-xs">
+                          {unreadWaitSort === "desc"
+                            ? "Maior espera"
+                            : unreadWaitSort === "asc"
+                              ? "Menor espera"
+                              : "Tempo"}
+                        </span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56 bg-popover">
+                      <DropdownMenuItem onClick={() => setUnreadWaitSort("desc")}>
+                        <Clock className="w-4 h-4 mr-2" />
+                        Maior tempo de espera
+                        {unreadWaitSort === "desc" && (
+                          <Check className="w-4 h-4 ml-auto" />
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setUnreadWaitSort("asc")}>
+                        <Clock className="w-4 h-4 mr-2" />
+                        Menor tempo de espera
+                        {unreadWaitSort === "asc" && (
+                          <Check className="w-4 h-4 ml-auto" />
+                        )}
+                      </DropdownMenuItem>
+                      {unreadWaitSort && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setUnreadWaitSort(null)}>
+                            <X className="w-4 h-4 mr-2" />
+                            Limpar ordenação
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             )}
           </div>
