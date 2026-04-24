@@ -3593,10 +3593,14 @@ const AtendimentoV2 = () => {
           ) && conv.status !== "archived";
         }
         
-        // Apply attendant filter (only for admins/supervisors)
-        // CRITICAL FIX: Do NOT apply attendant filter to "Novos" tab - new conversations have NO assignee
-        // Para "Não Lidos" admins podem filtrar por atendente para ver performance individual
-        const matchesAttendant = filterStatus === "new" || (filterStatus === "unread" && !canSeeOthers) || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // Apply attendant filter (only for admins/supervisors).
+        // Filter is scoped to the current tab — never auto-switches the active tab.
+        // "none" = sem atendente (assignedTo nulo)
+        const matchesAttendant = !filterByAttendant
+          ? true
+          : filterByAttendant === "none"
+            ? !conv.assignedTo
+            : conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
@@ -3629,9 +3633,14 @@ const AtendimentoV2 = () => {
           ) && conv.status !== "archived";
         }
         
-        // Apply attendant filter (only for admins/supervisors)
-        // Para "Não Lidos" admins podem filtrar por atendente para ver performance individual
-        const matchesAttendant = filterStatus === "new" || (filterStatus === "unread" && !canSeeOthers) || !filterByAttendant || conv.assignedTo === filterByAttendant;
+        // Apply attendant filter (only for admins/supervisors).
+        // Filter is scoped to the current tab — never auto-switches the active tab.
+        // "none" = sem atendente (assignedTo nulo)
+        const matchesAttendant = !filterByAttendant
+          ? true
+          : filterByAttendant === "none"
+            ? !conv.assignedTo
+            : conv.assignedTo === filterByAttendant;
         
         // Apply sector filter with attendant cross-reference
         const matchesSector = matchesSectorFilter(conv);
@@ -3661,7 +3670,11 @@ const AtendimentoV2 = () => {
   const filteredArchived = hasSearchResults
     ? archivedFromGlobalSearch
         .filter(conv => {
-          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          const matchesAttendant = !filterByAttendant
+            ? true
+            : filterByAttendant === "none"
+              ? !conv.assignedTo
+              : conv.assignedTo === filterByAttendant;
           const matchesSector = matchesSectorFilter(conv);
           return matchesAttendant && matchesSector;
         })
@@ -3673,7 +3686,11 @@ const AtendimentoV2 = () => {
     : visibleArchivedConversations
         .filter(conv => {
           const matchesSearch = !searchTerm || conv.phone.includes(searchTerm) || conv.name?.toLowerCase().includes(searchTerm.toLowerCase());
-          const matchesAttendant = !filterByAttendant || conv.assignedTo === filterByAttendant;
+          const matchesAttendant = !filterByAttendant
+            ? true
+            : filterByAttendant === "none"
+              ? !conv.assignedTo
+              : conv.assignedTo === filterByAttendant;
           const matchesSector = matchesSectorFilter(conv);
           return matchesSearch && matchesAttendant && matchesSector;
         })
@@ -3974,13 +3991,7 @@ const AtendimentoV2 = () => {
               <div className="flex gap-2">
                 <AttendantFilter 
                   value={filterByAttendant} 
-                  onChange={(v) => {
-                    setFilterByAttendant(v);
-                    // Auto-switch to "Outros" when filtering by specific attendant
-                    if (v && v !== user?.id) {
-                      setFilterStatus("others");
-                    }
-                  }}
+                  onChange={setFilterByAttendant}
                   selectedSectorId={filterBySector}
                 />
                 <SectorFilter 
