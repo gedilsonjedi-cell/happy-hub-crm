@@ -775,21 +775,10 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     return;
   }
 
+  // context.id is the message being replied to (e.g. customer replying to our template).
+  // It is NOT an echo — echoes are filtered above by checking the sender phone vs channel phone.
   const context = msg.context as Record<string, unknown> | undefined;
   const echoedMessageId = typeof context?.id === 'string' ? context.id : null;
-  if (echoedMessageId) {
-    const { data: existingOutboundEcho } = await messageDb
-      .from('whatsapp_messages')
-      .select('message_id')
-      .eq('message_id', echoedMessageId)
-      .eq('direction', 'outbound')
-      .maybeSingle();
-
-    if (existingOutboundEcho) {
-      console.log('[processMessage] Ignoring webhook echo for outbound message:', echoedMessageId);
-      return;
-    }
-  }
 
   // ── PHASE 1: Parallel pre-checks ─────────────────────────────────
   // Run all lookups simultaneously before any business logic
