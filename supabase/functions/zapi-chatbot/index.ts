@@ -565,7 +565,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
           _is_read: null,
           _sender_name: null,
           _created_at: new Date().toISOString(),
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
       }
     }
 

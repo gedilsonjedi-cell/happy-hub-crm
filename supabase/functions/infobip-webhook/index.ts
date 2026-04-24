@@ -18,6 +18,11 @@ const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : nul
 /** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || supabase;
 
+/** Normalize a phone number by removing all non-digit characters. */
+function normalizePhone(phone: string | null | undefined): string {
+  return (phone || '').toString().replace(/\D/g, '');
+}
+
 /** Write to whatsapp_messages on external DB (no fallback) + update conversation_stats */
 async function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
   const result = await messageDb.from('whatsapp_messages').insert(data);
@@ -38,7 +43,7 @@ async function dualWriteMessage(data: Record<string, unknown>, internalChannelId
         _is_read: (data.is_read as boolean) ?? null,
         _sender_name: (data.sender_name as string) || null,
         _created_at: new Date().toISOString(),
-      }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+      }).then(() => {}, (e: unknown) => console.error('[Stats] Error:', e));
     }
   }
   return result;

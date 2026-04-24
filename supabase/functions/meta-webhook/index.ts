@@ -5,7 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-hub-signature-256',
 };
 
-const supabase = createClient(
+// deno-lint-ignore no-explicit-any
+const supabase: any = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
@@ -13,13 +14,16 @@ const supabase = createClient(
 // External DB is the SINGLE SOURCE OF TRUTH for whatsapp_messages
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
-const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
+// deno-lint-ignore no-explicit-any
+const externalSupabase: any = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
-const messageDb = externalSupabase || supabase;
+// deno-lint-ignore no-explicit-any
+const messageDb: any = externalSupabase || supabase;
 
 function writeMessageRecord(
-  client: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  client: any,
   data: Record<string, unknown>,
   upsert: boolean
 ) {
@@ -472,7 +476,7 @@ async function getNextAvailableAttendant(
 
   if (!sectorUsers || sectorUsers.length === 0) return null;
 
-  const userIds = sectorUsers.map(u => u.user_id);
+  const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
 
   const { data: availableAttendants } = await supabase
     .from('attendant_availability')
@@ -492,7 +496,7 @@ async function getNextAvailableAttendant(
     .update({ last_assignment_at: new Date().toISOString() })
     .eq('user_id', nextAttendant.user_id)
     .eq('organization_id', organizationId)
-    .then(() => {}).catch(() => {});
+    .then(() => {}, () => {});
 
   return { userId: nextAttendant.user_id };
 }
@@ -520,7 +524,7 @@ async function getNextAvailableAttendantGlobal(
     .update({ last_assignment_at: new Date().toISOString() })
     .eq('user_id', nextAttendant.user_id)
     .eq('organization_id', organizationId)
-    .then(() => {}).catch(() => {});
+    .then(() => {}, () => {});
 
   return { userId: nextAttendant.user_id };
 }
@@ -612,7 +616,7 @@ async function handleConversationAssignment(
     supabase.from('conversation_assignments')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', existing.id)
-      .then(() => {}).catch(() => {});
+      .then(() => {}, () => {});
     return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status || 'pending', sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
   }
 
@@ -901,14 +905,16 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       .or(`phone.like.%${suffix8}`)
       .order('created_at', { ascending: false })
       .limit(1)
-      .then(({ error: btnError, count }) => {
-        if (btnError) {
-          console.error('[Webhook] Error updating button_clicked:', btnError);
-        } else {
-          console.log(`[Webhook] 🔘 Button click tracked: "${buttonText}" from ${normalizedPhone}`);
-        }
-      })
-      .catch(console.error);
+      .then(
+        ({ error: btnError }: { error: unknown }) => {
+          if (btnError) {
+            console.error('[Webhook] Error updating button_clicked:', btnError);
+          } else {
+            console.log(`[Webhook] 🔘 Button click tracked: "${buttonText}" from ${normalizedPhone}`);
+          }
+        },
+        (e: unknown) => console.error(e)
+      );
   }
 
   // ── PHASE 4: Post-processing actions (fire and forget where possible) ─
@@ -932,7 +938,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
           status: 'sent',
           organization_id: organizationId,
           metadata: { provider: 'meta', away_message: true, destination: normalizedPhone },
-        }, false, channel.id as string).then(() => {}).catch(() => {});
+        }, false, channel.id as string).then(() => {}, () => {});
       }
     }).catch(console.error);
     return; // Don't invoke chatbot when away
@@ -985,7 +991,7 @@ async function checkAndPauseOnQualitySignal(channelId: string, reason: string) {
 
   if (!campaignChannelsData || campaignChannelsData.length === 0) return;
 
-  const campaignIds = campaignChannelsData.map(cc => cc.campaign_id);
+  const campaignIds = campaignChannelsData.map((cc: { campaign_id: string }) => cc.campaign_id);
 
   // Pause all running campaigns for these channels
   // SKIP campaigns where the user already acknowledged the quality risk
@@ -1144,12 +1150,14 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
           .from('channels')
           .select('id, name, phone')
           .in('id', uniqueChannelIds);
-        channels?.forEach(ch => channelMap.set(ch.id, { name: ch.name, phone: ch.phone }));
+        channels?.forEach((ch: { id: string; name: string; phone: string }) =>
+          channelMap.set(ch.id, { name: ch.name, phone: ch.phone })
+        );
       }
 
       const dispatchPromises = msgsToDispatch.map((msg) => {
         const metadata = (msg.metadata || {}) as Record<string, unknown>;
-        const chInfo = msg.channel_id ? channelMap.get(msg.channel_id) : null;
+        const chInfo = msg.channel_id ? channelMap.get(String(msg.channel_id)) : null;
         return dispatchIntegrationWebhook({
           organization_id: msg.organization_id as string,
           event: 'message_updated',

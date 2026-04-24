@@ -321,7 +321,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await messageDb.from("whatsapp_messages").insert({
+      await supabase.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -337,7 +337,7 @@ async function sendFollowUpMessage(
         _channel_id: channel.id, _conversation_phone: contactPhone,
         _content: message, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
 
       return { success: true };
     } else if (channel.provider === "zapi") {
@@ -363,7 +363,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await messageDb.from("whatsapp_messages").insert({
+      await supabase.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -379,7 +379,7 @@ async function sendFollowUpMessage(
         _channel_id: channel.id, _conversation_phone: contactPhone,
         _content: message, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
 
       return { success: true };
     }

@@ -38,7 +38,7 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
           _is_read: (data.is_read as boolean) ?? null,
           _sender_name: (data.sender_name as string) || null,
           _created_at: new Date().toISOString(),
-        }).then(() => {}).catch((e: unknown) => console.error('[Stats] Error:', e));
+        }).then(() => {}, (e: unknown) => console.error('[Stats] Error:', e));
       }
     }
     return result;
