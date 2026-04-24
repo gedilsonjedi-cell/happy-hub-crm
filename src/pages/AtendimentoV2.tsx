@@ -3836,6 +3836,20 @@ const AtendimentoV2 = () => {
     showArchived,
   ]);
 
+  // Aba "Não Lidos" — sem limite de visualização: carrega TODAS as não lidas
+  // (incluindo de dias/semanas atrás) ao entrar na aba e periodicamente.
+  useEffect(() => {
+    if (filterStatus !== "unread" || showArchived) return;
+    if (loading || channels.length === 0) return;
+    // Carga inicial ao entrar na aba
+    loadAllUnreadConversations(true);
+    // Recarga periódica para capturar novas não lidas que possam surgir
+    const interval = setInterval(() => {
+      loadAllUnreadConversations(false);
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [filterStatus, showArchived, loading, channels.length, loadAllUnreadConversations]);
+
   // 24-hour window — always based on the latest real external message timestamp.
   const toLocalDate = (timestamp: string | null) => {
     if (!timestamp) return null;
