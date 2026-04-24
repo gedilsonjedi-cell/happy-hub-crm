@@ -3568,7 +3568,7 @@ const AtendimentoV2 = () => {
 
   const hasSearchResults = combinedSearchResults.length > 0 && searchTerm.length >= 2;
   
-  const filteredConversations = hasSearchResults 
+  let filteredConversations = hasSearchResults 
     ? combinedSearchResults.filter(conv => {
         // Apply filter status to global results too
         let matchesFilter = false;
