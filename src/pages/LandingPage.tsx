@@ -917,7 +917,7 @@ const LandingPage = () => {
                         viewport={{ once: true }}
                         transition={{ type: "spring", stiffness: 200 }}
                       >
-                        R$ 229,90<span className="text-lg text-white/50">/mês</span>
+                        R$ 299,90<span className="text-lg text-white/50">/mês</span>
                       </motion.div>
                       <p className="text-[#04f59c] text-sm">Tudo incluído, sem surpresas</p>
                     </div>
