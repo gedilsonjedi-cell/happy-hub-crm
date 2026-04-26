@@ -311,29 +311,23 @@ const Usuarios = () => {
   // Handle role update
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
     try {
-      // Check if user already has a role
-      const { data: existingRole } = await supabase
+      // IMPORTANTE: a tabela user_roles permite múltiplos papéis por usuário
+      // (constraint unique(user_id, role)). Para evitar que um usuário fique
+      // com papéis conflitantes (ex: admin + atendente), removemos TODOS os
+      // papéis existentes antes de inserir o novo. Isso garante que a troca
+      // de cargo na UI realmente substitua as permissões do usuário.
+      const { error: deleteError } = await supabase
         .from("user_roles")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
+        .delete()
+        .eq("user_id", userId);
 
-      if (existingRole) {
-        // Update existing role
-        const { error } = await supabase
-          .from("user_roles")
-          .update({ role: newRole })
-          .eq("user_id", userId);
+      if (deleteError) throw deleteError;
 
-        if (error) throw error;
-      } else {
-        // Insert new role
-        const { error } = await supabase
-          .from("user_roles")
-          .insert({ user_id: userId, role: newRole });
+      const { error: insertError } = await supabase
+        .from("user_roles")
+        .insert({ user_id: userId, role: newRole });
 
-        if (error) throw error;
-      }
+      if (insertError) throw insertError;
 
       toast.success("Função atualizada com sucesso");
       fetchUsers();
