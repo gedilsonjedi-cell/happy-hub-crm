@@ -366,7 +366,13 @@ const Conexoes = () => {
     setAvailablePhones([]);
     setSelectedPhones([]);
     setSharedVerifyToken('');
-    setSelectedOrgId("");
+    // When Super Admin is impersonating, keep the active org auto-selected
+    // (the dropdown is hidden, so resetting to "" would disable the submit button).
+    if (isSuperAdmin && isImpersonating && effectiveOrganizationId) {
+      setSelectedOrgId(effectiveOrganizationId);
+    } else {
+      setSelectedOrgId("");
+    }
   };
 
   // Handle opening chatbot dialog for a channel
