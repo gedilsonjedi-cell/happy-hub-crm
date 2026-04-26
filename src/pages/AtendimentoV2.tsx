@@ -2925,24 +2925,28 @@ const AtendimentoV2 = () => {
       .maybeSingle();
 
     if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
-      toast.error('Esta conversa já foi assumida por outro atendente');
-      const { data: assignedProfile } = await supabase
-        .from('profiles')
-        .select('display_name, email')
-        .eq('user_id', currentAssignment.assigned_to)
-        .single();
-      const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
-      setAllConversations(prev => prev.map(c => {
-        const cNormalized = c.phone.replace(/\D/g, '');
-        return cNormalized === normalizedPhone && c.channelId === conversationChannelId
-          ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-          : c;
-      }));
-      setSelectedConversation(prev => prev
-        ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-        : null
-      );
-      return;
+      const canIntervene = isAdmin || isSupervisor || isSuperAdmin;
+      if (!canIntervene) {
+        toast.error('Esta conversa já foi assumida por outro atendente');
+        const { data: assignedProfile } = await supabase
+          .from('profiles')
+          .select('display_name, email')
+          .eq('user_id', currentAssignment.assigned_to)
+          .single();
+        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+        setAllConversations(prev => prev.map(c => {
+          const cNormalized = c.phone.replace(/\D/g, '');
+          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+            : c;
+        }));
+        setSelectedConversation(prev => prev
+          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+          : null
+        );
+        return;
+      }
+      // Privileged intervention: admin/supervisor envia mídia mantendo o dono original.
     }
 
     sendMessageMutation.mutate(
