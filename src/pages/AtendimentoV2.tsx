@@ -2828,26 +2828,30 @@ const AtendimentoV2 = () => {
       return;
     }
 
-    // Se já atribuída a outro atendente, bloquear envio
+    // Se já atribuída a outro atendente:
+    // - Atendentes comuns: bloqueia o envio
+    // - Admin/supervisor/super_admin: PERMITE intervenção (sem reatribuir o dono)
     if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
-      toast.error('Esta conversa já foi assumida por outro atendente');
-      const { data: assignedProfile } = await supabase
-        .from('profiles')
-        .select('display_name, email')
-        .eq('user_id', currentAssignment.assigned_to)
-        .single();
-      const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
-      setAllConversations(prev => prev.map(c => {
-        const cNormalized = c.phone.replace(/\D/g, '');
-        return cNormalized === normalizedPhone && c.channelId === conversationChannelId
-          ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-          : c;
-      }));
-      setSelectedConversation(prev => prev
-        ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
-        : null
-      );
-      return;
+      const canIntervene = isAdmin || isSupervisor || isSuperAdmin;
+      if (!canIntervene) {
+        toast.error('Esta conversa já foi assumida por outro atendente');
+        const { data: assignedProfile } = await supabase
+          .from('profiles')
+          .select('display_name, email')
+          .eq('user_id', currentAssignment.assigned_to)
+          .single();
+        const assignedName = assignedProfile?.display_name || assignedProfile?.email || 'Outro atendente';
+        setAllConversations(prev => prev.map(c => {
+          const cNormalized = c.phone.replace(/\D/g, '');
+          return cNormalized === normalizedPhone && c.channelId === conversationChannelId
+            ? { ...c, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+            : c;
+        }));
+        setSelectedConversation(prev => prev
+          ? { ...prev, assignedTo: currentAssignment.assigned_to, assignedToName: assignedName }
+          : null
+        );
+        return;
     }
 
     // Clear input immediately (optimistic UX) — restored by useSendMessage.onError if needed
