@@ -122,7 +122,7 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 const Usuarios = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId: organizationId, isImpersonating } = useEffectiveOrganizationId();
   const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
