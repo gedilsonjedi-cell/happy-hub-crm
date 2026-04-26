@@ -23,7 +23,7 @@ import Perfil from "./pages/Perfil";
 import Relatorios from "./pages/Relatorios";
 import SuperAdmin from "./pages/SuperAdmin";
 import OrganizationDetails from "./pages/OrganizationDetails";
-import WhatsAppChat from "./pages/WhatsAppChat";
+
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Saldo from "./pages/Saldo";
@@ -165,7 +165,7 @@ const App = () => (
           <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
           <Route path="/follow-up" element={<ProtectedRoute><FollowUp /></ProtectedRoute>} />
           <Route path="/chatbot" element={<ProtectedRoute><Chatbot /></ProtectedRoute>} />
-          <Route path="/whatsapp-chat" element={<ProtectedRoute><WhatsAppChat /></ProtectedRoute>} />
+          <Route path="/whatsapp-chat" element={<Navigate to="/atendimento-v2" replace />} />
           <Route path="/atendimento-v2" element={<ProtectedRoute><AtendimentoV2 /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />

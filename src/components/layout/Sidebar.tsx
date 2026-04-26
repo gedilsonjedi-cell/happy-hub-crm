@@ -53,7 +53,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
-  { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: null },
+  { icon: MessageCircle, label: "Atendimento", path: "/atendimento-v2", permission: null },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
 ];
@@ -177,7 +177,7 @@ export function Sidebar() {
         {showText && (
           <span className="text-sm font-medium flex-1">{item.label}</span>
         )}
-        {showText && showBadge && item.path === "/whatsapp-chat" && unreadCount > 0 && (
+        {showText && showBadge && item.path === "/atendimento-v2" && unreadCount > 0 && (
           <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs font-semibold">
             {unreadCount > 99 ? "99+" : unreadCount}
           </Badge>
@@ -312,7 +312,7 @@ export function Sidebar() {
         <ScrollArea className="flex-1">
           <nav className="p-2 space-y-1">
             {/* Main menu items */}
-            {menuItems.map((item) => renderMenuItem(item, item.path === "/whatsapp-chat"))}
+            {menuItems.map((item) => renderMenuItem(item, item.path === "/atendimento-v2"))}
 
             {/* CRM submenu */}
             {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}

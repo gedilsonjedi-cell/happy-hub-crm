@@ -79,7 +79,7 @@ export function useWhatsAppNotifications() {
         duration: 5000,
         action: {
           label: 'Ver',
-          onClick: () => { window.location.href = '/whatsapp-chat'; },
+          onClick: () => { window.location.href = '/atendimento-v2'; },
         },
       });
     } else {
@@ -93,7 +93,7 @@ export function useWhatsAppNotifications() {
         duration: 5000,
         action: {
           label: 'Ver',
-          onClick: () => { window.location.href = '/whatsapp-chat'; },
+          onClick: () => { window.location.href = '/atendimento-v2'; },
         },
       });
     }
