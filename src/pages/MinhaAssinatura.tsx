@@ -165,7 +165,7 @@ export default function MinhaAssinatura() {
   const hasCustomPrice = !!organization?.custom_subscription_price;
   const customPrice = hasCustomPrice ? Number(organization.custom_subscription_price) : null;
   const isFirstSubscription = !organization?.has_paid_first_subscription;
-  const basePrice = customPrice ?? (pricing?.base_price || 229.90);
+  const basePrice = customPrice ?? (pricing?.base_price || 299.90);
   const promotionalPrice = customPrice ?? (pricing?.promotional_price || 129.90);
   const currentPrice = hasCustomPrice ? customPrice! : (isFirstSubscription ? promotionalPrice : basePrice);
   const addonsTotal = addons?.reduce((sum, addon) => sum + (addon.quantity * addon.price_per_unit), 0) || 0;
