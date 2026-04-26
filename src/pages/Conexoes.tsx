@@ -2163,7 +2163,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
-              {isSuperAdmin && (
+              {isSuperAdmin && !isImpersonating && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
@@ -2278,7 +2278,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
-              {isSuperAdmin && (
+              {isSuperAdmin && !isImpersonating && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
@@ -2478,7 +2478,7 @@ const Conexoes = () => {
               </div>
 
               {/* Organization selector for Super Admin */}
-              {isSuperAdmin && (
+              {isSuperAdmin && !isImpersonating && (
                 <div className="space-y-2">
                   <Label className="text-foreground">Organização *</Label>
                   <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
