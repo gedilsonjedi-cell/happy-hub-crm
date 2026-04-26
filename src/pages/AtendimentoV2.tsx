@@ -2852,6 +2852,8 @@ const AtendimentoV2 = () => {
           : null
         );
         return;
+      }
+      // Privileged intervention: admin/supervisor envia mensagem mantendo o dono original.
     }
 
     // Clear input immediately (optimistic UX) — restored by useSendMessage.onError if needed
