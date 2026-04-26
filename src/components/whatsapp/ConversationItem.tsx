@@ -35,7 +35,9 @@ interface ConversationItemProps {
   unreadMode?: boolean;
 }
 
-// Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese)
+// Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese).
+// IMPORTANT: "tempo de espera" = tempo desde a ÚLTIMA mensagem do CLIENTE (inbound).
+// Mensagens enviadas pelo atendente NÃO devem zerar nem alimentar este cálculo.
 function formatWaitingTime(fromIso: string | null): string {
   if (!fromIso) return "—";
   const ms = Date.now() - new Date(fromIso).getTime();
@@ -105,7 +107,8 @@ export const ConversationItem = memo(function ConversationItem({
   };
 
   // Unread mode metadata (waiting time + agent badge)
-  const waitingFrom = conversation.lastInboundTime || conversation.lastMessageTime;
+  // SOMENTE inbound conta como "espera". Sem inbound => sem espera (sem badge).
+  const waitingFrom = conversation.lastInboundTime;
   const waitingSeverity = getWaitingTimeSeverity(waitingFrom);
   const waitingLabel = formatWaitingTime(waitingFrom);
   const hasAgent = !!conversation.assignedToName;
