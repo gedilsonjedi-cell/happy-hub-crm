@@ -3726,16 +3726,22 @@ const AtendimentoV2 = () => {
       });
 
   // Reordenação por tempo de espera — exclusiva da aba "Não Lidos".
-  // Tempo de espera = idade da última mensagem do cliente (lastInboundTime).
-  // Fallback para lastMessageTime quando não houver inbound registrado.
+  // REFERÊNCIA ÚNICA: lastInboundTime (última mensagem do cliente).
+  // Mesma referência usada no badge de tempo em ConversationItem para garantir consistência.
+  // Conversas sem inbound vão para o final independentemente do sentido de ordenação.
   if (filterStatus === "unread" && !showArchived && unreadWaitSort) {
     const getWaitReference = (conv: Conversation) => {
-      const ref = conv.lastInboundTime || conv.lastMessageTime;
-      return ref ? new Date(ref).getTime() : 0;
+      if (!conv.lastInboundTime) return null;
+      const t = new Date(conv.lastInboundTime).getTime();
+      return Number.isNaN(t) ? null : t;
     };
     filteredConversations = [...filteredConversations].sort((a, b) => {
       const ta = getWaitReference(a);
       const tb = getWaitReference(b);
+      // Sem inbound => sempre por último (sem "espera" definida)
+      if (ta === null && tb === null) return 0;
+      if (ta === null) return 1;
+      if (tb === null) return -1;
       // 'desc' = maior espera primeiro = timestamp MAIS ANTIGO no topo
       // 'asc'  = menor espera primeiro = timestamp MAIS RECENTE no topo
       return unreadWaitSort === "desc" ? ta - tb : tb - ta;
