@@ -312,7 +312,7 @@ export function Sidebar() {
         <ScrollArea className="flex-1">
           <nav className="p-2 space-y-1">
             {/* Main menu items */}
-            {menuItems.map((item) => renderMenuItem(item, item.path === "/whatsapp-chat"))}
+            {menuItems.map((item) => renderMenuItem(item, item.path === "/atendimento-v2"))}
 
             {/* CRM submenu */}
             {renderSubmenu(crmSubmenu, crmOpen, setCrmOpen, "CRM", BookUser, isCrmActive)}
