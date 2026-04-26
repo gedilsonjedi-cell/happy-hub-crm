@@ -2412,7 +2412,7 @@ const Conexoes = () => {
                   <a href="https://portal.infobip.com/" target="_blank" className="underline">painel Infobip</a>.
                 </p>
               </div>
-              {isSuperAdmin && (
+              {isSuperAdmin && !isImpersonating && (
               <div className="space-y-2">
                 <Label className="text-foreground">Organização *</Label>
                 <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
