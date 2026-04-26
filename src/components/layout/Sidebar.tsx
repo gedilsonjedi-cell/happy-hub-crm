@@ -177,7 +177,7 @@ export function Sidebar() {
         {showText && (
           <span className="text-sm font-medium flex-1">{item.label}</span>
         )}
-        {showText && showBadge && item.path === "/whatsapp-chat" && unreadCount > 0 && (
+        {showText && showBadge && item.path === "/atendimento-v2" && unreadCount > 0 && (
           <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs font-semibold">
             {unreadCount > 99 ? "99+" : unreadCount}
           </Badge>
