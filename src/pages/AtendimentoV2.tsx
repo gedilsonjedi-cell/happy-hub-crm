@@ -2492,24 +2492,30 @@ const AtendimentoV2 = () => {
       return;
     }
 
-    // Se já está atribuída a outro atendente e está ativa, bloquear
-    if (currentAssignment?.assigned_to && 
-        currentAssignment.assigned_to !== user.id && 
-        currentAssignment.status !== 'archived') {
+    // Se já está atribuída a outro atendente e está ativa
+    const isAssignedToOther = !!(currentAssignment?.assigned_to &&
+      currentAssignment.assigned_to !== user.id &&
+      currentAssignment.status !== 'archived');
+
+    let isPrivilegedIntervention = false;
+    if (isAssignedToOther) {
       // Atendentes não podem assumir conversas de outros atendentes
-      // Apenas supervisors e admins podem fazer isso
+      // Apenas supervisors e admins podem intervir (sem reatribuir)
       const { data: userRole } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
         .single();
-      
+
       const canTakeOver = userRole?.role === 'super_admin' || userRole?.role === 'admin' || userRole?.role === 'supervisor';
-      
+
       if (!canTakeOver) {
         toast.error("Esta conversa já está em atendimento por outro colaborador. Somente supervisores podem transferir.");
         return;
       }
+      // Privileged intervention: admin/supervisor abre o atendimento mas
+      // a conversa CONTINUA pertencendo ao atendente original.
+      isPrivilegedIntervention = true;
     }
 
     const { data: profile } = await supabase
@@ -2520,6 +2526,15 @@ const AtendimentoV2 = () => {
 
     if (!profile?.organization_id) {
       toast.error("Erro ao identificar organização");
+      return;
+    }
+
+    // Se é uma intervenção privilegiada, não tocamos na atribuição:
+    // apenas abrimos a conversa para o admin/supervisor poder responder.
+    if (isPrivilegedIntervention) {
+      const ownerName = conversation.assignedToName || 'atendente responsável';
+      toast.info(`Atendimento de ${ownerName} aberto para intervenção. A conversa continua vinculada a ele.`);
+      setSelectedConversation(conversation);
       return;
     }
 
