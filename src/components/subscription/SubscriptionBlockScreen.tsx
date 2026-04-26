@@ -20,7 +20,7 @@ export function SubscriptionBlockScreen() {
   // Use custom price if set, otherwise default base price
   const subscriptionCost = organization?.custom_subscription_price 
     ? Number(organization.custom_subscription_price) 
-    : 229.90;
+    : 299.90;
   const hasEnoughBalance = currentBalance >= subscriptionCost;
 
   const handleRenewWithBalance = async () => {
