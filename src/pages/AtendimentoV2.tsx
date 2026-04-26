@@ -4108,55 +4108,58 @@ const AtendimentoV2 = () => {
                   value={filterBySector} 
                   onChange={setFilterBySector}
                 />
-                {filterStatus === "unread" && !showArchived && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "h-10 w-full justify-between bg-muted/30 border-border font-normal",
-                          unreadWaitSort && "border-primary text-primary"
-                        )}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          {unreadWaitSort === "desc"
-                            ? "Maior tempo de espera"
-                            : unreadWaitSort === "asc"
-                              ? "Menor tempo de espera"
-                              : "Tempo"}
-                        </span>
-                        <ChevronDown className="w-4 h-4 opacity-60" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] bg-popover">
-                      <DropdownMenuItem onClick={() => setUnreadWaitSort("desc")}>
-                        <Clock className="w-4 h-4 mr-2" />
-                        Maior tempo de espera
-                        {unreadWaitSort === "desc" && (
-                          <Check className="w-4 h-4 ml-auto" />
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setUnreadWaitSort("asc")}>
-                        <Clock className="w-4 h-4 mr-2" />
-                        Menor tempo de espera
-                        {unreadWaitSort === "asc" && (
-                          <Check className="w-4 h-4 ml-auto" />
-                        )}
-                      </DropdownMenuItem>
-                      {unreadWaitSort && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setUnreadWaitSort(null)}>
-                            <X className="w-4 h-4 mr-2" />
-                            Limpar ordenação
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
               </div>
+            )}
+
+            {/* Wait time sort — available for all roles on the "Unread" tab.
+                Atendentes only see their own conversations (default visibility rules). */}
+            {filterStatus === "unread" && !showArchived && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-10 w-full justify-between bg-muted/30 border-border font-normal",
+                      unreadWaitSort && "border-primary text-primary"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {unreadWaitSort === "desc"
+                        ? "Maior tempo de espera"
+                        : unreadWaitSort === "asc"
+                          ? "Menor tempo de espera"
+                          : "Tempo"}
+                    </span>
+                    <ChevronDown className="w-4 h-4 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width] bg-popover">
+                  <DropdownMenuItem onClick={() => setUnreadWaitSort("desc")}>
+                    <Clock className="w-4 h-4 mr-2" />
+                    Maior tempo de espera
+                    {unreadWaitSort === "desc" && (
+                      <Check className="w-4 h-4 ml-auto" />
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setUnreadWaitSort("asc")}>
+                    <Clock className="w-4 h-4 mr-2" />
+                    Menor tempo de espera
+                    {unreadWaitSort === "asc" && (
+                      <Check className="w-4 h-4 ml-auto" />
+                    )}
+                  </DropdownMenuItem>
+                  {unreadWaitSort && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setUnreadWaitSort(null)}>
+                        <X className="w-4 h-4 mr-2" />
+                        Limpar ordenação
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
 
