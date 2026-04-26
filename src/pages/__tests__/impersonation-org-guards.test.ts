@@ -28,7 +28,7 @@ describe("Regression: guard de impersonação nos seletores de organização", (
   it("Usuarios.tsx importa `isImpersonating` de useEffectiveOrganizationId", () => {
     const source = readSrc("src/pages/Usuarios.tsx");
     expect(source).toMatch(
-      /useEffectiveOrganizationId\(\)[\s\S]{0,200}isImpersonating/
+      /isImpersonating[\s\S]{0,80}=\s*useEffectiveOrganizationId\(\)/
     );
   });
 
