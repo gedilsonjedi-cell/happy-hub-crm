@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       throw new Error("Could not fetch subscription pricing");
     }
 
-    const basePrice = (pricing as SubscriptionPricing)?.base_price || 229.90;
+    const basePrice = (pricing as SubscriptionPricing)?.base_price || 299.90;
     const promotionalPrice = (pricing as SubscriptionPricing)?.promotional_price || 129.90;
     console.log(`Subscription prices - Base: R$ ${basePrice}, Promotional: R$ ${promotionalPrice}`);
 
