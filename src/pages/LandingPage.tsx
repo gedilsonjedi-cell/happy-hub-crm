@@ -1537,7 +1537,7 @@ const LandingPage = () => {
                   >
                     <div className="flex items-baseline justify-center gap-1">
                       <span className="text-xl sm:text-2xl text-white/50">R$</span>
-                      <span className="text-4xl sm:text-6xl font-bold text-white">229</span>
+                      <span className="text-4xl sm:text-6xl font-bold text-white">299</span>
                       <span className="text-xl sm:text-2xl text-white/50">,90</span>
                     </div>
                     <p className="text-white/40 mt-2 text-sm sm:text-base">por mês</p>
