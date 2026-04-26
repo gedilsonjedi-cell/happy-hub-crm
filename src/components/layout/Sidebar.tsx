@@ -53,7 +53,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 const menuItems = [
   { icon: LayoutGrid, label: "Dashboard", path: "/", permission: null },
-  { icon: MessageCircle, label: "WhatsApp Chat", path: "/whatsapp-chat", permission: null },
+  { icon: MessageCircle, label: "Atendimento", path: "/atendimento-v2", permission: null },
   { icon: Bot, label: "Chatbot IA", path: "/chatbot", permission: "canAccessChatbot" },
   { icon: Link2, label: "Conexões", path: "/conexoes", permission: "canAccessConexoes" },
 ];
