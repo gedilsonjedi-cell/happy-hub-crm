@@ -882,7 +882,7 @@ const Usuarios = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                {isSuperAdmin && organizations.length > 0 && (
+                {isSuperAdmin && !isImpersonating && organizations.length > 0 && (
                   <Select value={selectedOrgFilter} onValueChange={setSelectedOrgFilter}>
                     <SelectTrigger className="w-[200px]">
                       <Building2 className="w-4 h-4 mr-2" />
