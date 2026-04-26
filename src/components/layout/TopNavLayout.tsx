@@ -112,7 +112,6 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Templates", path: "/templates", icon: FileText },
         { label: "Links", path: "/links", icon: Link2 },
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
-        { label: "Loja", path: "/loja", icon: ShoppingCart },
       ]
     },
     ...(["allan.pedro147@gmail.com", "gedilson.junior@gmail.com", "henrique.miranda@henrimath.com.br"].includes(user?.email?.trim().toLowerCase() || "") || isSuperAdmin
