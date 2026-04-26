@@ -23,7 +23,7 @@ import Perfil from "./pages/Perfil";
 import Relatorios from "./pages/Relatorios";
 import SuperAdmin from "./pages/SuperAdmin";
 import OrganizationDetails from "./pages/OrganizationDetails";
-import WhatsAppChat from "./pages/WhatsAppChat";
+
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Saldo from "./pages/Saldo";
