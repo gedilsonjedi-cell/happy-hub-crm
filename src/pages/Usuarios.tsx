@@ -308,6 +308,19 @@ const Usuarios = () => {
     }
   }, [isAdmin, isSuperAdmin, organizationId]);
 
+  // Auto-fixar o filtro de organização quando o Super Admin estiver impersonando
+  // uma conta específica. Assim a lista já vem filtrada pela organização ativa
+  // (ex: ao entrar na "Henrimath", só usuários da Henrimath aparecem).
+  // Quando sai da impersonação, volta para "Todas organizações".
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    if (isImpersonating && organizationId) {
+      setSelectedOrgFilter(organizationId);
+    } else {
+      setSelectedOrgFilter("all");
+    }
+  }, [isSuperAdmin, isImpersonating, organizationId]);
+
   // Handle role update
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
     try {
