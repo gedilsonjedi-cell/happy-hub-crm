@@ -122,7 +122,7 @@ const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; clas
 const Usuarios = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId: organizationId, isImpersonating } = useEffectiveOrganizationId();
   const { isAdmin, isSuperAdmin, loading: roleLoading } = useUserRole();
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<UserWithRole[]>([]);
@@ -307,6 +307,19 @@ const Usuarios = () => {
       loadData();
     }
   }, [isAdmin, isSuperAdmin, organizationId]);
+
+  // Auto-fixar o filtro de organização quando o Super Admin estiver impersonando
+  // uma conta específica. Assim a lista já vem filtrada pela organização ativa
+  // (ex: ao entrar na "Henrimath", só usuários da Henrimath aparecem).
+  // Quando sai da impersonação, volta para "Todas organizações".
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    if (isImpersonating && organizationId) {
+      setSelectedOrgFilter(organizationId);
+    } else {
+      setSelectedOrgFilter("all");
+    }
+  }, [isSuperAdmin, isImpersonating, organizationId]);
 
   // Handle role update
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
@@ -869,7 +882,7 @@ const Usuarios = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                {isSuperAdmin && organizations.length > 0 && (
+                {isSuperAdmin && !isImpersonating && organizations.length > 0 && (
                   <Select value={selectedOrgFilter} onValueChange={setSelectedOrgFilter}>
                     <SelectTrigger className="w-[200px]">
                       <Building2 className="w-4 h-4 mr-2" />
