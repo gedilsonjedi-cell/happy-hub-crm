@@ -107,7 +107,8 @@ export const ConversationItem = memo(function ConversationItem({
   };
 
   // Unread mode metadata (waiting time + agent badge)
-  const waitingFrom = conversation.lastInboundTime || conversation.lastMessageTime;
+  // SOMENTE inbound conta como "espera". Sem inbound => sem espera (sem badge).
+  const waitingFrom = conversation.lastInboundTime;
   const waitingSeverity = getWaitingTimeSeverity(waitingFrom);
   const waitingLabel = formatWaitingTime(waitingFrom);
   const hasAgent = !!conversation.assignedToName;
