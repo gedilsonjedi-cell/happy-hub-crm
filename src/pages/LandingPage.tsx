@@ -1182,22 +1182,22 @@ const LandingPage = () => {
             transition={{ duration: 0.6 }}
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
-              <TrendingUp className="w-4 h-4 text-[#04f59c]" />
-              <span className="text-sm text-[#04f59c]">Plano Justo</span>
+              <Shield className="w-4 h-4 text-[#04f59c]" />
+              <span className="text-sm text-[#04f59c]">Transparência Total</span>
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-5xl font-bold mb-4 px-2">
-              Mensagens{" "}
+              Repasse{" "}
               <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
-                ilimitadas
+                direto da Meta
               </span>
-              , sem cobrança{" "}
+              , sem{" "}
               <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
-                por envio
+                markup
               </span>
             </h2>
             <p className="text-base sm:text-lg text-white/50 max-w-3xl mx-auto px-4">
-              Envie quantas mensagens precisar, conecte quantos números quiser. Você paga um valor fixo previsível e
-              <span className="text-white font-medium"> nunca é surpreendido pelo volume de uso.</span>
+              Você paga exatamente o que a Meta cobra pelos templates oficiais.
+              <span className="text-white font-medium"> Zero margem nossa em cima do envio</span> — o preço é o preço da fonte.
             </p>
           </motion.div>
 
