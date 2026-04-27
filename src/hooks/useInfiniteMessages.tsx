@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import {
   fetchConversationStatsMessages,
   fetchExternalMessages,
@@ -101,27 +101,37 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone && !!effectiveOrganizationId,
-    staleTime: 0,
-    gcTime: 60_000,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
-    refetchOnReconnect: "always",
+    // PERFORMANCE: cache messages for 30s and keep them in memory for 5min.
+    // Switching between conversations no longer triggers a full external DB
+    // refetch — Realtime keeps the cache fresh via prependMessage.
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   // All pages combined in chronological order (oldest → newest)
-  const allMessages: MessageRow[] = query.data
-    ? query.data.pages
-        .flatMap((p) => p.messages)
-        // De-duplicate across pages
-        .filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i)
-        // Chronological
-        .sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        )
-    : [];
+  // Memoized so it doesn't re-run on every parent re-render (typing, etc.)
+  const allMessages = useMemo<MessageRow[]>(() => {
+    if (!query.data) return [];
+    const seen = new Set<string>();
+    const merged: MessageRow[] = [];
+    for (const page of query.data.pages) {
+      for (const msg of page.messages) {
+        if (seen.has(msg.id)) continue;
+        seen.add(msg.id);
+        merged.push(msg);
+      }
+    }
+    merged.sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    return merged;
+  }, [query.data]);
   const isInitialLoading = query.isPending && !query.data;
 
   /**
