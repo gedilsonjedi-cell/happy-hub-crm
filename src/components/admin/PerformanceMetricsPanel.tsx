@@ -162,7 +162,10 @@ export function PerformanceMetricsPanel() {
 
   // Light heartbeat so "última amostra: há X min" stays fresh
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    const id = setInterval(() => {
+      refreshSnapshot();
+      setTick((t) => t + 1);
+    }, 30_000);
     return () => clearInterval(id);
   }, []);
 
