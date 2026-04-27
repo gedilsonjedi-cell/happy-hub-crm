@@ -133,6 +133,8 @@ export function usePrefetchAdjacentConversations(
               hasMore: result?.hasMore ?? false,
             };
           },
+          getNextPageParam: (lastPage: { nextCursor: string | null }) =>
+            lastPage.nextCursor ?? undefined,
           staleTime: 30_000,
           gcTime: 5 * 60_000,
           pages: 1,
