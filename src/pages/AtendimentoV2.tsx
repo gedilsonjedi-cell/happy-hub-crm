@@ -6,6 +6,7 @@ import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
 import { VirtualizedConversationList } from "@/components/whatsapp/VirtualizedConversationList";
+import { MessageComposer, type MessageComposerHandle } from "@/components/whatsapp/MessageComposer";
 import { 
   MessageSquare, 
   Send, 
