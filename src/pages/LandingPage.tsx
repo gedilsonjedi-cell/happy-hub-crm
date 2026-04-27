@@ -188,7 +188,7 @@ const faqs = [
   },
   {
     question: "Posso testar antes de assinar?",
-    answer: "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades, além de R$10 de saldo bônus para seus primeiros disparos.",
+    answer: "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem compromisso.",
   },
   {
     question: "Como funciona o pipeline automático?",
