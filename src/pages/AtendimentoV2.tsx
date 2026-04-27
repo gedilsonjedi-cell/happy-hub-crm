@@ -3917,7 +3917,9 @@ const AtendimentoV2 = () => {
     effectiveOrganizationId,
     resolveChannelPhoneForPrefetch,
     getConversationKey,
-    { radius: 4, debounceMs: 350, concurrency: 3 }
+    // Tetos de segurança — o budget adaptativo (CPU/RAM/rede) decide os
+    // valores reais e nunca passa destes limites.
+    { maxRadius: 5, maxConcurrency: 3 }
   );
 
   // Aba "Não Lidos" — sem limite de visualização: carrega TODAS as não lidas
