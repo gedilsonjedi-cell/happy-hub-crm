@@ -118,13 +118,27 @@ export function RecycleFailuresDialog({
 
     setLoading(true);
     try {
-      const { data: recipients } = await supabase
-        .from("campaign_recipients")
-        .select("phone, name, status, delivered_at")
-        .eq("campaign_id", campaign.id)
-        .or("status.eq.failed,and(status.eq.sent,delivered_at.is.null)");
+      // Pagina em lotes de 1000 para garantir que TODOS os destinatários
+      // com falha sejam carregados, mesmo em campanhas grandes (>1000).
+      // Sem isso, a reciclagem perdia destinatários silenciosamente.
+      const PAGE = 1000;
+      const allFailed: typeof failedRecipients = [];
+      let from = 0;
+      while (true) {
+        const { data: batch, error: batchError } = await supabase
+          .from("campaign_recipients")
+          .select("phone, name, status, delivered_at")
+          .eq("campaign_id", campaign.id)
+          .or("status.eq.failed,and(status.eq.sent,delivered_at.is.null)")
+          .range(from, from + PAGE - 1);
+        if (batchError) throw batchError;
+        const rows = batch || [];
+        allFailed.push(...rows);
+        if (rows.length < PAGE) break;
+        from += PAGE;
+      }
 
-      setFailedRecipients(recipients || []);
+      setFailedRecipients(allFailed);
 
       const { data: campaignChannels } = await supabase
         .from("campaign_channels")

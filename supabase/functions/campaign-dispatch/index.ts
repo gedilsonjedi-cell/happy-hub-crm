@@ -414,34 +414,46 @@ Deno.serve(async (req) => {
         );
       }
 
-      // First try to get recipients from campaign_recipients table
-      const { data: campaignRecipients } = await supabase
-        .from('campaign_recipients')
-        .select('phone')
-        .eq('campaign_id', campaignId)
-        .eq('status', 'pending');
-
-      if (campaignRecipients && campaignRecipients.length > 0) {
-        recipients = campaignRecipients.map(r => r.phone);
-        console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from campaign_recipients`);
-      } else {
-        // Fallback to leads table for legacy campaigns
-        const { data: leads } = await supabase
-          .from('leads')
+      // SEGURANÇA: Sempre buscar destinatários EXCLUSIVAMENTE da tabela
+      // campaign_recipients vinculada ao campaign_id. NUNCA fazer fallback
+      // para a tabela `leads` da organização — isso causava vazamento entre
+      // campanhas (a campanha despachava para leads aleatórios da org que
+      // jamais foram inscritos nela).
+      // Pagina em lotes de 1000 para suportar campanhas grandes.
+      const PAGE = 1000;
+      const allPhones: string[] = [];
+      let offset = 0;
+      while (true) {
+        const { data: batch, error: batchErr } = await supabase
+          .from('campaign_recipients')
           .select('phone')
-          .eq('organization_id', campaign.organization_id)
-          .limit(campaign.total_recipients);
+          .eq('campaign_id', campaignId)
+          .eq('status', 'pending')
+          .range(offset, offset + PAGE - 1);
 
-        if (!leads || leads.length === 0) {
+        if (batchErr) {
+          console.error(`[campaign-dispatch] Failed to load recipients:`, batchErr);
           return new Response(
-            JSON.stringify({ error: 'Nenhum destinatário encontrado. Esta campanha pode ter sido criada antes da última atualização. Crie uma nova campanha para usar a lista de números.' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ error: 'Falha ao carregar destinatários da campanha' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        recipients = leads.map(l => l.phone);
-        console.log(`Resuming campaign ${campaignId} with ${recipients.length} recipients from leads (legacy)`);
+        const rows = batch || [];
+        allPhones.push(...rows.map(r => r.phone));
+        if (rows.length < PAGE) break;
+        offset += PAGE;
       }
+
+      if (allPhones.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Nenhum destinatário pendente encontrado para esta campanha.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      recipients = allPhones;
+      console.log(`[campaign-dispatch] Resuming campaign ${campaignId} with ${recipients.length} recipients from campaign_recipients`);
     }
 
     console.log(`Starting campaign ${campaignId} - ${recipients.length} recipients`);
