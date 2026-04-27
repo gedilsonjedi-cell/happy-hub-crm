@@ -1233,7 +1233,7 @@ const LandingPage = () => {
                       className="text-center p-4 sm:p-6 rounded-2xl bg-[#04f59c]/10 border border-[#04f59c]/20"
                       whileHover={{ scale: 1.02 }}
                     >
-                      <div className="text-xs sm:text-sm text-[#04f59c] mb-2">Mensagens enviadas</div>
+                      <div className="text-xs sm:text-sm text-[#04f59c] mb-2">Margem sobre o envio</div>
                       <motion.div 
                         className="text-3xl sm:text-5xl font-bold text-white"
                         initial={{ scale: 0.5 }}
@@ -1241,17 +1241,17 @@ const LandingPage = () => {
                         viewport={{ once: true }}
                         transition={{ type: "spring", stiffness: 200 }}
                       >
-                        Ilimitadas
+                        0%
                       </motion.div>
-                      <div className="text-white/50 text-xs sm:text-sm mt-2">Sem custo por mensagem</div>
+                      <div className="text-white/50 text-xs sm:text-sm mt-2">Você paga o preço de tabela da Meta</div>
                     </motion.div>
 
                     <div className="space-y-4">
                       {[
-                        { icon: MessageSquare, text: "Envio ilimitado de mensagens" },
+                        { icon: Shield, text: "Repasse 100% do valor oficial da Meta" },
+                        { icon: TrendingUp, text: "Sem markup, sem taxa por envio" },
+                        { icon: MessageSquare, text: "Mensagens recebidas sempre gratuitas" },
                         { icon: Phone, text: "Conecte quantos números quiser" },
-                        { icon: TrendingUp, text: "Valor fixo, fatura previsível" },
-                        { icon: Shield, text: "Sem surpresas no fim do mês" },
                       ].map((item, index) => (
                         <motion.div 
                           key={index}
@@ -1271,16 +1271,16 @@ const LandingPage = () => {
 
                     {/* Example Calculation */}
                     <div className="pt-6 border-t border-[#04f59c]/20">
-                      <div className="text-sm text-white/50 mb-3">Exemplo: 50.000 mensagens/mês</div>
+                      <div className="text-sm text-white/50 mb-3">Template Marketing • Brasil</div>
                       <div className="flex items-center justify-between">
-                        <span className="text-white/70">Custo extra:</span>
+                        <span className="text-white/70">Você paga:</span>
                         <motion.span 
                           className="text-2xl font-bold text-[#04f59c]"
                           initial={{ opacity: 0 }}
                           whileInView={{ opacity: 1 }}
                           viewport={{ once: true }}
                         >
-                          R$ 0,00
+                          Preço da Meta
                         </motion.span>
                       </div>
                     </div>
