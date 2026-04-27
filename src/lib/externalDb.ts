@@ -213,31 +213,11 @@ export async function fetchExternalMessages(params: {
     ? buildPhoneLookup([params.channelPhone])
     : null;
 
-  try {
-    const proxyResult = await invokeExternalProxy<ExternalMessagePage>({
-      action: "messages",
-      channelId: params.channelId,
-      phoneVariants: params.phoneVariants,
-      cursor: params.cursor,
-      pageSize,
-      impersonatedOrgId: params.impersonatedOrgId,
-    });
-    // Apply channel phone filtering to proxy results
-    if (channelPhoneLookup && proxyResult.messages.length > 0) {
-      const lookup = buildPhoneLookup(params.phoneVariants);
-      proxyResult.messages = proxyResult.messages.filter((msg) => {
-        const dir = msg.direction as "inbound" | "outbound";
-        return messageMatchesConversation(msg, dir, lookup, channelPhoneLookup);
-      });
-    }
-    return proxyResult;
-  } catch (proxyError) {
-    console.warn("[externalDb] Proxy fetch failed for messages, trying direct read:", getErrorMessage(proxyError));
-  }
-
   const cursorFilter = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
   const lookup = buildPhoneLookup(params.phoneVariants);
 
+  // PERFORMANCE: prefer direct external read (proxy is deprecated and adds
+  // 200-500ms of cold-start + extra hop on every conversation switch).
   try {
     const [inbound, outbound] = await Promise.all([
       fetchDirectionMessages(
@@ -276,8 +256,29 @@ export async function fetchExternalMessages(params: {
     const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
 
     return { messages: page, nextCursor, hasMore };
-  } catch (error) {
-    console.error("[externalDb] Direct fallback failed for messages:", getErrorMessage(error));
+  } catch (directError) {
+    console.warn("[externalDb] Direct read failed, trying proxy fallback:", getErrorMessage(directError));
+  }
+
+  // Last-resort fallback to legacy proxy edge function
+  try {
+    const proxyResult = await invokeExternalProxy<ExternalMessagePage>({
+      action: "messages",
+      channelId: params.channelId,
+      phoneVariants: params.phoneVariants,
+      cursor: params.cursor,
+      pageSize,
+      impersonatedOrgId: params.impersonatedOrgId,
+    });
+    if (channelPhoneLookup && proxyResult.messages.length > 0) {
+      proxyResult.messages = proxyResult.messages.filter((msg) => {
+        const dir = msg.direction as "inbound" | "outbound";
+        return messageMatchesConversation(msg, dir, lookup, channelPhoneLookup);
+      });
+    }
+    return proxyResult;
+  } catch (proxyError) {
+    console.error("[externalDb] Proxy fallback also failed:", getErrorMessage(proxyError));
   }
 
   if (!params.cursor) {
