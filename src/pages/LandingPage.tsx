@@ -1386,7 +1386,7 @@ const LandingPage = () => {
               
               <div className="text-center">
                 <p className="text-white/70 text-sm sm:text-base max-w-md">
-                  Quanto mais números você conecta, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por número.
+                  Quanto mais mensagens você envia, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por mensagem.
                 </p>
               </div>
             </div>
