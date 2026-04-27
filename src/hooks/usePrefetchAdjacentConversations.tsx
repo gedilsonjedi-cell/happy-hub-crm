@@ -9,6 +9,7 @@ import {
   getPhoneLookupVariants,
 } from "@/lib/phoneThreadKey";
 import { getPrefetchBudget, type PrefetchBudget } from "@/lib/devicePerformance";
+import { recordPrefetchAttempt } from "@/lib/perfMetrics";
 
 const PAGE_SIZE = 25;
 
@@ -138,6 +139,7 @@ export function usePrefetchAdjacentConversations(
       if (existing?.data) return;
 
       inflightRef.current.add(dedupeKey);
+      recordPrefetchAttempt(1);
       try {
         await queryClient.prefetchInfiniteQuery({
           queryKey,
