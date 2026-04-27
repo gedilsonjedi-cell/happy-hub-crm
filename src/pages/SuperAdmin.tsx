@@ -820,6 +820,10 @@ export default function SuperAdmin() {
               <ShieldCheck className="w-4 h-4" />
               Segurança
             </TabsTrigger>
+            <TabsTrigger value="performance" className="gap-2">
+              <Activity className="w-4 h-4" />
+              Performance
+            </TabsTrigger>
           </TabsList>
 
           {/* Payments Tab */}
@@ -1036,6 +1040,11 @@ export default function SuperAdmin() {
           {/* Security Tab */}
           <TabsContent value="security">
             <RlsRegressionPanel />
+          </TabsContent>
+
+          {/* Performance Tab */}
+          <TabsContent value="performance">
+            <PerformanceMetricsPanel />
           </TabsContent>
         </Tabs>
 
