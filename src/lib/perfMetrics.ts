@@ -72,13 +72,19 @@ function loadBuckets(): Record<PerfTier, TierBucket> {
 let buckets: Record<PerfTier, TierBucket> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const subscribers = new Set<() => void>();
+let cachedSnapshot: PerfMetricsSnapshot | null = null;
 
 function ensureLoaded(): Record<PerfTier, TierBucket> {
   if (!buckets) buckets = loadBuckets();
   return buckets;
 }
 
+function invalidateSnapshot() {
+  cachedSnapshot = null;
+}
+
 function scheduleSave() {
+  invalidateSnapshot();
   if (typeof localStorage === "undefined") return;
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
@@ -133,11 +139,12 @@ export function recordSelectionCacheOutcome(hit: boolean) {
 }
 
 export function getSnapshot(): PerfMetricsSnapshot {
+  if (cachedSnapshot) return cachedSnapshot;
   const buckets = ensureLoaded();
   const nav = (typeof navigator !== "undefined" ? navigator : {}) as Navigator & {
     deviceMemory?: number;
   };
-  return {
+  cachedSnapshot = {
     deviceTier: getDeviceTier(),
     userAgent: nav.userAgent ?? "",
     cores: nav.hardwareConcurrency ?? 0,
@@ -145,10 +152,12 @@ export function getSnapshot(): PerfMetricsSnapshot {
     buckets,
     generatedAt: Date.now(),
   };
+  return cachedSnapshot;
 }
 
 export function resetMetrics() {
   buckets = { low: emptyBucket("low"), medium: emptyBucket("medium"), high: emptyBucket("high") };
+  invalidateSnapshot();
   if (typeof localStorage !== "undefined") {
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
   }
@@ -158,6 +167,12 @@ export function resetMetrics() {
 export function subscribe(cb: () => void): () => void {
   subscribers.add(cb);
   return () => subscribers.delete(cb);
+}
+
+/** Force a refresh of the cached snapshot — used by the UI's "Refresh" button. */
+export function refreshSnapshot() {
+  invalidateSnapshot();
+  subscribers.forEach((cb) => cb());
 }
 
 // ----- helpers for the UI -----

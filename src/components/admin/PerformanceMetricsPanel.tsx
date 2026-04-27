@@ -18,6 +18,7 @@ import {
   bucketHitRate,
   getSnapshot,
   percentile,
+  refreshSnapshot,
   resetMetrics,
   subscribe,
   type PerfMetricsSnapshot,
@@ -161,7 +162,10 @@ export function PerformanceMetricsPanel() {
 
   // Light heartbeat so "última amostra: há X min" stays fresh
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    const id = setInterval(() => {
+      refreshSnapshot();
+      setTick((t) => t + 1);
+    }, 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -186,7 +190,7 @@ export function PerformanceMetricsPanel() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setTick((t) => t + 1)}
+                onClick={() => { refreshSnapshot(); setTick((t) => t + 1); }}
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Atualizar
