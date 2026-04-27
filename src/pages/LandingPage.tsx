@@ -1592,7 +1592,7 @@ const LandingPage = () => {
                   </Link>
 
                   <p className="text-center text-white/40 text-xs sm:text-sm mt-4">
-                    + R$10 de saldo bônus • Cancele quando quiser
+                    Sem cartão de crédito • Cancele quando quiser
                   </p>
                 </CardContent>
               </Card>
