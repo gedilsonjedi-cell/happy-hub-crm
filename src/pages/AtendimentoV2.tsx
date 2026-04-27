@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { usePrefetchAdjacentConversations } from "@/hooks/usePrefetchAdjacentConversations";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
 import { VirtualizedConversationList } from "@/components/whatsapp/VirtualizedConversationList";
