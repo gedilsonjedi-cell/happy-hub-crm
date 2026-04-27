@@ -515,6 +515,7 @@ const useNotificationSound = () => {
 
 const AtendimentoV2 = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
