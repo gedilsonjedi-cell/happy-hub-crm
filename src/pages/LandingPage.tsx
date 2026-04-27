@@ -188,7 +188,7 @@ const faqs = [
   },
   {
     question: "Posso testar antes de assinar?",
-    answer: "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades, além de R$10 de saldo bônus para seus primeiros disparos.",
+    answer: "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem compromisso.",
   },
   {
     question: "Como funciona o pipeline automático?",
@@ -226,11 +226,11 @@ const LandingPage = () => {
     <>
       <Helmet>
         <title>OptimusCRM - CRM WhatsApp com Disparos Alternados e IA | 7 Dias Grátis</title>
-        <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias + R$10 de bônus." />
+        <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias." />
         <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático, whatsapp oficial, crm para whatsapp" />
         <link rel="canonical" href="https://optimuscrm.com.br/" />
         <meta property="og:title" content="OptimusCRM - CRM WhatsApp com Disparos Alternados e IA" />
-        <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis + R$10 de bônus." />
+        <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis." />
         <meta property="og:url" content="https://optimuscrm.com.br/" />
         <meta property="og:type" content="website" />
         
@@ -390,7 +390,7 @@ const LandingPage = () => {
                 "name": "Posso testar antes de assinar?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades, além de R$10 de saldo bônus para seus primeiros disparos."
+                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem compromisso."
                 }
               }
             ]
@@ -663,7 +663,7 @@ const LandingPage = () => {
                 <Gift className="w-6 h-6 sm:w-8 sm:h-8 text-[#04f59c]" />
               </motion.div>
               <span className="text-base sm:text-xl text-white/80 text-center">
-                <span className="text-white font-bold text-lg sm:text-2xl">7 dias grátis</span> + R$10 de saldo bônus
+                <span className="text-white font-bold text-lg sm:text-2xl">7 dias grátis</span> • Sem cartão de crédito
               </span>
             </motion.div>
 
@@ -1592,7 +1592,7 @@ const LandingPage = () => {
                   </Link>
 
                   <p className="text-center text-white/40 text-xs sm:text-sm mt-4">
-                    + R$10 de saldo bônus • Cancele quando quiser
+                    Sem cartão de crédito • Cancele quando quiser
                   </p>
                 </CardContent>
               </Card>
