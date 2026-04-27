@@ -230,7 +230,7 @@ const LandingPage = () => {
         <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático, whatsapp oficial, crm para whatsapp" />
         <link rel="canonical" href="https://optimuscrm.com.br/" />
         <meta property="og:title" content="OptimusCRM - CRM WhatsApp com Disparos Alternados e IA" />
-        <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis + R$10 de bônus." />
+        <meta property="og:description" content="Único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado e chatbot com IA. 7 dias grátis." />
         <meta property="og:url" content="https://optimuscrm.com.br/" />
         <meta property="og:type" content="website" />
         
