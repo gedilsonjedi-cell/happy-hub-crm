@@ -226,7 +226,7 @@ const LandingPage = () => {
     <>
       <Helmet>
         <title>OptimusCRM - CRM WhatsApp com Disparos Alternados e IA | 7 Dias Grátis</title>
-        <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias + R$10 de bônus." />
+        <meta name="description" content="OptimusCRM é o único CRM focado em contingência com disparos alternados, WhatsApp API Oficial ilimitado, chatbot com IA e pipeline automático. Teste grátis por 7 dias." />
         <meta name="keywords" content="CRM WhatsApp, disparos alternados, WhatsApp Business API, chatbot IA, automação WhatsApp, CRM vendas, pipeline automático, whatsapp oficial, crm para whatsapp" />
         <link rel="canonical" href="https://optimuscrm.com.br/" />
         <meta property="og:title" content="OptimusCRM - CRM WhatsApp com Disparos Alternados e IA" />
