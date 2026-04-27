@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { usePrefetchAdjacentConversations } from "@/hooks/usePrefetchAdjacentConversations";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
 import { VirtualizedConversationList } from "@/components/whatsapp/VirtualizedConversationList";
@@ -3893,6 +3894,31 @@ const AtendimentoV2 = () => {
     searchTerm,
     showArchived,
   ]);
+
+  // ─── Predictive prefetch ───────────────────────────────────────────────────
+  // Pré-carrega o histórico das conversas vizinhas (acima/abaixo) à selecionada
+  // no banco externo, populando o cache do React Query antes do clique. Quando
+  // o usuário troca de cliente, a renderização é instantânea (cache hit) sem
+  // round-trip de rede. Roda em requestIdleCallback para não competir com o UI.
+  const channelPhoneByIdRef = useRef<Map<string, string | null>>(new Map());
+  useEffect(() => {
+    const map = new Map<string, string | null>();
+    for (const ch of channels) map.set(ch.id, ch.phone ?? null);
+    channelPhoneByIdRef.current = map;
+  }, [channels]);
+  const resolveChannelPhoneForPrefetch = useCallback(
+    (channelId: string | null) =>
+      channelId ? channelPhoneByIdRef.current.get(channelId) ?? null : null,
+    []
+  );
+  usePrefetchAdjacentConversations(
+    filteredConversations,
+    selectedConversation ? getConversationKey(selectedConversation) : null,
+    effectiveOrganizationId,
+    resolveChannelPhoneForPrefetch,
+    getConversationKey,
+    { radius: 4, debounceMs: 350, concurrency: 3 }
+  );
 
   // Aba "Não Lidos" — sem limite de visualização: carrega TODAS as não lidas
   // (incluindo de dias/semanas atrás) ao entrar na aba e periodicamente.
