@@ -185,23 +185,31 @@ export function usePrefetchAdjacentConversations(
       }
     };
 
+    // Soft rate-limit: respect minIntervalMs between waves so we don't
+    // hammer the device when the user scrolls through many conversations.
+    const since = Date.now() - lastWaveAtRef.current;
+    const wait = Math.max(debounceMs, minIntervalMs - since);
+
     const timer = window.setTimeout(() => {
+      lastWaveAtRef.current = Date.now();
       schedule(() => {
         runQueue();
       });
-    }, debounceMs);
+    }, wait);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
   }, [
+    enabled,
     selectedKey,
     effectiveOrganizationId,
     conversations,
     radius,
     debounceMs,
     concurrency,
+    minIntervalMs,
     queryClient,
     resolveChannelPhone,
     getKey,
