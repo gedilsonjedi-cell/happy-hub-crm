@@ -18,6 +18,7 @@ import {
   bucketHitRate,
   getSnapshot,
   percentile,
+  refreshSnapshot,
   resetMetrics,
   subscribe,
   type PerfMetricsSnapshot,
