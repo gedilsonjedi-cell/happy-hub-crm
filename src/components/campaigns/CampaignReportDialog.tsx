@@ -267,17 +267,31 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
 
   const fetchRecipients = async () => {
     if (!campaign) return;
-    
+
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("campaign_recipients")
-        .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at")
-        .eq("campaign_id", campaign.id)
-        .order("created_at", { ascending: true });
+      // Pagina em lotes de 1000 (limite default do PostgREST). Sem isso,
+      // campanhas grandes ficam truncadas e a exportação/reciclagem perde
+      // destinatários — exatamente o que causa "números faltando" ou
+      // discrepâncias entre a planilha original e a exportada.
+      const PAGE = 1000;
+      const all: Recipient[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("campaign_recipients")
+          .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at")
+          .eq("campaign_id", campaign.id)
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE - 1);
 
-      if (error) throw error;
-      setRecipients((data || []) as Recipient[]);
+        if (error) throw error;
+        const batch = (data || []) as Recipient[];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+        from += PAGE;
+      }
+      setRecipients(all);
     } catch (error) {
       console.error("Error fetching recipients:", error);
     } finally {
