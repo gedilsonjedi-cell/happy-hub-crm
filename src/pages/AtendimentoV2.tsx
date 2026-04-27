@@ -4663,73 +4663,18 @@ const AtendimentoV2 = () => {
                       </Button>
                     </div>
                   ) : (
-                    <div className="relative flex-1 flex items-end gap-2">
-                      {/* Quick Responses Autocomplete */}
-                      <QuickResponsesAutocomplete
-                        isOpen={showQuickResponsesAutocomplete}
-                        onClose={() => setShowQuickResponsesAutocomplete(false)}
-                        onSelectResponse={(content) => {
-                          setNewMessage(content);
-                          setShowQuickResponsesAutocomplete(false);
-                        }}
-                        searchTerm={newMessage}
-                      />
-                      
-                      <Textarea
-                        placeholder={!isMyConversation ? "Esta conversa pertence a outro atendente" : isWindowExpired ? "Use um template..." : "Digite / para respostas rápidas..."}
-                        className={cn("min-h-[44px] max-h-32 resize-none bg-muted/30 text-sm flex-1", (isWindowExpired || !isMyConversation) && "opacity-50 cursor-not-allowed")}
-                        value={newMessage}
-                        onChange={(e) => {
-                          if (isWindowExpired || !isMyConversation) return;
-                          const value = e.target.value;
-                          setNewMessage(value);
-                          
-                          // Show autocomplete when typing "/" at start or after space
-                          if (value.startsWith("/") || value.includes(" /")) {
-                            setShowQuickResponsesAutocomplete(true);
-                          } else {
-                            setShowQuickResponsesAutocomplete(false);
-                          }
-                        }}
-                        disabled={isWindowExpired || !isMyConversation}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                          // If autocomplete is open, let it handle navigation keys
-                          if (showQuickResponsesAutocomplete) {
-                            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                              // Let the autocomplete component handle these keys
-                              return;
-                            }
-                          }
-                          
-                          if (e.key === "Enter" && !e.shiftKey && !isWindowExpired && isMyConversation && !showQuickResponsesAutocomplete) {
-                            e.preventDefault();
-                            if (isSendingMessage) return;
-                            handleSendMessage();
-                          }
-                          
-                          // Close autocomplete on Escape
-                          if (e.key === "Escape" && showQuickResponsesAutocomplete) {
-                            setShowQuickResponsesAutocomplete(false);
-                          }
-                        }}
-                        onBlur={() => {
-                          // Delay closing to allow click on autocomplete items
-                          setTimeout(() => setShowQuickResponsesAutocomplete(false), 200);
-                        }}
-                      />
-                      {isWindowExpired ? (
-                        <Button onClick={() => setShowTemplateSelector(true)} className="h-11 px-4 shrink-0"><FileText className="w-5 h-5" /></Button>
-                      ) : newMessage.trim() ? (
-                        <Button onClick={handleSendMessage} disabled={isSendingMessage} className="h-11 px-4 shrink-0">
-                          {isSendingMessage ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                        </Button>
-                      ) : (
-                        <Button onClick={handleStartVoiceRecording} disabled={uploadingMedia} variant="default" className="h-11 px-4 bg-green-600 hover:bg-green-700 shrink-0">
-                          {uploadingMedia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
-                        </Button>
-                      )}
-                    </div>
+                    <MessageComposer
+                      ref={composerRef}
+                      conversationKey={selectedConversationStableKey}
+                      isWindowExpired={isWindowExpired}
+                      isMyConversation={isMyConversation}
+                      isSendingMessage={isSendingMessage}
+                      uploadingMedia={uploadingMedia}
+                      onSend={(text) => handleSendMessage(text)}
+                      onStartVoiceRecording={handleStartVoiceRecording}
+                      onOpenTemplateSelector={() => setShowTemplateSelector(true)}
+                      onPaste={handlePaste}
+                    />
                   )}
                 </div>
               </div>
