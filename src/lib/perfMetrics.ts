@@ -157,6 +157,7 @@ export function getSnapshot(): PerfMetricsSnapshot {
 
 export function resetMetrics() {
   buckets = { low: emptyBucket("low"), medium: emptyBucket("medium"), high: emptyBucket("high") };
+  invalidateSnapshot();
   if (typeof localStorage !== "undefined") {
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
   }
@@ -166,6 +167,12 @@ export function resetMetrics() {
 export function subscribe(cb: () => void): () => void {
   subscribers.add(cb);
   return () => subscribers.delete(cb);
+}
+
+/** Force a refresh of the cached snapshot — used by the UI's "Refresh" button. */
+export function refreshSnapshot() {
+  invalidateSnapshot();
+  subscribers.forEach((cb) => cb());
 }
 
 // ----- helpers for the UI -----
