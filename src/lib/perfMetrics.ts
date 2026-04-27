@@ -72,13 +72,19 @@ function loadBuckets(): Record<PerfTier, TierBucket> {
 let buckets: Record<PerfTier, TierBucket> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const subscribers = new Set<() => void>();
+let cachedSnapshot: PerfMetricsSnapshot | null = null;
 
 function ensureLoaded(): Record<PerfTier, TierBucket> {
   if (!buckets) buckets = loadBuckets();
   return buckets;
 }
 
+function invalidateSnapshot() {
+  cachedSnapshot = null;
+}
+
 function scheduleSave() {
+  invalidateSnapshot();
   if (typeof localStorage === "undefined") return;
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
