@@ -139,11 +139,12 @@ export function recordSelectionCacheOutcome(hit: boolean) {
 }
 
 export function getSnapshot(): PerfMetricsSnapshot {
+  if (cachedSnapshot) return cachedSnapshot;
   const buckets = ensureLoaded();
   const nav = (typeof navigator !== "undefined" ? navigator : {}) as Navigator & {
     deviceMemory?: number;
   };
-  return {
+  cachedSnapshot = {
     deviceTier: getDeviceTier(),
     userAgent: nav.userAgent ?? "",
     cores: nav.hardwareConcurrency ?? 0,
@@ -151,6 +152,7 @@ export function getSnapshot(): PerfMetricsSnapshot {
     buckets,
     generatedAt: Date.now(),
   };
+  return cachedSnapshot;
 }
 
 export function resetMetrics() {
