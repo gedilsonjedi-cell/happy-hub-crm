@@ -65,21 +65,10 @@ Deno.serve(async (req) => {
       console.log(`[Watchdog] Restarting stalled campaign: ${campaign.name} (${campaign.id})`);
       console.log(`[Watchdog] Progress: ${campaign.sent_count}/${campaign.total_recipients}`);
 
-      // Busca os leads da organização para continuar o envio
-      const { data: leads } = await supabase
-        .from('leads')
-        .select('phone')
-        .eq('organization_id', campaign.organization_id)
-        .limit(campaign.total_recipients);
-
-      if (!leads || leads.length === 0) {
-        console.log(`[Watchdog] No leads found for campaign ${campaign.id}`);
-        continue;
-      }
-
-      const recipients = leads.map(l => l.phone);
-
-      // Chama a função de dispatch para reiniciar
+      // SEGURANÇA: Não despachar passando uma lista de leads aleatórios da
+      // organização. O campaign-dispatch agora carrega os destinatários
+      // corretos diretamente da tabela campaign_recipients pelo campaign_id.
+      // Apenas chamamos a retomada — sem passar `recipients`.
       try {
         const response = await fetch(`${supabaseUrl}/functions/v1/campaign-dispatch`, {
           method: 'POST',
@@ -89,7 +78,6 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             campaignId: campaign.id,
-            recipients: recipients,
             action: 'resume'
           }),
         });
