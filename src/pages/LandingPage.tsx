@@ -1307,19 +1307,19 @@ const LandingPage = () => {
 
                   <div className="space-y-6">
                     <div className="text-center p-4 sm:p-6 rounded-2xl bg-red-500/10 border border-red-500/20">
-                      <div className="text-xs sm:text-sm text-red-400/70 mb-2">Cobrança por mensagem</div>
+                      <div className="text-xs sm:text-sm text-red-400/70 mb-2">Markup sobre cada envio</div>
                       <div className="text-3xl sm:text-5xl font-bold text-white/40">
-                        R$ 0,05-0,15
+                        +30 a 100%
                       </div>
-                      <div className="text-white/30 text-xs sm:text-sm mt-2">Por cada mensagem enviada</div>
+                      <div className="text-white/30 text-xs sm:text-sm mt-2">Em cima do preço da Meta</div>
                     </div>
 
                     <div className="space-y-4">
                       {[
-                        { text: "Quanto mais vende, mais paga" },
-                        { text: "Cobrança por número conectado" },
-                        { text: "Fatura imprevisível todo mês" },
-                        { text: "Escalar = explosão de custo" },
+                        { text: "Margem oculta no preço por mensagem" },
+                        { text: "Você paga acima do valor oficial" },
+                        { text: "Sem clareza sobre quanto é taxa" },
+                        { text: "Quanto mais envia, mais eles lucram" },
                       ].map((item, index) => (
                         <motion.div 
                           key={index}
@@ -1339,11 +1339,11 @@ const LandingPage = () => {
 
                     {/* Example Calculation */}
                     <div className="pt-6 border-t border-white/10">
-                      <div className="text-sm text-white/30 mb-3">Exemplo: 50.000 mensagens/mês</div>
+                      <div className="text-sm text-white/30 mb-3">Mesmo template • Brasil</div>
                       <div className="flex items-center justify-between">
-                        <span className="text-white/40">Custo extra:</span>
-                        <span className="text-2xl font-bold text-red-400/70 line-through">
-                          R$ 2.500+
+                        <span className="text-white/40">Você paga:</span>
+                        <span className="text-2xl font-bold text-red-400/70">
+                          Meta + margem
                         </span>
                       </div>
                     </div>
