@@ -73,6 +73,7 @@ import { StoreManagementPanel } from "@/components/admin/StoreManagementPanel";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
 import { RlsRegressionPanel } from "@/components/admin/RlsRegressionPanel";
+import { PerformanceMetricsPanel } from "@/components/admin/PerformanceMetricsPanel";
 
 interface SubscriptionPricing {
   base_price: number;
