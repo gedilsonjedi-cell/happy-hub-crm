@@ -75,6 +75,7 @@ import {
   getCanonicalPhoneThreadKey,
   phonesShareSameThread,
 } from "@/lib/phoneThreadKey";
+import { recordSwitchLatency, recordSelectionCacheOutcome } from "@/lib/perfMetrics";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
@@ -1417,6 +1418,19 @@ const AtendimentoV2 = () => {
   }, []);
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
+    const startedAt = performance.now();
+    // Cache hit detection: if the messages query for this conversation already
+    // has data (populated by the predictive prefetcher), the switch will paint
+    // instantly without a network round-trip.
+    try {
+      const threadKey = getCanonicalPhoneThreadKey(conversation.phone);
+      const queryKey = ["messages", effectiveOrganizationId, conversation.channelId, threadKey];
+      const existing = queryClient.getQueryState(queryKey);
+      recordSelectionCacheOutcome(!!existing?.data);
+    } catch {
+      /* noop */
+    }
+
     setSelectedConversation(conversation);
     setSelectedConversationStableKey(getConversationKey(conversation));
 
@@ -1424,7 +1438,14 @@ const AtendimentoV2 = () => {
     setSelectedChannel(matchingChannel);
 
     markConversationAsRead(conversation);
-  }, [channels, markConversationAsRead]);
+
+    // Measure end-to-end perceived latency (commit + first paint).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        recordSwitchLatency(performance.now() - startedAt);
+      });
+    });
+  }, [channels, markConversationAsRead, queryClient, effectiveOrganizationId]);
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
