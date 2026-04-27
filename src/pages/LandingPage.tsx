@@ -1368,16 +1368,16 @@ const LandingPage = () => {
                   animate={{ rotate: [0, 10, -10, 0] }}
                   transition={{ duration: 3, repeat: Infinity }}
                 >
-                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-[#04f59c]" />
+                  <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-[#04f59c]" />
                 </motion.div>
                 <div>
-                  <div className="text-white/50 text-xs sm:text-sm">Com OptimusCRM você economiza</div>
+                  <div className="text-white/50 text-xs sm:text-sm">Nossa margem sobre o envio</div>
                   <motion.div 
                     className="text-2xl sm:text-3xl font-bold text-[#04f59c]"
                     animate={{ scale: [1, 1.05, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
-                    Até 80%
+                    Exatamente 0%
                   </motion.div>
                 </div>
               </div>
@@ -1386,7 +1386,7 @@ const LandingPage = () => {
               
               <div className="text-center">
                 <p className="text-white/70 text-sm sm:text-base max-w-md">
-                  Quanto mais mensagens você envia, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por mensagem.
+                  O valor pago por template é <span className="text-[#04f59c] font-semibold">exatamente o que a Meta cobra</span>. Nosso lucro vem da plataforma, não do seu volume de mensagens.
                 </p>
               </div>
             </div>
