@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   fetchExternalMessages,
@@ -8,6 +8,7 @@ import {
   getCanonicalPhoneThreadKey,
   getPhoneLookupVariants,
 } from "@/lib/phoneThreadKey";
+import { getPrefetchBudget, type PrefetchBudget } from "@/lib/devicePerformance";
 
 const PAGE_SIZE = 25;
 
@@ -18,27 +19,29 @@ interface PrefetchTarget {
 }
 
 interface Options {
-  /** How many neighbours above & below the selected conversation to prefetch */
-  radius?: number;
-  /** Debounce window before prefetching kicks in (ms) */
-  debounceMs?: number;
-  /** Cap of parallel prefetches */
-  concurrency?: number;
+  /** Hard caps — applied AFTER the adaptive budget. Useful to throttle
+   *  prefetching for specific screens regardless of device tier. */
+  maxRadius?: number;
+  maxConcurrency?: number;
+  /** Force-disable prefetching (e.g. while doing a heavy operation). */
+  disabled?: boolean;
 }
 
 /**
  * Predictive prefetch of message history for the conversations adjacent to the
- * currently selected one. Result lives inside React Query's cache under the
- * same key as `useInfiniteMessages`, so when the user actually clicks one of
- * the predicted conversations the message list is rendered instantly without
- * a network round-trip.
+ * currently selected one.
  *
- * Implementation notes:
- *  - Skips entries already present in cache (or being fetched).
- *  - Uses requestIdleCallback so prefetching never competes with user
- *    interactions or the active conversation's data fetch.
- *  - Each prefetched query inherits the cache TTL of useInfiniteMessages
- *    (staleTime 30s, gcTime 5min).
+ * The size and frequency of prefetching is **adaptive**: a per-device budget
+ * (CPU cores, RAM, network type, Save-Data, micro-bench) decides the radius,
+ * concurrency, debounce and minimum interval between waves. Weak machines get
+ * a small radius and long debounce; strong desktops get aggressive prefetch.
+ *
+ * Additional safeguards:
+ *  - Stops entirely when the tab is hidden (no point spending CPU/data).
+ *  - Stops when the user enables Save-Data or a 2g connection.
+ *  - Skips entries already in cache or being fetched.
+ *  - Uses requestIdleCallback so it never competes with user interactions.
+ *  - Honors a soft `minIntervalMs` rate-limit between waves.
  */
 export function usePrefetchAdjacentConversations(
   conversations: Array<{ channelId: string | null; phone: string }>,
@@ -48,9 +51,33 @@ export function usePrefetchAdjacentConversations(
   getKey: (c: { channelId: string | null; phone: string }) => string,
   opts: Options = {}
 ) {
-  const { radius = 4, debounceMs = 350, concurrency = 3 } = opts;
+  const { maxRadius, maxConcurrency, disabled } = opts;
   const queryClient = useQueryClient();
   const inflightRef = useRef<Set<string>>(new Set());
+  const lastWaveAtRef = useRef<number>(0);
+
+  // Re-evaluate the budget when tab visibility changes — a hidden tab returns
+  // an "enabled: false" budget so we stop spending resources in background.
+  const [budget, setBudget] = useState<PrefetchBudget>(() => getPrefetchBudget());
+  useEffect(() => {
+    const update = () => setBudget(getPrefetchBudget());
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+    };
+  }, []);
+
+  const radius = Math.min(budget.radius, maxRadius ?? budget.radius);
+  const concurrency = Math.min(
+    budget.concurrency,
+    maxConcurrency ?? budget.concurrency
+  );
+  const debounceMs = budget.debounceMs;
+  const minIntervalMs = budget.minIntervalMs;
+  const enabled = budget.enabled && !disabled;
+
 
   useEffect(() => {
     if (!selectedKey || !effectiveOrganizationId || conversations.length === 0) {
