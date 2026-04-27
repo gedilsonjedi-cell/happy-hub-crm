@@ -2811,13 +2811,17 @@ const AtendimentoV2 = () => {
     return channels.find(c => c.id === selectedConversation.channelId) || null;
   }, [selectedConversation?.channelId, channels]);
 
-  // Send message — now delegates to useSendMessage (useMutation + optimistic cache update)
-  const handleSendMessage = async () => {
+  // Send message — now delegates to useSendMessage (useMutation + optimistic cache update).
+  // Accepts an optional pre-trimmed text from <MessageComposer>; falls back to reading
+  // the live draft via the composer ref so legacy callers (e.g. send-on-Enter elsewhere)
+  // keep working.
+  const handleSendMessage = async (textOverride?: string) => {
     const conversationChannelId = selectedConversation?.channelId;
-    if (!newMessage.trim() || !selectedConversation || !conversationChannelId || isSendingMessage) return;
+    const draft = textOverride ?? getNewMessage();
+    if (!draft.trim() || !selectedConversation || !conversationChannelId || isSendingMessage) return;
 
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
-    const messageToSend = newMessage.trim();
+    const messageToSend = draft.trim();
 
     // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
     const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
