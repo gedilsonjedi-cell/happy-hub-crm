@@ -974,7 +974,7 @@ const LandingPage = () => {
 
                   <div className="mt-8 pt-6 border-t border-white/10">
                     <div className="text-center">
-                      <div className="text-3xl font-bold text-white/40 mb-2">R$ 300-500+<span className="text-lg text-white/30">/mês</span></div>
+                      <div className="text-3xl font-bold text-white/40 mb-2">R$ 650-900+<span className="text-lg text-white/30">/mês</span></div>
                       <p className="text-white/30 text-sm">Custos extras por recurso</p>
                     </div>
                   </div>
