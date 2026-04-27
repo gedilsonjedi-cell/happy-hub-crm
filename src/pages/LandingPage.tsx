@@ -663,7 +663,7 @@ const LandingPage = () => {
                 <Gift className="w-6 h-6 sm:w-8 sm:h-8 text-[#04f59c]" />
               </motion.div>
               <span className="text-base sm:text-xl text-white/80 text-center">
-                <span className="text-white font-bold text-lg sm:text-2xl">7 dias grátis</span> + R$10 de saldo bônus
+                <span className="text-white font-bold text-lg sm:text-2xl">7 dias grátis</span> • Sem cartão de crédito
               </span>
             </motion.div>
 
