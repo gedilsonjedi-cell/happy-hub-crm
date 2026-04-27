@@ -564,7 +564,13 @@ const AtendimentoV2 = () => {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingMessage] = [false]; // Kept for legacy references; replaced by isSendingMessage from useMutation
-  const [newMessage, setNewMessage] = useState("");
+  // newMessage now lives inside <MessageComposer> so typing does NOT re-render
+  // this 4800-line component. We read/write the draft via the imperative ref.
+  const composerRef = useRef<MessageComposerHandle | null>(null);
+  const getNewMessage = useCallback(() => composerRef.current?.getValue() ?? "", []);
+  const setNewMessage = useCallback((value: string) => {
+    composerRef.current?.setValue(value);
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
   const [globalSearchResults, setGlobalSearchResults] = useState<Conversation[]>([]);
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
