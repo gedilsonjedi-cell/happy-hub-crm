@@ -80,9 +80,11 @@ export function usePrefetchAdjacentConversations(
 
 
   useEffect(() => {
+    if (!enabled) return;
     if (!selectedKey || !effectiveOrganizationId || conversations.length === 0) {
       return;
     }
+    if (radius < 1 || concurrency < 1) return;
 
     const idx = conversations.findIndex((c) => getKey(c) === selectedKey);
     if (idx < 0) return;
