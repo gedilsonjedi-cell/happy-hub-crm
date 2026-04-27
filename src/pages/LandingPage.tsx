@@ -390,7 +390,7 @@ const LandingPage = () => {
                 "name": "Posso testar antes de assinar?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades, além de R$10 de saldo bônus para seus primeiros disparos."
+                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem compromisso."
                 }
               }
             ]
