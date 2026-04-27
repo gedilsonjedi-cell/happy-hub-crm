@@ -390,7 +390,7 @@ const LandingPage = () => {
                 "name": "Posso testar antes de assinar?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem compromisso."
+                  "text": "Sim! Oferecemos 7 dias grátis para você testar todas as funcionalidades da plataforma, sem cartão de crédito e sem compromisso."
                 }
               }
             ]
