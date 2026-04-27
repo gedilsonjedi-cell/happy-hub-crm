@@ -1183,21 +1183,21 @@ const LandingPage = () => {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#04f59c]/10 border border-[#04f59c]/20 mb-6">
               <TrendingUp className="w-4 h-4 text-[#04f59c]" />
-              <span className="text-sm text-[#04f59c]">Modelo Inteligente</span>
+              <span className="text-sm text-[#04f59c]">Plano Justo</span>
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-5xl font-bold mb-4 px-2">
-              Números{" "}
+              Mensagens{" "}
               <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
-                ilimitados
+                ilimitadas
               </span>
-              , pague por{" "}
+              , sem cobrança{" "}
               <span className="bg-gradient-to-r from-[#04f59c] to-[#02b872] bg-clip-text text-transparent">
-                uso
+                por envio
               </span>
             </h2>
             <p className="text-base sm:text-lg text-white/50 max-w-3xl mx-auto px-4">
-              Conecte quantos números quiser sem pagar a mais. Você só paga pelas mensagens que envia.
-              <span className="text-white font-medium"> Mensagens recebidas são gratuitas!</span>
+              Envie quantas mensagens precisar, conecte quantos números quiser. Você paga um valor fixo previsível e
+              <span className="text-white font-medium"> nunca é surpreendido pelo volume de uso.</span>
             </p>
           </motion.div>
 
@@ -1233,7 +1233,7 @@ const LandingPage = () => {
                       className="text-center p-4 sm:p-6 rounded-2xl bg-[#04f59c]/10 border border-[#04f59c]/20"
                       whileHover={{ scale: 1.02 }}
                     >
-                      <div className="text-xs sm:text-sm text-[#04f59c] mb-2">Custo por mensagem enviada</div>
+                      <div className="text-xs sm:text-sm text-[#04f59c] mb-2">Mensagens enviadas</div>
                       <motion.div 
                         className="text-3xl sm:text-5xl font-bold text-white"
                         initial={{ scale: 0.5 }}
@@ -1241,17 +1241,17 @@ const LandingPage = () => {
                         viewport={{ once: true }}
                         transition={{ type: "spring", stiffness: 200 }}
                       >
-                        R$ 0,007
+                        Ilimitadas
                       </motion.div>
-                      <div className="text-white/50 text-xs sm:text-sm mt-2">Por mensagem enviada</div>
+                      <div className="text-white/50 text-xs sm:text-sm mt-2">Sem custo por mensagem</div>
                     </motion.div>
 
                     <div className="space-y-4">
                       {[
-                        { icon: Phone, text: "Números ilimitados inclusos no plano" },
-                        { icon: MessageSquare, text: "Mensagens recebidas são GRÁTIS" },
-                        { icon: TrendingUp, text: "Pague apenas pelo que usar" },
-                        { icon: Shield, text: "Sem surpresas na fatura" },
+                        { icon: MessageSquare, text: "Envio ilimitado de mensagens" },
+                        { icon: Phone, text: "Conecte quantos números quiser" },
+                        { icon: TrendingUp, text: "Valor fixo, fatura previsível" },
+                        { icon: Shield, text: "Sem surpresas no fim do mês" },
                       ].map((item, index) => (
                         <motion.div 
                           key={index}
@@ -1271,16 +1271,16 @@ const LandingPage = () => {
 
                     {/* Example Calculation */}
                     <div className="pt-6 border-t border-[#04f59c]/20">
-                      <div className="text-sm text-white/50 mb-3">Exemplo: 10.000 mensagens/mês</div>
+                      <div className="text-sm text-white/50 mb-3">Exemplo: 50.000 mensagens/mês</div>
                       <div className="flex items-center justify-between">
-                        <span className="text-white/70">Custo total:</span>
+                        <span className="text-white/70">Custo extra:</span>
                         <motion.span 
                           className="text-2xl font-bold text-[#04f59c]"
                           initial={{ opacity: 0 }}
                           whileInView={{ opacity: 1 }}
                           viewport={{ once: true }}
                         >
-                          R$ 70,00
+                          R$ 0,00
                         </motion.span>
                       </div>
                     </div>
@@ -1307,19 +1307,19 @@ const LandingPage = () => {
 
                   <div className="space-y-6">
                     <div className="text-center p-4 sm:p-6 rounded-2xl bg-red-500/10 border border-red-500/20">
-                      <div className="text-xs sm:text-sm text-red-400/70 mb-2">Custo por número conectado</div>
+                      <div className="text-xs sm:text-sm text-red-400/70 mb-2">Cobrança por mensagem</div>
                       <div className="text-3xl sm:text-5xl font-bold text-white/40">
-                        R$ 50-100
+                        R$ 0,05-0,15
                       </div>
-                      <div className="text-white/30 text-xs sm:text-sm mt-2">Por cada número/mês</div>
+                      <div className="text-white/30 text-xs sm:text-sm mt-2">Por cada mensagem enviada</div>
                     </div>
 
                     <div className="space-y-4">
                       {[
-                        { text: "Cada número = custo fixo mensal" },
-                        { text: "3 números = R$ 150-300/mês só em números" },
-                        { text: "Custo fixo mesmo sem usar" },
-                        { text: "Escalar = gastar muito mais" },
+                        { text: "Quanto mais vende, mais paga" },
+                        { text: "Cobrança por número conectado" },
+                        { text: "Fatura imprevisível todo mês" },
+                        { text: "Escalar = explosão de custo" },
                       ].map((item, index) => (
                         <motion.div 
                           key={index}
@@ -1339,11 +1339,11 @@ const LandingPage = () => {
 
                     {/* Example Calculation */}
                     <div className="pt-6 border-t border-white/10">
-                      <div className="text-sm text-white/30 mb-3">Exemplo: 3 números conectados</div>
+                      <div className="text-sm text-white/30 mb-3">Exemplo: 50.000 mensagens/mês</div>
                       <div className="flex items-center justify-between">
-                        <span className="text-white/40">Custo mensal:</span>
+                        <span className="text-white/40">Custo extra:</span>
                         <span className="text-2xl font-bold text-red-400/70 line-through">
-                          R$ 150-300
+                          R$ 2.500+
                         </span>
                       </div>
                     </div>
@@ -1386,7 +1386,7 @@ const LandingPage = () => {
               
               <div className="text-center">
                 <p className="text-white/70 text-sm sm:text-base max-w-md">
-                  Quanto mais números você conecta, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por número.
+                  Quanto mais mensagens você envia, <span className="text-[#04f59c] font-semibold">mais você economiza</span> comparado ao modelo tradicional de cobrança por mensagem.
                 </p>
               </div>
             </div>
