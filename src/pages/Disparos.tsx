@@ -310,10 +310,36 @@ const Disparos = () => {
       variable_mappings: t.variable_mappings as Record<string, string> | null
     }))]);
     setChannelTemplateRelations([...demoChannelTemplateRelations, ...realRelations]);
-    setAllCampaigns((campaignsData || []).map(c => ({
-      ...c,
-      status: c.status as Campaign["status"]
-    })));
+    // Fetch real counters derived from campaign_recipients to fix stale aggregates in campaigns table
+    const campaignIds = (campaignsData || []).map(c => c.id);
+    let realCountsMap = new Map<string, { sent: number; delivered: number; failed: number }>();
+    if (campaignIds.length > 0) {
+      const { data: realCounts, error: realCountsError } = await supabase
+        .rpc("get_campaign_real_counts", { p_campaign_ids: campaignIds });
+      if (realCountsError) {
+        console.warn("[Disparos] get_campaign_real_counts failed, falling back to stored counters", realCountsError);
+      } else if (realCounts) {
+        for (const row of realCounts as Array<{ campaign_id: string; sent_count: number; delivered_count: number; failed_count: number }>) {
+          realCountsMap.set(row.campaign_id, {
+            sent: Number(row.sent_count) || 0,
+            delivered: Number(row.delivered_count) || 0,
+            failed: Number(row.failed_count) || 0,
+          });
+        }
+      }
+    }
+
+    setAllCampaigns((campaignsData || []).map(c => {
+      const real = realCountsMap.get(c.id);
+      return {
+        ...c,
+        status: c.status as Campaign["status"],
+        // Prefer real counters from campaign_recipients (source of truth) when available.
+        sent_count: real ? real.sent : c.sent_count,
+        delivered_count: real ? real.delivered : c.delivered_count,
+        failed_count: real ? real.failed : c.failed_count,
+      };
+    }));
     setAiAgents(agentsData || []);
     setSectors(sectorsData || []);
     setLoading(false);
