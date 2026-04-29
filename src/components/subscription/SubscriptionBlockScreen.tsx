@@ -1,78 +1,26 @@
-import { useState } from "react";
-import { AlertTriangle, CreditCard, Wallet, Loader2 } from "lucide-react";
+import { AlertTriangle, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useOrganizationBalance } from "@/hooks/useOrganizationBalance";
 import { useSubscription } from "@/hooks/useSubscription";
-import { PixPaymentDialog } from "@/components/payment/PixPaymentDialog";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+
+const SUPPORT_PHONE = "5582996251871";
 
 export function SubscriptionBlockScreen() {
-  const { currentBalance, isLoading: balanceLoading, organizationId } = useOrganizationBalance();
   const { organization } = useSubscription();
-  const queryClient = useQueryClient();
 
-  const [isPixDialogOpen, setIsPixDialogOpen] = useState(false);
-  const [isRenewing, setIsRenewing] = useState(false);
+  const subscriptionCost = organization?.custom_subscription_price
+    ? Number(organization.custom_subscription_price)
+    : 299.9;
 
-  // Use custom price if set, otherwise default base price
-  const subscriptionCost = organization?.custom_subscription_price 
-    ? Number(organization.custom_subscription_price) 
-    : 299.90;
-  const hasEnoughBalance = currentBalance >= subscriptionCost;
+  const orgName = (organization as { name?: string } | null)?.name || "minha empresa";
 
-  const handleRenewWithBalance = async () => {
-    if (!organizationId) return;
+  const message =
+    `Olá, eu sou a empresa ${orgName}, sou cliente da Optimus CRM e quero renovar meu plano.`;
 
-    setIsRenewing(true);
-    try {
-      // Get the subscription product
-      const { data: product, error: productError } = await supabase
-        .from("store_products")
-        .select("id")
-        .eq("product_type", "subscription")
-        .eq("is_active", true)
-        .limit(1)
-        .single();
+  const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(message)}`;
 
-      if (productError || !product) {
-        toast.error("Produto de assinatura não encontrado");
-        return;
-      }
-
-      // Use the purchase_product function
-      const { data: success, error } = await supabase.rpc("purchase_product", {
-        _organization_id: organizationId,
-        _product_id: product.id,
-        _quantity: 1,
-      });
-
-      if (error) {
-        if (error.message?.includes("Insufficient balance")) {
-          toast.error("Saldo insuficiente para renovar a assinatura");
-        } else {
-          toast.error("Erro ao renovar assinatura");
-          console.error("Renewal error:", error);
-        }
-        return;
-      }
-
-      if (success) {
-        toast.success("Assinatura renovada com sucesso!");
-        // Invalidate all relevant queries
-        queryClient.invalidateQueries({ queryKey: ["organization-subscription"] });
-        queryClient.invalidateQueries({ queryKey: ["organization-balance"] });
-        // Reload page to update state
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error("Error renewing subscription:", err);
-      toast.error("Erro ao renovar assinatura");
-    } finally {
-      setIsRenewing(false);
-    }
+  const handlePayOnWhatsApp = () => {
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -85,76 +33,34 @@ export function SubscriptionBlockScreen() {
             </div>
             <CardTitle className="text-2xl">Assinatura Expirada</CardTitle>
             <CardDescription className="text-base">
-              Sua assinatura venceu. Para continuar usando o sistema, renove sua assinatura.
+              Sua assinatura venceu. Para continuar usando o sistema, renove seu plano com nosso suporte.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Balance Info */}
+            {/* Subscription value */}
             <div className="bg-muted/50 rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground mb-1">Seu saldo atual</p>
-              {balanceLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-              ) : (
-                <p className="text-2xl font-bold">
-                  R$ {currentBalance.toFixed(2).replace(".", ",")}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                Valor da assinatura: R$ {subscriptionCost.toFixed(2).replace(".", ",")}
+              <p className="text-sm text-muted-foreground mb-1">Valor da assinatura</p>
+              <p className="text-3xl font-bold">
+                R$ {subscriptionCost.toFixed(2).replace(".", ",")}
               </p>
             </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              {hasEnoughBalance && (
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={handleRenewWithBalance}
-                  disabled={isRenewing}
-                >
-                  {isRenewing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Renovando...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Renovar com Saldo (R$ {subscriptionCost.toFixed(2).replace(".", ",")})
-                    </>
-                  )}
-                </Button>
-              )}
+            {/* Pay on WhatsApp */}
+            <Button
+              className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white"
+              size="lg"
+              onClick={handlePayOnWhatsApp}
+            >
+              <MessageCircle className="w-4 h-4 mr-2" />
+              Pagar agora no WhatsApp
+            </Button>
 
-              <Button
-                variant={hasEnoughBalance ? "outline" : "default"}
-                className="w-full"
-                size="lg"
-                onClick={() => setIsPixDialogOpen(true)}
-              >
-                <Wallet className="w-4 h-4 mr-2" />
-                {hasEnoughBalance ? "Adicionar Mais Saldo" : "Adicionar Saldo via PIX"}
-              </Button>
-            </div>
-
-            {/* Help Text */}
             <p className="text-xs text-center text-muted-foreground">
-              Após adicionar saldo, você poderá renovar sua assinatura automaticamente.
-              Em caso de dúvidas, entre em contato com o suporte.
+              Você será direcionado ao nosso suporte no WhatsApp para concluir a renovação do seu plano.
             </p>
           </CardContent>
         </Card>
       </div>
-
-      {/* PIX Payment Dialog */}
-      {organizationId && (
-        <PixPaymentDialog
-          open={isPixDialogOpen}
-          onOpenChange={setIsPixDialogOpen}
-          organizationId={organizationId}
-        />
-      )}
     </div>
   );
 }
