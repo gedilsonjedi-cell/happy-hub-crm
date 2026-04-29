@@ -33,37 +33,57 @@ export function useCampaignTraffic() {
         .limit(20);
 
       if (error) throw error;
-      if (!campaigns) return [];
+      if (!campaigns || campaigns.length === 0) return [];
 
-      const results: CampaignTrafficItem[] = [];
+      // Get authoritative counters from campaign_recipients via RPC.
+      // The aggregated columns on campaigns can be stale (webhooks may arrive
+      // out-of-order or be missed), so we always prefer the real per-recipient counts.
+      const campaignIds = campaigns.map(c => c.id);
+      const realCounts = new Map<string, {
+        sent: number; delivered: number; failed: number; read: number; interacted: number; recipients: number;
+      }>();
 
-      for (const c of campaigns) {
-        // Get read & interacted counts
-        const { count: readCount } = await supabase
-          .from("campaign_recipients")
-          .select("*", { count: "exact", head: true })
-          .eq("campaign_id", c.id)
-          .not("read_at", "is", null);
+      const { data: counts, error: countsError } = await supabase
+        .rpc("get_campaign_real_counts", { p_campaign_ids: campaignIds });
 
-        const { count: interactedCount } = await supabase
-          .from("campaign_recipients")
-          .select("*", { count: "exact", head: true })
-          .eq("campaign_id", c.id)
-          .not("button_clicked", "is", null);
+      if (countsError) {
+        console.warn("[useCampaignTraffic] get_campaign_real_counts failed", countsError);
+      } else if (counts) {
+        for (const row of counts as Array<{
+          campaign_id: string;
+          recipients_count: number;
+          sent_count: number;
+          delivered_count: number;
+          read_count: number;
+          failed_count: number;
+          interacted_count: number;
+        }>) {
+          realCounts.set(row.campaign_id, {
+            recipients: Number(row.recipients_count) || 0,
+            sent: Number(row.sent_count) || 0,
+            delivered: Number(row.delivered_count) || 0,
+            read: Number(row.read_count) || 0,
+            failed: Number(row.failed_count) || 0,
+            interacted: Number(row.interacted_count) || 0,
+          });
+        }
+      }
 
-        results.push({
+      const results: CampaignTrafficItem[] = campaigns.map((c) => {
+        const real = realCounts.get(c.id);
+        return {
           id: c.id,
           name: c.name,
           status: c.status,
           totalRecipients: c.total_recipients,
-          sentCount: c.sent_count,
-          deliveredCount: c.delivered_count,
-          failedCount: c.failed_count,
-          readCount: readCount || 0,
-          interactedCount: interactedCount || 0,
+          sentCount: real ? real.sent : c.sent_count,
+          deliveredCount: real ? real.delivered : c.delivered_count,
+          failedCount: real ? real.failed : c.failed_count,
+          readCount: real ? real.read : 0,
+          interactedCount: real ? real.interacted : 0,
           createdAt: c.created_at,
-        });
-      }
+        };
+      });
 
       return results;
     },
