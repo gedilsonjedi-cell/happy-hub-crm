@@ -20,8 +20,10 @@ import {
   Eye,
   RefreshCw,
   Bot,
-  RotateCcw
+  RotateCcw,
+  AlertTriangle
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1854,21 +1856,75 @@ const Disparos = () => {
               {campaigns.map((campaign) => {
                 const config = statusConfig[campaign.status];
                 const StatusIcon = config.icon;
-                
+
+                // Detecta inconsistências entre os contadores e o total de destinatários
+                const sent = campaign.sent_count || 0;
+                const delivered = campaign.delivered_count || 0;
+                const failed = campaign.failed_count || 0;
+                const total = campaign.total_recipients || 0;
+                const processed = sent + failed;
+                const inconsistencies: string[] = [];
+                if (delivered > sent) {
+                  inconsistencies.push(`Entregues (${delivered}) > Enviadas (${sent})`);
+                }
+                if (total > 0 && processed > total) {
+                  inconsistencies.push(`Processadas (${processed}) > Total (${total})`);
+                }
+                if (
+                  total > 0 &&
+                  ["completed", "paused"].includes(campaign.status) &&
+                  processed < total
+                ) {
+                  inconsistencies.push(`Processadas (${processed}) < Total (${total})`);
+                }
+                const hasInconsistency = inconsistencies.length > 0;
+
                 return (
                   <TableRow 
                     key={campaign.id}
-                    className="border-border hover:bg-muted/20 cursor-pointer"
+                    className={cn(
+                      "border-border hover:bg-muted/20 cursor-pointer",
+                      hasInconsistency && "bg-amber-500/5"
+                    )}
                     onClick={() => handleViewDetails(campaign.id)}
                   >
                     <TableCell>
-                      <div>
-                        <p className="font-medium text-foreground">{campaign.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {campaign.scheduled_at 
-                            ? `Agendada: ${new Date(campaign.scheduled_at).toLocaleDateString()}`
-                            : `Criada: ${new Date(campaign.created_at).toLocaleDateString()}`}
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground flex items-center gap-2">
+                            {campaign.name}
+                            {hasInconsistency && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center"
+                                    >
+                                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="max-w-xs">
+                                    <p className="font-semibold mb-1">Inconsistência detectada</p>
+                                    <ul className="text-xs list-disc pl-4 space-y-0.5">
+                                      {inconsistencies.map((msg, i) => (
+                                        <li key={i}>{msg}</li>
+                                      ))}
+                                    </ul>
+                                    <p className="text-xs mt-2 text-muted-foreground">
+                                      Use "Forçar sincronização" para recalcular.
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {campaign.scheduled_at 
+                              ? `Agendada: ${new Date(campaign.scheduled_at).toLocaleDateString()}`
+                              : `Criada: ${new Date(campaign.created_at).toLocaleDateString()}`}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1881,10 +1937,10 @@ const Disparos = () => {
                       <span className="text-foreground">{campaign.total_recipients}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-foreground">{campaign.sent_count}</span>
+                      <span className={cn("text-foreground", hasInconsistency && "text-amber-600 font-medium")}>{campaign.sent_count}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-primary">{campaign.delivered_count}</span>
+                      <span className={cn("text-primary", delivered > sent && "text-amber-600 font-medium")}>{campaign.delivered_count}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-destructive">{campaign.failed_count}</span>
