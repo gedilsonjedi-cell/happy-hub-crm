@@ -3683,6 +3683,18 @@ export type Database = {
           total_waiting_retry: number
         }[]
       }
+      get_campaign_real_counts: {
+        Args: { p_campaign_ids: string[] }
+        Returns: {
+          campaign_id: string
+          delivered_count: number
+          failed_count: number
+          interacted_count: number
+          read_count: number
+          recipients_count: number
+          sent_count: number
+        }[]
+      }
       get_campaign_sector_for_phone: {
         Args: { _organization_id: string; _phone: string }
         Returns: string
