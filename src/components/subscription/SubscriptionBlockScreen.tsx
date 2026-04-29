@@ -6,7 +6,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 const SUPPORT_PHONE = "5582996251871";
 
 export function SubscriptionBlockScreen() {
-  const { organization } = useSubscription();
+  const { organization, paidUntil } = useSubscription();
 
   const subscriptionCost = organization?.custom_subscription_price
     ? Number(organization.custom_subscription_price)
@@ -14,8 +14,24 @@ export function SubscriptionBlockScreen() {
 
   const orgName = (organization as { name?: string } | null)?.name || "minha empresa";
 
-  const message =
-    `Olá, eu sou a empresa ${orgName}, sou cliente da Optimus CRM e quero renovar meu plano.`;
+  const planLabel = organization?.custom_subscription_price
+    ? `Plano personalizado (R$ ${subscriptionCost.toFixed(2).replace(".", ",")}/mês)`
+    : `Plano padrão (R$ ${subscriptionCost.toFixed(2).replace(".", ",")}/mês)`;
+
+  const dueDateLabel = paidUntil
+    ? paidUntil.toLocaleDateString("pt-BR")
+    : null;
+
+  const messageLines = [
+    `Olá, eu sou a empresa ${orgName}, sou cliente da Optimus CRM e quero renovar meu plano.`,
+    "",
+    `• Plano atual: ${planLabel}`,
+  ];
+  if (dueDateLabel) {
+    messageLines.push(`• Data de vencimento: ${dueDateLabel}`);
+  }
+
+  const message = messageLines.join("\n");
 
   const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(message)}`;
 
