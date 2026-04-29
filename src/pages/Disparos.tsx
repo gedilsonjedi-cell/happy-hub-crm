@@ -1937,10 +1937,10 @@ const Disparos = () => {
                       <span className="text-foreground">{campaign.total_recipients}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-foreground">{campaign.sent_count}</span>
+                      <span className={cn("text-foreground", hasInconsistency && "text-amber-600 font-medium")}>{campaign.sent_count}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-primary">{campaign.delivered_count}</span>
+                      <span className={cn("text-primary", delivered > sent && "text-amber-600 font-medium")}>{campaign.delivered_count}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-destructive">{campaign.failed_count}</span>
