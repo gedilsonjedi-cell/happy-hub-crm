@@ -20,8 +20,10 @@ import {
   Eye,
   RefreshCw,
   Bot,
-  RotateCcw
+  RotateCcw,
+  AlertTriangle
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
