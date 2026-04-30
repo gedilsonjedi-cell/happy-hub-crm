@@ -167,6 +167,12 @@ const Conexoes = () => {
     qualityRating?: string;
     qualityInfo?: string;
     error?: string;
+    nameStatus?: string | null;
+    displayName?: string | null;
+    displayPhoneNumber?: string | null;
+    accountMode?: string | null;
+    codeVerificationStatus?: string | null;
+    rawStatus?: string | null;
   }>>({});
   
   // Z-API form data
