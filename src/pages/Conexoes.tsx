@@ -1955,22 +1955,60 @@ const Conexoes = () => {
                     )}
                     {/* Show PENDING warning with instructions */}
                     {metaPhoneStatuses[channel.id]?.code === 'PENDING' && !metaPhoneStatuses[channel.id]?.isConnected && (
-                      <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20 mb-2">
-                        <p className="text-xs text-amber-400 font-medium mb-1">
-                          ⚠️ Número pendente no Meta
-                        </p>
-                        <p className="text-xs text-amber-400/80 mb-2">
-                          Este número precisa ser re-registrado. Clique em "Forçar Re-registro" abaixo.
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Se continuar pendente, acesse o <a 
-                            href="https://business.facebook.com/settings/whatsapp-business-accounts" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="underline hover:text-amber-300"
-                          >Meta Business Suite</a> e complete a verificação.
-                        </p>
-                      </div>
+                      (() => {
+                        const st = metaPhoneStatuses[channel.id];
+                        const nameInReview = st?.nameStatus === 'PENDING_REVIEW' || st?.nameStatus === 'PENDING';
+                        const isBusinessLocked = nameInReview; // proxy: nome em revisão + status PENDING = conta travada pela Meta
+                        if (isBusinessLocked) {
+                          return (
+                            <div className="p-3 bg-red-500/10 rounded border border-red-500/30 mb-2 space-y-2">
+                              <p className="text-xs text-red-400 font-semibold">
+                                🚫 Conta bloqueada pela Meta (Business Account locked)
+                              </p>
+                              <p className="text-xs text-red-300/90">
+                                A migração foi concluída tecnicamente, mas a Meta colocou o número em análise
+                                {st?.displayName ? ` (nome "${st.displayName}" em PENDING_REVIEW)` : ''}.
+                                <strong> O botão "Forçar Re-registro" não funciona enquanto a Meta não liberar</strong> (erro #131031).
+                              </p>
+                              <div className="text-xs text-muted-foreground space-y-1">
+                                <p className="font-medium text-foreground/80">O que fazer no Meta Business Suite:</p>
+                                <ol className="list-decimal list-inside space-y-0.5 pl-1">
+                                  <li>Conclua a <strong>verificação da empresa</strong> (Business Verification)</li>
+                                  <li>Em WhatsApp Manager → Perfil, ajuste/aprove o nome comercial</li>
+                                  <li>Procure avisos de restrição e clique em <strong>Solicitar revisão</strong></li>
+                                  <li>Aguarde 24h–72h e tente reconectar</li>
+                                </ol>
+                              </div>
+                              <a
+                                href="https://business.facebook.com/wa/manage/phone-numbers/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs underline text-red-300 hover:text-red-200 inline-block"
+                              >
+                                Abrir WhatsApp Manager →
+                              </a>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20 mb-2">
+                            <p className="text-xs text-amber-400 font-medium mb-1">
+                              ⚠️ Número pendente no Meta
+                            </p>
+                            <p className="text-xs text-amber-400/80 mb-2">
+                              Este número precisa ser re-registrado. Clique em "Forçar Re-registro" abaixo.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Se continuar pendente, acesse o <a
+                                href="https://business.facebook.com/settings/whatsapp-business-accounts"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-amber-300"
+                              >Meta Business Suite</a> e complete a verificação.
+                            </p>
+                          </div>
+                        );
+                      })()
                     )}
                     {/* Show error message if there's an issue */}
                     {metaPhoneStatuses[channel.id]?.code === 'TOKEN_EXPIRED' && (
