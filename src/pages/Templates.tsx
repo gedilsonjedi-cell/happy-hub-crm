@@ -19,6 +19,8 @@ import {
   Link,
   Phone,
   MessageSquare,
+  Image as ImageIcon,
+  Upload,
   X
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
