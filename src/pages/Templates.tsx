@@ -1720,36 +1720,48 @@ const Templates = () => {
         <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle className="text-foreground">
-              Imagem do template
+              {(() => {
+                const f = mediaDialogTemplate ? getTemplateHeaderMediaFormat(mediaDialogTemplate) : null;
+                const lbl = f === 'VIDEO' ? 'Vídeo' : f === 'DOCUMENT' ? 'Documento' : 'Imagem';
+                return `${lbl} do template`;
+              })()}
             </DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Esta imagem será usada como cabeçalho em todos os disparos deste template.
+              {(() => {
+                const f = mediaDialogTemplate ? getTemplateHeaderMediaFormat(mediaDialogTemplate) : null;
+                const lbl = f === 'VIDEO' ? 'vídeo' : f === 'DOCUMENT' ? 'arquivo' : 'imagem';
+                return `Esta ${lbl} será usada como cabeçalho em todos os disparos deste template.`;
+              })()}
             </p>
           </DialogHeader>
 
           {mediaDialogTemplate && (() => {
             const fmt = getTemplateHeaderMediaFormat(mediaDialogTemplate);
-            const accept = fmt === 'IMAGE' ? 'image/*' : fmt === 'VIDEO' ? 'video/*' : '*/*';
+            const accept = fmt === 'IMAGE' ? 'image/*' : fmt === 'VIDEO' ? 'video/*' : fmt === 'DOCUMENT' ? '.pdf,application/pdf' : '*/*';
             const url = mediaDialogTemplate.header_media_url;
+            const FallbackIcon = fmt === 'VIDEO' ? Video : fmt === 'DOCUMENT' ? FileText : ImageIcon;
+            const mediaLabel = fmt === 'IMAGE' ? 'imagem' : fmt === 'VIDEO' ? 'vídeo' : 'arquivo';
             return (
               <div className="space-y-4">
                 <div className="rounded-lg border border-border bg-muted/30 p-4 flex items-center justify-center min-h-[180px]">
                   {url && fmt === 'IMAGE' ? (
                     <img src={url} alt="Imagem atual" className="max-h-48 rounded" />
+                  ) : url && fmt === 'VIDEO' ? (
+                    <video src={url} controls className="max-h-48 rounded" />
                   ) : url ? (
                     <a href={url} target="_blank" rel="noreferrer" className="text-primary text-sm underline break-all">
                       {url}
                     </a>
                   ) : (
                     <div className="text-center text-sm text-muted-foreground">
-                      <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      Nenhuma imagem personalizada — a Meta usará a padrão do template.
+                      <FallbackIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      Nenhum(a) {mediaLabel} personalizado(a) — a Meta usará o padrão do template.
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <Label className="text-sm">Enviar nova {fmt === 'IMAGE' ? 'imagem' : fmt === 'VIDEO' ? 'vídeo' : 'arquivo'}</Label>
+                  <Label className="text-sm">Enviar nov{fmt === 'IMAGE' ? 'a imagem' : fmt === 'VIDEO' ? 'o vídeo' : 'o arquivo'}</Label>
                   <Input
                     type="file"
                     accept={accept}
