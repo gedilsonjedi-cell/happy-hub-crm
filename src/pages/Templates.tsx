@@ -233,7 +233,9 @@ const Templates = () => {
       ...t,
       status: t.status as "pending" | "approved" | "rejected",
       dispatch_type: (t.dispatch_type || "utility") as "marketing" | "utility" | "service",
-      variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined
+      variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined,
+      components: (t as any).components ?? null,
+      header_media_url: (t as any).header_media_url ?? null,
     })));
     setLoading(false);
   };
