@@ -683,6 +683,10 @@ const Templates = () => {
       toast.error("Selecione um arquivo de vídeo");
       return;
     }
+    if (format === 'DOCUMENT' && file.type !== 'application/pdf') {
+      toast.error("Selecione um arquivo PDF");
+      return;
+    }
 
     setMediaUploading(true);
     try {
