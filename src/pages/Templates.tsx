@@ -1841,7 +1841,7 @@ const Templates = () => {
                         disabled={mediaUploading}
                       >
                         <X className="w-4 h-4 mr-1" />
-                        Remover
+                        Remover {mediaLabel} (usar padrão da Meta)
                       </Button>
                     )}
                     {hasPending && (
