@@ -1108,7 +1108,7 @@ Deno.serve(async (req) => {
         sender_phone: channel.phone,
         message_type: storedMessageType,
         content: storedContent,
-        media_url: mediaUrl || null,
+        media_url: storedMediaUrl,
         direction: 'outbound',
         status: 'sent',
         metadata: { 
@@ -1118,7 +1118,7 @@ Deno.serve(async (req) => {
           templateLanguage,
           templateContent,
           templateButtons,
-          mediaType: effectiveMediaType,
+          mediaType: storedMediaType,
           fileName,
           cost: pricePerMessage,
           provider: 'meta',
