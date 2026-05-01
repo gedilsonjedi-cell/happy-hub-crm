@@ -883,21 +883,25 @@ const Templates = () => {
                             Serviço
                           </Badge>
                         )}
-                        {headerMediaFormat && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={hasCustomMedia ? "secondary" : "outline"}
-                            className="h-6 px-2 text-xs gap-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMediaDialogTemplate(template);
-                            }}
-                          >
-                            <ImageIcon className="w-3 h-3" />
-                            {hasCustomMedia ? "Trocar imagem" : "Definir imagem"}
-                          </Button>
-                        )}
+                        {headerMediaFormat && (() => {
+                          const mediaLabel = headerMediaFormat === 'IMAGE' ? 'imagem' : headerMediaFormat === 'VIDEO' ? 'vídeo' : 'arquivo';
+                          const MediaIcon = headerMediaFormat === 'VIDEO' ? Video : headerMediaFormat === 'DOCUMENT' ? FileText : ImageIcon;
+                          return (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={hasCustomMedia ? "secondary" : "outline"}
+                              className="h-6 px-2 text-xs gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMediaDialogTemplate(template);
+                              }}
+                            >
+                              <MediaIcon className="w-3 h-3" />
+                              {hasCustomMedia ? `Trocar ${mediaLabel}` : `Definir ${mediaLabel}`}
+                            </Button>
+                          );
+                        })()}
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {template.content}
