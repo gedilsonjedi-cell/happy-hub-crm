@@ -1163,7 +1163,7 @@ Deno.serve(async (req) => {
           channel_name: channel.name || null,
           channel_phone: channel.phone || null,
           message_type: storedMessageType,
-          media_url: mediaUrl || null,
+          media_url: storedMediaUrl,
           template_name: templateName || null,
           campaign_id: campaignId || null,
           provider: 'meta',
