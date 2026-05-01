@@ -151,6 +151,8 @@ const Templates = () => {
   // Header media (image/video/document) override per template
   const [mediaDialogTemplate, setMediaDialogTemplate] = useState<MessageTemplate | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [pendingMediaFile, setPendingMediaFile] = useState<File | null>(null);
+  const [pendingMediaPreview, setPendingMediaPreview] = useState<string | null>(null);
   
   // New template form state
   const [formData, setFormData] = useState({
