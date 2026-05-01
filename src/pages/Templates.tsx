@@ -750,6 +750,8 @@ const Templates = () => {
 
   const handleClearHeaderMedia = async () => {
     if (!mediaDialogTemplate) return;
+    const fmt = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+    const lbl = fmt === 'VIDEO' ? 'vídeo' : fmt === 'DOCUMENT' ? 'arquivo' : 'imagem';
     setMediaUploading(true);
     try {
       const { error } = await supabase
@@ -757,10 +759,10 @@ const Templates = () => {
         .update({ header_media_url: null } as any)
         .eq('id', mediaDialogTemplate.id);
       if (error) {
-        toast.error("Falha ao remover imagem");
+        toast.error(`Falha ao remover ${lbl}`);
         return;
       }
-      toast.success("Imagem removida — Meta usará a padrão do template");
+      toast.success(`${lbl[0].toUpperCase()}${lbl.slice(1)} personalizad${fmt === 'IMAGE' ? 'a' : 'o'} removid${fmt === 'IMAGE' ? 'a' : 'o'} — Meta usará o exemplo padrão do template`);
       setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: null } : t));
       setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: null } : prev);
     } finally {
