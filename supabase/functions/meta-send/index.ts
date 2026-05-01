@@ -691,8 +691,25 @@ Deno.serve(async (req) => {
       let customHeaderMediaUrl: string | null = null;
       if (templateData) {
         templateContent = templateData.content;
-        const comps = templateData.components as { buttons?: unknown[] } | null;
-        templateButtons = comps?.buttons || null;
+        // Extract buttons supporting BOTH shapes:
+        //  - Legacy: { buttons: [...] }
+        //  - Meta raw: array of components, with one of type BUTTONS containing buttons[]
+        const rawComps: unknown = templateData.components;
+        if (Array.isArray(rawComps)) {
+          const btnComp = (rawComps as Array<{ type?: string; buttons?: unknown[] }>).find(
+            (c) => String(c?.type || '').toUpperCase() === 'BUTTONS',
+          );
+          templateButtons = (btnComp?.buttons as unknown[]) || null;
+        } else if (rawComps && typeof rawComps === 'object') {
+          templateButtons = ((rawComps as { buttons?: unknown[] }).buttons) || null;
+        }
+        // Fallback: use buttons from live Meta definition if local is empty
+        if ((!templateButtons || templateButtons.length === 0) && Array.isArray(metaTemplateDefinition?.components)) {
+          const btnComp = (metaTemplateDefinition!.components as Array<{ type?: string; buttons?: unknown[] }>).find(
+            (c) => String(c?.type || '').toUpperCase() === 'BUTTONS',
+          );
+          templateButtons = (btnComp?.buttons as unknown[]) || null;
+        }
         const rawHeaderUrl = (templateData as { header_media_url?: string | null }).header_media_url;
         if (typeof rawHeaderUrl === 'string' && rawHeaderUrl.trim().length > 0) {
           customHeaderMediaUrl = rawHeaderUrl.trim();
