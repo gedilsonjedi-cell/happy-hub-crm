@@ -848,6 +848,8 @@ const Templates = () => {
               const config = statusConfig[template.status];
               const approvedChannels = channelTemplates[template.id] || [];
               const templateType = getTemplateType(template.id);
+              const headerMediaFormat = getTemplateHeaderMediaFormat(template);
+              const hasCustomMedia = !!(template.header_media_url && template.header_media_url.length > 0);
 
               return (
                 <div
@@ -856,11 +858,15 @@ const Templates = () => {
                   onClick={() => openEditDialog(template)}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
+                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5 overflow-hidden">
+                      {hasCustomMedia && headerMediaFormat === 'IMAGE' ? (
+                        <img src={template.header_media_url!} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <FileText className="w-5 h-5 text-muted-foreground" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-medium text-foreground truncate">{template.name}</h3>
                         {template.dispatch_type === "marketing" && (
                           <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-400 border-orange-400/30">
@@ -876,6 +882,21 @@ const Templates = () => {
                           <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-400/30">
                             Serviço
                           </Badge>
+                        )}
+                        {headerMediaFormat && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={hasCustomMedia ? "secondary" : "outline"}
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMediaDialogTemplate(template);
+                            }}
+                          >
+                            <ImageIcon className="w-3 h-3" />
+                            {hasCustomMedia ? "Trocar imagem" : "Definir imagem"}
+                          </Button>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">
