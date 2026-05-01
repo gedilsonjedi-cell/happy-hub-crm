@@ -65,6 +65,8 @@ interface MessageTemplate {
   status: "pending" | "approved" | "rejected";
   dispatch_type: "marketing" | "utility" | "service";
   created_at: string;
+  components?: any;
+  header_media_url?: string | null;
 }
 
 interface Channel {
