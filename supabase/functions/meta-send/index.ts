@@ -1067,6 +1067,10 @@ Deno.serve(async (req) => {
     // Determine content and message type for storage
     let storedContent = message || '';
     let storedMessageType = 'text';
+    // For template messages, if the template has a media header (custom override
+    // or Meta example), persist the media so it shows up in the chat history.
+    let storedMediaUrl: string | null = mediaUrl || null;
+    let storedMediaType: string | null = effectiveMediaType || null;
 
     if (templateName) {
       // Store rendered template body in content for chat history visibility
@@ -1082,6 +1086,15 @@ Deno.serve(async (req) => {
       }
       storedContent = renderedBody ? `📋 ${templateName}\n\n${renderedBody}` : `Template: ${templateName}`;
       storedMessageType = 'template';
+
+      // Attach header media (custom override preferred, Meta example as fallback)
+      if (headerInfo && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.format || '')) {
+        const headerUrl = customHeaderMediaUrl || headerInfo.exampleUrl || null;
+        if (headerUrl) {
+          storedMediaUrl = headerUrl;
+          storedMediaType = headerInfo.format!.toLowerCase();
+        }
+      }
     } else if (mediaUrl) {
       storedContent = mediaCaption || `[${effectiveMediaType || 'file'}]`;
       storedMessageType = effectiveMediaType === 'ptt' || effectiveMediaType === 'voice' ? 'audio' : (effectiveMediaType || 'file');
