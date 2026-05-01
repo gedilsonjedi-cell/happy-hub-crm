@@ -145,6 +145,10 @@ const Templates = () => {
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [showButtonDialog, setShowButtonDialog] = useState(false);
   const [editVariableMappings, setEditVariableMappings] = useState<Record<string, string>>({});
+
+  // Header media (image/video/document) override per template
+  const [mediaDialogTemplate, setMediaDialogTemplate] = useState<MessageTemplate | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   
   // New template form state
   const [formData, setFormData] = useState({
