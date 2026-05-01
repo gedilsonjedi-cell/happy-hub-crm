@@ -736,9 +736,10 @@ const Templates = () => {
         toast.error("Falha ao salvar imagem no template");
         return;
       }
-      toast.success("Imagem do template atualizada");
+      toast.success("Mídia do template atualizada");
       setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: publicUrl } : t));
       setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: publicUrl } : prev);
+      clearPendingMedia();
     } catch (err) {
       console.error(err);
       toast.error("Erro inesperado ao enviar imagem");
