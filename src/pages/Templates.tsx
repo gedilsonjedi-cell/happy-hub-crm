@@ -646,6 +646,97 @@ const Templates = () => {
     }
   };
 
+  // Detect Meta header media format from synced template components
+  const getTemplateHeaderMediaFormat = (template: MessageTemplate): 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null => {
+    const comps = template.components;
+    if (!comps) return null;
+    const list: any[] = Array.isArray(comps)
+      ? comps
+      : Array.isArray(comps?.components)
+        ? comps.components
+        : [];
+    const header = list.find((c: any) => (c?.type || '').toUpperCase() === 'HEADER');
+    const fmt = header?.format ? String(header.format).toUpperCase() : null;
+    if (fmt === 'IMAGE' || fmt === 'VIDEO' || fmt === 'DOCUMENT') return fmt;
+    return null;
+  };
+
+  const handleHeaderMediaUpload = async (file: File) => {
+    if (!mediaDialogTemplate || !effectiveOrganizationId) return;
+    const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+    if (!format) {
+      toast.error("Este template não possui cabeçalho de mídia");
+      return;
+    }
+    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error(`Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`);
+      return;
+    }
+    if (format === 'IMAGE' && !file.type.startsWith('image/')) {
+      toast.error("Selecione um arquivo de imagem");
+      return;
+    }
+    if (format === 'VIDEO' && !file.type.startsWith('video/')) {
+      toast.error("Selecione um arquivo de vídeo");
+      return;
+    }
+
+    setMediaUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${effectiveOrganizationId}/${mediaDialogTemplate.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase
+        .storage
+        .from('template-media')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        toast.error("Falha ao enviar arquivo");
+        return;
+      }
+      const { data: pub } = supabase.storage.from('template-media').getPublicUrl(path);
+      const publicUrl = pub.publicUrl;
+      const { error: updateError } = await supabase
+        .from('message_templates')
+        .update({ header_media_url: publicUrl } as any)
+        .eq('id', mediaDialogTemplate.id);
+      if (updateError) {
+        console.error('Update template error:', updateError);
+        toast.error("Falha ao salvar imagem no template");
+        return;
+      }
+      toast.success("Imagem do template atualizada");
+      setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: publicUrl } : t));
+      setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: publicUrl } : prev);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro inesperado ao enviar imagem");
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const handleClearHeaderMedia = async () => {
+    if (!mediaDialogTemplate) return;
+    setMediaUploading(true);
+    try {
+      const { error } = await supabase
+        .from('message_templates')
+        .update({ header_media_url: null } as any)
+        .eq('id', mediaDialogTemplate.id);
+      if (error) {
+        toast.error("Falha ao remover imagem");
+        return;
+      }
+      toast.success("Imagem removida — Meta usará a padrão do template");
+      setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: null } : t));
+      setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: null } : prev);
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.content.toLowerCase().includes(searchTerm.toLowerCase());
