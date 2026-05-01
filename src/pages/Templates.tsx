@@ -19,6 +19,8 @@ import {
   Link,
   Phone,
   MessageSquare,
+  Image as ImageIcon,
+  Upload,
   X
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -65,6 +67,8 @@ interface MessageTemplate {
   status: "pending" | "approved" | "rejected";
   dispatch_type: "marketing" | "utility" | "service";
   created_at: string;
+  components?: any;
+  header_media_url?: string | null;
 }
 
 interface Channel {
@@ -143,6 +147,10 @@ const Templates = () => {
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [showButtonDialog, setShowButtonDialog] = useState(false);
   const [editVariableMappings, setEditVariableMappings] = useState<Record<string, string>>({});
+
+  // Header media (image/video/document) override per template
+  const [mediaDialogTemplate, setMediaDialogTemplate] = useState<MessageTemplate | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   
   // New template form state
   const [formData, setFormData] = useState({
@@ -231,7 +239,9 @@ const Templates = () => {
       ...t,
       status: t.status as "pending" | "approved" | "rejected",
       dispatch_type: (t.dispatch_type || "utility") as "marketing" | "utility" | "service",
-      variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined
+      variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined,
+      components: (t as any).components ?? null,
+      header_media_url: (t as any).header_media_url ?? null,
     })));
     setLoading(false);
   };
@@ -638,6 +648,97 @@ const Templates = () => {
     }
   };
 
+  // Detect Meta header media format from synced template components
+  const getTemplateHeaderMediaFormat = (template: MessageTemplate): 'IMAGE' | 'VIDEO' | 'DOCUMENT' | null => {
+    const comps = template.components;
+    if (!comps) return null;
+    const list: any[] = Array.isArray(comps)
+      ? comps
+      : Array.isArray(comps?.components)
+        ? comps.components
+        : [];
+    const header = list.find((c: any) => (c?.type || '').toUpperCase() === 'HEADER');
+    const fmt = header?.format ? String(header.format).toUpperCase() : null;
+    if (fmt === 'IMAGE' || fmt === 'VIDEO' || fmt === 'DOCUMENT') return fmt;
+    return null;
+  };
+
+  const handleHeaderMediaUpload = async (file: File) => {
+    if (!mediaDialogTemplate || !effectiveOrganizationId) return;
+    const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+    if (!format) {
+      toast.error("Este template não possui cabeçalho de mídia");
+      return;
+    }
+    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error(`Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`);
+      return;
+    }
+    if (format === 'IMAGE' && !file.type.startsWith('image/')) {
+      toast.error("Selecione um arquivo de imagem");
+      return;
+    }
+    if (format === 'VIDEO' && !file.type.startsWith('video/')) {
+      toast.error("Selecione um arquivo de vídeo");
+      return;
+    }
+
+    setMediaUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${effectiveOrganizationId}/${mediaDialogTemplate.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase
+        .storage
+        .from('template-media')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        toast.error("Falha ao enviar arquivo");
+        return;
+      }
+      const { data: pub } = supabase.storage.from('template-media').getPublicUrl(path);
+      const publicUrl = pub.publicUrl;
+      const { error: updateError } = await supabase
+        .from('message_templates')
+        .update({ header_media_url: publicUrl } as any)
+        .eq('id', mediaDialogTemplate.id);
+      if (updateError) {
+        console.error('Update template error:', updateError);
+        toast.error("Falha ao salvar imagem no template");
+        return;
+      }
+      toast.success("Imagem do template atualizada");
+      setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: publicUrl } : t));
+      setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: publicUrl } : prev);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro inesperado ao enviar imagem");
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const handleClearHeaderMedia = async () => {
+    if (!mediaDialogTemplate) return;
+    setMediaUploading(true);
+    try {
+      const { error } = await supabase
+        .from('message_templates')
+        .update({ header_media_url: null } as any)
+        .eq('id', mediaDialogTemplate.id);
+      if (error) {
+        toast.error("Falha ao remover imagem");
+        return;
+      }
+      toast.success("Imagem removida — Meta usará a padrão do template");
+      setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: null } : t));
+      setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: null } : prev);
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.content.toLowerCase().includes(searchTerm.toLowerCase());
@@ -747,6 +848,8 @@ const Templates = () => {
               const config = statusConfig[template.status];
               const approvedChannels = channelTemplates[template.id] || [];
               const templateType = getTemplateType(template.id);
+              const headerMediaFormat = getTemplateHeaderMediaFormat(template);
+              const hasCustomMedia = !!(template.header_media_url && template.header_media_url.length > 0);
 
               return (
                 <div
@@ -755,11 +858,15 @@ const Templates = () => {
                   onClick={() => openEditDialog(template)}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
+                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center border border-border flex-shrink-0 mt-0.5 overflow-hidden">
+                      {hasCustomMedia && headerMediaFormat === 'IMAGE' ? (
+                        <img src={template.header_media_url!} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <FileText className="w-5 h-5 text-muted-foreground" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-medium text-foreground truncate">{template.name}</h3>
                         {template.dispatch_type === "marketing" && (
                           <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-400 border-orange-400/30">
@@ -775,6 +882,21 @@ const Templates = () => {
                           <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-400/30">
                             Serviço
                           </Badge>
+                        )}
+                        {headerMediaFormat && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={hasCustomMedia ? "secondary" : "outline"}
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMediaDialogTemplate(template);
+                            }}
+                          >
+                            <ImageIcon className="w-3 h-3" />
+                            {hasCustomMedia ? "Trocar imagem" : "Definir imagem"}
+                          </Button>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">
@@ -1586,6 +1708,80 @@ const Templates = () => {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Header media upload dialog */}
+      <Dialog open={!!mediaDialogTemplate} onOpenChange={(open) => { if (!open) setMediaDialogTemplate(null); }}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">
+              Imagem do template
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Esta imagem será usada como cabeçalho em todos os disparos deste template.
+            </p>
+          </DialogHeader>
+
+          {mediaDialogTemplate && (() => {
+            const fmt = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+            const accept = fmt === 'IMAGE' ? 'image/*' : fmt === 'VIDEO' ? 'video/*' : '*/*';
+            const url = mediaDialogTemplate.header_media_url;
+            return (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border bg-muted/30 p-4 flex items-center justify-center min-h-[180px]">
+                  {url && fmt === 'IMAGE' ? (
+                    <img src={url} alt="Imagem atual" className="max-h-48 rounded" />
+                  ) : url ? (
+                    <a href={url} target="_blank" rel="noreferrer" className="text-primary text-sm underline break-all">
+                      {url}
+                    </a>
+                  ) : (
+                    <div className="text-center text-sm text-muted-foreground">
+                      <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      Nenhuma imagem personalizada — a Meta usará a padrão do template.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm">Enviar nova {fmt === 'IMAGE' ? 'imagem' : fmt === 'VIDEO' ? 'vídeo' : 'arquivo'}</Label>
+                  <Input
+                    type="file"
+                    accept={accept}
+                    disabled={mediaUploading}
+                    className="mt-2"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleHeaderMediaUpload(file);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {fmt === 'IMAGE' && "JPG ou PNG, até 5 MB. Recomendado 1080x566."}
+                    {fmt === 'VIDEO' && "MP4 até 16 MB."}
+                    {fmt === 'DOCUMENT' && "PDF até 100 MB."}
+                  </p>
+                </div>
+
+                <div className="flex justify-between pt-2">
+                  {url ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearHeaderMedia}
+                      disabled={mediaUploading}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Remover
+                    </Button>
+                  ) : <span />}
+                  <Button variant="ghost" onClick={() => setMediaDialogTemplate(null)} disabled={mediaUploading}>
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </MainLayout>
