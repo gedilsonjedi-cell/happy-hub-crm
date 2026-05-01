@@ -679,17 +679,24 @@ Deno.serve(async (req) => {
       });
 
       // Fetch template from database to store content in metadata
+      // Also pulls header_media_url so the user can override the Meta sample image
+      // with their own uploaded media (managed in the Templates page).
       const { data: templateData } = await serviceRoleClient
         .from('message_templates')
-        .select('content, components')
+        .select('content, components, header_media_url')
         .eq('name', templateName)
         .eq('organization_id', channel.organization_id)
         .single();
       
+      let customHeaderMediaUrl: string | null = null;
       if (templateData) {
         templateContent = templateData.content;
         const comps = templateData.components as { buttons?: unknown[] } | null;
         templateButtons = comps?.buttons || null;
+        const rawHeaderUrl = (templateData as { header_media_url?: string | null }).header_media_url;
+        if (typeof rawHeaderUrl === 'string' && rawHeaderUrl.trim().length > 0) {
+          customHeaderMediaUrl = rawHeaderUrl.trim();
+        }
       }
       
       // Send template message
@@ -698,17 +705,18 @@ Deno.serve(async (req) => {
       // Add HEADER component if template requires media header
       if (headerInfo && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerInfo.format || '')) {
         const headerMediaType = headerInfo.format!.toLowerCase();
-        if (headerInfo.exampleUrl) {
-          // Use the example handle URL from Meta's template definition
+        // Prefer the user-provided override URL; fall back to Meta's example handle.
+        const effectiveHeaderUrl = customHeaderMediaUrl || headerInfo.exampleUrl;
+        if (effectiveHeaderUrl) {
           components.push({
             type: 'header',
             parameters: [{
               type: headerMediaType,
-              [headerMediaType]: { link: headerInfo.exampleUrl }
+              [headerMediaType]: { link: effectiveHeaderUrl }
             }]
           });
         }
-        // If no example URL, Meta should use the template's default — no header component needed
+        // If no URL at all, Meta uses the template default — no header component needed.
       } else if (headerInfo && headerInfo.format === 'TEXT' && headerInfo.hasVariable) {
         // TEXT header with variable — use first template param or empty
         const headerText = sanitizedTemplateParams.length > 0 ? sanitizedTemplateParams[0] : '';
