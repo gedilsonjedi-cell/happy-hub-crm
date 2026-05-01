@@ -1710,6 +1710,80 @@ const Templates = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Header media upload dialog */}
+      <Dialog open={!!mediaDialogTemplate} onOpenChange={(open) => { if (!open) setMediaDialogTemplate(null); }}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">
+              Imagem do template
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Esta imagem será usada como cabeçalho em todos os disparos deste template.
+            </p>
+          </DialogHeader>
+
+          {mediaDialogTemplate && (() => {
+            const fmt = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+            const accept = fmt === 'IMAGE' ? 'image/*' : fmt === 'VIDEO' ? 'video/*' : '*/*';
+            const url = mediaDialogTemplate.header_media_url;
+            return (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border bg-muted/30 p-4 flex items-center justify-center min-h-[180px]">
+                  {url && fmt === 'IMAGE' ? (
+                    <img src={url} alt="Imagem atual" className="max-h-48 rounded" />
+                  ) : url ? (
+                    <a href={url} target="_blank" rel="noreferrer" className="text-primary text-sm underline break-all">
+                      {url}
+                    </a>
+                  ) : (
+                    <div className="text-center text-sm text-muted-foreground">
+                      <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      Nenhuma imagem personalizada — a Meta usará a padrão do template.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm">Enviar nova {fmt === 'IMAGE' ? 'imagem' : fmt === 'VIDEO' ? 'vídeo' : 'arquivo'}</Label>
+                  <Input
+                    type="file"
+                    accept={accept}
+                    disabled={mediaUploading}
+                    className="mt-2"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleHeaderMediaUpload(file);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {fmt === 'IMAGE' && "JPG ou PNG, até 5 MB. Recomendado 1080x566."}
+                    {fmt === 'VIDEO' && "MP4 até 16 MB."}
+                    {fmt === 'DOCUMENT' && "PDF até 100 MB."}
+                  </p>
+                </div>
+
+                <div className="flex justify-between pt-2">
+                  {url ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearHeaderMedia}
+                      disabled={mediaUploading}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Remover
+                    </Button>
+                  ) : <span />}
+                  <Button variant="ghost" onClick={() => setMediaDialogTemplate(null)} disabled={mediaUploading}>
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };
