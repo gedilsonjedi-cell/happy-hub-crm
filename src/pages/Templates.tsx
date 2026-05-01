@@ -665,6 +665,40 @@ const Templates = () => {
     return null;
   };
 
+  const validateHeaderMediaFile = (file: File, format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'): string | null => {
+    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return `Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`;
+    }
+    if (format === 'IMAGE' && !file.type.startsWith('image/')) return "Selecione um arquivo de imagem";
+    if (format === 'VIDEO' && !file.type.startsWith('video/')) return "Selecione um arquivo de vídeo";
+    if (format === 'DOCUMENT' && file.type !== 'application/pdf') return "Selecione um arquivo PDF";
+    return null;
+  };
+
+  const handleSelectPendingFile = (file: File) => {
+    if (!mediaDialogTemplate) return;
+    const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+    if (!format) {
+      toast.error("Este template não possui cabeçalho de mídia");
+      return;
+    }
+    const err = validateHeaderMediaFile(file, format);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (pendingMediaPreview) URL.revokeObjectURL(pendingMediaPreview);
+    setPendingMediaFile(file);
+    setPendingMediaPreview(URL.createObjectURL(file));
+  };
+
+  const clearPendingMedia = () => {
+    if (pendingMediaPreview) URL.revokeObjectURL(pendingMediaPreview);
+    setPendingMediaFile(null);
+    setPendingMediaPreview(null);
+  };
+
   const handleHeaderMediaUpload = async (file: File) => {
     if (!mediaDialogTemplate || !effectiveOrganizationId) return;
     const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
@@ -672,21 +706,9 @@ const Templates = () => {
       toast.error("Este template não possui cabeçalho de mídia");
       return;
     }
-    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      toast.error(`Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`);
-      return;
-    }
-    if (format === 'IMAGE' && !file.type.startsWith('image/')) {
-      toast.error("Selecione um arquivo de imagem");
-      return;
-    }
-    if (format === 'VIDEO' && !file.type.startsWith('video/')) {
-      toast.error("Selecione um arquivo de vídeo");
-      return;
-    }
-    if (format === 'DOCUMENT' && file.type !== 'application/pdf') {
-      toast.error("Selecione um arquivo PDF");
+    const err = validateHeaderMediaFile(file, format);
+    if (err) {
+      toast.error(err);
       return;
     }
 
