@@ -129,6 +129,54 @@ const MessageBubble = memo(function MessageBubble({
       let displayContent = metadata?.templateContent || templateData?.content || "";
       const buttons = metadata?.templateButtons || templateData?.components?.buttons || [];
 
+      // Header media: prefer media_url already persisted on the message; fall back
+      // to the templateMediaUrl in metadata (when present).
+      const headerMediaUrl = message.media_url
+        || (message.metadata as Record<string, unknown> | null)?.templateMediaUrl as string | undefined
+        || null;
+      const headerMediaTypeRaw = (message.metadata as { mediaType?: string } | null)?.mediaType
+        || (headerMediaUrl ? "image" : null);
+      const headerMediaType = headerMediaTypeRaw ? String(headerMediaTypeRaw).toLowerCase() : null;
+
+      const renderHeaderMedia = () => {
+        if (!headerMediaUrl || !headerMediaType) return null;
+        if (headerMediaType === "image") {
+          return (
+            <ProgressiveImage
+              src={headerMediaUrl}
+              alt="Cabeçalho do template"
+              onClick={() => onMediaPreview(headerMediaUrl, "image")}
+            />
+          );
+        }
+        if (headerMediaType === "video") {
+          return (
+            <div
+              className="cursor-pointer group relative"
+              onClick={() => onMediaPreview(headerMediaUrl, "video")}
+            >
+              <video src={headerMediaUrl} preload="none" className="max-w-full rounded-lg max-h-60" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
+                <Play className="w-12 h-12 text-white drop-shadow-lg" />
+              </div>
+            </div>
+          );
+        }
+        if (headerMediaType === "document" || headerMediaType === "file") {
+          return (
+            <div
+              className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+              onClick={() => onMediaPreview(headerMediaUrl, "document", "Documento")}
+            >
+              <FileText className="w-5 h-5 text-primary" />
+              <span className="flex-1 truncate">Documento</span>
+              <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            </div>
+          );
+        }
+        return null;
+      };
+
       if (displayContent) {
         // Use replaceAll to ensure ALL occurrences of each placeholder are replaced
         templateParams.forEach((param, index) => {
@@ -144,17 +192,21 @@ const MessageBubble = memo(function MessageBubble({
               <FileText className="w-3 h-3" />
               <span className="font-medium">{templateName}</span>
             </div>
+            {renderHeaderMedia()}
             <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p>
             {buttons.length > 0 && (
               <div className="flex flex-col gap-1 pt-2 border-t border-border/30">
-                {buttons.map((button, idx) => (
-                  <div key={idx} className="flex items-center justify-center gap-2 py-1.5 px-3 rounded bg-background/20 text-xs font-medium text-center">
-                    {button.type === "URL" && <><span className="text-primary">🔗</span><span>{button.text}</span></>}
-                    {button.type === "PHONE_NUMBER" && <><Phone className="w-3 h-3 text-primary" /><span>{button.text}</span></>}
-                    {button.type === "QUICK_REPLY" && <span>{button.text}</span>}
-                    {!["URL", "PHONE_NUMBER", "QUICK_REPLY"].includes(button.type) && <span>{button.text}</span>}
-                  </div>
-                ))}
+                {buttons.map((button, idx) => {
+                  const btnType = String(button.type || '').toUpperCase();
+                  return (
+                    <div key={idx} className="flex items-center justify-center gap-2 py-1.5 px-3 rounded bg-background/20 text-xs font-medium text-center">
+                      {btnType === "URL" && <><span className="text-primary">🔗</span><span>{button.text}</span></>}
+                      {btnType === "PHONE_NUMBER" && <><Phone className="w-3 h-3 text-primary" /><span>{button.text}</span></>}
+                      {btnType === "QUICK_REPLY" && <span>{button.text}</span>}
+                      {!["URL", "PHONE_NUMBER", "QUICK_REPLY"].includes(btnType) && <span>{button.text}</span>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -167,6 +219,7 @@ const MessageBubble = memo(function MessageBubble({
             <FileText className="w-3 h-3" />
             <span className="font-medium">{templateName || "Template"}</span>
           </div>
+          {renderHeaderMedia()}
           <p className="text-sm text-muted-foreground italic">Conteúdo do template indisponível</p>
         </div>
       );
