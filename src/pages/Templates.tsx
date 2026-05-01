@@ -151,6 +151,8 @@ const Templates = () => {
   // Header media (image/video/document) override per template
   const [mediaDialogTemplate, setMediaDialogTemplate] = useState<MessageTemplate | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [pendingMediaFile, setPendingMediaFile] = useState<File | null>(null);
+  const [pendingMediaPreview, setPendingMediaPreview] = useState<string | null>(null);
   
   // New template form state
   const [formData, setFormData] = useState({
@@ -663,6 +665,40 @@ const Templates = () => {
     return null;
   };
 
+  const validateHeaderMediaFile = (file: File, format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'): string | null => {
+    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return `Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`;
+    }
+    if (format === 'IMAGE' && !file.type.startsWith('image/')) return "Selecione um arquivo de imagem";
+    if (format === 'VIDEO' && !file.type.startsWith('video/')) return "Selecione um arquivo de vídeo";
+    if (format === 'DOCUMENT' && file.type !== 'application/pdf') return "Selecione um arquivo PDF";
+    return null;
+  };
+
+  const handleSelectPendingFile = (file: File) => {
+    if (!mediaDialogTemplate) return;
+    const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
+    if (!format) {
+      toast.error("Este template não possui cabeçalho de mídia");
+      return;
+    }
+    const err = validateHeaderMediaFile(file, format);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (pendingMediaPreview) URL.revokeObjectURL(pendingMediaPreview);
+    setPendingMediaFile(file);
+    setPendingMediaPreview(URL.createObjectURL(file));
+  };
+
+  const clearPendingMedia = () => {
+    if (pendingMediaPreview) URL.revokeObjectURL(pendingMediaPreview);
+    setPendingMediaFile(null);
+    setPendingMediaPreview(null);
+  };
+
   const handleHeaderMediaUpload = async (file: File) => {
     if (!mediaDialogTemplate || !effectiveOrganizationId) return;
     const format = getTemplateHeaderMediaFormat(mediaDialogTemplate);
@@ -670,21 +706,9 @@ const Templates = () => {
       toast.error("Este template não possui cabeçalho de mídia");
       return;
     }
-    const maxBytes = format === 'IMAGE' ? 5 * 1024 * 1024 : format === 'DOCUMENT' ? 100 * 1024 * 1024 : 16 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      toast.error(`Arquivo muito grande (máx ${Math.round(maxBytes / 1024 / 1024)}MB)`);
-      return;
-    }
-    if (format === 'IMAGE' && !file.type.startsWith('image/')) {
-      toast.error("Selecione um arquivo de imagem");
-      return;
-    }
-    if (format === 'VIDEO' && !file.type.startsWith('video/')) {
-      toast.error("Selecione um arquivo de vídeo");
-      return;
-    }
-    if (format === 'DOCUMENT' && file.type !== 'application/pdf') {
-      toast.error("Selecione um arquivo PDF");
+    const err = validateHeaderMediaFile(file, format);
+    if (err) {
+      toast.error(err);
       return;
     }
 
@@ -712,9 +736,10 @@ const Templates = () => {
         toast.error("Falha ao salvar imagem no template");
         return;
       }
-      toast.success("Imagem do template atualizada");
+      toast.success("Mídia do template atualizada");
       setTemplates(prev => prev.map(t => t.id === mediaDialogTemplate.id ? { ...t, header_media_url: publicUrl } : t));
       setMediaDialogTemplate(prev => prev ? { ...prev, header_media_url: publicUrl } : prev);
+      clearPendingMedia();
     } catch (err) {
       console.error(err);
       toast.error("Erro inesperado ao enviar imagem");
@@ -1720,7 +1745,7 @@ const Templates = () => {
       </Dialog>
 
       {/* Header media upload dialog */}
-      <Dialog open={!!mediaDialogTemplate} onOpenChange={(open) => { if (!open) setMediaDialogTemplate(null); }}>
+      <Dialog open={!!mediaDialogTemplate} onOpenChange={(open) => { if (!open) { setMediaDialogTemplate(null); clearPendingMedia(); } }}>
         <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle className="text-foreground">
@@ -1745,10 +1770,30 @@ const Templates = () => {
             const url = mediaDialogTemplate.header_media_url;
             const FallbackIcon = fmt === 'VIDEO' ? Video : fmt === 'DOCUMENT' ? FileText : ImageIcon;
             const mediaLabel = fmt === 'IMAGE' ? 'imagem' : fmt === 'VIDEO' ? 'vídeo' : 'arquivo';
+            const hasPending = !!pendingMediaFile && !!pendingMediaPreview;
             return (
               <div className="space-y-4">
+                {/* Preview area: pending file takes priority over current URL */}
                 <div className="rounded-lg border border-border bg-muted/30 p-4 flex items-center justify-center min-h-[180px]">
-                  {url && fmt === 'IMAGE' ? (
+                  {hasPending ? (
+                    <div className="w-full">
+                      <div className="text-xs text-amber-500 mb-2 text-center">
+                        Pré-visualização — confirme abaixo para salvar
+                      </div>
+                      {fmt === 'IMAGE' && (
+                        <img src={pendingMediaPreview!} alt="Pré-visualização" className="max-h-48 mx-auto rounded" />
+                      )}
+                      {fmt === 'VIDEO' && (
+                        <video src={pendingMediaPreview!} controls className="max-h-48 mx-auto rounded" />
+                      )}
+                      {fmt === 'DOCUMENT' && (
+                        <div className="flex items-center gap-2 text-sm text-foreground justify-center">
+                          <FileText className="w-5 h-5" />
+                          <span className="truncate">{pendingMediaFile!.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : url && fmt === 'IMAGE' ? (
                     <img src={url} alt="Imagem atual" className="max-h-48 rounded" />
                   ) : url && fmt === 'VIDEO' ? (
                     <video src={url} controls className="max-h-48 rounded" />
@@ -1765,7 +1810,7 @@ const Templates = () => {
                 </div>
 
                 <div>
-                  <Label className="text-sm">Enviar nov{fmt === 'IMAGE' ? 'a imagem' : fmt === 'VIDEO' ? 'o vídeo' : 'o arquivo'}</Label>
+                  <Label className="text-sm">Selecionar nov{fmt === 'IMAGE' ? 'a imagem' : fmt === 'VIDEO' ? 'o vídeo' : 'o arquivo'}</Label>
                   <Input
                     type="file"
                     accept={accept}
@@ -1773,7 +1818,8 @@ const Templates = () => {
                     className="mt-2"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handleHeaderMediaUpload(file);
+                      if (file) handleSelectPendingFile(file);
+                      e.target.value = '';
                     }}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -1783,21 +1829,44 @@ const Templates = () => {
                   </p>
                 </div>
 
-                <div className="flex justify-between pt-2">
-                  {url ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearHeaderMedia}
-                      disabled={mediaUploading}
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Remover
+                <div className="flex flex-wrap justify-between gap-2 pt-2">
+                  <div className="flex gap-2">
+                    {url && !hasPending && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleClearHeaderMedia}
+                        disabled={mediaUploading}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Remover
+                      </Button>
+                    )}
+                    {hasPending && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearPendingMedia}
+                        disabled={mediaUploading}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Cancelar seleção
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" onClick={() => { setMediaDialogTemplate(null); clearPendingMedia(); }} disabled={mediaUploading}>
+                      Fechar
                     </Button>
-                  ) : <span />}
-                  <Button variant="ghost" onClick={() => setMediaDialogTemplate(null)} disabled={mediaUploading}>
-                    Fechar
-                  </Button>
+                    {hasPending && (
+                      <Button
+                        onClick={() => handleHeaderMediaUpload(pendingMediaFile!)}
+                        disabled={mediaUploading}
+                      >
+                        {mediaUploading ? "Enviando..." : "Confirmar troca"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
