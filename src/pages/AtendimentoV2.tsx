@@ -1019,13 +1019,23 @@ const AtendimentoV2 = () => {
       const channelIds = channels.map(c => c.id);
 
       try {
-        // Use paginated RPC — loads only first 100 conversations
-        const { data: rows, error } = await supabase.rpc("get_conversations_summary_paginated", {
-          p_channel_ids: channelIds,
-          p_organization_id: effectiveOrganizationId,
-          p_limit: CONVERSATIONS_PAGE_SIZE,
-          p_offset: 0,
-        });
+        // For attendants/supervisors-without-org-wide-view, use a focused RPC that
+        // returns *their* assigned conversations + their visible pending queue,
+        // regardless of how recent the message is in the org-wide ranking.
+        // Admins/supervisors continue using the paginated org-wide RPC.
+        const { data: rows, error } = canSeeAllConversations
+          ? await supabase.rpc("get_conversations_summary_paginated", {
+              p_channel_ids: channelIds,
+              p_organization_id: effectiveOrganizationId,
+              p_limit: CONVERSATIONS_PAGE_SIZE,
+              p_offset: 0,
+            })
+          : await supabase.rpc("get_attendant_conversations", {
+              p_user_id: user?.id,
+              p_channel_ids: channelIds,
+              p_organization_id: effectiveOrganizationId,
+              p_limit: 500,
+            });
 
         if (error) {
           throw error;
