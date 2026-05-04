@@ -281,7 +281,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       while (true) {
         const { data, error } = await supabase
           .from("campaign_recipients")
-          .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at")
+          .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at, channel_id")
           .eq("campaign_id", campaign.id)
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
