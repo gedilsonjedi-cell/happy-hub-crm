@@ -215,9 +215,9 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
                 <User className="w-4 h-4" />
                 Perfil
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/saldo")} className="cursor-pointer gap-2">
-                <Wallet className="w-4 h-4" />
-                Saldo
+              <DropdownMenuItem onClick={handleClearCache} className="cursor-pointer gap-2">
+                <Trash2 className="w-4 h-4" />
+                Apagar Cache
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/minha-assinatura")} className="cursor-pointer gap-2">
                 <Building className="w-4 h-4" />
