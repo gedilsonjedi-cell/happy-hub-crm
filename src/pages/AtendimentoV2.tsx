@@ -519,6 +519,8 @@ const AtendimentoV2 = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
+  const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
+  const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [conversationOffset, setConversationOffset] = useState(0);
