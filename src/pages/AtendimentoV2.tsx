@@ -519,6 +519,8 @@ const AtendimentoV2 = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
+  const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
+  const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [conversationOffset, setConversationOffset] = useState(0);
@@ -1017,13 +1019,23 @@ const AtendimentoV2 = () => {
       const channelIds = channels.map(c => c.id);
 
       try {
-        // Use paginated RPC — loads only first 100 conversations
-        const { data: rows, error } = await supabase.rpc("get_conversations_summary_paginated", {
-          p_channel_ids: channelIds,
-          p_organization_id: effectiveOrganizationId,
-          p_limit: CONVERSATIONS_PAGE_SIZE,
-          p_offset: 0,
-        });
+        // For attendants/supervisors-without-org-wide-view, use a focused RPC that
+        // returns *their* assigned conversations + their visible pending queue,
+        // regardless of how recent the message is in the org-wide ranking.
+        // Admins/supervisors continue using the paginated org-wide RPC.
+        const { data: rows, error } = canSeeAllConversations
+          ? await supabase.rpc("get_conversations_summary_paginated", {
+              p_channel_ids: channelIds,
+              p_organization_id: effectiveOrganizationId,
+              p_limit: CONVERSATIONS_PAGE_SIZE,
+              p_offset: 0,
+            })
+          : await supabase.rpc("get_attendant_conversations", {
+              p_user_id: user?.id,
+              p_channel_ids: channelIds,
+              p_organization_id: effectiveOrganizationId,
+              p_limit: 500,
+            });
 
         if (error) {
           throw error;
@@ -1035,7 +1047,7 @@ const AtendimentoV2 = () => {
           leadsMapRef.current = mappedData.leadLookups;
           setConversationStatuses(mappedData.statuses);
           setAllConversations(mappedData.conversations);
-          setHasMoreConversations(rows.length >= CONVERSATIONS_PAGE_SIZE);
+          setHasMoreConversations(canSeeAllConversations && rows.length >= CONVERSATIONS_PAGE_SIZE);
           setConversationOffset(rows.length);
         } else {
           // Try legacy fallback
@@ -1066,7 +1078,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id, conversationRefetchTrigger]);
+  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
