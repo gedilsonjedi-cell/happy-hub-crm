@@ -13,7 +13,7 @@ import {
   Send,
   FileText,
   Bot,
-  Wallet,
+  Trash2,
   Building,
   LogOut,
   GitBranch,
@@ -84,6 +84,41 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
+  };
+
+  const handleClearCache = async () => {
+    try {
+      // Limpa caches do navegador (Service Worker / CacheStorage)
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+
+      // Preserva apenas a sessão de autenticação do Supabase
+      const authKeys: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.includes('supabase.auth'))) {
+          authKeys[key] = localStorage.getItem(key) || '';
+        }
+      }
+      localStorage.clear();
+      Object.entries(authKeys).forEach(([k, v]) => localStorage.setItem(k, v));
+
+      sessionStorage.clear();
+
+      // Desregistra service workers para forçar recarregamento limpo
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+
+      // Recarrega a página ignorando cache
+      window.location.reload();
+    } catch (err) {
+      console.error('Erro ao apagar cache:', err);
+      window.location.reload();
+    }
   };
 
   const mainNavItems = [
@@ -215,9 +250,9 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
                 <User className="w-4 h-4" />
                 Perfil
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/saldo")} className="cursor-pointer gap-2">
-                <Wallet className="w-4 h-4" />
-                Saldo
+              <DropdownMenuItem onClick={handleClearCache} className="cursor-pointer gap-2">
+                <Trash2 className="w-4 h-4" />
+                Apagar Cache
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/minha-assinatura")} className="cursor-pointer gap-2">
                 <Building className="w-4 h-4" />
