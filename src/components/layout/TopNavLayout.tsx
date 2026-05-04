@@ -13,7 +13,7 @@ import {
   Send,
   FileText,
   Bot,
-  Wallet,
+  Trash2,
   Building,
   LogOut,
   GitBranch,
