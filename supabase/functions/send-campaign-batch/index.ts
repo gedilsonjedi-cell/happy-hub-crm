@@ -524,7 +524,8 @@ Deno.serve(async (req) => {
 
       if (!channel || !template) {
         await supabase.from('campaign_recipients').update({
-          status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR'
+          status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR',
+          channel_id: campaignChannel?.channel_id || null
         }).eq('id', recipient.recipientId);
         return { sent: true, failed: true, retry: false };
       }
@@ -623,7 +624,8 @@ Deno.serve(async (req) => {
 
         if (result.success) {
           await supabase.from('campaign_recipients').update({
-            status: 'sent', sent_at: new Date().toISOString(), error_message: null, last_error_code: null, next_retry_at: null
+            status: 'sent', sent_at: new Date().toISOString(), error_message: null, last_error_code: null, next_retry_at: null,
+            channel_id: channel.id
           }).eq('id', recipient.recipientId);
 
           // Update conversation assignment — NEVER overwrite active conversations
@@ -655,7 +657,8 @@ Deno.serve(async (req) => {
           const errorCode = rawErrorCode ? String(rawErrorCode) : null;
 
           await supabase.from('campaign_recipients').update({
-            status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN'
+            status: 'failed', error_message: result.error || 'Erro desconhecido', last_error_code: errorCode || 'UNKNOWN',
+            channel_id: channel.id
           }).eq('id', recipient.recipientId);
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
@@ -664,7 +667,8 @@ Deno.serve(async (req) => {
         await supabase.from('campaign_recipients').update({
           status: 'failed',
           error_message: errorMessage,
-          last_error_code: 'EXCEPTION'
+          last_error_code: 'EXCEPTION',
+          channel_id: channel.id
         }).eq('id', recipient.recipientId);
         return { sent: !recipient.isRetry, failed: true, retry: false };
       }

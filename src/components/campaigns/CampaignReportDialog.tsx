@@ -27,6 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getErrorInfo, extractErrorCode } from "@/lib/metaErrorMessages";
 import {
   Send,
   CheckCircle,
@@ -96,6 +98,7 @@ interface Recipient {
   button_clicked_at: string | null;
   retry_count: number | null;
   next_retry_at: string | null;
+  channel_id: string | null;
 }
 
 interface CampaignReportDialogProps {
@@ -280,7 +283,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       while (true) {
         const { data, error } = await supabase
           .from("campaign_recipients")
-          .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at")
+          .select("id, phone, name, status, error_message, last_error_code, sent_at, delivered_at, read_at, button_clicked, button_clicked_at, retry_count, next_retry_at, channel_id")
           .eq("campaign_id", campaign.id)
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
@@ -370,6 +373,62 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
       count,
       percent: recipients.length > 0 ? Math.round((count / recipients.length) * 100) : 0,
     }));
+  }, [recipients]);
+
+  // Per-channel breakdown
+  const channelBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      channelId: string;
+      total: number; sent: number; delivered: number; read: number;
+      failed: number; pending: number; awaiting: number; clicked: number;
+    }>();
+    const ensure = (id: string) => {
+      if (!map.has(id)) map.set(id, {
+        channelId: id, total: 0, sent: 0, delivered: 0, read: 0,
+        failed: 0, pending: 0, awaiting: 0, clicked: 0,
+      });
+      return map.get(id)!;
+    };
+    recipients.forEach(r => {
+      const id = r.channel_id || "__unassigned__";
+      const e = ensure(id);
+      e.total++;
+      if (r.status === "pending") e.pending++;
+      if (r.status === "failed") e.failed++;
+      if (r.status === "sent" || r.status === "delivered" || r.status === "read") e.sent++;
+      if (r.status === "sent" && !r.delivered_at && !r.read_at) e.awaiting++;
+      if (r.status === "delivered" || r.status === "read" || r.delivered_at) e.delivered++;
+      if (r.status === "read" || r.read_at) e.read++;
+      if (r.button_clicked) e.clicked++;
+    });
+    return Array.from(map.values());
+  }, [recipients]);
+
+  // Detailed error breakdown by Meta error code
+  const errorBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      code: string; title: string; description: string; suggestion: string; link?: string;
+      count: number; samples: Recipient[];
+    }>();
+    recipients.filter(r => r.status === "failed").forEach(r => {
+      const code = r.last_error_code || extractErrorCode(r.error_message) || "UNKNOWN";
+      if (!map.has(code)) {
+        const info = getErrorInfo(r.error_message || `Erro ${code}`);
+        map.set(code, {
+          code,
+          title: info.title,
+          description: info.description,
+          suggestion: info.suggestion || "Sem sugestão disponível.",
+          link: info.link,
+          count: 0,
+          samples: [],
+        });
+      }
+      const entry = map.get(code)!;
+      entry.count++;
+      if (entry.samples.length < 5) entry.samples.push(r);
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [recipients]);
 
   // Filter recipients
@@ -518,6 +577,19 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 </div>
               </div>
             )}
+
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="overview">Visão geral</TabsTrigger>
+                <TabsTrigger value="channels">
+                  Por canal {channelBreakdown.length > 0 && `(${channelBreakdown.length})`}
+                </TabsTrigger>
+                <TabsTrigger value="errors">
+                  Falhas detalhadas {errorBreakdown.length > 0 && `(${errorBreakdown.length})`}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="space-y-6 mt-4">
             {/* Conversion Funnel + Engagement Card */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Conversion Funnel */}
@@ -1008,6 +1080,193 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 </div>
               )}
             </div>
+              </TabsContent>
+
+              {/* Per Channel Tab */}
+              <TabsContent value="channels" className="space-y-4 mt-4">
+                <div className="bg-muted/20 rounded-lg p-4 border border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Smartphone className="w-5 h-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Desempenho por canal</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Veja exatamente quanto cada número enviou, entregou e falhou.
+                  </p>
+
+                  {channelBreakdown.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      Ainda não há dados de envio por canal.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {channelBreakdown.map((cb) => {
+                        const ch = campaignChannels.find(c => c.id === cb.channelId);
+                        const label = ch
+                          ? `${ch.name} • ${ch.phone}`
+                          : cb.channelId === "__unassigned__"
+                            ? "Sem canal atribuído (na fila)"
+                            : `Canal ${cb.channelId.slice(0, 8)}`;
+                        const deliveryRate = cb.sent > 0 ? Math.round((cb.delivered / cb.sent) * 100) : 0;
+                        const failureRate = cb.total > 0 ? Math.round((cb.failed / cb.total) * 100) : 0;
+                        return (
+                          <div key={cb.channelId} className="bg-card rounded-lg p-3 border border-border">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-primary" />
+                                <p className="text-sm font-medium text-foreground">{label}</p>
+                              </div>
+                              <Badge variant="outline" className="text-xs">{cb.total} destinatários</Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                              <div className="bg-muted/40 rounded px-2 py-1.5">
+                                <p className="text-muted-foreground">Na fila</p>
+                                <p className="font-bold text-foreground">{cb.pending}</p>
+                              </div>
+                              <div className="bg-teal-500/10 rounded px-2 py-1.5">
+                                <p className="text-teal-400">Enviadas</p>
+                                <p className="font-bold text-teal-300">{cb.sent}</p>
+                              </div>
+                              <div className="bg-amber-500/10 rounded px-2 py-1.5">
+                                <p className="text-amber-400">Aguardando</p>
+                                <p className="font-bold text-amber-300">{cb.awaiting}</p>
+                              </div>
+                              <div className="bg-green-500/10 rounded px-2 py-1.5">
+                                <p className="text-green-400">Entregues</p>
+                                <p className="font-bold text-green-300">{cb.delivered}</p>
+                              </div>
+                              <div className="bg-violet-500/10 rounded px-2 py-1.5">
+                                <p className="text-violet-400">Lidas</p>
+                                <p className="font-bold text-violet-300">{cb.read}</p>
+                              </div>
+                              <div className="bg-cyan-500/10 rounded px-2 py-1.5">
+                                <p className="text-cyan-400">Engajadas</p>
+                                <p className="font-bold text-cyan-300">{cb.clicked}</p>
+                              </div>
+                              <div className="bg-destructive/10 rounded px-2 py-1.5">
+                                <p className="text-destructive">Falhas</p>
+                                <p className="font-bold text-destructive">{cb.failed}</p>
+                              </div>
+                              <div className="bg-primary/10 rounded px-2 py-1.5">
+                                <p className="text-primary">Entrega</p>
+                                <p className="font-bold text-primary">{deliveryRate}%</p>
+                              </div>
+                            </div>
+                            {cb.failed > 0 && (
+                              <div className="mt-2 flex items-center justify-between text-[11px]">
+                                <span className="text-destructive flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Taxa de falha: {failureRate}%
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-[11px]"
+                                  onClick={() => {
+                                    const ids = recipients.filter(r => r.channel_id === cb.channelId && r.status === "failed");
+                                    exportToCSV(ids, `campanha-${campaign?.name}-${ch?.phone || cb.channelId}-falhas`);
+                                  }}
+                                >
+                                  <Download className="w-3 h-3 mr-1" />
+                                  Exportar falhas
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Detailed Errors Tab */}
+              <TabsContent value="errors" className="space-y-4 mt-4">
+                <div className="bg-muted/20 rounded-lg p-4 border border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    <h3 className="font-semibold text-foreground">Falhas detalhadas por motivo</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Cada motivo lista o código retornado pela Meta, a explicação e como resolver.
+                  </p>
+
+                  {errorBreakdown.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      Nenhuma falha registrada nesta campanha. 🎉
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {errorBreakdown.map((eb) => (
+                        <div key={eb.code} className="bg-card rounded-lg p-3 border border-border">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className="font-mono text-[11px]">
+                                  {eb.code}
+                                </Badge>
+                                <h4 className="text-sm font-semibold text-foreground">{eb.title}</h4>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">{eb.description}</p>
+                            </div>
+                            <Badge className="bg-destructive/20 text-destructive border-destructive/30 shrink-0">
+                              {eb.count} {eb.count === 1 ? "falha" : "falhas"}
+                            </Badge>
+                          </div>
+                          <div className="bg-muted/40 rounded px-3 py-2 text-xs text-foreground/90 mb-2">
+                            <span className="font-semibold text-primary">Como resolver:</span> {eb.suggestion}
+                          </div>
+                          {eb.link && (
+                            <a
+                              href={eb.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline mb-2"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Documentação oficial da Meta
+                            </a>
+                          )}
+                          <details className="mt-2">
+                            <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground">
+                              Ver exemplos de números afetados ({Math.min(eb.samples.length, 5)})
+                            </summary>
+                            <div className="mt-2 space-y-1">
+                              {eb.samples.map(s => (
+                                <div
+                                  key={s.id}
+                                  className="flex items-center justify-between text-[11px] bg-muted/30 rounded px-2 py-1 cursor-pointer hover:bg-muted/60"
+                                  onClick={() => {
+                                    setPreviewPhone(s.phone);
+                                    setPreviewName(s.name);
+                                  }}
+                                >
+                                  <span className="font-mono">{formatPhone(s.phone)}</span>
+                                  <span className="text-muted-foreground truncate max-w-[60%]">{s.name || "—"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                          <div className="flex justify-end mt-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-[11px]"
+                              onClick={() => {
+                                const failed = recipients.filter(r => (r.last_error_code || extractErrorCode(r.error_message) || "UNKNOWN") === eb.code);
+                                exportToCSV(failed, `campanha-${campaign?.name}-erro-${eb.code}`);
+                              }}
+                            >
+                              <Download className="w-3 h-3 mr-1" />
+                              Exportar todos com este erro
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </ScrollArea>
 
