@@ -577,6 +577,19 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 </div>
               </div>
             )}
+
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="overview">Visão geral</TabsTrigger>
+                <TabsTrigger value="channels">
+                  Por canal {channelBreakdown.length > 0 && `(${channelBreakdown.length})`}
+                </TabsTrigger>
+                <TabsTrigger value="errors">
+                  Falhas detalhadas {errorBreakdown.length > 0 && `(${errorBreakdown.length})`}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="space-y-6 mt-4">
             {/* Conversion Funnel + Engagement Card */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Conversion Funnel */}
