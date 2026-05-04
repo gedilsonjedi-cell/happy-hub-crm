@@ -647,6 +647,7 @@ Deno.serve(async (req) => {
     let templateContent: string | null = null;
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
+    let customHeaderMediaUrl: string | null = null;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
