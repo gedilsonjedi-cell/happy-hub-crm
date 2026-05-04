@@ -690,7 +690,6 @@ Deno.serve(async (req) => {
         .eq('organization_id', channel.organization_id)
         .single();
       
-      let customHeaderMediaUrl: string | null = null;
       if (templateData) {
         templateContent = templateData.content;
         // Extract buttons supporting BOTH shapes:
