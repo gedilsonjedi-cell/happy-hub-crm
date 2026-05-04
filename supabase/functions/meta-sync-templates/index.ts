@@ -260,6 +260,7 @@ Deno.serve(async (req) => {
                 status,
                 dispatch_type,
                 variables,
+                components: metaTemplate.components ?? null,
                 updated_at: new Date().toISOString(),
               })
               .eq('id', existingTemplate.id);
