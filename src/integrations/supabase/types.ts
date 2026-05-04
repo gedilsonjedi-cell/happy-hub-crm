@@ -434,6 +434,7 @@ export type Database = {
           button_clicked: string | null
           button_clicked_at: string | null
           campaign_id: string
+          channel_id: string | null
           created_at: string
           delivered_at: string | null
           error_message: string | null
@@ -453,6 +454,7 @@ export type Database = {
           button_clicked?: string | null
           button_clicked_at?: string | null
           campaign_id: string
+          channel_id?: string | null
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
@@ -472,6 +474,7 @@ export type Database = {
           button_clicked?: string | null
           button_clicked_at?: string | null
           campaign_id?: string
+          channel_id?: string | null
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
