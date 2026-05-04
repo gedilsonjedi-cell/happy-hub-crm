@@ -646,6 +646,7 @@ Deno.serve(async (req) => {
     // Fetch template content and buttons for metadata storage
     let templateContent: string | null = null;
     let templateButtons: unknown[] | null = null;
+    let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -663,7 +664,7 @@ Deno.serve(async (req) => {
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
-      const headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
+      headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
       const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
 
       console.log('[Meta-Send] Resolved template metadata:', {
