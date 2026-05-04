@@ -1047,7 +1047,7 @@ const AtendimentoV2 = () => {
           leadsMapRef.current = mappedData.leadLookups;
           setConversationStatuses(mappedData.statuses);
           setAllConversations(mappedData.conversations);
-          setHasMoreConversations(rows.length >= CONVERSATIONS_PAGE_SIZE);
+          setHasMoreConversations(canSeeAllConversations && rows.length >= CONVERSATIONS_PAGE_SIZE);
           setConversationOffset(rows.length);
         } else {
           // Try legacy fallback
