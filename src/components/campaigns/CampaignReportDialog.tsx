@@ -1171,6 +1171,143 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 </Button>
                               </div>
                             )}
+
+                            {/* Listas detalhadas por status para este canal */}
+                            <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
+                              {(() => {
+                                const matchChannel = (r: Recipient) =>
+                                  (r.channel_id || "__unassigned__") === cb.channelId;
+                                const sentList = recipients.filter(r => matchChannel(r) && (r.status === "sent" || r.status === "delivered" || r.status === "read"));
+                                const failedList = recipients.filter(r => matchChannel(r) && r.status === "failed");
+                                const pendingList = recipients.filter(r => matchChannel(r) && (r.status === "pending" || r.status === "waiting_retry"));
+
+                                const renderList = (
+                                  list: Recipient[],
+                                  opts: { showError?: boolean; showSentAt?: boolean; showRetry?: boolean } = {}
+                                ) => (
+                                  <div className="mt-2 max-h-64 overflow-y-auto rounded border border-border/50 divide-y divide-border/40">
+                                    {list.length === 0 ? (
+                                      <p className="text-[11px] text-muted-foreground text-center py-3">Nenhum registro.</p>
+                                    ) : list.slice(0, 200).map(r => {
+                                      const sc = getRecipientDisplayStatus(r);
+                                      return (
+                                        <div
+                                          key={r.id}
+                                          className="flex items-start justify-between gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer"
+                                          onClick={() => { setPreviewPhone(r.phone); setPreviewName(r.name); }}
+                                        >
+                                          <div className="min-w-0 flex-1">
+                                            <p className="font-mono">{formatPhone(r.phone)}</p>
+                                            {r.name && <p className="text-muted-foreground truncate">{r.name}</p>}
+                                            {opts.showError && (r.error_message || r.last_error_code) && (
+                                              <p className="text-destructive/90 mt-0.5 break-words">
+                                                <span className="font-mono">[{r.last_error_code || extractErrorCode(r.error_message) || "—"}]</span>{" "}
+                                                {r.error_message || "Sem detalhes"}
+                                              </p>
+                                            )}
+                                            {opts.showSentAt && r.sent_at && (
+                                              <p className="text-muted-foreground/80 mt-0.5">
+                                                Enviado: {new Date(r.sent_at).toLocaleString("pt-BR")}
+                                              </p>
+                                            )}
+                                            {opts.showRetry && r.next_retry_at && (
+                                              <p className="text-orange-400/90 mt-0.5">
+                                                Retry: {formatNextRetry(r.next_retry_at)} (tentativa {(r.retry_count || 0) + 1})
+                                              </p>
+                                            )}
+                                          </div>
+                                          <Badge className={cn("text-[10px] shrink-0", sc.className)}>{sc.label}</Badge>
+                                        </div>
+                                      );
+                                    })}
+                                    {list.length > 200 && (
+                                      <p className="text-[10px] text-muted-foreground text-center py-1.5">
+                                        Mostrando 200 de {list.length}. Exporte para ver todos.
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+
+                                return (
+                                  <>
+                                    <details className="group">
+                                      <summary className="flex items-center justify-between cursor-pointer text-[11px] font-medium text-teal-300 hover:text-teal-200 px-1 py-1">
+                                        <span className="flex items-center gap-1.5">
+                                          <CheckCircle className="w-3 h-3" /> Enviados ({sentList.length})
+                                        </span>
+                                        <Button
+                                          asChild
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 text-[10px] px-1.5"
+                                        >
+                                          <span
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              exportToCSV(sentList, `campanha-${campaign?.name}-${ch?.phone || cb.channelId}-enviados`);
+                                            }}
+                                          >
+                                            <Download className="w-3 h-3 mr-1" /> CSV
+                                          </span>
+                                        </Button>
+                                      </summary>
+                                      {renderList(sentList, { showSentAt: true })}
+                                    </details>
+
+                                    <details className="group">
+                                      <summary className="flex items-center justify-between cursor-pointer text-[11px] font-medium text-destructive hover:text-destructive/80 px-1 py-1">
+                                        <span className="flex items-center gap-1.5">
+                                          <XCircle className="w-3 h-3" /> Falhas ({failedList.length})
+                                        </span>
+                                        <Button
+                                          asChild
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 text-[10px] px-1.5"
+                                        >
+                                          <span
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              exportToCSV(failedList, `campanha-${campaign?.name}-${ch?.phone || cb.channelId}-falhas`);
+                                            }}
+                                          >
+                                            <Download className="w-3 h-3 mr-1" /> CSV
+                                          </span>
+                                        </Button>
+                                      </summary>
+                                      {renderList(failedList, { showError: true })}
+                                    </details>
+
+                                    <details className="group">
+                                      <summary className="flex items-center justify-between cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground px-1 py-1">
+                                        <span className="flex items-center gap-1.5">
+                                          <Clock className="w-3 h-3" /> Pendentes / Retry ({pendingList.length})
+                                        </span>
+                                        <Button
+                                          asChild
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 text-[10px] px-1.5"
+                                        >
+                                          <span
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              exportToCSV(pendingList, `campanha-${campaign?.name}-${ch?.phone || cb.channelId}-pendentes`);
+                                            }}
+                                          >
+                                            <Download className="w-3 h-3 mr-1" /> CSV
+                                          </span>
+                                        </Button>
+                                      </summary>
+                                      {renderList(pendingList, { showRetry: true })}
+                                    </details>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           </div>
                         );
                       })}
