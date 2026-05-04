@@ -524,7 +524,8 @@ Deno.serve(async (req) => {
 
       if (!channel || !template) {
         await supabase.from('campaign_recipients').update({
-          status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR'
+          status: 'failed', error_message: 'Canal ou template não encontrado', last_error_code: 'CONFIG_ERROR',
+          channel_id: campaignChannel?.channel_id || null
         }).eq('id', recipient.recipientId);
         return { sent: true, failed: true, retry: false };
       }
