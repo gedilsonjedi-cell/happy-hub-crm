@@ -297,6 +297,7 @@ Deno.serve(async (req) => {
                 status,
                 dispatch_type,
                 variables,
+                components: metaTemplate.components ?? null,
               })
               .select('id')
               .single();
