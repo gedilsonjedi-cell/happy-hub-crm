@@ -852,20 +852,44 @@ Deno.serve(async (req) => {
             );
           }
           
-          // STRATEGY: Use direct link (URL) first - this is more stable in 2025
-          // WhatsApp Cloud API can download directly from public URLs
-          console.log('Processing audio message via direct link:', { mediaUrl });
-          
-          // Use direct link for audio - Meta will download from our storage
-          messagePayload = {
-            ...messagePayload,
-            type: 'audio',
-            audio: {
-              link: mediaUrl
+          // STRATEGY: Upload audio to Meta first to obtain a media_id.
+          // Sending via media_id is far more reliable than via public link
+          // for áudios — Meta frequently rejects audios via link with error
+          // 131053 (media upload failed) when downloading from external storage.
+          // We fall back to link only if the upload truly fails.
+          {
+            const lowerUrl = mediaUrl.toLowerCase();
+            let initialAudioMime = 'audio/mpeg';
+            if (lowerUrl.endsWith('.ogg') || lowerUrl.endsWith('.opus')) initialAudioMime = 'audio/ogg';
+            else if (lowerUrl.endsWith('.m4a') || lowerUrl.endsWith('.mp4')) initialAudioMime = 'audio/mp4';
+            else if (lowerUrl.endsWith('.aac')) initialAudioMime = 'audio/aac';
+            else if (lowerUrl.endsWith('.amr')) initialAudioMime = 'audio/amr';
+
+            console.log('Processing audio: trying media_id upload first', { mediaUrl, initialAudioMime });
+
+            const uploadResult = await uploadAudioWithRetry(
+              phoneNumberId,
+              accessToken,
+              mediaUrl,
+              initialAudioMime
+            );
+
+            if (uploadResult.mediaId) {
+              console.log('Audio uploaded to Meta, using media_id:', uploadResult.mediaId);
+              messagePayload = {
+                ...messagePayload,
+                type: 'audio',
+                audio: { id: uploadResult.mediaId }
+              };
+            } else {
+              console.warn('Audio media_id upload failed for all mime types — falling back to direct link');
+              messagePayload = {
+                ...messagePayload,
+                type: 'audio',
+                audio: { link: mediaUrl }
+              };
             }
-          };
-          
-          console.log('Audio message configured with direct link (recommended approach)');
+          }
           break;
         case 'document':
         case 'file':
