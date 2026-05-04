@@ -375,6 +375,62 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
     }));
   }, [recipients]);
 
+  // Per-channel breakdown
+  const channelBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      channelId: string;
+      total: number; sent: number; delivered: number; read: number;
+      failed: number; pending: number; awaiting: number; clicked: number;
+    }>();
+    const ensure = (id: string) => {
+      if (!map.has(id)) map.set(id, {
+        channelId: id, total: 0, sent: 0, delivered: 0, read: 0,
+        failed: 0, pending: 0, awaiting: 0, clicked: 0,
+      });
+      return map.get(id)!;
+    };
+    recipients.forEach(r => {
+      const id = r.channel_id || "__unassigned__";
+      const e = ensure(id);
+      e.total++;
+      if (r.status === "pending") e.pending++;
+      if (r.status === "failed") e.failed++;
+      if (r.status === "sent" || r.status === "delivered" || r.status === "read") e.sent++;
+      if (r.status === "sent" && !r.delivered_at && !r.read_at) e.awaiting++;
+      if (r.status === "delivered" || r.status === "read" || r.delivered_at) e.delivered++;
+      if (r.status === "read" || r.read_at) e.read++;
+      if (r.button_clicked) e.clicked++;
+    });
+    return Array.from(map.values());
+  }, [recipients]);
+
+  // Detailed error breakdown by Meta error code
+  const errorBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      code: string; title: string; description: string; suggestion: string; link?: string;
+      count: number; samples: Recipient[];
+    }>();
+    recipients.filter(r => r.status === "failed").forEach(r => {
+      const code = r.last_error_code || extractErrorCode(r.error_message) || "UNKNOWN";
+      if (!map.has(code)) {
+        const info = getErrorInfo(r.error_message || `Erro ${code}`);
+        map.set(code, {
+          code,
+          title: info.title,
+          description: info.description,
+          suggestion: info.suggestion || "Sem sugestão disponível.",
+          link: info.link,
+          count: 0,
+          samples: [],
+        });
+      }
+      const entry = map.get(code)!;
+      entry.count++;
+      if (entry.samples.length < 5) entry.samples.push(r);
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [recipients]);
+
   // Filter recipients
   const filteredRecipients = useMemo(() => {
     return recipients.filter(r => {
