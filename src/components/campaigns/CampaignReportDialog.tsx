@@ -27,6 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getErrorInfo, extractErrorCode } from "@/lib/metaErrorMessages";
 import {
   Send,
   CheckCircle,
