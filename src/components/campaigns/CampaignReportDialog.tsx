@@ -96,6 +96,7 @@ interface Recipient {
   button_clicked_at: string | null;
   retry_count: number | null;
   next_retry_at: string | null;
+  channel_id: string | null;
 }
 
 interface CampaignReportDialogProps {
