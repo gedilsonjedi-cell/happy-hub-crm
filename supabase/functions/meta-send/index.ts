@@ -664,7 +664,7 @@ Deno.serve(async (req) => {
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
-      const headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
+      headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
       const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
 
       console.log('[Meta-Send] Resolved template metadata:', {
