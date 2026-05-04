@@ -647,6 +647,7 @@ Deno.serve(async (req) => {
     let templateContent: string | null = null;
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
+    let customHeaderMediaUrl: string | null = null;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -689,7 +690,6 @@ Deno.serve(async (req) => {
         .eq('organization_id', channel.organization_id)
         .single();
       
-      let customHeaderMediaUrl: string | null = null;
       if (templateData) {
         templateContent = templateData.content;
         // Extract buttons supporting BOTH shapes:
