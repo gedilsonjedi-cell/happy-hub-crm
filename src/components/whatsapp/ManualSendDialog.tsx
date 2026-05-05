@@ -86,7 +86,7 @@ export const ManualSendDialog = ({
     if (isOpen) {
       // Pre-fill the phone number if provided, but always start at phone step
       if (initialPhone) {
-        setPhoneNumber(initialPhone);
+        setPhoneNumber(formatPhoneNumber(initialPhone));
         onPhoneUsed?.();
       }
       // Fetch templates if we have a channel selected
@@ -159,7 +159,31 @@ export const ManualSendDialog = ({
 
   const formatPhoneNumber = (value: string) => {
     const digits = value.replace(/\D/g, "");
-    return digits;
+    return digits.startsWith("55") && digits.length > 11 ? digits.slice(2) : digits;
+  };
+
+  const buildBrazilDestination = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.startsWith("55") && digits.length >= 12) return digits;
+    return `55${digits}`;
+  };
+
+  const getFunctionErrorMessage = async (error: unknown) => {
+    const maybeContext = (error as { context?: Response; message?: string } | null)?.context;
+    if (maybeContext) {
+      try {
+        const body = await maybeContext.clone().json();
+        return body?.error || body?.message || body?.details?.message || (error as { message?: string })?.message;
+      } catch {
+        try {
+          const text = await maybeContext.clone().text();
+          if (text) return text;
+        } catch {
+          // ignore parse errors and use fallback below
+        }
+      }
+    }
+    return (error as { message?: string } | null)?.message || "Erro ao enviar template";
   };
 
   const hasUnsupportedTemplateContent = (value: string) => {
@@ -221,8 +245,7 @@ export const ManualSendDialog = ({
     setSending(true);
 
     try {
-      // Always add 55 prefix since we show it as fixed
-      const formattedPhone = "55" + phoneNumber;
+      const formattedPhone = buildBrazilDestination(phoneNumber);
 
       // CRITICAL: Create/update conversation assignment in database BEFORE calling meta-send
       // This ensures the conversation persists even if the API call fails
@@ -269,7 +292,11 @@ export const ManualSendDialog = ({
 
       if (error) {
         console.error('Send template error:', error);
-        toast.error('Erro ao enviar template');
+        const errorMessage = await getFunctionErrorMessage(error);
+        toast.error(errorMessage || 'Erro ao enviar template', {
+          description: 'A conversa foi mantida em Meus para você tentar novamente sem perder o contexto.',
+          duration: 7000,
+        });
         // Still notify parent so the conversation appears in "Meus"
         onTemplateSent?.({
           phone: formattedPhone,
@@ -285,7 +312,10 @@ export const ManualSendDialog = ({
       if (data.success) {
         toast.success(`Template enviado para ${formattedPhone}!`);
       } else {
-        toast.error(data.error || 'Erro ao enviar template');
+        toast.error(data.error || 'Erro ao enviar template', {
+          description: data.messageId ? 'A tentativa foi salva no histórico como falha.' : undefined,
+          duration: 7000,
+        });
       }
       
       // Always notify parent so the conversation appears in "Meus" regardless of success/failure
@@ -299,7 +329,7 @@ export const ManualSendDialog = ({
       onClose();
     } catch (err) {
       console.error('Send template error:', err);
-      toast.error('Erro ao enviar template');
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar template');
     }
 
     setSending(false);
