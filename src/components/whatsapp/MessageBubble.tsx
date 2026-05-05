@@ -407,6 +407,21 @@ const MessageBubble = memo(function MessageBubble({
               </div>
             );
           })()}
+
+          {/* Retry button when failed without detailed error panel */}
+          {isFailed && !message.error_message && onRetry && isOutbound && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onRetry(message)}
+                disabled={isRetrying}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className={cn("w-3.5 h-3.5", isRetrying && "animate-spin")} />
+                {isRetrying ? "Reenviando..." : "Reenviar"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
