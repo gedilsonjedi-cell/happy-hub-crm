@@ -391,6 +391,19 @@ const MessageBubble = memo(function MessageBubble({
                     </a>
                   </div>
                 )}
+                {onRetry && isOutbound && (
+                  <div className="mt-2 pt-2 border-t border-border pl-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onRetry(message)}
+                      disabled={isRetrying}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw className={cn("w-3.5 h-3.5", isRetrying && "animate-spin")} />
+                      {isRetrying ? "Reenviando..." : "Reenviar"}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })()}
