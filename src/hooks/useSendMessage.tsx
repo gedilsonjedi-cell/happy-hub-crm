@@ -161,7 +161,9 @@ export function useSendMessage(
         }
       );
 
-      toast.error("Falha ao enviar mensagem");
+      toast.error("Falha ao enviar mensagem", {
+        description: "Erro de conexão. A mensagem não foi registrada — tente novamente.",
+      });
 
       // Restore text input for text messages so agent can retry
       if ((payload.messageType === "text" || !payload.messageType) && onRestoreInput) {
@@ -196,7 +198,10 @@ export function useSendMessage(
             };
           }
         );
-        toast.error(data.error || "Falha ao enviar mensagem");
+        toast.error(data.error || "Falha ao enviar mensagem", {
+          description: "A tentativa foi registrada no histórico da conversa como falha. Você pode reenviar.",
+          duration: 7000,
+        });
         if ((payload.messageType === "text" || !payload.messageType) && onRestoreInput) {
           onRestoreInput(payload.message);
         }
