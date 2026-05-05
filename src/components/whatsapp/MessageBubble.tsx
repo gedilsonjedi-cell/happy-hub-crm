@@ -14,6 +14,7 @@ import {
   Info,
   ExternalLink,
   Facebook,
+  RotateCcw,
 } from "lucide-react";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import type { MessageRow } from "@/hooks/useInfiniteMessages";
@@ -22,6 +23,8 @@ interface MessageBubbleProps {
   message: MessageRow;
   showDateSeparator: boolean;
   onMediaPreview: (url: string, type: string, fileName?: string) => void;
+  onRetry?: (message: MessageRow) => void;
+  isRetrying?: boolean;
   templates: Map<string, {
     content: string;
     variables: string[] | null;
