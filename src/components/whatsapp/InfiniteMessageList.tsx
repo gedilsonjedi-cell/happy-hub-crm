@@ -180,6 +180,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
               message={msg}
               showDateSeparator={false}
               onMediaPreview={onMediaPreview}
+              onRetry={onRetry}
+              isRetrying={retryingMessageId === msg.id}
               templates={templates}
             />
           </div>
