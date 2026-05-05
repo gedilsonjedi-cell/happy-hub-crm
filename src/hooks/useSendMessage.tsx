@@ -161,7 +161,9 @@ export function useSendMessage(
         }
       );
 
-      toast.error("Falha ao enviar mensagem");
+      toast.error("Falha ao enviar mensagem", {
+        description: "Erro de conexão. A mensagem não foi registrada — tente novamente.",
+      });
 
       // Restore text input for text messages so agent can retry
       if ((payload.messageType === "text" || !payload.messageType) && onRestoreInput) {
