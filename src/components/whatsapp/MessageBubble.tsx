@@ -439,6 +439,56 @@ const MessageBubble = memo(function MessageBubble({
 });
 
 /**
+ * PendingMediaButton — for inbound media not yet downloaded by the webhook.
+ * On click, calls meta-fetch-media to fetch from Meta and persist to storage.
+ */
+const PendingMediaButton = memo(function PendingMediaButton({
+  messageId,
+  messageType,
+}: { messageId: string; messageType: string }) {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const label =
+    messageType === "image" ? "Baixar imagem" :
+    messageType === "audio" ? "Baixar áudio" :
+    messageType === "video" ? "Baixar vídeo" :
+    "Baixar mídia";
+
+  const handleClick = async () => {
+    if (loading || done) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("meta-fetch-media", {
+        body: { messageId },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Falha ao baixar mídia");
+      setDone(true);
+      toast.success("Mídia carregada. Atualize a conversa para visualizar.");
+    } catch (e) {
+      toast.error("Não foi possível baixar a mídia", {
+        description: e instanceof Error ? e.message : "A mídia pode ter expirado no WhatsApp (após 30 dias).",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={loading || done}
+      className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded-lg hover:bg-muted transition-colors disabled:opacity-60"
+    >
+      <Download className={cn("w-5 h-5 text-primary", loading && "animate-pulse")} />
+      <span className="flex-1 text-left">{loading ? "Baixando..." : done ? "Atualize para ver" : label}</span>
+    </button>
+  );
+});
+
+/**
  * ProgressiveImage — shows a sized placeholder while the image loads,
  * preventing layout shift. Fades in on load. Shows error state on failure.
  */
