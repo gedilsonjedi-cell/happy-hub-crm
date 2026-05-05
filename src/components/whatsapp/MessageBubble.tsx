@@ -40,6 +40,8 @@ const MessageBubble = memo(function MessageBubble({
   message,
   showDateSeparator,
   onMediaPreview,
+  onRetry,
+  isRetrying,
   templates,
 }: MessageBubbleProps) {
   const isOutbound = message.direction === "outbound";
