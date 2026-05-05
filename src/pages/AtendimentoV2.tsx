@@ -4679,6 +4679,8 @@ const AtendimentoV2 = () => {
                   fileName,
                 })}
                 templates={templates}
+                onRetry={handleRetryFailedMessage}
+                retryingMessageId={retryingMessageId}
               />
 
               {/* Message input */}
