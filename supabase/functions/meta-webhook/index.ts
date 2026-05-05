@@ -852,7 +852,9 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   ]);
 
   // ── PHASE 3: Persist message ──────────────────────────────────────
-  const finalMediaUrl = storedMediaUrl || (mediaId ? mediaId : null);
+  // IMPORTANT: only store actual public URLs in media_url. If download failed,
+  // keep the Meta media_id in metadata so the UI can request it on demand.
+  const finalMediaUrl = storedMediaUrl;
 
   const { error: insertError } = await dualWriteMessage({
     channel_id: channel.id as string,
@@ -870,6 +872,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
       timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
       channel_phone: channel.phone || null,
       context_message_id: echoedMessageId,
+      ...(mediaId ? { media_id: mediaId, media_mime_type: mediaMimeType } : {}),
       ...(referralData ? { referral: referralData } : {}),
     },
   }, true, channel.id as string);
