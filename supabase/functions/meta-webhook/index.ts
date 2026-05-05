@@ -397,15 +397,25 @@ async function downloadAndStoreMedia(
     const mediaResp = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!mediaResp.ok) return null;
+    if (!mediaResp.ok) {
+      const errText = await mediaResp.text().catch(() => '');
+      console.error(`[Media] Failed to fetch media metadata for ${mediaId}: ${mediaResp.status} ${errText}`);
+      return null;
+    }
 
     const mediaData = await mediaResp.json() as { url?: string };
-    if (!mediaData.url) return null;
+    if (!mediaData.url) {
+      console.error(`[Media] No URL in media metadata for ${mediaId}`);
+      return null;
+    }
 
     const fileResp = await fetch(mediaData.url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!fileResp.ok) return null;
+    if (!fileResp.ok) {
+      console.error(`[Media] Failed to download media ${mediaId}: ${fileResp.status}`);
+      return null;
+    }
 
     const buffer = await fileResp.arrayBuffer();
     const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
@@ -415,12 +425,16 @@ async function downloadAndStoreMedia(
       .from('whatsapp-media')
       .upload(fileName, buffer, { contentType: mimeType, upsert: false });
 
-    if (error) return null;
+    if (error) {
+      console.error(`[Media] Storage upload failed for ${mediaId}:`, error.message);
+      return null;
+    }
 
     const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(fileName);
+    console.log(`[Media] Stored ${mediaId} -> ${urlData.publicUrl}`);
     return urlData.publicUrl;
   } catch (err) {
-    console.error('Media download error:', err);
+    console.error(`[Media] Exception downloading ${mediaId}:`, err);
     return null;
   }
 }
