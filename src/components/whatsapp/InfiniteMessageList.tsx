@@ -33,6 +33,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   hasNextPage,
   fetchNextPage,
   onMediaPreview,
+  onRetry,
+  retryingMessageId,
   templates,
 }: InfiniteMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
