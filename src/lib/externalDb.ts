@@ -12,6 +12,31 @@ import { getExternalClient } from "@/lib/externalSupabaseClient";
 const HISTORY_SCAN_BATCH_SIZE = 150;
 const HISTORY_SCAN_MAX_BATCHES = 8;
 
+// ── Circuit breaker for direct external reads ─────────────────────
+// If RLS isn't configured on the external DB (or JWT secret mismatch),
+// every direct read fails with "permission denied" and we waste 200-500ms
+// per conversation switch before falling back to the proxy. Once we see
+// that error, skip direct reads for the rest of the session.
+let directReadDisabledUntil = 0;
+const DIRECT_READ_COOLDOWN_MS = 5 * 60_000; // 5 minutes
+
+function isPermissionError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("permission denied") || m.includes("rls") || m.includes("jwt");
+}
+
+function disableDirectRead(reason: string): void {
+  if (Date.now() < directReadDisabledUntil) return;
+  directReadDisabledUntil = Date.now() + DIRECT_READ_COOLDOWN_MS;
+  console.warn(
+    `[externalDb] Direct external reads DISABLED for ${DIRECT_READ_COOLDOWN_MS / 1000}s — falling back to proxy. Reason: ${reason}`
+  );
+}
+
+function isDirectReadDisabled(): boolean {
+  return Date.now() < directReadDisabledUntil;
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface ExternalMessagePage {
@@ -218,46 +243,55 @@ export async function fetchExternalMessages(params: {
 
   // PERFORMANCE: prefer direct external read (proxy is deprecated and adds
   // 200-500ms of cold-start + extra hop on every conversation switch).
-  try {
-    const [inbound, outbound] = await Promise.all([
-      fetchDirectionMessages(
-        params.channelId,
-        "inbound",
-        cursorFilter,
-        pageSize,
-        lookup,
-        params.impersonatedOrgId,
-        channelPhoneLookup
-      ),
-      fetchDirectionMessages(
-        params.channelId,
-        "outbound",
-        cursorFilter,
-        pageSize,
-        lookup,
-        params.impersonatedOrgId,
-        channelPhoneLookup
-      ),
-    ]);
+  // If a previous call hit "permission denied" (RLS not configured on the
+  // external DB), skip direct reads entirely until the cooldown elapses.
+  if (!isDirectReadDisabled()) {
+    try {
+      const [inbound, outbound] = await Promise.all([
+        fetchDirectionMessages(
+          params.channelId,
+          "inbound",
+          cursorFilter,
+          pageSize,
+          lookup,
+          params.impersonatedOrgId,
+          channelPhoneLookup
+        ),
+        fetchDirectionMessages(
+          params.channelId,
+          "outbound",
+          cursorFilter,
+          pageSize,
+          lookup,
+          params.impersonatedOrgId,
+          channelPhoneLookup
+        ),
+      ]);
 
-    const merged = [...inbound, ...outbound].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+      const merged = [...inbound, ...outbound].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
-    const seen = new Set<string>();
-    const unique = merged.filter((m) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    });
+      const seen = new Set<string>();
+      const unique = merged.filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
 
-    const page = unique.slice(0, pageSize);
-    const hasMore = unique.length >= pageSize;
-    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
+      const page = unique.slice(0, pageSize);
+      const hasMore = unique.length >= pageSize;
+      const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
 
-    return { messages: page, nextCursor, hasMore };
-  } catch (directError) {
-    console.warn("[externalDb] Direct read failed, trying proxy fallback:", getErrorMessage(directError));
+      return { messages: page, nextCursor, hasMore };
+    } catch (directError) {
+      const msg = getErrorMessage(directError);
+      if (isPermissionError(msg)) {
+        disableDirectRead(msg);
+      } else {
+        console.warn("[externalDb] Direct read failed, trying proxy fallback:", msg);
+      }
+    }
   }
 
   // Last-resort fallback to legacy proxy edge function
