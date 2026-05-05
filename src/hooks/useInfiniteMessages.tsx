@@ -184,16 +184,31 @@ export function useInfiniteMessages(
               return old;
             }
 
-            const merged: MessageRow = {
-              ...existing,
-              ...msg,
-              // Prefer the existing id when the incoming one is synthetic and the
-              // existing one is already real, otherwise take incoming.
-              id: !isIncomingSynthetic ? msg.id : existing.id,
-              message_id: !isIncomingSynthetic ? msg.message_id : existing.message_id,
-              status: msg.status || existing.status,
-              created_at: existing.created_at, // keep original timestamp to avoid reordering
-            };
+            // When incoming is a synthetic realtime echo (rt_*/stats_*), it carries
+            // a degraded payload (message_type='text', media_url=null, content='[audio]'),
+            // so we MUST preserve the rich fields from the existing optimistic/persisted
+            // message — otherwise audio/image/video bubbles collapse into the placeholder
+            // text "[audio]" / "[image]" without media. Only refresh status here.
+            const merged: MessageRow = isIncomingSynthetic
+              ? {
+                  ...existing,
+                  status: existing.status || msg.status,
+                }
+              : {
+                  ...existing,
+                  ...msg,
+                  id: msg.id,
+                  message_id: msg.message_id,
+                  // Keep media/type/content from existing if incoming dropped them
+                  message_type: msg.message_type || existing.message_type,
+                  media_url: msg.media_url ?? existing.media_url,
+                  content:
+                    msg.content && msg.content !== `[${existing.message_type}]`
+                      ? msg.content
+                      : existing.content,
+                  status: msg.status || existing.status,
+                  created_at: existing.created_at,
+                };
 
             const newMessages = [...firstPage.messages];
             newMessages[twinIndex] = merged;

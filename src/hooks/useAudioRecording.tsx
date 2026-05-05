@@ -38,6 +38,13 @@ export const useAudioRecording = () => {
 
   const startRecording = useCallback(async () => {
     try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Seu navegador não suporta gravação de áudio. Use Chrome, Edge ou Safari atualizado.');
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        throw new Error('MediaRecorder não disponível neste navegador.');
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           channelCount: 1,
@@ -51,10 +58,19 @@ export const useAudioRecording = () => {
       const mimeType = getSupportedMimeType();
       console.log('[AudioRecording] Using format:', mimeType);
       
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType,
-        audioBitsPerSecond: 64000
-      });
+      // Firefox can throw on some mimeType+bitrate combos. Retry with safer fallbacks.
+      let mediaRecorder: MediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
+      } catch (e) {
+        console.warn('[AudioRecording] Bitrate option failed, retrying without it:', e);
+        try {
+          mediaRecorder = new MediaRecorder(stream, { mimeType });
+        } catch (e2) {
+          console.warn('[AudioRecording] mimeType option failed, using browser default:', e2);
+          mediaRecorder = new MediaRecorder(stream);
+        }
+      }
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -64,8 +80,12 @@ export const useAudioRecording = () => {
           audioChunksRef.current.push(event.data);
         }
       };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('[AudioRecording] MediaRecorder error:', event);
+      };
       
-      mediaRecorder.start(500); // Chunk a cada 500ms
+      mediaRecorder.start(500);
       setIsRecording(true);
       setRecordingDuration(0);
       
@@ -75,7 +95,17 @@ export const useAudioRecording = () => {
       
     } catch (error) {
       console.error("[AudioRecording] Error starting recording:", error);
-      throw new Error("Não foi possível acessar o microfone");
+      const err = error as DOMException;
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        throw new Error('Permissão de microfone negada. Habilite nas configurações do navegador.');
+      }
+      if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
+        throw new Error('Nenhum microfone encontrado no dispositivo.');
+      }
+      if (err?.name === 'NotReadableError') {
+        throw new Error('Microfone em uso por outro aplicativo.');
+      }
+      throw new Error(error instanceof Error ? error.message : 'Não foi possível acessar o microfone');
     }
   }, [getSupportedMimeType]);
 
