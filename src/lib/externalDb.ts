@@ -12,6 +12,31 @@ import { getExternalClient } from "@/lib/externalSupabaseClient";
 const HISTORY_SCAN_BATCH_SIZE = 150;
 const HISTORY_SCAN_MAX_BATCHES = 8;
 
+// ── Circuit breaker for direct external reads ─────────────────────
+// If RLS isn't configured on the external DB (or JWT secret mismatch),
+// every direct read fails with "permission denied" and we waste 200-500ms
+// per conversation switch before falling back to the proxy. Once we see
+// that error, skip direct reads for the rest of the session.
+let directReadDisabledUntil = 0;
+const DIRECT_READ_COOLDOWN_MS = 5 * 60_000; // 5 minutes
+
+function isPermissionError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("permission denied") || m.includes("rls") || m.includes("jwt");
+}
+
+function disableDirectRead(reason: string): void {
+  if (Date.now() < directReadDisabledUntil) return;
+  directReadDisabledUntil = Date.now() + DIRECT_READ_COOLDOWN_MS;
+  console.warn(
+    `[externalDb] Direct external reads DISABLED for ${DIRECT_READ_COOLDOWN_MS / 1000}s — falling back to proxy. Reason: ${reason}`
+  );
+}
+
+function isDirectReadDisabled(): boolean {
+  return Date.now() < directReadDisabledUntil;
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface ExternalMessagePage {
