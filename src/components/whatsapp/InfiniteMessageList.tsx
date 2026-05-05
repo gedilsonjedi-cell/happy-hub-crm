@@ -12,6 +12,8 @@ interface InfiniteMessageListProps {
   hasNextPage: boolean;
   fetchNextPage: () => void;
   onMediaPreview: (url: string, type: string, fileName?: string) => void;
+  onRetry?: (message: MessageRow) => void;
+  retryingMessageId?: string | null;
   templates: Map<string, {
     content: string;
     variables: string[] | null;
@@ -31,6 +33,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   hasNextPage,
   fetchNextPage,
   onMediaPreview,
+  onRetry,
+  retryingMessageId,
   templates,
 }: InfiniteMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -176,6 +180,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
               message={msg}
               showDateSeparator={false}
               onMediaPreview={onMediaPreview}
+              onRetry={onRetry}
+              isRetrying={retryingMessageId === msg.id}
               templates={templates}
             />
           </div>

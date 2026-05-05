@@ -670,6 +670,44 @@ const AtendimentoV2 = () => {
   // ─── useMutation: optimistic send with TanStack Query ─────────────────────
   const sendMessageMutation = useSendMessage((restoredText) => setNewMessage(restoredText));
   const isSendingMessage = sendMessageMutation.isPending;
+  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
+
+  // Re-send a previously failed message reusing original payload from metadata
+  const handleRetryFailedMessage = useCallback((failedMessage: import("@/hooks/useInfiniteMessages").MessageRow) => {
+    const conversationChannelId = selectedConversation?.channelId;
+    if (!selectedConversation || !conversationChannelId) {
+      toast.error("Conversa indisponível para reenvio");
+      return;
+    }
+    const conversationChannel = channels.find(c => c.id === conversationChannelId);
+    const meta = (failedMessage.metadata || {}) as Record<string, unknown>;
+    const destination = (meta.destination as string) || selectedConversation.phone;
+    const isTemplate = failedMessage.message_type === "template" || !!meta.templateName;
+    const isMedia = !!failedMessage.media_url && !isTemplate;
+
+    setRetryingMessageId(failedMessage.id);
+    sendMessageMutation.mutate(
+      {
+        channelId: conversationChannelId,
+        channelPhone: conversationChannel?.phone || "",
+        channelProvider: conversationChannel?.provider || "meta",
+        destination,
+        message: isTemplate ? `Template: ${meta.templateName}` : (failedMessage.content || ""),
+        messageType: isTemplate ? "template" : (isMedia ? ((meta.mediaType as string) || failedMessage.message_type || "file") : "text"),
+        templateName: isTemplate ? (meta.templateName as string) : undefined,
+        templateParams: isTemplate ? (meta.templateParams as string[] | undefined) : undefined,
+        mediaUrl: isMedia ? (failedMessage.media_url || undefined) : undefined,
+        mediaCaption: isMedia ? (failedMessage.content || undefined) : undefined,
+        fileName: isMedia ? (meta.fileName as string | undefined) : undefined,
+      },
+      {
+        onSettled: () => setRetryingMessageId(null),
+        onSuccess: (data) => {
+          if (data?.success) toast.success("Mensagem reenviada");
+        },
+      }
+    );
+  }, [selectedConversation, channels, sendMessageMutation]);
   
   // Track chatbot config for selected channel to show bot type indicator
   const [channelBotConfig, setChannelBotConfig] = useState<{
@@ -4641,6 +4679,8 @@ const AtendimentoV2 = () => {
                   fileName,
                 })}
                 templates={templates}
+                onRetry={handleRetryFailedMessage}
+                retryingMessageId={retryingMessageId}
               />
 
               {/* Message input */}

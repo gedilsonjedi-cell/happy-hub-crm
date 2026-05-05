@@ -14,6 +14,7 @@ import {
   Info,
   ExternalLink,
   Facebook,
+  RotateCcw,
 } from "lucide-react";
 import { formatErrorDisplay } from "@/lib/metaErrorMessages";
 import type { MessageRow } from "@/hooks/useInfiniteMessages";
@@ -22,6 +23,8 @@ interface MessageBubbleProps {
   message: MessageRow;
   showDateSeparator: boolean;
   onMediaPreview: (url: string, type: string, fileName?: string) => void;
+  onRetry?: (message: MessageRow) => void;
+  isRetrying?: boolean;
   templates: Map<string, {
     content: string;
     variables: string[] | null;
@@ -37,6 +40,8 @@ const MessageBubble = memo(function MessageBubble({
   message,
   showDateSeparator,
   onMediaPreview,
+  onRetry,
+  isRetrying,
   templates,
 }: MessageBubbleProps) {
   const isOutbound = message.direction === "outbound";
@@ -386,9 +391,37 @@ const MessageBubble = memo(function MessageBubble({
                     </a>
                   </div>
                 )}
+                {onRetry && isOutbound && (
+                  <div className="mt-2 pt-2 border-t border-border pl-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onRetry(message)}
+                      disabled={isRetrying}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw className={cn("w-3.5 h-3.5", isRetrying && "animate-spin")} />
+                      {isRetrying ? "Reenviando..." : "Reenviar"}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })()}
+
+          {/* Retry button when failed without detailed error panel */}
+          {isFailed && !message.error_message && onRetry && isOutbound && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onRetry(message)}
+                disabled={isRetrying}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className={cn("w-3.5 h-3.5", isRetrying && "animate-spin")} />
+                {isRetrying ? "Reenviando..." : "Reenviar"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
