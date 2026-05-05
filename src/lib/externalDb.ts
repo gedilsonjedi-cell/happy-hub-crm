@@ -243,46 +243,55 @@ export async function fetchExternalMessages(params: {
 
   // PERFORMANCE: prefer direct external read (proxy is deprecated and adds
   // 200-500ms of cold-start + extra hop on every conversation switch).
-  try {
-    const [inbound, outbound] = await Promise.all([
-      fetchDirectionMessages(
-        params.channelId,
-        "inbound",
-        cursorFilter,
-        pageSize,
-        lookup,
-        params.impersonatedOrgId,
-        channelPhoneLookup
-      ),
-      fetchDirectionMessages(
-        params.channelId,
-        "outbound",
-        cursorFilter,
-        pageSize,
-        lookup,
-        params.impersonatedOrgId,
-        channelPhoneLookup
-      ),
-    ]);
+  // If a previous call hit "permission denied" (RLS not configured on the
+  // external DB), skip direct reads entirely until the cooldown elapses.
+  if (!isDirectReadDisabled()) {
+    try {
+      const [inbound, outbound] = await Promise.all([
+        fetchDirectionMessages(
+          params.channelId,
+          "inbound",
+          cursorFilter,
+          pageSize,
+          lookup,
+          params.impersonatedOrgId,
+          channelPhoneLookup
+        ),
+        fetchDirectionMessages(
+          params.channelId,
+          "outbound",
+          cursorFilter,
+          pageSize,
+          lookup,
+          params.impersonatedOrgId,
+          channelPhoneLookup
+        ),
+      ]);
 
-    const merged = [...inbound, ...outbound].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+      const merged = [...inbound, ...outbound].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
-    const seen = new Set<string>();
-    const unique = merged.filter((m) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    });
+      const seen = new Set<string>();
+      const unique = merged.filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
 
-    const page = unique.slice(0, pageSize);
-    const hasMore = unique.length >= pageSize;
-    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
+      const page = unique.slice(0, pageSize);
+      const hasMore = unique.length >= pageSize;
+      const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
 
-    return { messages: page, nextCursor, hasMore };
-  } catch (directError) {
-    console.warn("[externalDb] Direct read failed, trying proxy fallback:", getErrorMessage(directError));
+      return { messages: page, nextCursor, hasMore };
+    } catch (directError) {
+      const msg = getErrorMessage(directError);
+      if (isPermissionError(msg)) {
+        disableDirectRead(msg);
+      } else {
+        console.warn("[externalDb] Direct read failed, trying proxy fallback:", msg);
+      }
+    }
   }
 
   // Last-resort fallback to legacy proxy edge function
