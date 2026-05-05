@@ -3225,7 +3225,8 @@ const AtendimentoV2 = () => {
     } catch (error) {
       console.error('Voice recording error:', error);
       toast.dismiss('audio-conversion');
-      toast.error('Erro ao enviar áudio');
+      const msg = error instanceof Error ? error.message : 'Erro ao enviar áudio';
+      toast.error(msg);
     }
 
     setIsConvertingAudio(false);
