@@ -198,7 +198,10 @@ export function useSendMessage(
             };
           }
         );
-        toast.error(data.error || "Falha ao enviar mensagem");
+        toast.error(data.error || "Falha ao enviar mensagem", {
+          description: "A tentativa foi registrada no histórico da conversa como falha. Você pode reenviar.",
+          duration: 7000,
+        });
         if ((payload.messageType === "text" || !payload.messageType) && onRestoreInput) {
           onRestoreInput(payload.message);
         }
