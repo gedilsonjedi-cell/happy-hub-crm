@@ -12,6 +12,8 @@ interface InfiniteMessageListProps {
   hasNextPage: boolean;
   fetchNextPage: () => void;
   onMediaPreview: (url: string, type: string, fileName?: string) => void;
+  onRetry?: (message: MessageRow) => void;
+  retryingMessageId?: string | null;
   templates: Map<string, {
     content: string;
     variables: string[] | null;
