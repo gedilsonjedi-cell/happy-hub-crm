@@ -56,6 +56,13 @@ const MessageBubble = memo(function MessageBubble({
       message.message_type
     );
 
+    // Fallback: media without media_url but with media_id in metadata → fetch on demand
+    const meta = (message.metadata || {}) as Record<string, unknown>;
+    const pendingMediaId = !message.media_url && isMedia && (meta.media_id as string | undefined);
+    if (pendingMediaId) {
+      return <PendingMediaButton messageId={message.id} messageType={message.message_type} />;
+    }
+
     if (isMedia && message.media_url) {
       switch (message.message_type) {
         case "image":
