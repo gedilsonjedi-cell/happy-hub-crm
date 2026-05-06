@@ -657,15 +657,17 @@ const Disparos = () => {
     setIsCreating(true);
 
     try {
+      // Pre-fetch ALL org leads ONCE (shared by "numbers" dedup + recipient name matching).
+      // Paginated + parallelized via fetchAllLeads to bypass the 1000-row default limit.
+      const orgLeadsAll = await fetchAllLeads<{ id: string; phone: string; name: string }>({
+        organizationId: effectiveOrganizationId!,
+        columns: "id, phone, name",
+        orderBy: null,
+      });
+
       // If source is "numbers", create leads for phones that don't exist in CRM
       if (recipientData.source === "numbers") {
-        // Fetch ALL leads from this organization to match by phone suffix
-        // Paginated to bypass Supabase's 1000-row default limit.
-        const orgLeads = await fetchAllLeads<{ phone: string; name: string }>({
-          organizationId: effectiveOrganizationId!,
-          columns: "phone, name",
-          orderBy: null,
-        });
+        const orgLeads = orgLeadsAll;
 
         // Build a map of phone suffixes (last 8 digits) to lead data for flexible matching
         const leadsBySuffix = new Map<string, { phone: string; name: string }>();
@@ -804,13 +806,8 @@ const Disparos = () => {
         console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
       }
       
-      // Get lead names for the phones using suffix matching for better coverage.
-      // Paginated to bypass Supabase's 1000-row default limit.
-      const allOrgLeads = await fetchAllLeads<{ id: string; phone: string; name: string }>({
-        organizationId: effectiveOrganizationId!,
-        columns: "id, phone, name",
-        orderBy: null,
-      });
+      // Reuse the org leads pre-fetched at the top (no second roundtrip).
+      const allOrgLeads = orgLeadsAll;
 
       // Build a flexible phone lookup map, prioritizing real names over auto-generated ones
       const leadMatches = new Map<string, LeadMatch>();
@@ -855,25 +852,40 @@ const Disparos = () => {
       }
 
       // Insert in batches of 500 to avoid hitting limits
-      // CRITICAL: Wait for each batch and check for errors
+      // Insert in batches of 500, with up to 5 batches in PARALLEL to drastically
+      // reduce wait time for large campaigns (5k recipients: 10 batches → 2 waves).
       const batchSize = 500;
-      let recipientsSaved = 0;
+      const concurrency = 5;
+      const batches: typeof recipientInserts[] = [];
       for (let i = 0; i < recipientInserts.length; i += batchSize) {
-        const batch = recipientInserts.slice(i, i + batchSize);
-        const { error: recipientError } = await supabase.from("campaign_recipients").insert(batch);
-        
-        if (recipientError) {
-          console.error("Error saving campaign recipients batch:", recipientError);
-          toast.error("Erro ao salvar destinatários da campanha");
-          // Update campaign to failed status
-          await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
-          setIsCreating(false);
-          return;
-        }
-        recipientsSaved += batch.length;
+        batches.push(recipientInserts.slice(i, i + batchSize));
       }
-      
-      console.log(`Successfully saved ${recipientsSaved} recipients for campaign ${campaign.id}`);
+
+      let cursor = 0;
+      let failed = false;
+      const workers = Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+        while (cursor < batches.length && !failed) {
+          const idx = cursor++;
+          const { error: recipientError } = await supabase
+            .from("campaign_recipients")
+            .insert(batches[idx]);
+          if (recipientError) {
+            console.error("Error saving campaign recipients batch:", recipientError);
+            failed = true;
+            return;
+          }
+        }
+      });
+      await Promise.all(workers);
+
+      if (failed) {
+        toast.error("Erro ao salvar destinatários da campanha");
+        await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
+        setIsCreating(false);
+        return;
+      }
+
+      console.log(`Successfully saved ${recipientInserts.length} recipients for campaign ${campaign.id}`);
 
       // Close form and reset immediately to prevent double clicks
       setShowCreateForm(false);
