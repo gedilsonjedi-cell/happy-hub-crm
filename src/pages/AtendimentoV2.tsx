@@ -1981,9 +1981,11 @@ const AtendimentoV2 = () => {
 
   // Refs for realtime updates
   const selectedConversationRef = useRef<Conversation | null>(null);
+  const effectiveOrganizationIdRef = useRef<string | null>(effectiveOrganizationId ?? null);
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
-  }, [selectedConversation]);
+    effectiveOrganizationIdRef.current = effectiveOrganizationId ?? null;
+  }, [selectedConversation, effectiveOrganizationId]);
 
   const showNotificationRef = useRef(showNotification);
   const soundEnabledRef = useRef(soundEnabled);
@@ -2116,7 +2118,7 @@ const AtendimentoV2 = () => {
     // query has not mounted yet, so a message received while the panel was not
     // open is already visible on click without needing F5 or another selection.
     const threadKey = getCanonicalPhoneThreadKey(normalizedContactPhone);
-    const messageQueryKey = ["messages", effectiveOrganizationId, msg.channelId, threadKey];
+    const messageQueryKey = ["messages", effectiveOrganizationIdRef.current, msg.channelId, threadKey];
     upsertMessageIntoInfiniteCache(queryClient, messageQueryKey, newMsg);
 
     // Update messages panel side effects if this is the active conversation
