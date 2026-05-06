@@ -644,10 +644,12 @@ const Disparos = () => {
       // If source is "numbers", create leads for phones that don't exist in CRM
       if (recipientData.source === "numbers") {
         // Fetch ALL leads from this organization to match by phone suffix
-        const { data: orgLeads } = await supabase
-          .from("leads")
-          .select("phone, name")
-          .eq("organization_id", effectiveOrganizationId);
+        // Paginated to bypass Supabase's 1000-row default limit.
+        const orgLeads = await fetchAllLeads<{ phone: string; name: string }>({
+          organizationId: effectiveOrganizationId!,
+          columns: "phone, name",
+          orderBy: null,
+        });
 
         // Build a map of phone suffixes (last 8 digits) to lead data for flexible matching
         const leadsBySuffix = new Map<string, { phone: string; name: string }>();
