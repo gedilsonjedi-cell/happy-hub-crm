@@ -53,6 +53,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserSectors } from "@/hooks/useUserSectors";
@@ -643,10 +644,12 @@ const Disparos = () => {
       // If source is "numbers", create leads for phones that don't exist in CRM
       if (recipientData.source === "numbers") {
         // Fetch ALL leads from this organization to match by phone suffix
-        const { data: orgLeads } = await supabase
-          .from("leads")
-          .select("phone, name")
-          .eq("organization_id", effectiveOrganizationId);
+        // Paginated to bypass Supabase's 1000-row default limit.
+        const orgLeads = await fetchAllLeads<{ phone: string; name: string }>({
+          organizationId: effectiveOrganizationId!,
+          columns: "phone, name",
+          orderBy: null,
+        });
 
         // Build a map of phone suffixes (last 8 digits) to lead data for flexible matching
         const leadsBySuffix = new Map<string, { phone: string; name: string }>();
@@ -785,11 +788,13 @@ const Disparos = () => {
         console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
       }
       
-      // Get lead names for the phones using suffix matching for better coverage
-      const { data: allOrgLeads } = await supabase
-        .from("leads")
-        .select("id, phone, name")
-        .eq("organization_id", effectiveOrganizationId);
+      // Get lead names for the phones using suffix matching for better coverage.
+      // Paginated to bypass Supabase's 1000-row default limit.
+      const allOrgLeads = await fetchAllLeads<{ id: string; phone: string; name: string }>({
+        organizationId: effectiveOrganizationId!,
+        columns: "id, phone, name",
+        orderBy: null,
+      });
 
       // Build a flexible phone lookup map, prioritizing real names over auto-generated ones
       const leadMatches = new Map<string, LeadMatch>();

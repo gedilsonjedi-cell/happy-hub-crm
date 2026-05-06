@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from "react";
 import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users, Loader2, CheckCircle2, XCircle, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -625,10 +626,12 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       setCheckingConflicts(true);
       
       // Check which phones already exist in database using suffix matching
-      const { data: existingLeads } = await supabase
-        .from("leads")
-        .select("id, phone, name, email, document, city, state, tags, custom_fields")
-        .eq("organization_id", organizationId);
+      // Paginated to bypass Supabase's 1000-row default limit.
+      const existingLeads = await fetchAllLeads<ExistingLead>({
+        organizationId,
+        columns: "id, phone, name, email, document, city, state, tags, custom_fields",
+        orderBy: null,
+      });
       
       const existingMap = new Map<string, ExistingLead>();
       (existingLeads || []).forEach(lead => {

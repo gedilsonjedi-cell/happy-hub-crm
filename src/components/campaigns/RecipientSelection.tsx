@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
@@ -178,29 +179,31 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
   const fetchLeads = async () => {
     if (!effectiveOrganizationId) return;
-    
-    setLoadingLeads(true);
-    
-    // Tags are global — always fetch ALL leads regardless of sector.
-    // The sector is applied at dispatch time (campaign creation), not as a lead filter.
-    const { data, error } = await supabase
-      .from("leads")
-      .select("id, name, phone, tags, created_at")
-      .eq("organization_id", effectiveOrganizationId)
-      .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    setLoadingLeads(true);
+
+    try {
+      // Tags are global — always fetch ALL leads regardless of sector.
+      // Paginated to bypass Supabase's 1000-row default limit.
+      const data = await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
+        organizationId: effectiveOrganizationId,
+        columns: "id, name, phone, tags, created_at",
+        orderBy: { column: "created_at", ascending: false },
+      });
+
       setLeads(data);
       setFilteredLeads(data);
-      
+
       const tags = new Set<string>();
       data.forEach(lead => {
         lead.tags?.forEach(tag => tags.add(tag));
       });
       setAvailableTags(Array.from(tags));
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+    } finally {
+      setLoadingLeads(false);
     }
-    
-    setLoadingLeads(false);
   };
 
   const toggleLeadSelection = (leadId: string) => {
