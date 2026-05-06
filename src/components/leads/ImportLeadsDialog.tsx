@@ -626,10 +626,12 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       setCheckingConflicts(true);
       
       // Check which phones already exist in database using suffix matching
-      const { data: existingLeads } = await supabase
-        .from("leads")
-        .select("id, phone, name, email, document, city, state, tags, custom_fields")
-        .eq("organization_id", organizationId);
+      // Paginated to bypass Supabase's 1000-row default limit.
+      const existingLeads = await fetchAllLeads<ExistingLead>({
+        organizationId,
+        columns: "id, phone, name, email, document, city, state, tags, custom_fields",
+        orderBy: null,
+      });
       
       const existingMap = new Map<string, ExistingLead>();
       (existingLeads || []).forEach(lead => {
