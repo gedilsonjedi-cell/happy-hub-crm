@@ -806,13 +806,8 @@ const Disparos = () => {
         console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
       }
       
-      // Get lead names for the phones using suffix matching for better coverage.
-      // Paginated to bypass Supabase's 1000-row default limit.
-      const allOrgLeads = await fetchAllLeads<{ id: string; phone: string; name: string }>({
-        organizationId: effectiveOrganizationId!,
-        columns: "id, phone, name",
-        orderBy: null,
-      });
+      // Reuse the org leads pre-fetched at the top (no second roundtrip).
+      const allOrgLeads = orgLeadsAll;
 
       // Build a flexible phone lookup map, prioritizing real names over auto-generated ones
       const leadMatches = new Map<string, LeadMatch>();
