@@ -180,12 +180,12 @@ export function useInfiniteMessages(
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!channelId && !!conversationPhone && !!effectiveOrganizationId,
-    // PERFORMANCE: cache messages for 30s and keep them in memory for 5min.
-    // Switching between conversations no longer triggers a full external DB
-    // refetch — Realtime keeps the cache fresh via prependMessage.
-    staleTime: 30_000,
+    // Always refetch latest page when opening a conversation so that messages
+    // sent very recently (campaign templates, follow-ups) appear immediately
+    // even if Realtime missed the upsert event.
+    staleTime: 0,
     gcTime: 5 * 60_000,
-    refetchOnMount: false,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: 2,
