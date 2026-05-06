@@ -349,6 +349,9 @@ const Disparos = () => {
   }, [effectiveOrganizationId]);
 
   useEffect(() => {
+    // Reset campaigns immediately when org changes to avoid showing previous org's data
+    setAllCampaigns([]);
+    setLoading(true);
     if (user && effectiveOrganizationId) {
       fetchData();
     }
@@ -358,20 +361,30 @@ const Disparos = () => {
   useEffect(() => {
     if (!effectiveOrganizationId) return;
 
-    // Subscribe to campaigns changes
+    // Capture org id in closure for tenant isolation in payload handler
+    const currentOrgId = effectiveOrganizationId;
+
+    // Use unique channel name per org to prevent any cross-tenant leakage from stale channels
     const campaignsChannel = supabase
-      .channel('campaigns-realtime')
+      .channel(`campaigns-realtime-${currentOrgId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'campaigns',
-          filter: `organization_id=eq.${effectiveOrganizationId}`,
+          filter: `organization_id=eq.${currentOrgId}`,
         },
         (payload) => {
-          console.log('Campaigns realtime update:', payload);
-          
+          // Defense-in-depth: ignore any payload that doesn't belong to the current org
+          const rowOrgId =
+            (payload.new as { organization_id?: string } | null)?.organization_id ??
+            (payload.old as { organization_id?: string } | null)?.organization_id;
+          if (rowOrgId && rowOrgId !== currentOrgId) {
+            console.warn('[Disparos] Ignoring cross-tenant realtime payload', { rowOrgId, currentOrgId });
+            return;
+          }
+
             if (payload.eventType === 'UPDATE') {
             const newCampaign = payload.new as Campaign;
             setAllCampaigns((prev) =>
@@ -393,7 +406,10 @@ const Disparos = () => {
               })
             );
           } else if (payload.eventType === 'INSERT') {
-            setAllCampaigns((prev) => [payload.new as Campaign, ...prev]);
+            setAllCampaigns((prev) => {
+              if (prev.some((c) => c.id === (payload.new as Campaign).id)) return prev;
+              return [payload.new as Campaign, ...prev];
+            });
           } else if (payload.eventType === 'DELETE') {
             setAllCampaigns((prev) => prev.filter((c) => c.id !== (payload.old as { id: string }).id));
           }
