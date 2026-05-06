@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, startTransition } fr
 import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { useInfiniteMessages, upsertMessageIntoInfiniteCache } from "@/hooks/useInfiniteMessages";
 import { usePrefetchAdjacentConversations } from "@/hooks/usePrefetchAdjacentConversations";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
@@ -1988,16 +1988,14 @@ const AtendimentoV2 = () => {
   const showNotificationRef = useRef(showNotification);
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
-  const prependMessageRef = useRef(infiniteMessages.prependMessage);
   const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
-    prependMessageRef.current = infiniteMessages.prependMessage;
     refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage, infiniteMessages.refetchLatestPage]);
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
