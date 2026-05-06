@@ -852,25 +852,40 @@ const Disparos = () => {
       }
 
       // Insert in batches of 500 to avoid hitting limits
-      // CRITICAL: Wait for each batch and check for errors
+      // Insert in batches of 500, with up to 5 batches in PARALLEL to drastically
+      // reduce wait time for large campaigns (5k recipients: 10 batches → 2 waves).
       const batchSize = 500;
-      let recipientsSaved = 0;
+      const concurrency = 5;
+      const batches: typeof recipientInserts[] = [];
       for (let i = 0; i < recipientInserts.length; i += batchSize) {
-        const batch = recipientInserts.slice(i, i + batchSize);
-        const { error: recipientError } = await supabase.from("campaign_recipients").insert(batch);
-        
-        if (recipientError) {
-          console.error("Error saving campaign recipients batch:", recipientError);
-          toast.error("Erro ao salvar destinatários da campanha");
-          // Update campaign to failed status
-          await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
-          setIsCreating(false);
-          return;
-        }
-        recipientsSaved += batch.length;
+        batches.push(recipientInserts.slice(i, i + batchSize));
       }
-      
-      console.log(`Successfully saved ${recipientsSaved} recipients for campaign ${campaign.id}`);
+
+      let cursor = 0;
+      let failed = false;
+      const workers = Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+        while (cursor < batches.length && !failed) {
+          const idx = cursor++;
+          const { error: recipientError } = await supabase
+            .from("campaign_recipients")
+            .insert(batches[idx]);
+          if (recipientError) {
+            console.error("Error saving campaign recipients batch:", recipientError);
+            failed = true;
+            return;
+          }
+        }
+      });
+      await Promise.all(workers);
+
+      if (failed) {
+        toast.error("Erro ao salvar destinatários da campanha");
+        await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
+        setIsCreating(false);
+        return;
+      }
+
+      console.log(`Successfully saved ${recipientInserts.length} recipients for campaign ${campaign.id}`);
 
       // Close form and reset immediately to prevent double clicks
       setShowCreateForm(false);
