@@ -663,6 +663,59 @@ const AtendimentoV2 = () => {
   );
   const selectedConversationCacheKey = `${selectedConversation?.channelId ?? "no-channel"}:${selectedConversation?.phone ? getCanonicalPhoneThreadKey(selectedConversation.phone) : "no-phone"}`;
 
+  // ─── Auto-retry: if a conversation gets stuck "loading" with no messages,
+  // force-reset the direct-read circuit breaker and refetch automatically so
+  // the user never has to do Ctrl+Shift+R. Triggers after 2s of empty loading
+  // and again at 5s as a hard fallback.
+  const autoRetryRef = useRef<{ key: string; attempts: number }>({ key: "", attempts: 0 });
+  useEffect(() => {
+    if (!selectedConversation?.channelId || !selectedConversation?.phone) return;
+    if (autoRetryRef.current.key !== selectedConversationCacheKey) {
+      autoRetryRef.current = { key: selectedConversationCacheKey, attempts: 0 };
+    }
+
+    const isStuck = () =>
+      infiniteMessages.isLoading && infiniteMessages.messages.length === 0;
+
+    if (!isStuck()) return;
+
+    const t1 = setTimeout(async () => {
+      if (!isStuck() || autoRetryRef.current.attempts >= 1) return;
+      autoRetryRef.current.attempts = 1;
+      const { resetDirectReadCircuit } = await import("@/lib/externalDb");
+      const { clearExternalClient } = await import("@/lib/externalSupabaseClient");
+      resetDirectReadCircuit();
+      clearExternalClient();
+      infiniteMessages.refetchLatestPage();
+    }, 2000);
+
+    const t2 = setTimeout(async () => {
+      if (!isStuck() || autoRetryRef.current.attempts >= 2) return;
+      autoRetryRef.current.attempts = 2;
+      const { resetDirectReadCircuit } = await import("@/lib/externalDb");
+      const { clearExternalClient } = await import("@/lib/externalSupabaseClient");
+      resetDirectReadCircuit();
+      clearExternalClient();
+      infiniteMessages.invalidate();
+      // Trigger a fresh fetch
+      setTimeout(() => infiniteMessages.refetchLatestPage(), 50);
+    }, 5000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [
+    selectedConversationCacheKey,
+    selectedConversation?.channelId,
+    selectedConversation?.phone,
+    infiniteMessages.isLoading,
+    infiniteMessages.messages.length,
+    infiniteMessages.refetchLatestPage,
+    infiniteMessages.invalidate,
+  ]);
+
+
   // Cache cleanup is handled by gcTime (3 min) — no manual invalidation needed.
   // Previous cleanup effect caused a race condition where switching conversations
   // would invalidate the NEW conversation's query instead of the old one.

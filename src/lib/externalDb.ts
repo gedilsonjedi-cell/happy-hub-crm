@@ -37,6 +37,18 @@ function isDirectReadDisabled(): boolean {
   return Date.now() < directReadDisabledUntil;
 }
 
+/**
+ * Force re-enable direct external reads (clears the circuit breaker).
+ * Call this when the user manually retries or when we suspect the breaker
+ * is stale (e.g. RLS was just fixed on the external DB).
+ */
+export function resetDirectReadCircuit(): void {
+  if (directReadDisabledUntil > 0) {
+    console.info("[externalDb] Direct read circuit breaker manually reset.");
+  }
+  directReadDisabledUntil = 0;
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface ExternalMessagePage {
