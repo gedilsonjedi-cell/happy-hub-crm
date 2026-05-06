@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, startTransition } fr
 import { useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { useInfiniteMessages } from "@/hooks/useInfiniteMessages";
+import { useInfiniteMessages, upsertMessageIntoInfiniteCache } from "@/hooks/useInfiniteMessages";
 import { usePrefetchAdjacentConversations } from "@/hooks/usePrefetchAdjacentConversations";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { InfiniteMessageList } from "@/components/whatsapp/InfiniteMessageList";
@@ -1778,6 +1778,13 @@ const AtendimentoV2 = () => {
         const latestMessageTime = new Date(latestExternalMessage.created_at).getTime();
         const conversationKey = getConversationKey(selectedConversation);
         const latestPreview = getMessagePreviewText(latestExternalMessage);
+        const threadKey = getCanonicalPhoneThreadKey(normalizedPhone);
+
+        upsertMessageIntoInfiniteCache(
+          queryClient,
+          ["messages", effectiveOrganizationId, conversationChannelId, threadKey],
+          latestExternalMessage
+        );
 
         setMessageWindowBaseTime(latestExternalMessage.created_at);
 
@@ -1981,23 +1988,23 @@ const AtendimentoV2 = () => {
 
   // Refs for realtime updates
   const selectedConversationRef = useRef<Conversation | null>(null);
+  const effectiveOrganizationIdRef = useRef<string | null>(effectiveOrganizationId ?? null);
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
-  }, [selectedConversation]);
+    effectiveOrganizationIdRef.current = effectiveOrganizationId ?? null;
+  }, [selectedConversation, effectiveOrganizationId]);
 
   const showNotificationRef = useRef(showNotification);
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
-  const prependMessageRef = useRef(infiniteMessages.prependMessage);
   const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
-    prependMessageRef.current = infiniteMessages.prependMessage;
     refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.prependMessage, infiniteMessages.refetchLatestPage]);
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
@@ -2114,16 +2121,21 @@ const AtendimentoV2 = () => {
       });
     }
 
-    // Update messages panel if this is the active conversation
+    // Write directly to this conversation's query cache. This works even if the
+    // query has not mounted yet, so a message received while the panel was not
+    // open is already visible on click without needing F5 or another selection.
+    const threadKey = getCanonicalPhoneThreadKey(normalizedContactPhone);
+    const messageQueryKey = ["messages", effectiveOrganizationIdRef.current, msg.channelId, threadKey];
+    upsertMessageIntoInfiniteCache(queryClient, messageQueryKey, newMsg);
+
+    // Update messages panel side effects if this is the active conversation
     if (isActiveConversation) {
-      // Use the ref to always call the latest prependMessage (avoids stale closure)
+
       // For outbound messages we already have an optimistic green bubble in the
-      // cache; prependMessage will dedupe/merge against it. We deliberately skip
+      // cache; cache upsert will dedupe/merge against it. We deliberately skip
       // the auto-refetch here to avoid the "gray bubble first, then green" flicker
       // and the duplicated bubble the user reported. Inbound still refetches to
       // pull the full message body from the external DB.
-      prependMessageRef.current(newMsg);
-
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
         if (currentSelectedConv) {

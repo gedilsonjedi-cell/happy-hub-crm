@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import {
   fetchConversationStatsMessages,
@@ -20,6 +20,85 @@ export interface MessagePage {
 }
 
 export type MessageRow = ExternalMessageRow;
+
+type InfiniteMessagesCache = { pages: MessagePage[]; pageParams: unknown[] };
+
+export function upsertMessageIntoInfiniteCache(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  msg: MessageRow
+) {
+  queryClient.setQueryData(
+    queryKey,
+    (old: InfiniteMessagesCache | undefined): InfiniteMessagesCache => {
+      const firstPage = old?.pages?.[0] ?? { messages: [], nextCursor: null, hasMore: false };
+      if (firstPage.messages.some((m) => m.id === msg.id)) {
+        return old ?? { pages: [firstPage], pageParams: [null] };
+      }
+
+      const msgTime = new Date(msg.created_at).getTime();
+      const normalize = (s?: string | null) => (s ?? "").trim();
+      const incomingContent = normalize(msg.content);
+      const isIncomingSynthetic = msg.id.startsWith("rt_") || msg.id.startsWith("stats_");
+
+      const twinIndex = firstPage.messages.findIndex((m) => {
+        if (m.id === msg.id) return true;
+        if (msg.message_id && m.message_id === msg.message_id) return true;
+        if (m.direction !== msg.direction) return false;
+
+        const diff = Math.abs(new Date(m.created_at).getTime() - msgTime);
+        const isExistingSynthetic = m.id.startsWith("rt_") || m.id.startsWith("stats_");
+        if ((isExistingSynthetic || isIncomingSynthetic) && diff < 2_000) return true;
+
+        return normalize(m.content) === incomingContent && diff < 60_000;
+      });
+
+      if (twinIndex >= 0) {
+        const existing = firstPage.messages[twinIndex];
+        const isExistingTemp = existing.id.startsWith("temp_");
+        const isExistingSynthetic = existing.id.startsWith("rt_") || existing.id.startsWith("stats_");
+
+        if (!isExistingTemp && !isExistingSynthetic && isIncomingSynthetic) {
+          return old ?? { pages: [firstPage], pageParams: [null] };
+        }
+
+        const merged: MessageRow = isIncomingSynthetic
+          ? { ...existing, status: existing.status || msg.status }
+          : {
+              ...existing,
+              ...msg,
+              id: msg.id,
+              message_id: msg.message_id,
+              message_type: msg.message_type || existing.message_type,
+              media_url: msg.media_url ?? existing.media_url,
+              content:
+                msg.content && msg.content !== `[${existing.message_type}]`
+                  ? msg.content
+                  : existing.content,
+              status: msg.status || existing.status,
+              created_at: existing.created_at,
+            };
+
+        const newMessages = [...firstPage.messages];
+        newMessages[twinIndex] = merged;
+        return {
+          ...(old ?? { pages: [], pageParams: [null] }),
+          pages: [{ ...firstPage, messages: newMessages }, ...(old?.pages?.slice(1) ?? [])],
+          pageParams: old?.pageParams?.length ? old.pageParams : [null],
+        };
+      }
+
+      return {
+        ...(old ?? { pages: [], pageParams: [null] }),
+        pages: [
+          { ...firstPage, messages: [msg, ...firstPage.messages] },
+          ...(old?.pages?.slice(1) ?? []),
+        ],
+        pageParams: old?.pageParams?.length ? old.pageParams : [null],
+      };
+    }
+  );
+}
 
 async function fetchMessagePage(
   channelId: string,
@@ -140,99 +219,7 @@ export function useInfiniteMessages(
    */
   const prependMessage = useCallback(
     (msg: MessageRow) => {
-      queryClient.setQueryData(
-        queryKey,
-        (old: { pages: MessagePage[]; pageParams: unknown[] } | undefined) => {
-          if (!old) return old;
-          const firstPage = old.pages[0];
-          // Avoid exact duplicate by id
-          if (firstPage?.messages.some((m) => m.id === msg.id)) return old;
-
-          const msgTime = new Date(msg.created_at).getTime();
-          const normalize = (s?: string | null) => (s ?? "").trim();
-          const incomingContent = normalize(msg.content);
-
-          // Detect optimistic twin: same direction + same content within 60s.
-          // This covers BOTH temp_* optimistic bubbles AND realtime sync messages
-          // (rt_*) that may arrive when an outbound message is echoed back from
-          // conversation_stats. Without this we end up showing the same message
-          // twice (once as the optimistic green bubble, once as the realtime echo).
-          const TWIN_WINDOW_MS = 60_000;
-          const findTwinIndex = (messages: MessageRow[]) =>
-            messages.findIndex((m) => {
-              if (m.id === msg.id) return true;
-              if (msg.message_id && m.message_id === msg.message_id) return true;
-              if (m.direction !== msg.direction) return false;
-              const sameContent = normalize(m.content) === incomingContent;
-              if (!sameContent) return false;
-              const diff = Math.abs(new Date(m.created_at).getTime() - msgTime);
-              return diff < TWIN_WINDOW_MS;
-            });
-
-          const twinIndex = findTwinIndex(firstPage?.messages ?? []);
-          if (twinIndex >= 0) {
-            // Replace the optimistic / synthetic twin with the authoritative copy,
-            // preferring real ids and keeping the latest status.
-            const existing = firstPage.messages[twinIndex];
-            const isExistingTemp = existing.id.startsWith("temp_");
-            const isExistingSynthetic = existing.id.startsWith("rt_") || existing.id.startsWith("stats_");
-            const isIncomingSynthetic = msg.id.startsWith("rt_") || msg.id.startsWith("stats_");
-
-            // If the existing one is a real persisted message and the incoming is
-            // synthetic/realtime, keep the existing — just refresh status if better.
-            if (!isExistingTemp && !isExistingSynthetic && isIncomingSynthetic) {
-              return old;
-            }
-
-            // When incoming is a synthetic realtime echo (rt_*/stats_*), it carries
-            // a degraded payload (message_type='text', media_url=null, content='[audio]'),
-            // so we MUST preserve the rich fields from the existing optimistic/persisted
-            // message — otherwise audio/image/video bubbles collapse into the placeholder
-            // text "[audio]" / "[image]" without media. Only refresh status here.
-            const merged: MessageRow = isIncomingSynthetic
-              ? {
-                  ...existing,
-                  status: existing.status || msg.status,
-                }
-              : {
-                  ...existing,
-                  ...msg,
-                  id: msg.id,
-                  message_id: msg.message_id,
-                  // Keep media/type/content from existing if incoming dropped them
-                  message_type: msg.message_type || existing.message_type,
-                  media_url: msg.media_url ?? existing.media_url,
-                  content:
-                    msg.content && msg.content !== `[${existing.message_type}]`
-                      ? msg.content
-                      : existing.content,
-                  status: msg.status || existing.status,
-                  created_at: existing.created_at,
-                };
-
-            const newMessages = [...firstPage.messages];
-            newMessages[twinIndex] = merged;
-            return {
-              ...old,
-              pages: [
-                { ...firstPage, messages: newMessages },
-                ...old.pages.slice(1),
-              ],
-            };
-          }
-
-          return {
-            ...old,
-            pages: [
-              {
-                ...firstPage,
-                messages: [msg, ...(firstPage?.messages ?? [])],
-              },
-              ...old.pages.slice(1),
-            ],
-          };
-        }
-      );
+      upsertMessageIntoInfiniteCache(queryClient, queryKey, msg);
     },
     [queryClient, queryKey.join("|")]
   );
