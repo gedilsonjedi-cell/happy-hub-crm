@@ -67,22 +67,32 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
 
   useEffect(() => {
     if (!effectiveOrganizationId) return;
-    
+
+    // Reset state when org changes to avoid showing previous tenant's campaigns
+    setRunningCampaigns([]);
+    previousDataRef.current = "";
+
+    const currentOrgId = effectiveOrganizationId;
+
     // Initial fetch
     fetchRunningCampaigns();
 
-    // Set up realtime subscription with debounced updates
+    // Set up realtime subscription scoped to current organization to prevent cross-tenant leaks
     const channel = supabase
-      .channel("running-campaigns")
+      .channel(`running-campaigns-${currentOrgId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "campaigns",
-          filter: "status=eq.running",
+          filter: `organization_id=eq.${currentOrgId}`,
         },
-        () => {
+        (payload) => {
+          const rowOrgId =
+            (payload.new as { organization_id?: string } | null)?.organization_id ??
+            (payload.old as { organization_id?: string } | null)?.organization_id;
+          if (rowOrgId && rowOrgId !== currentOrgId) return;
           // Use debounced fetch to prevent flickering from rapid updates
           debouncedFetch();
         }
