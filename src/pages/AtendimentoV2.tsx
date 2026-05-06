@@ -2114,14 +2114,18 @@ const AtendimentoV2 = () => {
 
     // Update messages panel if this is the active conversation
     if (isActiveConversation) {
-      // Use the ref to always call the latest prependMessage (avoids stale closure)
+      // Write directly to this conversation's query cache. This works even if the
+      // query has not mounted yet, so a message received while the panel was not
+      // open is already visible on click without needing F5 or another selection.
+      const threadKey = getCanonicalPhoneThreadKey(normalizedContactPhone);
+      const messageQueryKey = ["messages", effectiveOrganizationId, msg.channelId, threadKey];
+      upsertMessageIntoInfiniteCache(queryClient, messageQueryKey, newMsg);
+
       // For outbound messages we already have an optimistic green bubble in the
-      // cache; prependMessage will dedupe/merge against it. We deliberately skip
+      // cache; cache upsert will dedupe/merge against it. We deliberately skip
       // the auto-refetch here to avoid the "gray bubble first, then green" flicker
       // and the duplicated bubble the user reported. Inbound still refetches to
       // pull the full message body from the external DB.
-      prependMessageRef.current(newMsg);
-
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
         if (currentSelectedConv) {
