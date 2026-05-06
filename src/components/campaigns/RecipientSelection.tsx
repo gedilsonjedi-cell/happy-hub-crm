@@ -185,11 +185,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     try {
       // Tags are global — always fetch ALL leads regardless of sector.
       // Paginated to bypass Supabase's 1000-row default limit.
-      const data = await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
+      const raw = await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
         organizationId: effectiveOrganizationId,
         columns: "id, name, phone, tags, created_at",
-        orderBy: { column: "created_at", ascending: false },
+        orderBy: null, // ordena no cliente — mais rápido que pedir ORDER BY no Postgres
       });
+      const data = raw.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
       setLeads(data);
       setFilteredLeads(data);
