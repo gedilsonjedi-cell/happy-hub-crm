@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
