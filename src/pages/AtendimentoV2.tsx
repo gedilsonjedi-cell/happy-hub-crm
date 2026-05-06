@@ -1778,6 +1778,13 @@ const AtendimentoV2 = () => {
         const latestMessageTime = new Date(latestExternalMessage.created_at).getTime();
         const conversationKey = getConversationKey(selectedConversation);
         const latestPreview = getMessagePreviewText(latestExternalMessage);
+        const threadKey = getCanonicalPhoneThreadKey(normalizedPhone);
+
+        upsertMessageIntoInfiniteCache(
+          queryClient,
+          ["messages", effectiveOrganizationId, conversationChannelId, threadKey],
+          latestExternalMessage
+        );
 
         setMessageWindowBaseTime(latestExternalMessage.created_at);
 
