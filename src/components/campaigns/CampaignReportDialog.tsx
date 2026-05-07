@@ -1377,10 +1377,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 <div
                                   key={s.id}
                                   className="flex items-center justify-between text-[11px] bg-muted/30 rounded px-2 py-1 cursor-pointer hover:bg-muted/60"
-                                  onClick={() => {
-                                    setPreviewPhone(s.phone);
-                                    setPreviewName(s.name);
-                                  }}
+                                  onClick={() => openPreview(s)}
                                 >
                                   <span className="font-mono">{formatPhone(s.phone)}</span>
                                   <span className="text-muted-foreground truncate max-w-[60%]">{s.name || "—"}</span>
@@ -1419,10 +1416,14 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
             if (!open) {
               setPreviewPhone(null);
               setPreviewName(null);
+              setPreviewChannelId(null);
+              setPreviewSentAt(null);
             }
           }}
           phone={previewPhone || ""}
           name={previewName}
+          channelId={previewChannelId}
+          sentAt={previewSentAt}
           organizationId={campaign?.organization_id}
         />
 
