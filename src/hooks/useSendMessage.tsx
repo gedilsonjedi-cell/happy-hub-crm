@@ -189,7 +189,8 @@ export function useSendMessage(
       );
 
       toast.error("Falha ao enviar mensagem", {
-        description: "Erro de conexão. A mensagem não foi registrada — tente novamente.",
+        description: error.message || "Não foi possível enviar a mensagem. Tente novamente.",
+        duration: 7000,
       });
 
       // Restore text input for text messages so agent can retry
