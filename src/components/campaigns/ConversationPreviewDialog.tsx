@@ -94,34 +94,65 @@ export function ConversationPreviewDialog({
 
       if (!orgId) return;
 
-      // CIRURGIA: se já sabemos o channel_id (vindo de campaign_recipients),
+      // CIRURGIA 1: se já sabemos o channel_id (vindo de campaign_recipients),
       // não vasculhar todos os canais da org. Vai direto ao ponto.
-      let channelIds: string[];
+      let channelIds: string[] = [];
+      let resolvedSentAt: string | null = sentAt ?? null;
+
       if (channelId) {
         channelIds = [channelId];
       } else {
-        const { data: channels } = await (supabase as any)
-          .from("channels_public")
-          .select("id")
-          .eq("organization_id", orgId);
+        // CIRURGIA 2: descobrir o(s) canal(is) reais via conversation_stats
+        // (índice por sufixo de telefone). Isso evita varrer TODOS os canais
+        // da organização. Em segundos vira em milissegundos.
+        const phoneNormalized = normalizedPhone;
+        const phoneVariantsSearch = Array.from(
+          new Set([phoneNormalized, phoneNormalized.slice(-9), phoneNormalized.slice(-8)].filter(Boolean))
+        );
+        const orFilter = phoneVariantsSearch.map((p) => `conversation_phone.eq.${p}`).join(",");
+        const { data: statsRows } = await supabase
+          .from("conversation_stats")
+          .select("channel_id, last_message_at")
+          .eq("organization_id", orgId)
+          .or(orFilter)
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+          .limit(5);
 
-        if (!channels || channels.length === 0) return;
-        channelIds = channels.map((c: { id: string }) => c.id);
+        if (statsRows && statsRows.length > 0) {
+          channelIds = Array.from(
+            new Set(statsRows.map((r) => r.channel_id).filter((c): c is string => !!c))
+          );
+          // Usa o último contato como referência temporal pra fechar a janela.
+          if (!resolvedSentAt && statsRows[0].last_message_at) {
+            resolvedSentAt = statsRows[0].last_message_at;
+          }
+        }
+
+        // Fallback final (caso não haja stats): só então varre canais da org.
+        if (channelIds.length === 0) {
+          const { data: channels } = await (supabase as any)
+            .from("channels_public")
+            .select("id")
+            .eq("organization_id", orgId);
+
+          if (!channels || channels.length === 0) return;
+          channelIds = channels.map((c: { id: string }) => c.id);
+        }
       }
 
       const phoneVariants = getPhoneLookupVariants(normalizedPhone);
 
-      // Janela cirúrgica em torno do envio: parte de sent_at + 7d como
-      // cursor (lt) e usa sent_at - 1d como limite inferior (gte). Isso
-      // força o índice (channel_id, created_at) a um range scan apertado.
-      const cursor = sentAt
-        ? new Date(new Date(sentAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      // Janela cirúrgica em torno do envio (ou último contato): parte de
+      // ref+7d como cursor (lt) e usa ref-1d como limite inferior (gte).
+      // Isso força o índice (channel_id, created_at) a um range scan apertado.
+      const cursor = resolvedSentAt
+        ? new Date(new Date(resolvedSentAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
         : null;
-      const lowerBound = sentAt
-        ? new Date(new Date(sentAt).getTime() - 24 * 60 * 60 * 1000).toISOString()
+      const lowerBound = resolvedSentAt
+        ? new Date(new Date(resolvedSentAt).getTime() - 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      // Try external DB first for each channel
+      // Try external DB first for each (resolved) channel
       const allExternalMessages: ExternalMessageRow[] = [];
       for (const chId of channelIds) {
         try {
@@ -135,8 +166,8 @@ export function ConversationPreviewDialog({
           });
           if (result.messages.length > 0) {
             allExternalMessages.push(...result.messages);
-            // Se já achamos mensagens com canal conhecido, não precisa varrer mais
-            if (channelId) break;
+            // Achou no canal já resolvido — para de procurar.
+            break;
           }
         } catch (e) {
           console.warn("[ConversationPreview] External fetch failed for channel", chId, e);
