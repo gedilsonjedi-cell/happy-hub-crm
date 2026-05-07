@@ -1025,7 +1025,7 @@ Deno.serve(async (req) => {
         131049: '(#131049) Limite de MARKETING atingido para este contato. A Meta limita mensagens de marketing POR USUÁRIO. Use templates UTILITY ou aguarde o contato responder.',
         131026: '(#131026) Número sem WhatsApp ou bloqueado. Verifique se o número está correto e tem WhatsApp ativo.',
         131031: '(#131031) Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.',
-        131047: '(#131047) Limite de mensagens atingido. Aguarde antes de enviar mais mensagens.',
+        131047: '(#131047) Janela de 24h expirada. O contato não responde há mais de 24h — envie um TEMPLATE aprovado (HSM) para reabrir a conversa.',
         131053: '(#131053) Mídia inválida ou não suportada pelo WhatsApp.',
         131051: '(#131051) Formato de template incorreto ou parâmetros inválidos.',
         131000: '(#131000) Erro interno do servidor Meta. Tente novamente.',
