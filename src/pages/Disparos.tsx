@@ -65,6 +65,7 @@ import { CampaignReportDialog } from "@/components/campaigns/CampaignReportDialo
 import { CampaignProgressBar } from "@/components/campaigns/CampaignProgressBar";
 import { RecipientSelection } from "@/components/campaigns/RecipientSelection";
 import { RecycleFailuresDialog } from "@/components/campaigns/RecycleFailuresDialog";
+import { ChannelSelectionByAccount } from "@/components/campaigns/ChannelSelectionByAccount";
 import { useCampaignProcessor } from "@/hooks/useCampaignProcessor";
 import {
   AlertDialog,
