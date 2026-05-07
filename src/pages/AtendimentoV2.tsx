@@ -1807,7 +1807,8 @@ const AtendimentoV2 = () => {
     // Query external history directly for the latest real message and use it as
     // the source of truth for the 24h window + sidebar/chat freshness.
     const phoneVariants = buildMessageLookupVariants(normalizedPhone);
-    const fallbackWindowBase = selectedConversation.lastMessageTime || selectedConversation.lastInboundTime || null;
+    // Janela de 24h: SÓ reabre com mensagem INBOUND. Nunca usar lastMessageTime (saída nossa).
+    const fallbackWindowBase = selectedConversation.lastInboundTime || null;
 
     try {
       const latestExternalPage = await fetchExternalMessages({
@@ -1839,7 +1840,12 @@ const AtendimentoV2 = () => {
           latestExternalMessage
         );
 
-        setMessageWindowBaseTime(latestExternalMessage.created_at);
+        // Só atualiza a base da janela se for INBOUND — outbound não reabre janela na Meta.
+        if (latestExternalMessage.direction === "inbound") {
+          setMessageWindowBaseTime(latestExternalMessage.created_at);
+        } else {
+          setMessageWindowBaseTime(fallbackWindowBase);
+        }
 
         setSelectedConversation((prev) =>
           prev
@@ -4108,7 +4114,10 @@ const AtendimentoV2 = () => {
     return `${hours}h ${minutes}min`;
   };
 
-  const windowBaseTime = messageWindowBaseTime || selectedConversation?.lastMessageTime || selectedConversation?.lastInboundTime || null;
+  // IMPORTANT: A janela de 24h da Meta SÓ reabre com mensagem INBOUND do cliente.
+  // Nunca usar lastMessageTime (pode ser saída nossa) como base — isso mantinha a janela
+  // falsamente aberta e o atendente mandava texto livre que a Meta bloqueava (#131047).
+  const windowBaseTime = messageWindowBaseTime || selectedConversation?.lastInboundTime || null;
   const isWindowExpired = selectedConversation ? is24HourWindowExpired(windowBaseTime) : false;
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(windowBaseTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
