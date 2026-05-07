@@ -1176,48 +1176,15 @@ const Disparos = () => {
               </div>
 
               {/* Channel Selection */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-foreground">
-                    Canais de disparo <span className="text-destructive">*</span>
-                  </Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-primary hover:text-primary/80"
-                    onClick={selectAllChannels}
-                  >
-                    {selectedChannels.length === channels.length ? "Desmarcar todos" : "Selecionar todos"}
-                  </Button>
-                </div>
-                
-                <div className="bg-muted/30 rounded-lg border border-border p-3 space-y-2 max-h-48 overflow-y-auto">
-                  {channels.map((channel) => (
-                    <div 
-                      key={channel.id}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                        selectedChannels.includes(channel.id) 
-                          ? "bg-primary/10 border-primary/50" 
-                          : "bg-card border-border hover:border-primary/30"
-                      )}
-                      onClick={() => toggleChannel(channel.id)}
-                    >
-                      <Checkbox 
-                        checked={selectedChannels.includes(channel.id)}
-                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                      />
-                      <Smartphone className="w-4 h-4 text-primary" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">{channel.name}</p>
-                        <p className="text-xs text-muted-foreground">{channel.phone}</p>
-                      </div>
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    </div>
-                  ))}
-                </div>
-                
-                {selectedChannels.length > 0 && (
+              <ChannelSelectionByAccount
+                channels={channels}
+                selectedChannels={selectedChannels}
+                toggleChannel={toggleChannel}
+                setSelectedChannels={setSelectedChannels}
+                setChannelTemplates={setChannelTemplates}
+                setFormData={setFormData}
+              />
+              {selectedChannels.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-primary">
                     <Check className="w-4 h-4" />
                     <span>{selectedChannels.length} canal(is) selecionado(s)</span>
