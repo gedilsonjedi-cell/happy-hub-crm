@@ -185,7 +185,8 @@ async function fetchDirectionMessages(
   pageSize: number,
   lookup: PhoneLookup,
   impersonatedOrgId?: string | null,
-  channelPhoneLookup?: PhoneLookup | null
+  channelPhoneLookup?: PhoneLookup | null,
+  lowerBoundCreatedAt?: string | null
 ): Promise<ExternalMessageRow[]> {
   const ext = await getExternalClient(impersonatedOrgId);
 
@@ -199,12 +200,21 @@ async function fetchDirectionMessages(
   const seen = new Set<string>();
 
   for (let batch = 0; batch < HISTORY_SCAN_MAX_BATCHES; batch++) {
-    const { data, error } = await ext
+    let query = ext
       .from("whatsapp_messages")
       .select(SELECT_FIELDS)
       .or(channelIdFilter)
       .eq("direction", direction)
-      .lt("created_at", scanCursor)
+      .lt("created_at", scanCursor);
+
+    // CIRURGIA: limite inferior fecha a janela e força o índice
+    // (channel_id, created_at) a fazer um range scan apertado em vez
+    // de varrer milhares de linhas pra trás.
+    if (lowerBoundCreatedAt) {
+      query = query.gte("created_at", lowerBoundCreatedAt);
+    }
+
+    const { data, error } = await query
       .order("created_at", { ascending: false })
       .limit(HISTORY_SCAN_BATCH_SIZE);
 
