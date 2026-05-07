@@ -111,10 +111,14 @@ export function ConversationPreviewDialog({
 
       const phoneVariants = getPhoneLookupVariants(normalizedPhone);
 
-      // Se temos sent_at, usar como cursor para ir direto ao período do envio
-      // (ler 200 mensagens DEPOIS do sent_at — uma janela apertada).
+      // Janela cirúrgica em torno do envio: parte de sent_at + 7d como
+      // cursor (lt) e usa sent_at - 1d como limite inferior (gte). Isso
+      // força o índice (channel_id, created_at) a um range scan apertado.
       const cursor = sentAt
         ? new Date(new Date(sentAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+      const lowerBound = sentAt
+        ? new Date(new Date(sentAt).getTime() - 24 * 60 * 60 * 1000).toISOString()
         : null;
 
       // Try external DB first for each channel
@@ -127,6 +131,7 @@ export function ConversationPreviewDialog({
             cursor,
             pageSize: 200,
             impersonatedOrgId: orgId,
+            lowerBoundCreatedAt: lowerBound,
           });
           if (result.messages.length > 0) {
             allExternalMessages.push(...result.messages);
