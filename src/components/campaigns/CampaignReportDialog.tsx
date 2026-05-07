@@ -1033,10 +1033,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                             <TableRow 
                               key={recipient.id} 
                               className="cursor-pointer hover:bg-muted/50"
-                              onClick={() => {
-                                setPreviewPhone(recipient.phone);
-                                setPreviewName(recipient.name);
-                              }}
+                              onClick={() => openPreview(recipient)}
                             >
                               <TableCell>
                                 <div>
@@ -1067,8 +1064,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                     className="h-8 w-8"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setPreviewPhone(recipient.phone);
-                                      setPreviewName(recipient.name);
+                                      openPreview(recipient);
                                     }}
                                   >
                                     <ExternalLink className="w-4 h-4" />
@@ -1203,7 +1199,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                         <div
                                           key={r.id}
                                           className="flex items-start justify-between gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer"
-                                          onClick={() => { setPreviewPhone(r.phone); setPreviewName(r.name); }}
+                                          onClick={() => openPreview(r)}
                                         >
                                           <div className="min-w-0 flex-1">
                                             <p className="font-mono">{formatPhone(r.phone)}</p>
