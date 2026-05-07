@@ -159,97 +159,95 @@ Deno.serve(async (req) => {
     const template = uraConfig.template;
     const organizationId = channel.organization_id;
 
-    console.log(`[URA Webhook] Sending template "${template.name}" to ${formattedPhone}`);
+    console.log(`[URA Webhook] Queueing template "${template.name}" to ${formattedPhone}`);
 
-    // Check if lead exists, create if configured to do so
-    let leadCreated = false;
-    if (uraConfig.create_lead_if_not_exists) {
-      const { data: existingLead } = await supabase
-        .from("leads")
-        .select("id")
-        .eq("organization_id", organizationId)
-        .or(`phone.eq.${formattedPhone},phone.ilike.%${formattedPhone.slice(-8)}%`)
-        .limit(1)
-        .single();
+    // Process lead creation + send in background — respond immediately
+    const processInBackground = async () => {
+      let leadCreated = false;
+      try {
+        if (uraConfig.create_lead_if_not_exists) {
+          // Fast lookup: exact match on normalized phone only (indexed)
+          const { data: existingLead } = await supabase
+            .from("leads")
+            .select("id")
+            .eq("organization_id", organizationId)
+            .eq("phone", formattedPhone)
+            .limit(1)
+            .maybeSingle();
 
-      if (!existingLead) {
-        // Create new lead
-        const { error: leadError } = await supabase
-          .from("leads")
-          .insert({
-            organization_id: organizationId,
-            user_id: channel.user_id || (await getFirstAdminUserId(supabase, organizationId)),
-            phone: formattedPhone,
-            name: `URA - ${formattedPhone}`,
-            status: "new",
-            notes: `Lead criado via URA em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`
-          });
-
-        if (leadError) {
-          console.error(`[URA Webhook] Error creating lead:`, leadError);
-        } else {
-          leadCreated = true;
-          console.log(`[URA Webhook] Lead created for ${formattedPhone}`);
+          if (!existingLead) {
+            const { error: leadError } = await supabase
+              .from("leads")
+              .insert({
+                organization_id: organizationId,
+                user_id: channel.user_id || (await getFirstAdminUserId(supabase, organizationId)),
+                phone: formattedPhone,
+                name: `URA - ${formattedPhone}`,
+                status: "new",
+                notes: `Lead criado via URA em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`
+              });
+            if (leadError) {
+              console.error(`[URA Webhook] Error creating lead:`, leadError);
+            } else {
+              leadCreated = true;
+            }
+          }
         }
+
+        const templateParams: string[] = [];
+        if (template.variables && template.variables.length > 0) {
+          for (const varName of template.variables) {
+            templateParams.push(varName);
+          }
+        }
+
+        const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            channelId: channel.id,
+            destination: formattedPhone,
+            templateName: template.name,
+            templateParams: templateParams.length > 0 ? templateParams : undefined,
+            templateLanguage: "pt_BR",
+            source: "ura"
+          }),
+        });
+
+        const metaResult = await metaSendResponse.json();
+        if (metaResult.success) {
+          console.log(`[URA Webhook] ✓ Sent to ${formattedPhone}`);
+          await logWebhook(supabase, channelId, formattedPhone, true, leadCreated, null, payload);
+        } else {
+          console.error(`[URA Webhook] ✗ Failed:`, metaResult.error);
+          await logWebhook(supabase, channelId, formattedPhone, false, leadCreated, metaResult.error || metaResult.message, payload);
+        }
+      } catch (e) {
+        console.error("[URA Webhook] Background error:", e);
+        await logWebhook(supabase, channelId, formattedPhone, false, leadCreated, e instanceof Error ? e.message : String(e), payload);
       }
-    }
+    };
 
-    // Build template params
-    const templateParams: string[] = [];
-    if (template.variables && template.variables.length > 0) {
-      for (const varName of template.variables) {
-        // For URA, we just use the variable name as placeholder
-        // In the future, could map from payload
-        templateParams.push(varName);
-      }
-    }
-
-    // Send template via meta-send
-    const metaSendResponse = await fetch(`${supabaseUrl}/functions/v1/meta-send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        channelId: channel.id,
-        destination: formattedPhone,
-        templateName: template.name,
-        templateParams: templateParams.length > 0 ? templateParams : undefined,
-        templateLanguage: "pt_BR",
-        source: "ura"
-      }),
-    });
-
-    const metaResult = await metaSendResponse.json();
-
-    if (metaResult.success) {
-      console.log(`[URA Webhook] ✓ Template sent successfully to ${formattedPhone}`);
-      await logWebhook(supabase, channelId, formattedPhone, true, leadCreated, null, payload);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Template sent successfully",
-          phone: formattedPhone,
-          template: template.name,
-          lead_created: leadCreated
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // @ts-ignore EdgeRuntime is provided by Supabase
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(processInBackground());
     } else {
-      console.error(`[URA Webhook] ✗ Failed to send template:`, metaResult.error);
-      await logWebhook(supabase, channelId, formattedPhone, false, leadCreated, metaResult.error || metaResult.message, payload);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: metaResult.error || metaResult.message || "Failed to send template",
-          lead_created: leadCreated
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      processInBackground();
     }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "Template dispatch queued",
+        phone: formattedPhone,
+        template: template.name
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
