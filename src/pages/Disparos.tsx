@@ -83,6 +83,7 @@ interface Channel {
   provider: string;
   connected: boolean;
   waba_id?: string | null;
+  app_name?: string | null;
 }
 
 interface MessageTemplate {
