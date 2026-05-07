@@ -252,6 +252,10 @@ export async function fetchExternalMessages(params: {
   pageSize?: number;
   impersonatedOrgId?: string | null;
   channelPhone?: string | null;
+  /** Optional lower-bound timestamp (ISO). When provided, the scan is
+   *  limited to created_at >= lowerBoundCreatedAt. Used by the campaign
+   *  report preview to make the lookup surgical (typically sent_at - 1 day). */
+  lowerBoundCreatedAt?: string | null;
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
 
@@ -277,7 +281,8 @@ export async function fetchExternalMessages(params: {
           pageSize,
           lookup,
           params.impersonatedOrgId,
-          channelPhoneLookup
+          channelPhoneLookup,
+          params.lowerBoundCreatedAt
         ),
         fetchDirectionMessages(
           params.channelId,
@@ -286,7 +291,8 @@ export async function fetchExternalMessages(params: {
           pageSize,
           lookup,
           params.impersonatedOrgId,
-          channelPhoneLookup
+          channelPhoneLookup,
+          params.lowerBoundCreatedAt
         ),
       ]);
 
