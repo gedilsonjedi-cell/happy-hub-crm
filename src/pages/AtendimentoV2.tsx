@@ -1807,7 +1807,8 @@ const AtendimentoV2 = () => {
     // Query external history directly for the latest real message and use it as
     // the source of truth for the 24h window + sidebar/chat freshness.
     const phoneVariants = buildMessageLookupVariants(normalizedPhone);
-    const fallbackWindowBase = selectedConversation.lastMessageTime || selectedConversation.lastInboundTime || null;
+    // Janela de 24h: SÓ reabre com mensagem INBOUND. Nunca usar lastMessageTime (saída nossa).
+    const fallbackWindowBase = selectedConversation.lastInboundTime || null;
 
     try {
       const latestExternalPage = await fetchExternalMessages({
