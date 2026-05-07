@@ -183,14 +183,15 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     setLoadingLeads(true);
 
     try {
-      // Tags are global — always fetch ALL leads regardless of sector.
-      // Paginated to bypass Supabase's 1000-row default limit.
+      // Tags são globais — busca leads com cap de 10k para manter a UI responsiva.
+      // Clientes raramente disparam para mais de 5-10k de uma vez.
       const raw = await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
         organizationId: effectiveOrganizationId,
         columns: "id, name, phone, tags, created_at",
-        orderBy: null, // ordena no cliente — mais rápido que pedir ORDER BY no Postgres
+        orderBy: { column: "created_at", ascending: false }, // mais recentes primeiro
+        maxRows: 10_000,
       });
-      const data = raw.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      const data = raw;
 
       setLeads(data);
       setFilteredLeads(data);
