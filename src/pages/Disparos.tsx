@@ -82,6 +82,7 @@ interface Channel {
   phone: string;
   provider: string;
   connected: boolean;
+  waba_id?: string | null;
 }
 
 interface MessageTemplate {
