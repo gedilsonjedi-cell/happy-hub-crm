@@ -227,7 +227,7 @@ const Disparos = () => {
     // Fetch channels - exclude Z-API channels (they can't be used for mass dispatches)
     const { data: channelsData } = await supabase
       .from("channels")
-      .select("id, name, phone, provider, connected")
+      .select("id, name, phone, provider, connected, waba_id")
       .eq("organization_id", effectiveOrganizationId)
       .eq("connected", true)
       .neq("provider", "zapi");
