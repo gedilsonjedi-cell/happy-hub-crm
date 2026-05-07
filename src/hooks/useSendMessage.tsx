@@ -71,7 +71,34 @@ export function useSendMessage(
       }
 
       const { data, error } = await supabase.functions.invoke(sendFunction, { body });
-      if (error) throw new Error("Erro de conexão ao enviar mensagem");
+      if (error) {
+        // FunctionsHttpError: o servidor respondeu com status != 2xx mas
+        // ainda assim mandou um JSON descritivo. Extrair o motivo real
+        // (ex: "(#131047) Janela de 24h expirada...") em vez de mostrar
+        // a string genérica "Erro de conexão" que confunde o atendente.
+        let serverMessage: string | null = null;
+        try {
+          const ctx = (error as { context?: { response?: Response } }).context;
+          const resp = ctx?.response;
+          if (resp) {
+            const cloned = resp.clone();
+            const parsed = await cloned.json().catch(() => null) as { error?: string } | null;
+            if (parsed?.error && typeof parsed.error === "string") {
+              serverMessage = parsed.error;
+            } else {
+              const text = await resp.clone().text().catch(() => "");
+              if (text) serverMessage = text.slice(0, 300);
+            }
+          }
+        } catch {
+          // ignore — fall back to generic message below
+        }
+        throw new Error(
+          serverMessage
+            || (error as Error).message
+            || "Não foi possível enviar a mensagem. Verifique sua conexão e tente novamente."
+        );
+      }
       return data as SendMessageResult;
     },
 
@@ -162,7 +189,8 @@ export function useSendMessage(
       );
 
       toast.error("Falha ao enviar mensagem", {
-        description: "Erro de conexão. A mensagem não foi registrada — tente novamente.",
+        description: error.message || "Não foi possível enviar a mensagem. Tente novamente.",
+        duration: 7000,
       });
 
       // Restore text input for text messages so agent can retry
