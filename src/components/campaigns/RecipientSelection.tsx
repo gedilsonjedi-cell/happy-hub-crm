@@ -81,7 +81,20 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     let filtered = [...leads];
     
     if (filterType === "tag" && selectedTag) {
-      filtered = leads.filter(lead => lead.tags?.includes(selectedTag));
+      filtered = leads.filter(lead => {
+        const tags = lead.tags || [];
+        if (!tags.includes(selectedTag)) return false;
+        if (tagMatchMode === "exclusive") {
+          // Apenas com essa tag (e nenhuma outra)
+          return tags.length === 1;
+        }
+        if (tagMatchMode === "both") {
+          // Precisa ter selectedTag E secondTag
+          return secondTag ? tags.includes(secondTag) : true;
+        }
+        // any: tem essa tag (com ou sem outras)
+        return true;
+      });
     } else if (filterType === "upload_date" && selectedDate) {
       filtered = leads.filter(lead => {
         const leadDate = new Date(lead.created_at).toISOString().split('T')[0];
