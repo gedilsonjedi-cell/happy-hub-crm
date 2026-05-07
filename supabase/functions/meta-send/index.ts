@@ -458,8 +458,27 @@ Deno.serve(async (req) => {
     // Extract the token from the auth header
     const token = authHeader.replace('Bearer ', '');
     
-    // Check if it's the service role key (used by campaign-dispatch and other internal functions)
-    const isServiceRole = token === supabaseServiceKey;
+    // Check if it's a service role key:
+    // 1) Direct match against current SERVICE_ROLE_KEY env
+    // 2) JWT payload with role=service_role (works across key rotations / multiple valid keys)
+    let isServiceRole = token === supabaseServiceKey;
+    if (!isServiceRole) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // base64url decode
+          const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const padded = payloadB64 + '='.repeat((4 - payloadB64.length % 4) % 4);
+          const payload = JSON.parse(atob(padded));
+          if (payload?.role === 'service_role') {
+            isServiceRole = true;
+            console.log('[Meta-Send] Detected service_role via JWT payload claim');
+          }
+        }
+      } catch (e) {
+        console.warn('[Meta-Send] Could not parse JWT payload:', e);
+      }
+    }
     
     let supabase;
     let userId: string | null = null;
