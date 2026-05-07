@@ -59,9 +59,9 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     suggestion: "Verifique a qualidade do template no Meta Business Manager."
   },
   "131047": {
-    title: "Template rejeitado",
-    description: "O template foi rejeitado ou desativado.",
-    suggestion: "Crie um novo template ou atualize o existente para aprovação."
+    title: "Janela de 24h expirada",
+    description: "O contato não responde há mais de 24 horas. A Meta bloqueia o envio de mensagens livres (texto) fora dessa janela.",
+    suggestion: "Envie um TEMPLATE aprovado (HSM) para reabrir a conversa. Após o contato responder, a janela de 24h é reaberta e você pode mandar texto livre novamente."
   },
   "131048": {
     title: "Spam detectado",
