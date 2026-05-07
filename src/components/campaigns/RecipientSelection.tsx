@@ -110,7 +110,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     }
     
     setFilteredLeads(filtered);
-  }, [leads, filterType, selectedTag, selectedDate, searchTerm]);
+  }, [leads, filterType, selectedTag, secondTag, tagMatchMode, selectedDate, searchTerm]);
 
   // Parse and normalize numbers when text changes
   useEffect(() => {
