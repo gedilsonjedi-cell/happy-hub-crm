@@ -1840,7 +1840,12 @@ const AtendimentoV2 = () => {
           latestExternalMessage
         );
 
-        setMessageWindowBaseTime(latestExternalMessage.created_at);
+        // Só atualiza a base da janela se for INBOUND — outbound não reabre janela na Meta.
+        if (latestExternalMessage.direction === "inbound") {
+          setMessageWindowBaseTime(latestExternalMessage.created_at);
+        } else {
+          setMessageWindowBaseTime(fallbackWindowBase);
+        }
 
         setSelectedConversation((prev) =>
           prev
