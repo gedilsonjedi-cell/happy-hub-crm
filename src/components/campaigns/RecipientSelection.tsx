@@ -370,27 +370,84 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
           {/* Tag Filter */}
           {filterType === "tag" && (
-            <Select value={selectedTag} onValueChange={setSelectedTag}>
-              <SelectTrigger className="bg-card border-border">
-                <SelectValue placeholder="Selecione uma tag" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                {availableTags.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground text-sm">
-                    Nenhuma tag encontrada
+            <div className="space-y-3">
+              <Select value={selectedTag} onValueChange={setSelectedTag}>
+                <SelectTrigger className="bg-card border-border">
+                  <SelectValue placeholder="Selecione uma tag" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {availableTags.length === 0 ? (
+                    <div className="p-3 text-center text-muted-foreground text-sm">
+                      Nenhuma tag encontrada
+                    </div>
+                  ) : (
+                    availableTags.map(tag => (
+                      <SelectItem key={tag} value={tag}>
+                        <div className="flex items-center gap-2">
+                          <Tag className="w-3 h-3" />
+                          {tag}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+
+              {selectedTag && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Modo de combinação</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "any" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("any")}
+                    >
+                      Todos com essa tag
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "exclusive" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("exclusive")}
+                    >
+                      Apenas com essa tag
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "both" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("both")}
+                    >
+                      Que tenham as duas tags
+                    </Button>
                   </div>
-                ) : (
-                  availableTags.map(tag => (
-                    <SelectItem key={tag} value={tag}>
-                      <div className="flex items-center gap-2">
-                        <Tag className="w-3 h-3" />
-                        {tag}
-                      </div>
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {tagMatchMode === "any" && "Inclui contatos que tenham a tag selecionada (com ou sem outras)."}
+                    {tagMatchMode === "exclusive" && "Só inclui contatos que tenham SOMENTE essa tag — útil para evitar disparar para quem já recebeu outras campanhas."}
+                    {tagMatchMode === "both" && "Inclui contatos que tenham ambas as tags selecionadas."}
+                  </p>
+
+                  {tagMatchMode === "both" && (
+                    <Select value={secondTag} onValueChange={setSecondTag}>
+                      <SelectTrigger className="bg-card border-border">
+                        <SelectValue placeholder="Selecione a segunda tag" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        {availableTags.filter(t => t !== selectedTag).map(tag => (
+                          <SelectItem key={tag} value={tag}>
+                            <div className="flex items-center gap-2">
+                              <Tag className="w-3 h-3" />
+                              {tag}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Date Filter */}
