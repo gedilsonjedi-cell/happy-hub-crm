@@ -32,6 +32,7 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 type RecipientSourceType = "contacts" | "numbers" | null;
 type ContactFilterType = "tag" | "upload_date" | "all";
+type TagMatchMode = "any" | "exclusive" | "both";
 
 interface Lead {
   id: string;
@@ -58,6 +59,8 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>("");
+  const [secondTag, setSecondTag] = useState<string>("");
+  const [tagMatchMode, setTagMatchMode] = useState<TagMatchMode>("any");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loadingLeads, setLoadingLeads] = useState(false);
@@ -78,7 +81,20 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     let filtered = [...leads];
     
     if (filterType === "tag" && selectedTag) {
-      filtered = leads.filter(lead => lead.tags?.includes(selectedTag));
+      filtered = leads.filter(lead => {
+        const tags = lead.tags || [];
+        if (!tags.includes(selectedTag)) return false;
+        if (tagMatchMode === "exclusive") {
+          // Apenas com essa tag (e nenhuma outra)
+          return tags.length === 1;
+        }
+        if (tagMatchMode === "both") {
+          // Precisa ter selectedTag E secondTag
+          return secondTag ? tags.includes(secondTag) : true;
+        }
+        // any: tem essa tag (com ou sem outras)
+        return true;
+      });
     } else if (filterType === "upload_date" && selectedDate) {
       filtered = leads.filter(lead => {
         const leadDate = new Date(lead.created_at).toISOString().split('T')[0];
@@ -94,7 +110,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     }
     
     setFilteredLeads(filtered);
-  }, [leads, filterType, selectedTag, selectedDate, searchTerm]);
+  }, [leads, filterType, selectedTag, secondTag, tagMatchMode, selectedDate, searchTerm]);
 
   // Parse and normalize numbers when text changes
   useEffect(() => {
@@ -354,27 +370,84 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
           {/* Tag Filter */}
           {filterType === "tag" && (
-            <Select value={selectedTag} onValueChange={setSelectedTag}>
-              <SelectTrigger className="bg-card border-border">
-                <SelectValue placeholder="Selecione uma tag" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                {availableTags.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground text-sm">
-                    Nenhuma tag encontrada
+            <div className="space-y-3">
+              <Select value={selectedTag} onValueChange={setSelectedTag}>
+                <SelectTrigger className="bg-card border-border">
+                  <SelectValue placeholder="Selecione uma tag" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {availableTags.length === 0 ? (
+                    <div className="p-3 text-center text-muted-foreground text-sm">
+                      Nenhuma tag encontrada
+                    </div>
+                  ) : (
+                    availableTags.map(tag => (
+                      <SelectItem key={tag} value={tag}>
+                        <div className="flex items-center gap-2">
+                          <Tag className="w-3 h-3" />
+                          {tag}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+
+              {selectedTag && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Modo de combinação</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "any" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("any")}
+                    >
+                      Todos com essa tag
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "exclusive" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("exclusive")}
+                    >
+                      Apenas com essa tag
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={tagMatchMode === "both" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTagMatchMode("both")}
+                    >
+                      Que tenham as duas tags
+                    </Button>
                   </div>
-                ) : (
-                  availableTags.map(tag => (
-                    <SelectItem key={tag} value={tag}>
-                      <div className="flex items-center gap-2">
-                        <Tag className="w-3 h-3" />
-                        {tag}
-                      </div>
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {tagMatchMode === "any" && "Inclui contatos que tenham a tag selecionada (com ou sem outras)."}
+                    {tagMatchMode === "exclusive" && "Só inclui contatos que tenham SOMENTE essa tag — útil para evitar disparar para quem já recebeu outras campanhas."}
+                    {tagMatchMode === "both" && "Inclui contatos que tenham ambas as tags selecionadas."}
+                  </p>
+
+                  {tagMatchMode === "both" && (
+                    <Select value={secondTag} onValueChange={setSecondTag}>
+                      <SelectTrigger className="bg-card border-border">
+                        <SelectValue placeholder="Selecione a segunda tag" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        {availableTags.filter(t => t !== selectedTag).map(tag => (
+                          <SelectItem key={tag} value={tag}>
+                            <div className="flex items-center gap-2">
+                              <Tag className="w-3 h-3" />
+                              {tag}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Date Filter */}
