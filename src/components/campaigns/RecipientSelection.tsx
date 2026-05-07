@@ -32,6 +32,7 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 type RecipientSourceType = "contacts" | "numbers" | null;
 type ContactFilterType = "tag" | "upload_date" | "all";
+type TagMatchMode = "any" | "exclusive" | "both";
 
 interface Lead {
   id: string;
