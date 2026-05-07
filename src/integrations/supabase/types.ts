@@ -3862,6 +3862,13 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      maintenance_purge_operational_garbage: {
+        Args: never
+        Returns: {
+          http_response_deleted: number
+          job_run_details_deleted: number
+        }[]
+      }
       process_referral_commission: {
         Args: { referred_org_id: string; subscription_amount: number }
         Returns: boolean
