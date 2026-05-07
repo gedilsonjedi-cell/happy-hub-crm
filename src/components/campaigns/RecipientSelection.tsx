@@ -59,6 +59,8 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>("");
+  const [secondTag, setSecondTag] = useState<string>("");
+  const [tagMatchMode, setTagMatchMode] = useState<TagMatchMode>("any");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loadingLeads, setLoadingLeads] = useState(false);
