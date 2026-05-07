@@ -45,6 +45,7 @@ interface ConversationPreviewDialogProps {
   phone: string;
   name: string | null;
   channelId?: string | null;
+  sentAt?: string | null;
   organizationId?: string | null;
 }
 
@@ -54,6 +55,7 @@ export function ConversationPreviewDialog({
   phone,
   name,
   channelId,
+  sentAt,
   organizationId,
 }: ConversationPreviewDialogProps) {
   const navigate = useNavigate();
@@ -72,7 +74,7 @@ export function ConversationPreviewDialog({
       setMessages([]);
       setFoundChannelId(null);
     }
-  }, [open, phone, organizationId]);
+  }, [open, phone, organizationId, channelId, sentAt]);
 
   const fetchMessages = async () => {
     setLoading(true);
