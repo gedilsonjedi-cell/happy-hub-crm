@@ -160,6 +160,15 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const [classificationFilter, setClassificationFilter] = useState<string>("all");
   const [previewPhone, setPreviewPhone] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
+  const [previewChannelId, setPreviewChannelId] = useState<string | null>(null);
+  const [previewSentAt, setPreviewSentAt] = useState<string | null>(null);
+
+  const openPreview = (r: { phone: string; name: string | null; channel_id?: string | null; sent_at?: string | null }) => {
+    setPreviewPhone(r.phone);
+    setPreviewName(r.name);
+    setPreviewChannelId(r.channel_id ?? null);
+    setPreviewSentAt(r.sent_at ?? null);
+  };
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
   const [campaignChannels, setCampaignChannels] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
@@ -1024,10 +1033,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                             <TableRow 
                               key={recipient.id} 
                               className="cursor-pointer hover:bg-muted/50"
-                              onClick={() => {
-                                setPreviewPhone(recipient.phone);
-                                setPreviewName(recipient.name);
-                              }}
+                              onClick={() => openPreview(recipient)}
                             >
                               <TableCell>
                                 <div>
@@ -1058,8 +1064,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                     className="h-8 w-8"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setPreviewPhone(recipient.phone);
-                                      setPreviewName(recipient.name);
+                                      openPreview(recipient);
                                     }}
                                   >
                                     <ExternalLink className="w-4 h-4" />
@@ -1194,7 +1199,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                         <div
                                           key={r.id}
                                           className="flex items-start justify-between gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer"
-                                          onClick={() => { setPreviewPhone(r.phone); setPreviewName(r.name); }}
+                                          onClick={() => openPreview(r)}
                                         >
                                           <div className="min-w-0 flex-1">
                                             <p className="font-mono">{formatPhone(r.phone)}</p>
@@ -1372,10 +1377,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 <div
                                   key={s.id}
                                   className="flex items-center justify-between text-[11px] bg-muted/30 rounded px-2 py-1 cursor-pointer hover:bg-muted/60"
-                                  onClick={() => {
-                                    setPreviewPhone(s.phone);
-                                    setPreviewName(s.name);
-                                  }}
+                                  onClick={() => openPreview(s)}
                                 >
                                   <span className="font-mono">{formatPhone(s.phone)}</span>
                                   <span className="text-muted-foreground truncate max-w-[60%]">{s.name || "—"}</span>
@@ -1414,10 +1416,14 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
             if (!open) {
               setPreviewPhone(null);
               setPreviewName(null);
+              setPreviewChannelId(null);
+              setPreviewSentAt(null);
             }
           }}
           phone={previewPhone || ""}
           name={previewName}
+          channelId={previewChannelId}
+          sentAt={previewSentAt}
           organizationId={campaign?.organization_id}
         />
 

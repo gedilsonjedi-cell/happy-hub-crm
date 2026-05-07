@@ -45,6 +45,7 @@ interface ConversationPreviewDialogProps {
   phone: string;
   name: string | null;
   channelId?: string | null;
+  sentAt?: string | null;
   organizationId?: string | null;
 }
 
@@ -54,6 +55,7 @@ export function ConversationPreviewDialog({
   phone,
   name,
   channelId,
+  sentAt,
   organizationId,
 }: ConversationPreviewDialogProps) {
   const navigate = useNavigate();
@@ -72,7 +74,7 @@ export function ConversationPreviewDialog({
       setMessages([]);
       setFoundChannelId(null);
     }
-  }, [open, phone, organizationId]);
+  }, [open, phone, organizationId, channelId, sentAt]);
 
   const fetchMessages = async () => {
     setLoading(true);
@@ -92,30 +94,44 @@ export function ConversationPreviewDialog({
 
       if (!orgId) return;
 
-      // Get channels for this organization
-      const { data: channels } = await (supabase as any)
-        .from("channels_public")
-        .select("id")
-        .eq("organization_id", orgId);
+      // CIRURGIA: se já sabemos o channel_id (vindo de campaign_recipients),
+      // não vasculhar todos os canais da org. Vai direto ao ponto.
+      let channelIds: string[];
+      if (channelId) {
+        channelIds = [channelId];
+      } else {
+        const { data: channels } = await (supabase as any)
+          .from("channels_public")
+          .select("id")
+          .eq("organization_id", orgId);
 
-      if (!channels || channels.length === 0) return;
+        if (!channels || channels.length === 0) return;
+        channelIds = channels.map((c: { id: string }) => c.id);
+      }
 
-      const channelIds = channels.map((c) => c.id);
       const phoneVariants = getPhoneLookupVariants(normalizedPhone);
 
+      // Se temos sent_at, usar como cursor para ir direto ao período do envio
+      // (ler 200 mensagens DEPOIS do sent_at — uma janela apertada).
+      const cursor = sentAt
+        ? new Date(new Date(sentAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
       // Try external DB first for each channel
-      let allExternalMessages: ExternalMessageRow[] = [];
+      const allExternalMessages: ExternalMessageRow[] = [];
       for (const chId of channelIds) {
         try {
           const result = await fetchExternalMessages({
             channelId: chId,
             phoneVariants,
-            cursor: null,
+            cursor,
             pageSize: 200,
             impersonatedOrgId: orgId,
           });
           if (result.messages.length > 0) {
             allExternalMessages.push(...result.messages);
+            // Se já achamos mensagens com canal conhecido, não precisa varrer mais
+            if (channelId) break;
           }
         } catch (e) {
           console.warn("[ConversationPreview] External fetch failed for channel", chId, e);
