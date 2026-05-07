@@ -1185,12 +1185,11 @@ const Disparos = () => {
                 setFormData={setFormData}
               />
               {selectedChannels.length > 0 && (
-                  <div className="flex items-center gap-2 text-xs text-primary">
-                    <Check className="w-4 h-4" />
-                    <span>{selectedChannels.length} canal(is) selecionado(s)</span>
-                  </div>
-                )}
-              </div>
+                <div className="flex items-center gap-2 text-xs text-primary">
+                  <Check className="w-4 h-4" />
+                  <span>{selectedChannels.length} canal(is) selecionado(s)</span>
+                </div>
+              )}
 
               {/* Recipient Selection */}
               <div className="space-y-3">
