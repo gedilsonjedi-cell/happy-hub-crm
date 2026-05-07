@@ -160,6 +160,15 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
   const [classificationFilter, setClassificationFilter] = useState<string>("all");
   const [previewPhone, setPreviewPhone] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
+  const [previewChannelId, setPreviewChannelId] = useState<string | null>(null);
+  const [previewSentAt, setPreviewSentAt] = useState<string | null>(null);
+
+  const openPreview = (r: { phone: string; name: string | null; channel_id?: string | null; sent_at?: string | null }) => {
+    setPreviewPhone(r.phone);
+    setPreviewName(r.name);
+    setPreviewChannelId(r.channel_id ?? null);
+    setPreviewSentAt(r.sent_at ?? null);
+  };
   const [showRecycleDialog, setShowRecycleDialog] = useState(false);
   const [campaignChannels, setCampaignChannels] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
