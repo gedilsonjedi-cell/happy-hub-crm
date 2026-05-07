@@ -433,7 +433,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
                 <p>Nenhum contato encontrado</p>
               </div>
             ) : (
-              filteredLeads.map(lead => (
+              filteredLeads.slice(0, 500).map(lead => (
                 <div
                   key={lead.id}
                   className={cn(
@@ -463,6 +463,11 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
                   )}
                 </div>
               ))
+            )}
+            {filteredLeads.length > 500 && (
+              <div className="p-3 text-center text-xs text-muted-foreground bg-muted/20">
+                Mostrando os primeiros 500 de {filteredLeads.length}. Use a busca ou filtros para refinar — "Selecionar todos" inclui todos os {filteredLeads.length}.
+              </div>
             )}
           </div>
         </div>
