@@ -4108,7 +4108,10 @@ const AtendimentoV2 = () => {
     return `${hours}h ${minutes}min`;
   };
 
-  const windowBaseTime = messageWindowBaseTime || selectedConversation?.lastMessageTime || selectedConversation?.lastInboundTime || null;
+  // IMPORTANT: A janela de 24h da Meta SÓ reabre com mensagem INBOUND do cliente.
+  // Nunca usar lastMessageTime (pode ser saída nossa) como base — isso mantinha a janela
+  // falsamente aberta e o atendente mandava texto livre que a Meta bloqueava (#131047).
+  const windowBaseTime = messageWindowBaseTime || selectedConversation?.lastInboundTime || null;
   const isWindowExpired = selectedConversation ? is24HourWindowExpired(windowBaseTime) : false;
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(windowBaseTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
