@@ -24,7 +24,14 @@ function getHeatColor(count: number, max: number): string {
 export function ButtonTrafficHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
   const [selectedButton, setSelectedButton] = useState<string | undefined>(undefined);
-  const { loading, data, availableButtons } = useButtonTrafficHeatmap(daysBack, selectedButton);
+  const [live, setLive] = useState(false);
+  const { loading, data, availableButtons, refetch } = useButtonTrafficHeatmap(daysBack, selectedButton);
+
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => { refetch(); }, LIVE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [live, refetch]);
 
   if (loading) {
     return (
