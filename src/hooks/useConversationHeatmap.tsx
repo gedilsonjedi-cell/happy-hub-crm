@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
+import { buildDays, toLocalDateHour, spCutoffIso } from "@/lib/heatmapTz";
 
 export interface HeatmapCell {
   day: number;
@@ -14,9 +15,6 @@ export interface HeatmapData {
   maxCount: number;
   days: { dayOfWeek: number; date: string; label: string }[];
 }
-
-const DAY_LABELS = ["Domingo", "Segunda-Feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-const TZ = "America/Sao_Paulo";
 
 interface RawMsg {
   created_at: string;
