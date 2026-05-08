@@ -122,6 +122,29 @@ const Conexoes = () => {
   const [editableAppSecret, setEditableAppSecret] = useState("");
   const [isSavingChannelConfig, setIsSavingChannelConfig] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
+  const [renameChannel, setRenameChannel] = useState<Channel | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  const handleRenameChannel = async () => {
+    if (!renameChannel || !renameValue.trim()) return;
+    setIsRenaming(true);
+    try {
+      const { error } = await supabase
+        .from("channels")
+        .update({ name: renameValue.trim() })
+        .eq("id", renameChannel.id);
+      if (error) throw error;
+      setChannels(prev => prev.map(ch => ch.id === renameChannel.id ? { ...ch, name: renameValue.trim() } : ch));
+      toast.success("Canal renomeado com sucesso");
+      setRenameChannel(null);
+      setRenameValue("");
+    } catch (err: any) {
+      toast.error("Erro ao renomear canal: " + (err?.message || ""));
+    } finally {
+      setIsRenaming(false);
+    }
+  };
   
   // Chatbot linking state
   const [showChatbotDialog, setShowChatbotDialog] = useState<Channel | null>(null);
@@ -1746,6 +1769,16 @@ const Conexoes = () => {
                           Migrar WABA
                         </DropdownMenuItem>
                       )}
+                      <DropdownMenuItem
+                        className="gap-2 cursor-pointer"
+                        onClick={() => {
+                          setRenameValue(channel.name || "");
+                          setRenameChannel(channel);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Renomear
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="gap-2 cursor-pointer"
                         onClick={() => handleToggleConnection(channel)}
@@ -2724,6 +2757,38 @@ const Conexoes = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Channel Dialog */}
+      <Dialog open={!!renameChannel} onOpenChange={(open) => { if (!open) { setRenameChannel(null); setRenameValue(""); } }}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Pencil className="w-5 h-5" />
+              Renomear Canal
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-foreground">Novo nome</Label>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="Ex: WhatsApp Vendas"
+              className="bg-muted/30 border-border"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleRenameChannel(); }}
+            />
+            <p className="text-xs text-muted-foreground">Apenas o nome de exibição é alterado. A conexão e o número permanecem os mesmos.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setRenameChannel(null); setRenameValue(""); }} disabled={isRenaming}>
+              Cancelar
+            </Button>
+            <Button onClick={handleRenameChannel} disabled={isRenaming || !renameValue.trim()}>
+              {isRenaming ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
