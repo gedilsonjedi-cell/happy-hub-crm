@@ -86,6 +86,7 @@ export function AttendanceReportPanel() {
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [tab, setTab] = useState("sem-resposta");
+  const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "week" | "month">("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const isLoadingRef = useRef(false);
 
@@ -168,11 +169,30 @@ export function AttendanceReportPanel() {
   // Conjunto base filtrado por busca/setor/atendente
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase();
+    let cutoff: number | null = null;
+    if (periodFilter !== "all") {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      if (periodFilter === "today") {
+        cutoff = d.getTime();
+      } else if (periodFilter === "week") {
+        // semana começando no domingo
+        d.setDate(d.getDate() - d.getDay());
+        cutoff = d.getTime();
+      } else if (periodFilter === "month") {
+        d.setDate(1);
+        cutoff = d.getTime();
+      }
+    }
     return rows.filter(r => {
       if (sectorFilter !== "all" && r.sector_id !== sectorFilter) return false;
       if (agentFilter !== "all") {
         if (agentFilter === "__none__" && r.assigned_to) return false;
         if (agentFilter !== "__none__" && r.assigned_to !== agentFilter) return false;
+      }
+      if (cutoff !== null) {
+        const ref = r.last_message_at || r.last_inbound_at || r.updated_at;
+        if (!ref || new Date(ref).getTime() < cutoff) return false;
       }
       if (term) {
         const hay = `${r.lead_name || ""} ${r.sender_name || ""} ${r.conversation_phone}`.toLowerCase();
@@ -180,7 +200,7 @@ export function AttendanceReportPanel() {
       }
       return true;
     });
-  }, [rows, search, sectorFilter, agentFilter]);
+  }, [rows, search, sectorFilter, agentFilter, periodFilter]);
 
   const semResposta = useMemo(() => baseFiltered.filter(r => waitingMinutes(r) !== null), [baseFiltered]);
   const primeiroContato = useMemo(() => baseFiltered.filter(isFirstContactPending), [baseFiltered]);
@@ -311,6 +331,15 @@ export function AttendanceReportPanel() {
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
         <Input placeholder="Buscar por nome ou telefone..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
+        <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as any)}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Período" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todo período</SelectItem>
+            <SelectItem value="today">Hoje</SelectItem>
+            <SelectItem value="week">Esta semana</SelectItem>
+            <SelectItem value="month">Este mês</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={sectorFilter} onValueChange={setSectorFilter}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Setor" /></SelectTrigger>
           <SelectContent>
