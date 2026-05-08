@@ -1,12 +1,13 @@
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Users, Megaphone, FileText, DollarSign } from "lucide-react";
+import { BarChart3, Users, Megaphone, FileText, DollarSign, Headphones } from "lucide-react";
 import { ConversationHeatmap } from "@/components/reports/ConversationHeatmap";
 import { ButtonTrafficHeatmap } from "@/components/reports/ButtonTrafficHeatmap";
 import { AgentPerformanceTable } from "@/components/reports/AgentPerformanceTable";
 import { CampaignTrafficPanel } from "@/components/reports/CampaignTrafficPanel";
 import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
 import { ConversationMetricsPanel } from "@/components/reports/ConversationMetricsPanel";
+import { AttendanceReportPanel } from "@/components/reports/AttendanceReportPanel";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
