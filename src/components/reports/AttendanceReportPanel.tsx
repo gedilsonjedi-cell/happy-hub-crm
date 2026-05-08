@@ -117,12 +117,30 @@ export function AttendanceReportPanel() {
       const channelIds = (ch || []).map((c: any) => c.id);
       if (channelIds.length === 0) { setRows([]); return; }
 
-      const { data, error } = await supabase.rpc("get_conversations_summary", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
-      });
-      if (error) throw error;
-      setRows((data as any[])?.map(r => ({ ...r, unread_count: Number(r.unread_count) || 0 })) || []);
+      // Paginar RPC em lotes de 1000 (PostgREST limite padrão) para garantir 100% dos atendimentos
+      const all: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, error } = await supabase
+          .rpc("get_conversations_summary", {
+            p_channel_ids: channelIds,
+            p_organization_id: effectiveOrganizationId,
+          })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const batch = (data as any[]) || [];
+        all.push(...batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+        if (from > 200000) break; // sanity guard
+      }
+      // Apenas em aberto (a RPC já exclui 'archived'; aqui removemos 'resolved')
+      const open = all
+        .filter(r => r.status !== "resolved" && r.status !== "archived")
+        .map(r => ({ ...r, unread_count: Number(r.unread_count) || 0 }));
+      setRows(open);
     } catch (e) {
       console.error("AttendanceReport load error", e);
     } finally {
