@@ -76,14 +76,26 @@ function isFirstContactPending(r: Row): boolean {
 
 export function AttendanceReportPanel() {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [tab, setTab] = useState("sem-resposta");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const isLoadingRef = useRef(false);
+
+  const openConversation = (r: Row) => {
+    const phone = (r.conversation_phone || "").replace(/\D/g, "");
+    const params = new URLSearchParams();
+    if (phone) params.set("phone", phone);
+    if (r.channel_id) params.set("channelId", r.channel_id);
+    navigate(`/atendimento-v2?${params.toString()}`);
+  };
 
   const load = async () => {
     if (!effectiveOrganizationId) return;
