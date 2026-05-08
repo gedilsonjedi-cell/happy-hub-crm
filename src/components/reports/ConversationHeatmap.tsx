@@ -58,6 +58,16 @@ export function ConversationHeatmap() {
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={live ? "default" : "outline"}
+            size="sm"
+            className={cn("h-8 text-xs gap-1.5", live && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+            onClick={() => setLive(v => !v)}
+            title={live ? "Pausar atualização ao vivo" : "Ativar atualização ao vivo"}
+          >
+            <Radio className={cn("w-3.5 h-3.5", live && "animate-pulse")} />
+            {live ? "Ao vivo" : "Ao vivo"}
+          </Button>
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue />
