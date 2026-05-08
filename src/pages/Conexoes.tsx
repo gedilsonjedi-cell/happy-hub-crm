@@ -2760,6 +2760,38 @@ const Conexoes = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Rename Channel Dialog */}
+      <Dialog open={!!renameChannel} onOpenChange={(open) => { if (!open) { setRenameChannel(null); setRenameValue(""); } }}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Pencil className="w-5 h-5" />
+              Renomear Canal
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-foreground">Novo nome</Label>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="Ex: WhatsApp Vendas"
+              className="bg-muted/30 border-border"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleRenameChannel(); }}
+            />
+            <p className="text-xs text-muted-foreground">Apenas o nome de exibição é alterado. A conexão e o número permanecem os mesmos.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setRenameChannel(null); setRenameValue(""); }} disabled={isRenaming}>
+              Cancelar
+            </Button>
+            <Button onClick={handleRenameChannel} disabled={isRenaming || !renameValue.trim()}>
+              {isRenaming ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Channel Config Dialog */}
       <Dialog open={!!showChannelConfig} onOpenChange={(open) => !open && setShowChannelConfig(null)}>
         <DialogContent className="sm:max-w-lg bg-card border-border">
