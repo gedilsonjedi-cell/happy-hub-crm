@@ -232,7 +232,7 @@ export function AttendanceReportPanel() {
           ) : data.map(r => {
             const wait = waitingMinutes(r);
             return (
-              <TableRow key={r.assignment_id}>
+              <TableRow key={r.assignment_id} className="cursor-pointer" onClick={() => openConversation(r)}>
                 <TableCell>
                   <div className="font-medium">{r.lead_name || r.sender_name || "Sem nome"}</div>
                   <div className="text-xs text-muted-foreground">{r.conversation_phone}</div>
