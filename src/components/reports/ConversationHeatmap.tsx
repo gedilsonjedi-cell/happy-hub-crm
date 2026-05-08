@@ -23,7 +23,14 @@ function getHeatColor(count: number, max: number): string {
 
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
-  const { loading, data } = useConversationHeatmap(daysBack);
+  const [live, setLive] = useState(false);
+  const { loading, data, refetch } = useConversationHeatmap(daysBack);
+
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => { refetch(); }, LIVE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [live, refetch]);
 
   if (loading) {
     return (
