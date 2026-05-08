@@ -1,12 +1,13 @@
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Users, Megaphone, FileText, DollarSign } from "lucide-react";
+import { BarChart3, Users, Megaphone, FileText, DollarSign, Headphones } from "lucide-react";
 import { ConversationHeatmap } from "@/components/reports/ConversationHeatmap";
 import { ButtonTrafficHeatmap } from "@/components/reports/ButtonTrafficHeatmap";
 import { AgentPerformanceTable } from "@/components/reports/AgentPerformanceTable";
 import { CampaignTrafficPanel } from "@/components/reports/CampaignTrafficPanel";
 import { DispatchReportSender } from "@/components/reports/DispatchReportSender";
 import { ConversationMetricsPanel } from "@/components/reports/ConversationMetricsPanel";
+import { AttendanceReportPanel } from "@/components/reports/AttendanceReportPanel";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -52,6 +53,10 @@ export default function Relatorios() {
               <BarChart3 className="w-4 h-4" />
               Tráfego
             </TabsTrigger>
+            <TabsTrigger value="atendimentos" className="flex items-center gap-2">
+              <Headphones className="w-4 h-4" />
+              Atendimentos
+            </TabsTrigger>
             <TabsTrigger value="agentes" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Agentes
@@ -73,6 +78,10 @@ export default function Relatorios() {
           <TabsContent value="trafego" className="space-y-6">
             <ConversationHeatmap />
             <ButtonTrafficHeatmap />
+          </TabsContent>
+
+          <TabsContent value="atendimentos">
+            <AttendanceReportPanel />
           </TabsContent>
 
           <TabsContent value="agentes">
