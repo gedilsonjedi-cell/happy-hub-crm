@@ -65,6 +65,16 @@ export function ButtonTrafficHeatmap() {
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={live ? "default" : "outline"}
+            size="sm"
+            className={cn("h-8 text-xs gap-1.5", live && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+            onClick={() => setLive(v => !v)}
+            title={live ? "Pausar atualização ao vivo" : "Ativar atualização ao vivo"}
+          >
+            <Radio className={cn("w-3.5 h-3.5", live && "animate-pulse")} />
+            Ao vivo
+          </Button>
           <Select
             value={selectedButton || "all"}
             onValueChange={(v) => setSelectedButton(v === "all" ? undefined : v)}
