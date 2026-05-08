@@ -25,7 +25,7 @@ export function ButtonTrafficHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
   const [selectedButton, setSelectedButton] = useState<string | undefined>(undefined);
   const [live, setLive] = useState(false);
-  const { loading, data, availableButtons, refetch } = useButtonTrafficHeatmap(daysBack, selectedButton);
+  const { loading, data, availableButtons, warning, refetch } = useButtonTrafficHeatmap(daysBack, selectedButton);
 
   useEffect(() => {
     if (!live) return;
