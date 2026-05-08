@@ -122,6 +122,29 @@ const Conexoes = () => {
   const [editableAppSecret, setEditableAppSecret] = useState("");
   const [isSavingChannelConfig, setIsSavingChannelConfig] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
+  const [renameChannel, setRenameChannel] = useState<Channel | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  const handleRenameChannel = async () => {
+    if (!renameChannel || !renameValue.trim()) return;
+    setIsRenaming(true);
+    try {
+      const { error } = await supabase
+        .from("channels")
+        .update({ name: renameValue.trim() })
+        .eq("id", renameChannel.id);
+      if (error) throw error;
+      setChannels(prev => prev.map(ch => ch.id === renameChannel.id ? { ...ch, name: renameValue.trim() } : ch));
+      toast.success("Canal renomeado com sucesso");
+      setRenameChannel(null);
+      setRenameValue("");
+    } catch (err: any) {
+      toast.error("Erro ao renomear canal: " + (err?.message || ""));
+    } finally {
+      setIsRenaming(false);
+    }
+  };
   
   // Chatbot linking state
   const [showChatbotDialog, setShowChatbotDialog] = useState<Channel | null>(null);
