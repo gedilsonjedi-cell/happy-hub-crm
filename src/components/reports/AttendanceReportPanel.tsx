@@ -86,6 +86,7 @@ export function AttendanceReportPanel() {
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [tab, setTab] = useState("sem-resposta");
+  const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "week" | "month">("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const isLoadingRef = useRef(false);
 
