@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
+import { buildDays, toLocalDateHour, spCutoffIso } from "@/lib/heatmapTz";
 
 export interface HeatmapCell {
   day: number;
@@ -14,9 +15,6 @@ export interface HeatmapData {
   maxCount: number;
   days: { dayOfWeek: number; date: string; label: string }[];
 }
-
-const DAY_LABELS = ["Domingo", "Segunda-Feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-const TZ = "America/Sao_Paulo";
 
 interface RawMsg {
   created_at: string;
@@ -43,9 +41,7 @@ async function fetchInboundMessages(
   daysBack: number
 ): Promise<RawMsg[]> {
   const ext = await getExternalClient(impersonatedOrgId);
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - daysBack);
-  cutoff.setHours(0, 0, 0, 0);
+  const cutoffIso = spCutoffIso(daysBack);
 
   const all: RawMsg[] = [];
   const pageSize = 1000;
@@ -56,7 +52,7 @@ async function fetchInboundMessages(
       .from("whatsapp_messages")
       .select("created_at, sender_phone, message_type, content, metadata")
       .eq("direction", "inbound")
-      .gte("created_at", cutoff.toISOString())
+      .gte("created_at", cutoffIso)
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -67,35 +63,6 @@ async function fetchInboundMessages(
     if (from > 100000) break; // sanity guard
   }
   return all;
-}
-
-// Convert UTC timestamp to {date: yyyy-mm-dd, hour: 0-23} in São Paulo TZ
-function toLocalDateHour(iso: string): { date: string; hour: number } {
-  const d = new Date(iso);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-  const parts = fmt.formatToParts(d).reduce<Record<string, string>>((acc, p) => { acc[p.type] = p.value; return acc; }, {});
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    hour: Number(parts.hour) % 24,
-  };
-}
-
-function buildDays(daysBack: number) {
-  const start = new Date();
-  start.setDate(start.getDate() - (daysBack - 1));
-  start.setHours(0, 0, 0, 0);
-  const days: { dayOfWeek: number; date: string; label: string }[] = [];
-  for (let i = 0; i < daysBack; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    days.push({ dayOfWeek: d.getDay(), date: dateStr, label: DAY_LABELS[d.getDay()] });
-  }
-  return days;
 }
 
 export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {

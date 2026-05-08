@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { extractButtonLabel, type HeatmapData, type HeatmapCell } from "./useConversationHeatmap";
-
-const DAY_LABELS = ["Domingo", "Segunda-Feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-const TZ = "America/Sao_Paulo";
+import { buildDays, toLocalDateHour, spCutoffIso } from "@/lib/heatmapTz";
 
 interface RawMsg {
   created_at: string;
@@ -12,34 +10,6 @@ interface RawMsg {
   message_type: string | null;
   content: string | null;
   metadata: any;
-}
-
-function toLocalDateHour(iso: string): { date: string; hour: number } {
-  const d = new Date(iso);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-  const parts = fmt.formatToParts(d).reduce<Record<string, string>>((acc, p) => { acc[p.type] = p.value; return acc; }, {});
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    hour: Number(parts.hour) % 24,
-  };
-}
-
-function buildDays(daysBack: number) {
-  const start = new Date();
-  start.setDate(start.getDate() - (daysBack - 1));
-  start.setHours(0, 0, 0, 0);
-  const days: { dayOfWeek: number; date: string; label: string }[] = [];
-  for (let i = 0; i < daysBack; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    days.push({ dayOfWeek: d.getDay(), date: dateStr, label: DAY_LABELS[d.getDay()] });
-  }
-  return days;
 }
 
 export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
@@ -53,9 +23,7 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
     setLoading(true);
     try {
       const ext = await getExternalClient(isImpersonating ? effectiveOrganizationId : null);
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - daysBack);
-      cutoff.setHours(0, 0, 0, 0);
+      const cutoffIso = spCutoffIso(daysBack);
 
       // Fetch only messages that are likely button interactions to keep payload smaller
       const all: RawMsg[] = [];
@@ -67,7 +35,7 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
           .from("whatsapp_messages")
           .select("created_at, sender_phone, message_type, content, metadata")
           .eq("direction", "inbound")
-          .gte("created_at", cutoff.toISOString())
+          .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .range(from, from + pageSize - 1);
         if (error) throw error;
