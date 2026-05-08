@@ -97,9 +97,11 @@ export function AttendanceReportPanel() {
     navigate(`/atendimento-v2?${params.toString()}`);
   };
 
-  const load = async () => {
+  const load = async (silent = false) => {
     if (!effectiveOrganizationId) return;
-    setLoading(true);
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    if (silent) setRefreshing(true); else setLoading(true);
     try {
       const [{ data: ch }, { data: sec }] = await Promise.all([
         (supabase as any).from("channels_public")
@@ -113,7 +115,7 @@ export function AttendanceReportPanel() {
       setChannels(ch || []);
       setSectors(sec || []);
       const channelIds = (ch || []).map((c: any) => c.id);
-      if (channelIds.length === 0) { setRows([]); setLoading(false); return; }
+      if (channelIds.length === 0) { setRows([]); return; }
 
       const { data, error } = await supabase.rpc("get_conversations_summary", {
         p_channel_ids: channelIds,
@@ -124,11 +126,23 @@ export function AttendanceReportPanel() {
     } catch (e) {
       console.error("AttendanceReport load error", e);
     } finally {
+      isLoadingRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [effectiveOrganizationId]);
+
+  // Auto-refresh a cada 10s (silencioso, sem loader)
+  useEffect(() => {
+    if (!autoRefresh || !effectiveOrganizationId) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line
+  }, [autoRefresh, effectiveOrganizationId]);
 
   const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
   const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
