@@ -90,6 +90,7 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<HeatmapData>({ cells: [], maxCount: 0, days: [] });
   const [availableButtons, setAvailableButtons] = useState<string[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!effectiveOrganizationId) return;
@@ -100,7 +101,6 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
         daysBack
       );
 
-      // Available buttons (last N days)
       const buttonCounts = new Map<string, number>();
       messages.forEach(m => {
         const lbl = extractButtonLabel(m);
@@ -114,12 +114,10 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
 
       const days = buildDays(daysBack);
 
-      // Apply button filter when provided
       const filtered = buttonFilter
         ? messages.filter(m => extractButtonLabel(m) === buttonFilter)
         : messages;
 
-      // Distinct sender_phone per (date, hour) — matches original RPC behavior
       const distinctSet = new Map<string, Set<string>>();
       filtered.forEach(m => {
         if (!m.sender_phone) return;
@@ -140,9 +138,15 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
       });
 
       setData({ cells, maxCount, days });
-    } catch (err) {
+      setWarning(messages.length === 0
+        ? "Nenhuma mensagem recebida no período selecionado."
+        : null);
+    } catch (err: any) {
       console.error("Heatmap fetch error:", err);
       setData({ cells: [], maxCount: 0, days: buildDays(daysBack) });
+      setWarning(
+        "Falha ao carregar dados da fonte externa. Tentaremos novamente automaticamente — verifique sua conexão se persistir."
+      );
     } finally {
       setLoading(false);
     }
@@ -150,5 +154,5 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return { loading, data, availableButtons, refetch: fetchData };
+  return { loading, data, availableButtons, warning, refetch: fetchData };
 }
