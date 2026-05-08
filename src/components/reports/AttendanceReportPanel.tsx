@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,18 +76,32 @@ function isFirstContactPending(r: Row): boolean {
 
 export function AttendanceReportPanel() {
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [tab, setTab] = useState("sem-resposta");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const isLoadingRef = useRef(false);
 
-  const load = async () => {
+  const openConversation = (r: Row) => {
+    const phone = (r.conversation_phone || "").replace(/\D/g, "");
+    const params = new URLSearchParams();
+    if (phone) params.set("phone", phone);
+    if (r.channel_id) params.set("channelId", r.channel_id);
+    navigate(`/atendimento-v2?${params.toString()}`);
+  };
+
+  const load = async (silent = false) => {
     if (!effectiveOrganizationId) return;
-    setLoading(true);
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    if (silent) setRefreshing(true); else setLoading(true);
     try {
       const [{ data: ch }, { data: sec }] = await Promise.all([
         (supabase as any).from("channels_public")
@@ -100,7 +115,7 @@ export function AttendanceReportPanel() {
       setChannels(ch || []);
       setSectors(sec || []);
       const channelIds = (ch || []).map((c: any) => c.id);
-      if (channelIds.length === 0) { setRows([]); setLoading(false); return; }
+      if (channelIds.length === 0) { setRows([]); return; }
 
       const { data, error } = await supabase.rpc("get_conversations_summary", {
         p_channel_ids: channelIds,
@@ -111,11 +126,23 @@ export function AttendanceReportPanel() {
     } catch (e) {
       console.error("AttendanceReport load error", e);
     } finally {
+      isLoadingRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [effectiveOrganizationId]);
+
+  // Auto-refresh a cada 10s (silencioso, sem loader)
+  useEffect(() => {
+    if (!autoRefresh || !effectiveOrganizationId) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line
+  }, [autoRefresh, effectiveOrganizationId]);
 
   const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
   const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
@@ -205,7 +232,7 @@ export function AttendanceReportPanel() {
           ) : data.map(r => {
             const wait = waitingMinutes(r);
             return (
-              <TableRow key={r.assignment_id}>
+              <TableRow key={r.assignment_id} className="cursor-pointer" onClick={() => openConversation(r)}>
                 <TableCell>
                   <div className="font-medium">{r.lead_name || r.sender_name || "Sem nome"}</div>
                   <div className="text-xs text-muted-foreground">{r.conversation_phone}</div>
@@ -281,7 +308,13 @@ export function AttendanceReportPanel() {
             {agentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" onClick={load}><RefreshCcw className="w-4 h-4 mr-2" />Atualizar</Button>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none ml-auto">
+          <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} className="accent-primary" />
+          Atualização automática (10s)
+        </label>
+        <Button variant="outline" size="sm" onClick={() => load(false)} disabled={refreshing}>
+          <RefreshCcw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />Atualizar
+        </Button>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
