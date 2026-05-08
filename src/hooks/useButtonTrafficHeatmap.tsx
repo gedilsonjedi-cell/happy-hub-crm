@@ -23,9 +23,7 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
     setLoading(true);
     try {
       const ext = await getExternalClient(isImpersonating ? effectiveOrganizationId : null);
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - daysBack);
-      cutoff.setHours(0, 0, 0, 0);
+      const cutoffIso = spCutoffIso(daysBack);
 
       // Fetch only messages that are likely button interactions to keep payload smaller
       const all: RawMsg[] = [];
@@ -37,7 +35,7 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
           .from("whatsapp_messages")
           .select("created_at, sender_phone, message_type, content, metadata")
           .eq("direction", "inbound")
-          .gte("created_at", cutoff.toISOString())
+          .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .range(from, from + pageSize - 1);
         if (error) throw error;
