@@ -331,6 +331,15 @@ export function AttendanceReportPanel() {
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
         <Input placeholder="Buscar por nome ou telefone..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
+        <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as any)}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Período" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todo período</SelectItem>
+            <SelectItem value="today">Hoje</SelectItem>
+            <SelectItem value="week">Esta semana</SelectItem>
+            <SelectItem value="month">Este mês</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={sectorFilter} onValueChange={setSectorFilter}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Setor" /></SelectTrigger>
           <SelectContent>
