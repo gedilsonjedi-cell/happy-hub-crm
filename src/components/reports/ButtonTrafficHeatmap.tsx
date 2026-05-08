@@ -25,7 +25,7 @@ export function ButtonTrafficHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
   const [selectedButton, setSelectedButton] = useState<string | undefined>(undefined);
   const [live, setLive] = useState(false);
-  const { loading, data, availableButtons, refetch } = useButtonTrafficHeatmap(daysBack, selectedButton);
+  const { loading, data, availableButtons, warning, refetch } = useButtonTrafficHeatmap(daysBack, selectedButton);
 
   useEffect(() => {
     if (!live) return;
@@ -105,6 +105,15 @@ export function ButtonTrafficHeatmap() {
         </div>
       </CardHeader>
       <CardContent>
+        {warning && (
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/50">
+            <span className="mt-0.5">⚠️</span>
+            <div className="flex-1">{warning}</div>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
         {availableButtons.length === 0 && !loading ? (
           <div className="text-center py-10 text-muted-foreground">
             <MousePointerClick className="w-10 h-10 mx-auto mb-3 opacity-30" />

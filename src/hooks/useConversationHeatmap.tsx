@@ -36,7 +36,7 @@ export function extractButtonLabel(m: RawMsg): string | null {
 }
 
 // Fetch inbound messages from EXTERNAL DB for the given date range
-async function fetchInboundMessages(
+async function fetchInboundMessagesOnce(
   impersonatedOrgId: string | null,
   daysBack: number
 ): Promise<RawMsg[]> {
@@ -65,11 +65,32 @@ async function fetchInboundMessages(
   return all;
 }
 
+// Retry wrapper: tries up to `attempts` times with short backoff before giving up.
+async function fetchInboundMessages(
+  impersonatedOrgId: string | null,
+  daysBack: number,
+  attempts = 2
+): Promise<RawMsg[]> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchInboundMessagesOnce(impersonatedOrgId, daysBack);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
   const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<HeatmapData>({ cells: [], maxCount: 0, days: [] });
   const [availableButtons, setAvailableButtons] = useState<string[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!effectiveOrganizationId) return;
@@ -80,7 +101,6 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
         daysBack
       );
 
-      // Available buttons (last N days)
       const buttonCounts = new Map<string, number>();
       messages.forEach(m => {
         const lbl = extractButtonLabel(m);
@@ -94,12 +114,10 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
 
       const days = buildDays(daysBack);
 
-      // Apply button filter when provided
       const filtered = buttonFilter
         ? messages.filter(m => extractButtonLabel(m) === buttonFilter)
         : messages;
 
-      // Distinct sender_phone per (date, hour) — matches original RPC behavior
       const distinctSet = new Map<string, Set<string>>();
       filtered.forEach(m => {
         if (!m.sender_phone) return;
@@ -120,9 +138,15 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
       });
 
       setData({ cells, maxCount, days });
-    } catch (err) {
+      setWarning(messages.length === 0
+        ? "Nenhuma mensagem recebida no período selecionado."
+        : null);
+    } catch (err: any) {
       console.error("Heatmap fetch error:", err);
       setData({ cells: [], maxCount: 0, days: buildDays(daysBack) });
+      setWarning(
+        "Falha ao carregar dados da fonte externa. Tentaremos novamente automaticamente — verifique sua conexão se persistir."
+      );
     } finally {
       setLoading(false);
     }
@@ -130,5 +154,5 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return { loading, data, availableButtons, refetch: fetchData };
+  return { loading, data, availableButtons, warning, refetch: fetchData };
 }

@@ -24,7 +24,7 @@ function getHeatColor(count: number, max: number): string {
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
   const [live, setLive] = useState(false);
-  const { loading, data, refetch } = useConversationHeatmap(daysBack);
+  const { loading, data, warning, refetch } = useConversationHeatmap(daysBack);
 
   useEffect(() => {
     if (!live) return;
@@ -84,6 +84,15 @@ export function ConversationHeatmap() {
         </div>
       </CardHeader>
       <CardContent>
+        {warning && (
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/50">
+            <span className="mt-0.5">⚠️</span>
+            <div className="flex-1">{warning}</div>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
         <TooltipProvider delayDuration={100}>
           <div className="overflow-x-auto">
             <div className="min-w-[700px]">
