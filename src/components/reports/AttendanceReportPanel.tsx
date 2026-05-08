@@ -308,7 +308,13 @@ export function AttendanceReportPanel() {
             {agentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" onClick={load}><RefreshCcw className="w-4 h-4 mr-2" />Atualizar</Button>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none ml-auto">
+          <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} className="accent-primary" />
+          Atualização automática (10s)
+        </label>
+        <Button variant="outline" size="sm" onClick={() => load(false)} disabled={refreshing}>
+          <RefreshCcw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />Atualizar
+        </Button>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
