@@ -24,7 +24,7 @@ function getHeatColor(count: number, max: number): string {
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
   const [live, setLive] = useState(false);
-  const { loading, data, refetch } = useConversationHeatmap(daysBack);
+  const { loading, data, warning, refetch } = useConversationHeatmap(daysBack);
 
   useEffect(() => {
     if (!live) return;
