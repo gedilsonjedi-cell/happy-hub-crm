@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download } from "lucide-react";
+import { Download, Radio } from "lucide-react";
 import { useConversationHeatmap } from "@/hooks/useConversationHeatmap";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+const LIVE_INTERVAL_MS = 5000;
 
 function getHeatColor(count: number, max: number): string {
   if (count === 0 || max === 0) return "bg-muted/40";
@@ -21,7 +23,14 @@ function getHeatColor(count: number, max: number): string {
 
 export function ConversationHeatmap() {
   const [daysBack, setDaysBack] = useState(7);
-  const { loading, data } = useConversationHeatmap(daysBack);
+  const [live, setLive] = useState(false);
+  const { loading, data, refetch } = useConversationHeatmap(daysBack);
+
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => { refetch(); }, LIVE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [live, refetch]);
 
   if (loading) {
     return (
@@ -49,6 +58,16 @@ export function ConversationHeatmap() {
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={live ? "default" : "outline"}
+            size="sm"
+            className={cn("h-8 text-xs gap-1.5", live && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+            onClick={() => setLive(v => !v)}
+            title={live ? "Pausar atualização ao vivo" : "Ativar atualização ao vivo"}
+          >
+            <Radio className={cn("w-3.5 h-3.5", live && "animate-pulse")} />
+            {live ? "Ao vivo" : "Ao vivo"}
+          </Button>
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue />
