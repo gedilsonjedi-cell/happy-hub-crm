@@ -36,7 +36,7 @@ export function extractButtonLabel(m: RawMsg): string | null {
 }
 
 // Fetch inbound messages from EXTERNAL DB for the given date range
-async function fetchInboundMessages(
+async function fetchInboundMessagesOnce(
   impersonatedOrgId: string | null,
   daysBack: number
 ): Promise<RawMsg[]> {
@@ -63,6 +63,26 @@ async function fetchInboundMessages(
     if (from > 100000) break; // sanity guard
   }
   return all;
+}
+
+// Retry wrapper: tries up to `attempts` times with short backoff before giving up.
+async function fetchInboundMessages(
+  impersonatedOrgId: string | null,
+  daysBack: number,
+  attempts = 2
+): Promise<RawMsg[]> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchInboundMessagesOnce(impersonatedOrgId, daysBack);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
