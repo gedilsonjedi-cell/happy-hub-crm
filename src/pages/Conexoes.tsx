@@ -1769,6 +1769,16 @@ const Conexoes = () => {
                           Migrar WABA
                         </DropdownMenuItem>
                       )}
+                      <DropdownMenuItem
+                        className="gap-2 cursor-pointer"
+                        onClick={() => {
+                          setRenameValue(channel.name || "");
+                          setRenameChannel(channel);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Renomear
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="gap-2 cursor-pointer"
                         onClick={() => handleToggleConnection(channel)}
