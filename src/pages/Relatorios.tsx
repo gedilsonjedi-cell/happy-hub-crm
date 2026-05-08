@@ -53,6 +53,10 @@ export default function Relatorios() {
               <BarChart3 className="w-4 h-4" />
               Tráfego
             </TabsTrigger>
+            <TabsTrigger value="atendimentos" className="flex items-center gap-2">
+              <Headphones className="w-4 h-4" />
+              Atendimentos
+            </TabsTrigger>
             <TabsTrigger value="agentes" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Agentes
@@ -74,6 +78,10 @@ export default function Relatorios() {
           <TabsContent value="trafego" className="space-y-6">
             <ConversationHeatmap />
             <ButtonTrafficHeatmap />
+          </TabsContent>
+
+          <TabsContent value="atendimentos">
+            <AttendanceReportPanel />
           </TabsContent>
 
           <TabsContent value="agentes">
