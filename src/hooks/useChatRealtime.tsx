@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
-import { getExternalClient } from "@/lib/externalSupabaseClient";
+import { getExternalClient, refreshExternalToken } from "@/lib/externalSupabaseClient";
 
 interface RealtimeCallbacks {
   onNewMessage: (payload: {
