@@ -2967,14 +2967,21 @@ const AtendimentoV2 = () => {
     const conversationChannel = channels.find(c => c.id === conversationChannelId);
     const messageToSend = draft.trim();
 
-    // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
+    // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa.
+    // Não bloquear o envio se a checagem falhar (rede, RLS, etc.) — apenas seguir.
     const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-    const { data: currentAssignment } = await supabase
-      .from('conversation_assignments')
-      .select('assigned_to, sector_id')
-      .eq('channel_id', conversationChannelId)
-      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-      .maybeSingle();
+    let currentAssignment: { assigned_to: string | null; sector_id: string | null } | null = null;
+    try {
+      const { data } = await supabase
+        .from('conversation_assignments')
+        .select('assigned_to, sector_id')
+        .eq('channel_id', conversationChannelId)
+        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
+        .maybeSingle();
+      currentAssignment = data ?? null;
+    } catch (err) {
+      console.warn('[handleSendMessage] assignment check failed, proceeding anyway:', err);
+    }
 
     // Verificar acesso ao setor
     const assignmentSectorId = currentAssignment?.sector_id || selectedConversation.sectorId;
