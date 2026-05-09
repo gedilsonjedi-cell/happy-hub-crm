@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchConversationSummaryExternal } from "@/lib/conversationsExternal";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
@@ -69,14 +70,20 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     const channelIds = channels.map(c => c.id);
 
     try {
-      // Single RPC call replaces 8-15 separate queries
-      const { data: rows, error } = await supabase.rpc('get_conversations_summary', {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
-      });
+      // Single external RPC call (reads from external Supabase via direct JWT)
+      let rows: any[] | null = null;
+      let error: any = null;
+      try {
+        rows = await fetchConversationSummaryExternal({
+          channelIds,
+          organizationId: effectiveOrganizationId!,
+        });
+      } catch (e) {
+        error = e;
+      }
 
       if (error) {
-        console.error("RPC get_conversations_summary error:", error);
+        console.error("External conversations summary error:", error);
         // Fallback to legacy fetch if RPC fails
         await fetchConversationsLegacy();
         return;

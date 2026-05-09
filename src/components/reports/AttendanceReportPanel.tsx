@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchConversationSummaryExternal } from "@/lib/conversationsExternal";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -118,24 +119,22 @@ export function AttendanceReportPanel() {
       const channelIds = (ch || []).map((c: any) => c.id);
       if (channelIds.length === 0) { setRows([]); return; }
 
-      // Paginar RPC em lotes de 1000 (PostgREST limite padrão) para garantir 100% dos atendimentos
+      // Read from external (paginated em lotes de 1000) para garantir 100% dos atendimentos
       const all: any[] = [];
       const pageSize = 1000;
-      let from = 0;
+      let offset = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const { data, error } = await supabase
-          .rpc("get_conversations_summary", {
-            p_channel_ids: channelIds,
-            p_organization_id: effectiveOrganizationId,
-          })
-          .range(from, from + pageSize - 1);
-        if (error) throw error;
-        const batch = (data as any[]) || [];
+        const batch = await fetchConversationSummaryExternal({
+          channelIds,
+          organizationId: effectiveOrganizationId!,
+          limit: pageSize,
+          offset,
+        });
         all.push(...batch);
         if (batch.length < pageSize) break;
-        from += pageSize;
-        if (from > 200000) break; // sanity guard
+        offset += pageSize;
+        if (offset > 200000) break; // sanity guard
       }
       // Apenas em aberto (a RPC já exclui 'archived'; aqui removemos 'resolved')
       const open = all
