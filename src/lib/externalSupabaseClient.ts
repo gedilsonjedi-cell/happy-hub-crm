@@ -107,6 +107,51 @@ async function refreshTokenInPlace(
 }
 
 /**
+ * Force a token refresh for a given scope (or all scopes when omitted).
+ * Safe no-op when there is no client yet. Used by visibility/online listeners
+ * and by Realtime error handlers to recover silently from JWT expiry.
+ */
+export async function refreshExternalToken(
+  impersonatedOrgId?: string | null
+): Promise<void> {
+  if (impersonatedOrgId !== undefined) {
+    const scopeKey = getScopeKey(impersonatedOrgId);
+    if (!clientCache.has(scopeKey)) return;
+    await refreshTokenInPlace(scopeKey, impersonatedOrgId);
+    return;
+  }
+  const scopes = Array.from(clientCache.keys());
+  await Promise.all(
+    scopes.map((scopeKey) =>
+      refreshTokenInPlace(
+        scopeKey,
+        scopeKey === DEFAULT_SCOPE ? null : scopeKey
+      ).catch((err) =>
+        console.warn(
+          `[externalSupabase] refresh failed for scope ${scopeKey}:`,
+          err?.message ?? err
+        )
+      )
+    )
+  );
+}
+
+// Silent recovery: when the tab returns to foreground or the network comes
+// back, refresh any cached tokens. The WebSocket stays open via setAuth().
+if (typeof window !== "undefined") {
+  const maybeRefresh = () => {
+    refreshExternalToken().catch(() => {
+      /* swallow — handled per-scope */
+    });
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") maybeRefresh();
+  });
+  window.addEventListener("online", maybeRefresh);
+  window.addEventListener("focus", maybeRefresh);
+}
+
+/**
  * Get a Supabase client connected to the external database.
  * - Reuses the same client across the session (Realtime stays connected).
  * - Refreshes the JWT in place when needed.
