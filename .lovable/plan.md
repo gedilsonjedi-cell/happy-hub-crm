@@ -1,67 +1,59 @@
-## Cutover Fase 2A — Assignments + Stats para Banco Externo
+## Contexto
 
-Você escolheu **cutover agressivo + tudo**. Antes de começar, alinho aqui o que vai ser feito, porque mexe em ~30 arquivos críticos do atendimento e dispara em produção.
+Hoje:
+- **Mensagens** (`whatsapp_messages`) e **contatos** (`whatsapp_contacts`): já 100% externo ✓
+- **Edge functions** (12): já reescrevem assignments/stats só no externo ✓
+- **Frontend**: ainda escreve e lê `conversation_assignments`/`conversation_stats` do **interno** em ~20 pontos. Mirror trigger interno→externo mantém o externo atualizado para esses writes do front.
 
-### Estratégia
+Objetivo: cortar o último cordão umbilical — frontend passa a ler/escrever direto no externo, e os mirror triggers caem.
 
-Usar o `external-assignments-write` (já existe) como **único ponto de escrita**. Frontend lê direto do externo via JWT (já configurado). Edge functions que processam webhooks/envios passam a chamar o externo pelo helper `getExternalDb()`.
+## Escopo dos dados
 
-### Etapas
+- `conversation_assignments` e `conversation_stats` já existem no externo (via mirror).
+- `leads`, `profiles`, `channels`, `campaigns` etc. **continuam internos** (não são mensagens nem logs de campanha).
+- A RPC `get_conversations_summary_paginated` faz JOIN com `leads` e `profiles` — não dá pra portar 1:1 pro externo. Solução: nova RPC externa que retorna só assignments+stats; frontend resolve nomes/tags via cache interno.
 
-**1. Helpers compartilhados** (1 arquivo)
-- `_shared/externalDb.ts`: adicionar funções utilitárias (`extUpsertAssignment`, `extUpdateAssignment`, `extUpsertStats`, `extResolveAssignment`) para reduzir duplicação nos webhooks.
+## Plano
 
-**2. Webhooks de provedores** (4 funções)
-- `meta-webhook`, `zapi-webhook`, `gupshup-webhook`, `infobip-webhook`
-- Substituir `supabase.from('conversation_assignments').upsert/update` por `extUpsertAssignment` no externo.
-- Trigger automática de stats vai para chamada explícita do RPC `upsert_conversation_stats_external`.
+### 1. Externo: criar RPC `get_conversations_summary_paginated_ext`
+- Query equivalente, **sem JOINs com leads/profiles** (retorna só `lead_id` e `assigned_to`).
+- RLS via `request.jwt.claims.organization_id` (consistente com whatsapp_messages).
+- Manter assinatura: `p_channel_ids uuid[], p_organization_id uuid, p_limit, p_offset`.
 
-**3. Send functions** (4 funções)
-- `meta-send`, `zapi-send`, `gupshup-send`, `infobip-send`
-- Mesma troca: criação/update de assignment vai pro externo.
+### 2. Frontend: read-side
+Pontos a migrar para `externalSupabase`:
+- `src/hooks/useConversations.tsx` (linhas 73, 143, 204, 226)
+- `src/pages/AtendimentoV2.tsx` (linhas 998, 1118, 1185, 1366, 1568, 1582, 2231, 2323, 2630, 2700, 2975, 3042, 3082, 3137, 3393, 3503)
 
-**4. Chatbot e dispatch** (4 funções)
-- `whatsapp-chatbot`, `zapi-chatbot`, `campaign-dispatch`, `send-campaign-batch`
-- Idem.
+Para cada read:
+- `supabase.from("conversation_assignments")` → `externalSupabase.from("conversation_assignments")`
+- RPC `get_conversations_summary_paginated` → `get_conversations_summary_paginated_ext` no externalSupabase
+- Após receber rows, fazer um `supabase.from("leads").select("id,name,tags").in("id", leadIds)` e `supabase.from("profiles").select("user_id,display_name,email").in("user_id", assignedIds)` no **interno** e mesclar (usar Map em memória, batch único por página).
 
-**5. Hooks de UI** (8 arquivos)
-- `useConversations`, `useChatRealtime`, `useUnreadMessagesCount`, `useConversationMetrics`, `useAgentPerformance`, `useWhatsAppNotifications`
-- Componentes: `AssignAttendantDialog`, `BulkTransferDialog`, `ManualSendDialog`
-- Páginas: `AtendimentoV2`, `Index`
-- Reads via JWT externo direto. Mutations via `external-assignments-write` (invoke).
+### 3. Frontend: write-side
+Mesmos pontos com `.update()`/`.insert()`/`.delete()` em `conversation_assignments`. Mover para `externalSupabase` direto (RLS por org claim já cobre). Onde houver insert sem org_id, garantir que seja preenchido.
 
-**6. Sync trigger interno**
-- Desabilitar trigger `auto_upsert_conversation_stats` no interno (vai virar dead code).
-- Manter tabelas locais por 7 dias como backup (não dropar ainda).
+### 4. Validação (manual ~5 min)
+- Abrir AtendimentoV2, conferir sidebar carrega
+- Mandar mensagem nova de fora → aparece em real-time
+- Transferir conversa, arquivar, mudar status — tudo persiste
+- Conferir contadores de não-lidos zeram ao abrir
 
-**7. Realtime**
-- Frontend assina canal do externo (já funciona pra messages). Ampliar pra `conversation_assignments` e `conversation_stats`.
-- Remover subscriptions internas dessas duas tabelas.
+### 5. Cleanup
+- `DROP TRIGGER trg_mirror_ca ON conversation_assignments;`
+- `DROP TRIGGER trg_mirror_cs ON conversation_stats;`
+- (Manter as tabelas internas por enquanto — drop só depois de 24-48h sem incidente)
+- Atualizar `mem://arquitetura/mirror-trigger-assignments-stats` marcando como DEPRECATED
 
-### Riscos e mitigação
+## Risco
 
-- **Latência extra**: cada webhook agora faz ida ao externo. Mitigado pelo `runInBackground`.
-- **RLS no externo**: já configurado por organization_id via JWT. Edge functions usam service_role (bypass).
-- **Ordem do deploy**: Frontend → webhooks → sends → chatbot. Se algo quebrar, posso reverter por arquivo.
-- **Reset unread**: Frontend chama `external-assignments-write` action `reset_unread` ao abrir chat. Sem essa chamada, badge fica preso.
+- Latência: cada página da sidebar agora faz 1 query externa + 2 queries internas (leads + profiles). Batch único por página, então deve ficar ≤200ms total.
+- Regressões de status/atribuição: temos cobertura de Realtime no externo, então qualquer write inconsistente aparece imediatamente.
+- Mirror inverso: NÃO vamos inverter. Se algo quebrar, basta reativar mirror antigo.
 
-### Detalhes técnicos
+## Detalhes técnicos
 
-- `getExternalDb()` usa service_role do externo (já em secrets).
-- `external-assignments-write` valida JWT do interno e resolve `organization_id` do profile.
-- RPCs já criados no externo: `archive_conversation_ext`, `restore_conversation_ext`, `reset_conversation_unread_ext`, `upsert_conversation_stats_external`, `get_conversations_summary_ext`.
-- Lead lookup: continua no interno (leads não migram nessa fase).
-- Realtime: REPLICA IDENTITY FULL já habilitado nas duas tabelas externas.
-
-### O que NÃO vai mudar
-
-- Tabela `leads` continua interna.
-- Tabela `channels` continua interna.
-- Reports/relatórios continuam puxando do interno (próxima fase).
-- `conversation_metrics` e `conversation_notes` ficam no interno.
-
-### Pós-cutover
-
-Em 7 dias, se estiver estável:
-- Drop das tabelas locais `conversation_assignments` e `conversation_stats`.
-- Atualizar `mem://arquitetura/migracao-banco-dados-externo-ssot` removendo "local DB handles stats".
+- A nova RPC externa será criada via SQL direto no externo (não via migration interna).
+- Usar `externalSupabase` que já tem JWT customizado com claim `organization_id` válida.
+- Preservar `is_bot_handling`, `campaign_chatbot_id`, `bot_paused_until` na assinatura da nova RPC.
+- A `get_conversations_summary` (não paginada) usada em `AttendanceReportPanel` é só de relatório — pode permanecer no interno por ora (lê dados antigos via mirror inverso? não — ela ficaria desatualizada). **Decisão**: portar também para externo na mesma rodada; relatório usa external + join interno.
