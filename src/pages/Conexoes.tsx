@@ -157,7 +157,7 @@ const Conexoes = () => {
   const [channelChatbotConfig, setChannelChatbotConfig] = useState<{ agent_id: string | null; flow_bot_id: string | null; bot_type: string | null; is_enabled: boolean } | null>(null);
   
   // Connection type selection
-  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | 'gupshup' | 'infobip' | null>(null);
+  const [connectionType, setConnectionType] = useState<'meta' | 'zapi' | 'gupshup' | null>(null);
   
   // Step-based flow
   const [step, setStep] = useState<'credentials' | 'select-numbers'>('credentials');
@@ -214,14 +214,6 @@ const Conexoes = () => {
     phone: "",
   });
 
-  // Infobip form data
-  const [infobipFormData, setInfobipFormData] = useState({
-    apiKey: "",
-    baseUrl: "",
-    senderPhone: "",
-    name: "",
-    phone: "",
-  });
   
   const [formData, setFormData] = useState({
     wabaId: "",
@@ -661,71 +653,6 @@ const Conexoes = () => {
     }
   };
 
-  // Handle Infobip connection
-  const handleConnectInfobip = async () => {
-    if (!infobipFormData.apiKey.trim() || !infobipFormData.baseUrl.trim() || !infobipFormData.name.trim() || !infobipFormData.phone.trim()) {
-      toast.error("Preencha todos os campos obrigatórios");
-      return;
-    }
-
-    if (isSuperAdmin && !selectedOrgId) {
-      toast.error("Selecione a organização para esta conexão");
-      return;
-    }
-
-    setIsConnecting(true);
-
-    try {
-      let targetOrgId: string | null = null;
-      
-      if (isSuperAdmin && selectedOrgId) {
-        targetOrgId = selectedOrgId;
-      } else {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("organization_id")
-          .eq("user_id", user?.id)
-          .maybeSingle();
-        targetOrgId = profileData?.organization_id || null;
-      }
-
-      let formattedPhone = infobipFormData.phone.replace(/\D/g, '');
-      if (!formattedPhone.startsWith('+')) {
-        formattedPhone = '+' + formattedPhone;
-      }
-
-      // Clean the base URL (remove https:// prefix if provided)
-      let cleanBaseUrl = infobipFormData.baseUrl.trim();
-      cleanBaseUrl = cleanBaseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-
-      const { error } = await supabase.from("channels").insert({
-        user_id: user?.id,
-        organization_id: targetOrgId,
-        name: infobipFormData.name.trim(),
-        phone: formattedPhone,
-        provider: "infobip",
-        app_name: cleanBaseUrl, // Base URL stored in app_name
-        access_token: infobipFormData.apiKey.trim(),
-        waba_id: infobipFormData.senderPhone?.trim() || formattedPhone.replace('+', ''), // Sender number
-        connected: true,
-      });
-
-      if (error) {
-        console.error('Error inserting Infobip channel:', error);
-        toast.error("Erro ao criar canal Infobip");
-      } else {
-        toast.success("Canal Infobip criado com sucesso!");
-        setIsDialogOpen(false);
-        resetForm();
-        await fetchChannels();
-      }
-    } catch (err) {
-      console.error('Infobip connect error:', err);
-      toast.error("Erro ao conectar Infobip");
-    } finally {
-      setIsConnecting(false);
-    }
-  };
 
   // Sync existing channels with Meta API data
   const handleSyncChannels = async () => {
@@ -1593,39 +1520,6 @@ const Conexoes = () => {
             </Button>
         </div>
 
-        {/* Infobip Card */}
-        <div className="flex items-start gap-4 p-5 bg-muted/20 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
-          <div className="w-12 h-12 rounded-lg bg-sky-500/10 flex items-center justify-center flex-shrink-0">
-            <Smartphone className="w-6 h-6 text-sky-500" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-foreground">Infobip</h3>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
-                Oficial
-              </Badge>
-            </div>
-            <p className="text-muted-foreground text-sm mb-3">
-              Conexão via Infobip para WhatsApp Business API. Provedor global certificado pela Meta.
-            </p>
-            <a 
-              href="https://www.infobip.com/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sky-500 text-sm hover:underline"
-            >
-              Acessar Infobip
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          <Button 
-            variant="outline" 
-            className="border-sky-500/30 text-sky-500 hover:bg-sky-500/10"
-            onClick={() => { resetForm(); setConnectionType('infobip'); setIsDialogOpen(true); }}
-          >
-            Conectar Infobip
-          </Button>
-        </div>
       </div>
       
 
@@ -2159,8 +2053,8 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Gupshup/Infobip channels use the simple connected check */}
-                {(channel.provider === 'gupshup' || channel.provider === 'infobip') && !channel.connected && (
+                {/* Gupshup channels use the simple connected check */}
+                {channel.provider === 'gupshup' && !channel.connected && (
                   <div className="mt-3 pt-3 border-t border-border space-y-2">
                     <Button 
                       variant="default" 
@@ -2171,18 +2065,6 @@ const Conexoes = () => {
                       <Power className="w-3 h-3" />
                       Ativar Canal
                     </Button>
-                  </div>
-                )}
-
-                {/* Infobip connected status */}
-                {channel.provider === 'infobip' && channel.connected && (
-                  <div className="mt-3 pt-3 border-t border-border space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full animate-pulse bg-emerald-500" />
-                      <span className="text-xs text-muted-foreground">
-                        Pronto para enviar e receber
-                      </span>
-                    </div>
                   </div>
                 )}
               </div>
@@ -2211,11 +2093,9 @@ const Conexoes = () => {
                 ? 'Conectar via Z-API'
                 : connectionType === 'gupshup'
                   ? 'Conectar via Gupshup'
-                  : connectionType === 'infobip'
-                    ? 'Conectar via Infobip'
-                    : step === 'credentials' 
-                      ? 'Conectar WhatsApp Business' 
-                      : 'Selecionar Números'
+                  : step === 'credentials' 
+                    ? 'Conectar WhatsApp Business' 
+                    : 'Selecionar Números'
               }
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -2223,11 +2103,9 @@ const Conexoes = () => {
                 ? 'Configure a conexão Z-API para este cliente'
                 : connectionType === 'gupshup'
                   ? 'Configure a conexão Gupshup para este cliente'
-                  : connectionType === 'infobip'
-                    ? 'Configure a conexão Infobip para este cliente'
-                    : step === 'credentials' 
-                      ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
-                      : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+                  : step === 'credentials' 
+                    ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                    : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
               }
             </DialogDescription>
           </DialogHeader>
@@ -2481,67 +2359,6 @@ const Conexoes = () => {
                       Conectar Gupshup
                     </>
                   )}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Infobip Form */}
-          {connectionType === 'infobip' && (
-            <div className="space-y-4 py-2">
-              <div className="p-3 bg-sky-500/10 rounded-lg border border-sky-500/20">
-                <p className="text-sm text-sky-400">
-                  <strong>Atenção:</strong> Obtenha API Key e Base URL no{" "}
-                  <a href="https://portal.infobip.com/" target="_blank" className="underline">painel Infobip</a>.
-                </p>
-              </div>
-              {isSuperAdmin && !isImpersonating && (
-              <div className="space-y-2">
-                <Label className="text-foreground">Organização *</Label>
-                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
-                  <SelectTrigger className="bg-muted/30 border-border"><SelectValue placeholder="Selecione a organização" /></SelectTrigger>
-                  <SelectContent className="bg-card border-border z-[100]">
-                    {organizations.map((org) => (<SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              )}
-              <div className="space-y-2">
-                <Label className="text-foreground">Nome do Canal</Label>
-                <Input placeholder="Ex: WhatsApp Vendas" className="bg-muted/30 border-border" value={infobipFormData.name} onChange={(e) => setInfobipFormData({ ...infobipFormData, name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">Número de Telefone</Label>
-                <Input placeholder="Ex: 5511999999999" className="bg-muted/30 border-border" value={infobipFormData.phone} onChange={(e) => setInfobipFormData({ ...infobipFormData, phone: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">URL de Base da API</Label>
-                <Input placeholder="Ex: v33p8m.api.infobip.com" className="bg-muted/30 border-border" value={infobipFormData.baseUrl} onChange={(e) => setInfobipFormData({ ...infobipFormData, baseUrl: e.target.value })} />
-                <p className="text-xs text-muted-foreground">Encontre no painel Infobip em "Para desenvolvedores"</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">Chave de API</Label>
-                <div className="relative">
-                  <Input type={showAccessToken ? "text" : "password"} placeholder="Chave de API do Infobip" className="bg-muted/30 border-border pr-10" value={infobipFormData.apiKey} onChange={(e) => setInfobipFormData({ ...infobipFormData, apiKey: e.target.value })} />
-                  <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setShowAccessToken(!showAccessToken)}>
-                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                <Label className="text-foreground text-xs font-semibold">URL do Webhook (configure no Infobip)</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="text-xs text-muted-foreground break-all flex-1">{`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/infobip-webhook`}</code>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => { navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/infobip-webhook`); toast.success("URL do webhook copiada!"); }}>
-                    <Copy className="w-3 h-3" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Configure esta URL como Forwarding URL no painel do Infobip</p>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleConnectInfobip} disabled={isConnecting || !infobipFormData.apiKey || !infobipFormData.baseUrl || !infobipFormData.name || !infobipFormData.phone || (isSuperAdmin && !selectedOrgId)} className="gap-2 bg-sky-600 hover:bg-sky-700">
-                  {isConnecting ? (<><Loader2 className="w-4 h-4 animate-spin" />Conectando...</>) : (<><CheckCircle2 className="w-4 h-4" />Conectar Infobip</>)}
                 </Button>
               </div>
             </div>

@@ -143,31 +143,6 @@ Deno.serve(async (req) => {
 
       return new Response(JSON.stringify({ success: true, provider: 'gupshup' }), { status: 200, headers });
 
-    } else if (provider === 'infobip') {
-      const invokeBody: Record<string, unknown> = {
-        channelId: channel.id,
-        destination: to.replace(/\D/g, ''),
-        message: message,
-      };
-
-      const infobipSendUrl = `${supabaseUrl}/functions/v1/infobip-send`;
-      const resp = await fetch(infobipSendUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify(invokeBody),
-      });
-
-      const result = await resp.json();
-
-      if (!resp.ok) {
-        return new Response(JSON.stringify({ error: result.error || 'Failed to send message', details: result }), { status: resp.status, headers });
-      }
-
-      return new Response(JSON.stringify({ success: true, provider: 'infobip' }), { status: 200, headers });
-
     } else {
       return new Response(JSON.stringify({ error: `Unsupported provider: ${provider}` }), { status: 400, headers });
     }

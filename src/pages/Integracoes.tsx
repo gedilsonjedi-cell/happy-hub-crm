@@ -662,7 +662,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                     <AccordionContent className="space-y-4 pt-2">
                       <p className="text-sm text-muted-foreground">
                         Envia uma mensagem de texto ou áudio para um número de telefone via WhatsApp. 
-                        O sistema identifica automaticamente o provedor (Meta, Z-API, Gupshup, Infobip) pelo canal vinculado ao token.
+                        O sistema identifica automaticamente o provedor (Meta, Z-API, Gupshup) pelo canal vinculado ao token.
                       </p>
 
                       <div>
