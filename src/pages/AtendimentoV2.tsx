@@ -1588,13 +1588,13 @@ const AtendimentoV2 = () => {
     
     const channelIds = channels.map(c => c.id);
     try {
-      const { data: rows, error } = await supabase.rpc("get_conversations_summary_paginated", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
-        p_limit: CONVERSATIONS_PAGE_SIZE,
-        p_offset: conversationOffset,
+      const rows = await fetchConversationSummaryExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId!,
+        limit: CONVERSATIONS_PAGE_SIZE,
+        offset: conversationOffset,
       });
-      
+      const error: any = null;
       if (error) throw error;
       
       if (rows?.length) {
