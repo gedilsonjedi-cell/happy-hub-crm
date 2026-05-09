@@ -92,14 +92,7 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
 
 /** Update whatsapp_messages on external DB only */
 async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
-  let result = await messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
-
-  if (result.error && externalSupabase) {
-    console.error('[Meta-Webhook] External message update failed, retrying locally:', result.error);
-    result = await supabase.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
-  }
-
-  return result;
+  return await messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
 }
 
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
