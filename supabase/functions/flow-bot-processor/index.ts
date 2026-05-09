@@ -871,11 +871,16 @@ async function sendFlowMessages(
           status: mediaResp.ok ? 'sent' : 'failed',
           metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
         });
-        supabase.rpc('upsert_conversation_stats_manual', {
+        const _statsArgs = {
           _channel_id: channelId, _conversation_phone: contactPhone,
           _content: msg.message || `[${msg.media_type}]`, _direction: 'outbound',
           _is_read: null, _sender_name: null, _created_at: new Date().toISOString(),
-        }).then(() => {}, () => {});
+        };
+        // Dual-write: internal for Realtime + external for SSoT
+        supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
+        if (messageDb !== supabase) {
+          messageDb.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
+        }
 
         // If audio + text message, send text separately after audio with a 5s delay
         if (msg.media_type === 'audio' && msg.message) {
