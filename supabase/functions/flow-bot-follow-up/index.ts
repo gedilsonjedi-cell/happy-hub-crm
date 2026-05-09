@@ -9,6 +9,15 @@ const corsHeaders = {
 // Follow-up hours configuration (Brazil timezone UTC-3)
 const FOLLOW_UP_HOURS = [8, 11, 14]; // 8h, 11h, 14h (will spread across attempts)
 
+// Module-level external DB client (whatsapp_messages SSoT)
+const _extUrlMod = Deno.env.get("EXTERNAL_SUPABASE_URL");
+const _extKeyMod = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+if (!_extUrlMod || !_extKeyMod) {
+  throw new Error("flow-bot-follow-up requires EXTERNAL_SUPABASE_URL/SERVICE_ROLE_KEY");
+}
+const messageDbModule = createClient(_extUrlMod, _extKeyMod);
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
