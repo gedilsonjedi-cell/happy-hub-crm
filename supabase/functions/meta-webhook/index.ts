@@ -421,18 +421,13 @@ async function downloadAndStoreMedia(
     const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
     const fileName = `${organizationId}/${Date.now()}_${mediaId}.${ext}`;
 
-    const { error } = await supabase.storage
-      .from('whatsapp-media')
-      .upload(fileName, buffer, { contentType: mimeType, upsert: false });
-
-    if (error) {
-      console.error(`[Media] Storage upload failed for ${mediaId}:`, error.message);
+    const publicUrl = await uploadToExternalMedia(fileName, buffer, mimeType);
+    if (!publicUrl) {
+      console.error(`[Media] External storage upload failed for ${mediaId}`);
       return null;
     }
-
-    const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(fileName);
-    console.log(`[Media] Stored ${mediaId} -> ${urlData.publicUrl}`);
-    return urlData.publicUrl;
+    console.log(`[Media] Stored ${mediaId} -> ${publicUrl}`);
+    return publicUrl;
   } catch (err) {
     console.error(`[Media] Exception downloading ${mediaId}:`, err);
     return null;
