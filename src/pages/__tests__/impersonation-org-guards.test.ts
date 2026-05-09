@@ -48,12 +48,12 @@ describe("Regression: guard de impersonação nos seletores de organização", (
     );
     expect(unguardedSelectors).toBeNull();
 
-    // E deve haver pelo menos 4 ocorrências do guard correto (Z-API, Gupshup, Infobip, Meta)
+    // E deve haver pelo menos 3 ocorrências do guard correto (Z-API, Gupshup, Meta)
     const guardedSelectors = source.match(
       /\{isSuperAdmin\s*&&\s*!isImpersonating\s*&&\s*\(/g
     );
     expect(guardedSelectors).not.toBeNull();
-    expect(guardedSelectors!.length).toBeGreaterThanOrEqual(4);
+    expect(guardedSelectors!.length).toBeGreaterThanOrEqual(3);
   });
 
   it("Conexoes.tsx auto-seleciona a org impersonada para vincular novos canais", () => {
