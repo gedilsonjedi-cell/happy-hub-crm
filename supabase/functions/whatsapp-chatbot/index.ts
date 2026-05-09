@@ -69,8 +69,8 @@ Deno.serve(async (req) => {
     const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
     const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
     const externalSupabase = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : null;
-    const messageDb = externalSupabase || supabase;
-    const caDb = externalSupabase || supabase;
+    const messageDb = externalSupabase;
+    const caDb = externalSupabase;
 
     // Get chatbot config for this channel
     const { data: config } = await supabase
@@ -641,13 +641,11 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
               provider: channel.provider
             }
           });
-        // Update conversation stats: dual-write (internal for Realtime + external for SSoT)
         const _statsArgs = {
           _channel_id: channelId, _conversation_phone: cleanDestination,
           _content: responseMessage, _direction: 'outbound', _is_read: null,
           _sender_name: null, _created_at: new Date().toISOString(),
         };
-        supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
         if (externalSupabase) {
           externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
         }

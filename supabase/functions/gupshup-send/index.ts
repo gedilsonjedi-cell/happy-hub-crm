@@ -293,14 +293,8 @@ Deno.serve(async (req) => {
             originalError: responseText,
           },
       };
-      const msgDb = externalSupabase || serviceRoleClient;
+      const msgDb = externalSupabase;
       await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
-      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-        _channel_id: channelId, _conversation_phone: cleanDestination,
-        _content: storedContent, _direction: 'outbound', _is_read: null,
-        _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}, () => {});
-
       return new Response(
         JSON.stringify({
           success: false,
@@ -335,14 +329,8 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role',
         },
     };
-    const msgDb2 = externalSupabase || serviceRoleClient;
+    const msgDb2 = externalSupabase;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
-    serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-      _channel_id: channelId, _conversation_phone: cleanDestination,
-      _content: storedContent, _direction: 'outbound', _is_read: null,
-      _sender_name: null, _created_at: new Date().toISOString(),
-    }).then(() => {}, () => {});
-
     // Pause bot for 24 hours when a human sends a message
     if (userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();

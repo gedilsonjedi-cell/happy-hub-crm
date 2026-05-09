@@ -9,6 +9,15 @@ const corsHeaders = {
 // Follow-up hours configuration (Brazil timezone UTC-3)
 const FOLLOW_UP_HOURS = [8, 11, 14]; // 8h, 11h, 14h (will spread across attempts)
 
+// Module-level external DB client (whatsapp_messages SSoT)
+const _extUrlMod = Deno.env.get("EXTERNAL_SUPABASE_URL");
+const _extKeyMod = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+if (!_extUrlMod || !_extKeyMod) {
+  throw new Error("flow-bot-follow-up requires EXTERNAL_SUPABASE_URL/SERVICE_ROLE_KEY");
+}
+const messageDbModule = createClient(_extUrlMod, _extKeyMod);
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -321,7 +330,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await supabase.from("whatsapp_messages").insert({
+      await messageDbModule.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -333,12 +342,6 @@ async function sendFollowUpMessage(
         status: "sent",
         metadata: { destination: contactPhone, provider: 'meta', follow_up: true },
       });
-      supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: channel.id, _conversation_phone: contactPhone,
-        _content: message, _direction: 'outbound', _is_read: null,
-        _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}, () => {});
-
       return { success: true };
     } else if (channel.provider === "zapi") {
       // Z-API sending logic
@@ -363,7 +366,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await supabase.from("whatsapp_messages").insert({
+      await messageDbModule.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -375,12 +378,6 @@ async function sendFollowUpMessage(
         status: "sent",
         metadata: { destination: contactPhone, provider: 'zapi', follow_up: true },
       });
-      supabase.rpc('upsert_conversation_stats_manual', {
-        _channel_id: channel.id, _conversation_phone: contactPhone,
-        _content: message, _direction: 'outbound', _is_read: null,
-        _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}, () => {});
-
       return { success: true };
     }
 

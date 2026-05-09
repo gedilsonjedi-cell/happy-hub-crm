@@ -876,8 +876,6 @@ async function sendFlowMessages(
           _content: msg.message || `[${msg.media_type}]`, _direction: 'outbound',
           _is_read: null, _sender_name: null, _created_at: new Date().toISOString(),
         };
-        // Dual-write: internal for Realtime + external for SSoT
-        supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
         if (messageDb !== supabase) {
           messageDb.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
         }
@@ -958,8 +956,6 @@ async function sendTextMessage(
     _content: text, _direction: 'outbound', _is_read: null,
     _sender_name: null, _created_at: new Date().toISOString(),
   };
-  // Dual-write: internal for Realtime + external for SSoT
-  supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
   if (db !== supabase) {
     db.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
   }
