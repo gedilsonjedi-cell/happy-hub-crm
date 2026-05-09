@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 
@@ -52,6 +52,13 @@ export function useChatRealtime(
   const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
+  // Stable string key — only re-subscribe when the actual set of channel IDs
+  // changes, not on every parent re-render that produces a new array reference.
+  const channelKey = useMemo(
+    () => [...channelIds].sort().join(","),
+    [channelIds]
+  );
+
   useEffect(() => {
     channelIdsRef.current = channelIds;
   }, [channelIds]);
@@ -103,7 +110,7 @@ export function useChatRealtime(
   );
 
   useEffect(() => {
-    if (channelIds.length === 0) return;
+    if (!channelKey) return;
 
     let cancelled = false;
 
@@ -235,5 +242,5 @@ export function useChatRealtime(
         orgAssignmentsChannelRef.current = null;
       }
     };
-  }, [channelIds, organizationId, impersonatedOrgId, handleAssignmentPayload]);
+  }, [channelKey, organizationId, impersonatedOrgId, handleAssignmentPayload]);
 }
