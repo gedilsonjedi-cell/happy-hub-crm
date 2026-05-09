@@ -1504,11 +1504,10 @@ const AtendimentoV2 = () => {
       .map(phone => `sender_phone.eq.${phone}`)
       .join(',');
 
-    // Reset unread count in conversation_stats (source of truth for sidebar badges)
+    // Reset unread count via external-assignments-write (external DB SSoT)
     const statsPhoneVariants = Array.from(phoneVariants);
-    supabase.rpc('reset_conversation_unread', {
-      p_channel_id: conversation.channelId,
-      p_phone_variants: statsPhoneVariants,
+    supabase.functions.invoke('external-assignments-write', {
+      body: { action: 'reset_unread', channel_id: conversation.channelId, phone_variants: statsPhoneVariants },
     }).then(() => {});
 
     supabase
