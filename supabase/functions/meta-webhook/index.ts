@@ -551,7 +551,9 @@ async function handleConversationAssignment(
   // Try exact match first, then variants
   let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
-  const { data: exactMatch } = await supabase
+  // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
+  const caDb = externalSupabase || supabase;
+  const { data: exactMatch } = await caDb
     .from('conversation_assignments')
     .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
     .eq('channel_id', channelId)
