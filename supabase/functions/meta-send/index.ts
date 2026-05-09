@@ -1094,7 +1094,7 @@ Deno.serve(async (req) => {
       if (failedInsert.error) {
         console.error('[Meta-Send] Error storing failed message:', failedInsert.error);
       }
-      // Update conversation stats (fire-and-forget, ignore errors)
+      // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
       try {
         await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
           _channel_id: channelId, _conversation_phone: cleanDestination,
@@ -1102,6 +1102,16 @@ Deno.serve(async (req) => {
           _sender_name: null, _created_at: new Date().toISOString(),
         });
       } catch (_e) { /* ignore */ }
+      if (externalSupabase) {
+        try {
+          await externalSupabase.rpc('upsert_conversation_stats_external', {
+            _organization_id: channel.organization_id || null,
+            _channel_id: channelId, _conversation_phone: cleanDestination,
+            _content: storedContent, _direction: 'outbound', _is_read: null,
+            _sender_name: null, _created_at: new Date().toISOString(),
+          });
+        } catch (_e) { /* ignore */ }
+      }
       
       return new Response(
         JSON.stringify({ 
