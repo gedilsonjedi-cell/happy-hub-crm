@@ -565,7 +565,7 @@ async function handleConversationAssignment(
   // If no exact match, try phone variants (with/without 9th digit)
   if (!existing && phoneVariants.length > 1) {
     for (const variant of phoneVariants.slice(1)) {
-      const { data: variantMatch } = await supabase
+      const { data: variantMatch } = await caDb
         .from('conversation_assignments')
         .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
         .eq('channel_id', channelId)
