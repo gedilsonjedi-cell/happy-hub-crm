@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
     const chatbotConfig = config as ChatbotConfig;
 
     // Check or create conversation assignment first to get potential campaign_chatbot_id
-    let { data: assignment } = await supabase
+    let { data: assignment } = await caDb
       .from('conversation_assignments')
       .select('*, campaign_chatbot_id, bot_paused_until')
       .eq('conversation_phone', senderPhone)
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     if (!assignment) {
       // Create new assignment
-      const { data: newAssignment, error: assignError } = await supabase
+      const { data: newAssignment, error: assignError } = await caDb
         .from('conversation_assignments')
         .insert({
           conversation_phone: senderPhone,
@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       }
 
       if (leadId && assignment) {
-        await supabase
+        await caDb
           .from('conversation_assignments')
           .update({ lead_id: leadId })
           .eq('id', assignment.id);
@@ -440,7 +440,7 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
             if (availableAttendants && availableAttendants.length > 0) {
               const attendant = availableAttendants[0];
               
-              await supabase
+              await caDb
                 .from('conversation_assignments')
                 .update({
                   assigned_to: attendant.user_id,
