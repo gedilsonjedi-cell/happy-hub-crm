@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
-import { getExternalClient } from "@/lib/externalSupabaseClient";
+import { getExternalClient, refreshExternalToken } from "@/lib/externalSupabaseClient";
 
 interface RealtimeCallbacks {
   onNewMessage: (payload: {
@@ -174,6 +174,9 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          }
         });
       messagesChannelRef.current = messagesChannel;
 
@@ -192,6 +195,9 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          }
         });
       assignmentsChannelRef.current = assignmentsChannel;
 
@@ -218,6 +224,9 @@ export function useChatRealtime(
           )
           .subscribe((status, err) => {
             console.log(`[useChatRealtime] org-assignments channel status: ${status}`, err ?? "");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              refreshExternalToken(impersonatedOrgId).catch(() => {});
+            }
           });
         orgAssignmentsChannelRef.current = orgChannel;
       }
