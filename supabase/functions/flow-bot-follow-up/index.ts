@@ -330,7 +330,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await messageDb.from("whatsapp_messages").insert({
+      await messageDbModule.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
@@ -366,7 +366,7 @@ async function sendFollowUpMessage(
       }
 
       // Store the sent message on external DB
-      await messageDb.from("whatsapp_messages").insert({
+      await messageDbModule.from("whatsapp_messages").insert({
         channel_id: channel.id,
         organization_id: channel.organization_id,
         message_id: `followup_${Date.now()}`,
