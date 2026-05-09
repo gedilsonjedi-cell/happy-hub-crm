@@ -17,8 +17,10 @@ const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : nul
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
 const messageDb = externalSupabase || supabase;
+/** DB where conversation_assignments live — external SSoT, fallback to internal */
+const caDb = externalSupabase || supabase;
 
-/** Write to whatsapp_messages on external DB (no fallback) + update conversation_stats */
+/** Write to whatsapp_messages on external DB (no fallback) + dual-write conversation_stats (internal+external) */
 function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
   return messageDb.from('whatsapp_messages').insert(data).then(async (result) => {
     if (result.error) {
@@ -30,7 +32,7 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
         : ((data.metadata as Record<string, unknown>)?.destination as string);
       if (phone) {
         const statsChannelId = internalChannelId || data.channel_id;
-        supabase.rpc('upsert_conversation_stats_manual', {
+        const statsArgs = {
           _channel_id: statsChannelId,
           _conversation_phone: phone,
           _content: (data.content as string) || null,
@@ -38,7 +40,14 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
           _is_read: (data.is_read as boolean) ?? null,
           _sender_name: (data.sender_name as string) || null,
           _created_at: new Date().toISOString(),
-        }).then(() => {}, (e: unknown) => console.error('[Stats] Error:', e));
+        };
+        // Dual-write: internal for Realtime + external for SSoT
+        supabase.rpc('upsert_conversation_stats_manual', statsArgs)
+          .then(() => {}, (e: unknown) => console.error('[Stats internal] Error:', e));
+        if (externalSupabase) {
+          externalSupabase.rpc('upsert_conversation_stats_external', statsArgs)
+            .then(() => {}, (e: unknown) => console.error('[Stats external] Error:', e));
+        }
       }
     }
     return result;
