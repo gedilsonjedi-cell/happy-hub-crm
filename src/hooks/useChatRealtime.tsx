@@ -110,7 +110,7 @@ export function useChatRealtime(
   );
 
   useEffect(() => {
-    if (channelIds.length === 0) return;
+    if (!channelKey) return;
 
     let cancelled = false;
 
