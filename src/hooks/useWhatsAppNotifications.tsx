@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -180,67 +182,79 @@ export function useWhatsAppNotifications() {
     }
 
     const channelFilter = channelIds.join(',');
-    const channel = supabase
-      .channel(`whatsapp-notifications-${channelFilter.slice(0, 40)}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'whatsapp_messages',
-          filter: `channel_id=in.(${channelFilter})`,
-        },
-        async (payload) => {
-          const message = payload.new as {
-            sender_name?: string;
-            sender_phone: string;
-            content?: string;
-            message_type: string;
-            direction: string;
-            channel_id: string;
-          };
+    let extClient: SupabaseClient | null = null;
+    let channel: RealtimeChannel | null = null;
+    let cancelled = false;
 
-          // Only notify for inbound messages
-          if (message.direction !== 'inbound') return;
+    (async () => {
+      extClient = await getExternalClient();
+      if (cancelled) return;
 
-          // Check assignment
-          try {
-            const senderPhone = message.sender_phone.replace(/\D/g, '');
-            const phoneSuffix = senderPhone.slice(-9);
-            
-            const { data: phoneAssignment } = await supabase
-              .from('conversation_assignments')
-              .select('assigned_to')
-              .eq('channel_id', message.channel_id)
-              .neq('status', 'archived')
-              .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
-              .limit(1)
-              .maybeSingle();
+      channel = extClient
+        .channel(`ext-notifications-${channelFilter.slice(0, 40)}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: `channel_id=in.(${channelFilter})`,
+          },
+          async (payload) => {
+            const message = payload.new as {
+              sender_name?: string;
+              sender_phone: string;
+              content?: string;
+              message_type: string;
+              direction: string;
+              channel_id: string;
+            };
 
-            if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
-              return;
+            if (message.direction !== 'inbound') return;
+
+            // Check assignment on EXTERNAL (SSoT)
+            try {
+              const senderPhone = message.sender_phone.replace(/\D/g, '');
+              const phoneSuffix = senderPhone.slice(-9);
+              const ext = await getExternalClient();
+              const { data: phoneAssignment } = await ext
+                .from('conversation_assignments')
+                .select('assigned_to')
+                .eq('channel_id', message.channel_id)
+                .neq('status', 'archived')
+                .or(`conversation_phone.ilike.%${phoneSuffix}%,conversation_phone.ilike.%${senderPhone}%`)
+                .limit(1)
+                .maybeSingle();
+
+              if (phoneAssignment?.assigned_to && phoneAssignment.assigned_to !== user.id) {
+                return;
+              }
+            } catch (e) {
+              console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
             }
-          } catch (e) {
-            console.warn('[notifications] Assignment check failed, showing notification anyway:', e);
+
+            const senderName = message.sender_name || message.sender_phone;
+            const messagePreview = message.content
+              ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
+              : message.message_type === 'image' ? '📷 Imagem'
+              : message.message_type === 'audio' ? '🎵 Áudio'
+              : message.message_type === 'video' ? '🎬 Vídeo'
+              : message.message_type === 'document' ? '📄 Documento'
+              : 'Nova mensagem';
+
+            enqueueNotification({ senderName, messagePreview });
           }
-
-          // Build notification data and enqueue (batched)
-          const senderName = message.sender_name || message.sender_phone;
-          const messagePreview = message.content
-            ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
-            : message.message_type === 'image' ? '📷 Imagem'
-            : message.message_type === 'audio' ? '🎵 Áudio'
-            : message.message_type === 'video' ? '🎬 Vídeo'
-            : message.message_type === 'document' ? '📄 Documento'
-            : 'Nova mensagem';
-
-          enqueueNotification({ senderName, messagePreview });
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    })().catch((err) => {
+      console.warn('[useWhatsAppNotifications] external realtime setup failed:', err?.message ?? err);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (extClient && channel) {
+        try { extClient.removeChannel(channel); } catch { /* noop */ }
+      }
       if (batchTimerRef.current) {
         clearTimeout(batchTimerRef.current);
       }

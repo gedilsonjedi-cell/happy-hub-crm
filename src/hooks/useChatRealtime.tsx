@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import { getExternalClient } from "@/lib/externalSupabaseClient";
 
 interface RealtimeCallbacks {
   onNewMessage: (payload: {
@@ -26,31 +27,30 @@ interface RealtimeCallbacks {
 }
 
 /**
- * useChatRealtime — Consolidated Realtime hook
+ * useChatRealtime — Realtime hook (External SSoT)
  *
- * Subscribes to:
- * 1. conversation_stats filtered by channel_id IN (...) — catches new messages
- *    (whatsapp_messages are written to EXTERNAL DB only; conversation_stats is
- *     updated locally via upsert_conversation_stats_manual after each external write)
- * 2. whatsapp_messages filtered by channel_id IN (...) — fallback for orgs still
- *    using local DB
- * 3. conversation_assignments filtered by channel_id IN (...) — catches assignments WITH channels
- * 4. conversation_assignments (org-wide, no filter) — catches assignments WITHOUT channel_id (campaigns)
- *    Deduplication handled via assignment ID tracking.
+ * All subscriptions now run against the EXTERNAL Supabase database via the
+ * custom-JWT client. The internal database no longer participates in Realtime.
+ *
+ * Subscribed tables (all on external):
+ *   1. whatsapp_messages           — INSERT, filtered by channel_id IN (...)
+ *   2. conversation_assignments    — *      , filtered by channel_id IN (...)
+ *   3. conversation_assignments    — *      , org-wide (catches campaigns w/o channel_id)
  */
 export function useChatRealtime(
   channelIds: string[],
   callbacks: RealtimeCallbacks,
-  organizationId?: string | null
+  organizationId?: string | null,
+  impersonatedOrgId?: string | null
 ) {
   const channelIdsRef = useRef<string[]>(channelIds);
   const callbacksRef = useRef<RealtimeCallbacks>(callbacks);
-  const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const orgSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const statsSubscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const clientRef = useRef<SupabaseClient | null>(null);
+  const messagesChannelRef = useRef<RealtimeChannel | null>(null);
+  const assignmentsChannelRef = useRef<RealtimeChannel | null>(null);
+  const orgAssignmentsChannelRef = useRef<RealtimeChannel | null>(null);
   const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
-  // Track processed stats events to avoid emitting duplicate message events
-  const processedStatsRef = useRef<Set<string>>(new Set());
+  const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     channelIdsRef.current = channelIds;
@@ -60,265 +60,174 @@ export function useChatRealtime(
     callbacksRef.current = callbacks;
   }, [callbacks]);
 
-  // Clear dedup sets periodically to prevent memory growth
+  // Periodic dedup cleanup
   useEffect(() => {
     const interval = setInterval(() => {
       processedAssignmentIdsRef.current.clear();
-      processedStatsRef.current.clear();
+      processedMessageIdsRef.current.clear();
     }, 60_000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleAssignmentPayload = useCallback((payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
-    const data = (payload.new || payload.old) as {
-      id: string;
-      conversation_phone: string;
-      channel_id: string | null;
-      assigned_to: string | null;
-      status: string | null;
-      sector_id: string | null;
-      lead_id: string | null;
-      updated_at: string;
-    };
+  const handleAssignmentPayload = useCallback(
+    (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+      const data = (payload.new || payload.old) as {
+        id: string;
+        conversation_phone: string;
+        channel_id: string | null;
+        assigned_to: string | null;
+        status: string | null;
+        sector_id: string | null;
+        lead_id: string | null;
+        updated_at: string;
+      };
 
-    if (!data) return;
+      if (!data) return;
 
-    // Deduplicate: same assignment may arrive from both subscriptions
-    const dedupKey = `${data.id}_${data.updated_at}`;
-    if (processedAssignmentIdsRef.current.has(dedupKey)) return;
-    processedAssignmentIdsRef.current.add(dedupKey);
+      const dedupKey = `${data.id}_${data.updated_at}`;
+      if (processedAssignmentIdsRef.current.has(dedupKey)) return;
+      processedAssignmentIdsRef.current.add(dedupKey);
 
-    callbacksRef.current.onAssignmentChange({
-      id: data.id,
-      conversationPhone: data.conversation_phone,
-      channelId: data.channel_id,
-      assignedTo: data.assigned_to,
-      status: data.status,
-      sectorId: data.sector_id,
-      leadId: data.lead_id,
-      updatedAt: data.updated_at,
-    });
-  }, []);
-
-  const inferStatsDirection = useCallback((data: {
-    last_message_at: string | null;
-    last_inbound_at: string | null;
-  }) => {
-    if (!data.last_inbound_at) return "outbound";
-    if (!data.last_message_at) return "inbound";
-
-    return new Date(data.last_inbound_at).getTime() >= new Date(data.last_message_at).getTime()
-      ? "inbound"
-      : "outbound";
-  }, []);
-
-  /**
-   * Handle conversation_stats changes — this is the PRIMARY source of
-   * new-message events after the external DB migration.
-   *
-   * When a message is written to the external DB, the webhook calls
-   * upsert_conversation_stats_manual on the LOCAL DB, which triggers
-   * this Realtime event.
-   */
-  const handleStatsPayload = useCallback((payload: { new?: Record<string, unknown>; old?: Record<string, unknown>; eventType?: string }) => {
-    const data = payload.new as {
-      channel_id: string | null;
-      conversation_phone: string;
-      last_message_content: string | null;
-      last_message_at: string | null;
-      last_inbound_at: string | null;
-      unread_count: number;
-      sender_name: string | null;
-      updated_at: string;
-    };
-
-    if (!data?.channel_id || !data.conversation_phone) return;
-
-    const oldData = payload.old as {
-      last_message_at: string | null;
-      last_inbound_at: string | null;
-      unread_count: number;
-    } | undefined;
-
-    // Only emit if last_message_at actually changed (new message arrived)
-    if (data.last_message_at === oldData?.last_message_at) return;
-
-    const syntheticMessageId = `stats_${data.channel_id}_${data.conversation_phone}_${data.last_message_at || data.updated_at}`;
-    if (processedStatsRef.current.has(syntheticMessageId)) return;
-    processedStatsRef.current.add(syntheticMessageId);
-
-    const direction = inferStatsDirection(data);
-
-    callbacksRef.current.onNewMessage({
-      channelId: data.channel_id,
-      messageId: syntheticMessageId,
-      senderPhone: data.conversation_phone,
-      content: data.last_message_content || "",
-      direction,
-      createdAt: data.last_message_at || data.updated_at,
-      isRead: direction === "outbound" || data.unread_count === 0,
-      senderName: data.sender_name,
-      metadata: direction === "outbound"
-        ? { destination: data.conversation_phone, synthetic: true, source: "conversation_stats" }
-        : { synthetic: true, source: "conversation_stats" },
-    });
-  }, [inferStatsDirection]);
-
-  const setupSubscription = useCallback(() => {
-    if (channelIdsRef.current.length === 0) return;
-
-    // Clean up previous subscriptions
-    if (subscriptionRef.current) {
-      supabase.removeChannel(subscriptionRef.current);
-      subscriptionRef.current = null;
-    }
-
-    const channelFilter = channelIdsRef.current.join(",");
-
-    const channel = supabase
-      .channel(`chat-realtime-${channelFilter.slice(0, 40)}`)
-      // 1. Listen for new messages on local whatsapp_messages (fallback for non-migrated orgs)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "whatsapp_messages",
-          filter: `channel_id=in.(${channelFilter})`,
-        },
-        (payload) => {
-          const msg = payload.new as {
-            id?: string;
-            message_id?: string;
-            channel_id: string;
-            sender_phone: string;
-            content: string;
-            direction: string;
-            created_at: string;
-            is_read: boolean;
-            sender_name?: string | null;
-            metadata?: Record<string, unknown> | null;
-          };
-
-          callbacksRef.current.onNewMessage({
-            channelId: msg.channel_id,
-            messageId: msg.message_id || msg.id || `local_${msg.channel_id}_${msg.created_at}`,
-            senderPhone: msg.sender_phone,
-            content: msg.content,
-            direction: msg.direction,
-            createdAt: msg.created_at,
-            isRead: msg.is_read,
-            senderName: msg.sender_name,
-            metadata: msg.metadata,
-          });
-        }
-      )
-      // 2. Listen for assignment changes on these channels
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversation_assignments",
-          filter: `channel_id=in.(${channelFilter})`,
-        },
-        handleAssignmentPayload
-      )
-      .subscribe();
-
-    subscriptionRef.current = channel;
-  }, [handleAssignmentPayload]);
-
-  // Subscribe to conversation_stats changes — PRIMARY realtime source for external DB messages
-  const setupStatsSubscription = useCallback(() => {
-    if (channelIdsRef.current.length === 0) return;
-
-    if (statsSubscriptionRef.current) {
-      supabase.removeChannel(statsSubscriptionRef.current);
-      statsSubscriptionRef.current = null;
-    }
-
-    const channelFilter = channelIdsRef.current.join(",");
-
-    const statsChannel = supabase
-      .channel(`stats-realtime-${channelFilter.slice(0, 40)}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "conversation_stats",
-          filter: `channel_id=in.(${channelFilter})`,
-        },
-        handleStatsPayload
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_stats",
-          filter: `channel_id=in.(${channelFilter})`,
-        },
-        handleStatsPayload
-      )
-      .subscribe();
-
-    statsSubscriptionRef.current = statsChannel;
-  }, [handleStatsPayload]);
-
-  // 3. Separate org-wide subscription for assignments WITHOUT channel_id (campaigns)
-  const setupOrgSubscription = useCallback(() => {
-    if (!organizationId) return;
-
-    if (orgSubscriptionRef.current) {
-      supabase.removeChannel(orgSubscriptionRef.current);
-      orgSubscriptionRef.current = null;
-    }
-
-    const orgChannel = supabase
-      .channel(`assignments-org-${organizationId.slice(0, 12)}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversation_assignments",
-        },
-        (payload) => {
-          const data = (payload.new || payload.old) as {
-            channel_id: string | null;
-          };
-          // Only process assignments WITHOUT channel_id here
-          if (data?.channel_id) return;
-          handleAssignmentPayload(payload);
-        }
-      )
-      .subscribe();
-
-    orgSubscriptionRef.current = orgChannel;
-  }, [organizationId, handleAssignmentPayload]);
+      callbacksRef.current.onAssignmentChange({
+        id: data.id,
+        conversationPhone: data.conversation_phone,
+        channelId: data.channel_id,
+        assignedTo: data.assigned_to,
+        status: data.status,
+        sectorId: data.sector_id,
+        leadId: data.lead_id,
+        updatedAt: data.updated_at,
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     if (channelIds.length === 0) return;
 
-    setupSubscription();
-    setupStatsSubscription();
-    setupOrgSubscription();
+    let cancelled = false;
+
+    (async () => {
+      const client = await getExternalClient(impersonatedOrgId);
+      if (cancelled) return;
+      clientRef.current = client;
+
+      const channelFilter = channelIdsRef.current.join(",");
+
+      // Cleanup previous
+      if (messagesChannelRef.current) {
+        client.removeChannel(messagesChannelRef.current);
+        messagesChannelRef.current = null;
+      }
+      if (assignmentsChannelRef.current) {
+        client.removeChannel(assignmentsChannelRef.current);
+        assignmentsChannelRef.current = null;
+      }
+
+      // 1. whatsapp_messages on EXTERNAL
+      const messagesChannel = client
+        .channel(`ext-msgs-${channelFilter.slice(0, 40)}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "whatsapp_messages",
+            filter: `channel_id=in.(${channelFilter})`,
+          },
+          (payload) => {
+            const msg = payload.new as {
+              id?: string;
+              message_id?: string;
+              channel_id: string;
+              sender_phone: string;
+              content: string;
+              direction: string;
+              created_at: string;
+              is_read: boolean;
+              sender_name?: string | null;
+              metadata?: Record<string, unknown> | null;
+            };
+            const dedupId = msg.message_id || msg.id || `ext_${msg.channel_id}_${msg.created_at}`;
+            if (processedMessageIdsRef.current.has(dedupId)) return;
+            processedMessageIdsRef.current.add(dedupId);
+
+            callbacksRef.current.onNewMessage({
+              channelId: msg.channel_id,
+              messageId: dedupId,
+              senderPhone: msg.sender_phone,
+              content: msg.content,
+              direction: msg.direction,
+              createdAt: msg.created_at,
+              isRead: msg.is_read,
+              senderName: msg.sender_name,
+              metadata: msg.metadata,
+            });
+          }
+        )
+        .subscribe();
+      messagesChannelRef.current = messagesChannel;
+
+      // 2. conversation_assignments on EXTERNAL — by channel
+      const assignmentsChannel = client
+        .channel(`ext-assign-${channelFilter.slice(0, 40)}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "conversation_assignments",
+            filter: `channel_id=in.(${channelFilter})`,
+          },
+          handleAssignmentPayload
+        )
+        .subscribe();
+      assignmentsChannelRef.current = assignmentsChannel;
+
+      // 3. conversation_assignments on EXTERNAL — org-wide for campaigns w/o channel
+      if (organizationId) {
+        if (orgAssignmentsChannelRef.current) {
+          client.removeChannel(orgAssignmentsChannelRef.current);
+          orgAssignmentsChannelRef.current = null;
+        }
+        const orgChannel = client
+          .channel(`ext-assign-org-${organizationId.slice(0, 12)}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "conversation_assignments",
+            },
+            (payload) => {
+              const data = (payload.new || payload.old) as { channel_id: string | null };
+              if (data?.channel_id) return; // handled by channel-scoped subscription
+              handleAssignmentPayload(payload);
+            }
+          )
+          .subscribe();
+        orgAssignmentsChannelRef.current = orgChannel;
+      }
+    })().catch((err) => {
+      console.warn("[useChatRealtime] failed to set up external realtime:", err?.message ?? err);
+    });
 
     return () => {
-      if (subscriptionRef.current) {
-        supabase.removeChannel(subscriptionRef.current);
-        subscriptionRef.current = null;
+      cancelled = true;
+      const client = clientRef.current;
+      if (!client) return;
+      if (messagesChannelRef.current) {
+        client.removeChannel(messagesChannelRef.current);
+        messagesChannelRef.current = null;
       }
-      if (statsSubscriptionRef.current) {
-        supabase.removeChannel(statsSubscriptionRef.current);
-        statsSubscriptionRef.current = null;
+      if (assignmentsChannelRef.current) {
+        client.removeChannel(assignmentsChannelRef.current);
+        assignmentsChannelRef.current = null;
       }
-      if (orgSubscriptionRef.current) {
-        supabase.removeChannel(orgSubscriptionRef.current);
-        orgSubscriptionRef.current = null;
+      if (orgAssignmentsChannelRef.current) {
+        client.removeChannel(orgAssignmentsChannelRef.current);
+        orgAssignmentsChannelRef.current = null;
       }
     };
-  }, [channelIds, setupSubscription, setupStatsSubscription, setupOrgSubscription]);
+  }, [channelIds, organizationId, impersonatedOrgId, handleAssignmentPayload]);
 }
