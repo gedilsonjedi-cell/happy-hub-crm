@@ -11,7 +11,7 @@ import { resolve } from "node:path";
  *
  * Cobertura:
  *  - src/pages/Usuarios.tsx → 1 filtro de organização
- *  - src/pages/Conexoes.tsx → 4 dropdowns (Z-API, Gupshup, Infobip, Meta)
+ *  - src/pages/Conexoes.tsx → 3 dropdowns (Z-API, Gupshup, Meta)
  */
 
 const readSrc = (relPath: string) =>
