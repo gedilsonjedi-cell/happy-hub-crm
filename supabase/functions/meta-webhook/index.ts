@@ -618,7 +618,7 @@ async function handleConversationAssignment(
         }
       }
 
-      await supabase
+      await caDb
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
@@ -626,7 +626,7 @@ async function handleConversationAssignment(
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
-    supabase.from('conversation_assignments')
+    caDb.from('conversation_assignments')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', existing.id)
       .then(() => {}, () => {});
