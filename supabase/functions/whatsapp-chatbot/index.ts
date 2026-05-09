@@ -641,12 +641,16 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
               provider: channel.provider
             }
           });
-        // Update conversation stats
-        supabase.rpc('upsert_conversation_stats_manual', {
+        // Update conversation stats: dual-write (internal for Realtime + external for SSoT)
+        const _statsArgs = {
           _channel_id: channelId, _conversation_phone: cleanDestination,
           _content: responseMessage, _direction: 'outbound', _is_read: null,
           _sender_name: null, _created_at: new Date().toISOString(),
-        }).then(() => {}, () => {});
+        };
+        supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
+        if (externalSupabase) {
+          externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
+        }
       }
     }
 
