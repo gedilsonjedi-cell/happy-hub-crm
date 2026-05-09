@@ -1205,7 +1205,7 @@ Deno.serve(async (req) => {
       console.log('[Meta-Send] Outbound message persisted:', messageId);
     }
 
-    // Update conversation stats (synchronous to ensure sidebar preview)
+    // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
     try {
       await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
         _channel_id: channelId, _conversation_phone: cleanDestination,
@@ -1213,7 +1213,19 @@ Deno.serve(async (req) => {
         _sender_name: null, _created_at: new Date().toISOString(),
       });
     } catch (e) {
-      console.error('[Meta-Send] Stats update error:', e);
+      console.error('[Meta-Send] Internal stats update error:', e);
+    }
+    if (externalSupabase) {
+      try {
+        await externalSupabase.rpc('upsert_conversation_stats_external', {
+          _organization_id: channel.organization_id || null,
+          _channel_id: channelId, _conversation_phone: cleanDestination,
+          _content: storedContent, _direction: 'outbound', _is_read: null,
+          _sender_name: null, _created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error('[Meta-Send] External stats update error:', e);
+      }
     }
 
     // Webhook dispatch can stay in background — non-critical
