@@ -357,18 +357,26 @@ Deno.serve(async (req) => {
     const msgDb2 = externalSupabase || serviceRoleClient;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
     // Update conversation stats manually (use internal UUID for stats)
-    serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+    const msgDb2 = externalSupabase || serviceRoleClient;
+    await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
+    // Update conversation stats: dual-write (internal for Realtime, external for SSoT)
+    const _statsArgs2 = {
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,
       _sender_name: null, _created_at: new Date().toISOString(),
-    }).then(() => {}, () => {});
+    };
+    serviceRoleClient.rpc('upsert_conversation_stats_manual', _statsArgs2).then(() => {}, () => {});
+    if (externalSupabase) {
+      externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs2).then(() => {}, () => {});
+    }
     
     // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
     // This prevents the bot from responding while a human is handling the conversation
     if (userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      await serviceRoleClient
+      const caDb = externalSupabase || serviceRoleClient;
+      await caDb
         .from('conversation_assignments')
         .update({ 
           bot_paused_until: botPausedUntil,
