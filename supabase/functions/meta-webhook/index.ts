@@ -41,15 +41,16 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
     console.error('[Meta-Webhook] Message write failed:', result.error);
   }
 
-  // Manually update conversation_stats on internal DB (for Realtime + sidebar)
+  // CUTOVER: write conversation_stats DIRECTLY to external (SSoT)
   if (!result.error && data.channel_id && data.direction) {
     const phone = data.direction === 'inbound'
       ? (data.sender_phone as string)
       : ((data.metadata as Record<string, unknown>)?.destination as string);
-    if (phone) {
+    if (phone && externalSupabase) {
       const statsChannelId = internalChannelId || data.channel_id;
       try {
-        const { error: statsError } = await supabase.rpc('upsert_conversation_stats_manual', {
+        const { error: statsError } = await externalSupabase.rpc('upsert_conversation_stats_external', {
+          _organization_id: (data.organization_id as string) || null,
           _channel_id: statsChannelId,
           _conversation_phone: phone,
           _content: (data.content as string) || null,
@@ -59,10 +60,10 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
           _created_at: new Date().toISOString(),
         });
         if (statsError) {
-          console.error('[Stats] upsert_conversation_stats_manual failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+          console.error('[Stats] upsert_conversation_stats_external failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
         }
       } catch (e: unknown) {
-        console.error('[Stats] upsert_conversation_stats_manual exception:', e);
+        console.error('[Stats] upsert_conversation_stats_external exception:', e);
       }
 
       // Upsert contact in external DB (fire-and-forget)
@@ -550,7 +551,9 @@ async function handleConversationAssignment(
   // Try exact match first, then variants
   let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
-  const { data: exactMatch } = await supabase
+  // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
+  const caDb = externalSupabase || supabase;
+  const { data: exactMatch } = await caDb
     .from('conversation_assignments')
     .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
     .eq('channel_id', channelId)
@@ -562,7 +565,7 @@ async function handleConversationAssignment(
   // If no exact match, try phone variants (with/without 9th digit)
   if (!existing && phoneVariants.length > 1) {
     for (const variant of phoneVariants.slice(1)) {
-      const { data: variantMatch } = await supabase
+      const { data: variantMatch } = await caDb
         .from('conversation_assignments')
         .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
         .eq('channel_id', channelId)
@@ -615,7 +618,7 @@ async function handleConversationAssignment(
         }
       }
 
-      await supabase
+      await caDb
         .from('conversation_assignments')
         .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
@@ -623,7 +626,7 @@ async function handleConversationAssignment(
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
     // Just bump updated_at to trigger realtime (fire and forget)
-    supabase.from('conversation_assignments')
+    caDb.from('conversation_assignments')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', existing.id)
       .then(() => {}, () => {});
@@ -666,15 +669,15 @@ async function handleConversationAssignment(
     }
   }
 
-  const { data: newAssignment, error } = await supabase
+  const { data: newAssignment, error } = await caDb
     .from('conversation_assignments')
-    .insert({ channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: finalStatus, sector_id: sectorId, assigned_to: assignedTo })
+    .insert({ organization_id: organizationId, channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: finalStatus, sector_id: sectorId, assigned_to: assignedTo })
     .select('id')
     .single();
 
   if (error || !newAssignment) {
     // Race condition: fetch existing
-    const { data: fallback } = await supabase
+    const { data: fallback } = await caDb
       .from('conversation_assignments')
       .select('id, assigned_to, status, sector_id, is_bot_handling')
       .eq('channel_id', channelId).eq('conversation_phone', normalizedPhone).maybeSingle();
