@@ -1,164 +1,67 @@
-# Fase 2 — Externo como Master Único + Interno como Cache Volátil
+## Cutover Fase 2A — Assignments + Stats para Banco Externo
 
-## Princípio arquitetural
+Você escolheu **cutover agressivo + tudo**. Antes de começar, alinho aqui o que vai ser feito, porque mexe em ~30 arquivos críticos do atendimento e dispara em produção.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  EXTERNO (Master / SSoT / Fonte da Verdade)             │
-│  - leads                                                │
-│  - whatsapp_messages          ← já está                 │
-│  - whatsapp_contacts          ← já está                 │
-│  - conversation_assignments                             │
-│  - conversation_stats                                   │
-│  - campaign_recipients                                  │
-│  - lead_activity_log                                    │
-│  - whatsapp-media (storage)   ← já está                 │
-│                                                         │
-│  Toda escrita de webhook/edge/UI vai DIRETO aqui.       │
-│  Toda consulta pesada (filtros, relatórios) também.     │
-└─────────────────────────────────────────────────────────┘
-                          ↕
-┌─────────────────────────────────────────────────────────┐
-│  INTERNO (Cache volátil + Realtime + Auth + Config)     │
-│  - auth.users, profiles, user_roles, sectors            │
-│  - organizations, balance, subscription, store          │
-│  - channels (com tokens criptografados)                 │
-│  - cache de conversation_stats (últimas 48h só)         │
-│  - cache de assignments ativos (últimas 48h só)         │
-│  - Realtime publication (só reflete eventos recentes)   │
-│                                                         │
-│  Auto-purge diário: tudo > 48h é apagado.               │
-└─────────────────────────────────────────────────────────┘
-```
+### Estratégia
 
-## Fase 2A — Mover `conversation_stats` + `conversation_assignments`
+Usar o `external-assignments-write` (já existe) como **único ponto de escrita**. Frontend lê direto do externo via JWT (já configurado). Edge functions que processam webhooks/envios passam a chamar o externo pelo helper `getExternalDb()`.
 
-**Externo:** criar schema espelho com RLS por `organization_id` (claim do JWT já existente).
+### Etapas
 
-**Edge functions novas:**
-- `external-assignments-write` — todo CRUD de assignment (criar, atualizar status, transferir, arquivar) escreve direto no externo
-- `external-stats-upsert` — substitui o trigger `upsert_conversation_stats_manual` no externo
+**1. Helpers compartilhados** (1 arquivo)
+- `_shared/externalDb.ts`: adicionar funções utilitárias (`extUpsertAssignment`, `extUpdateAssignment`, `extUpsertStats`, `extResolveAssignment`) para reduzir duplicação nos webhooks.
 
-**Edge functions modificadas:**
-- `meta-webhook` — após persistir mensagem, chama `external-stats-upsert` direto no externo (sem tocar interno)
-- Todos os pontos que hoje fazem `INSERT INTO conversation_assignments` passam a chamar `external-assignments-write`
+**2. Webhooks de provedores** (4 funções)
+- `meta-webhook`, `zapi-webhook`, `gupshup-webhook`, `infobip-webhook`
+- Substituir `supabase.from('conversation_assignments').upsert/update` por `extUpsertAssignment` no externo.
+- Trigger automática de stats vai para chamada explícita do RPC `upsert_conversation_stats_external`.
 
-**RPCs reescritas como funções no externo:**
-- `get_conversations_summary` → no externo
-- `get_conversations_summary_paginated` → no externo
-- `get_unread_conversations_full` → no externo
-- `search_conversations_global` → no externo
-- `archive_conversation`, `restore_conversation`, `reset_conversation_unread` → no externo
+**3. Send functions** (4 funções)
+- `meta-send`, `zapi-send`, `gupshup-send`, `infobip-send`
+- Mesma troca: criação/update de assignment vai pro externo.
 
-**Frontend (`useConversations`, `useChatRealtime`):**
-- Lê via `getExternalClient()` (já existe em `src/lib/externalSupabaseClient.ts`)
-- Realtime: subscribe direto no externo (já viável já que o externo é Supabase também)
-- **Interno só recebe um "ping" leve** com `{assignment_id, last_message_at}` pra alimentar o canal Realtime do interno como fallback de notificação cross-device
+**4. Chatbot e dispatch** (4 funções)
+- `whatsapp-chatbot`, `zapi-chatbot`, `campaign-dispatch`, `send-campaign-batch`
+- Idem.
 
-**Auto-purge interno:**
-- Cron diário `cleanup-internal-cache` deleta `conversation_stats` e `conversation_assignments` com `updated_at < now() - 48h`
+**5. Hooks de UI** (8 arquivos)
+- `useConversations`, `useChatRealtime`, `useUnreadMessagesCount`, `useConversationMetrics`, `useAgentPerformance`, `useWhatsAppNotifications`
+- Componentes: `AssignAttendantDialog`, `BulkTransferDialog`, `ManualSendDialog`
+- Páginas: `AtendimentoV2`, `Index`
+- Reads via JWT externo direto. Mutations via `external-assignments-write` (invoke).
 
-## Fase 2B — Mover `leads` + `lead_activity_log` + `lead_tags`
+**6. Sync trigger interno**
+- Desabilitar trigger `auto_upsert_conversation_stats` no interno (vai virar dead code).
+- Manter tabelas locais por 7 dias como backup (não dropar ainda).
 
-**Externo:** criar schema espelho. `leads.organization_id` para RLS.
+**7. Realtime**
+- Frontend assina canal do externo (já funciona pra messages). Ampliar pra `conversation_assignments` e `conversation_stats`.
+- Remover subscriptions internas dessas duas tabelas.
 
-**Edge functions novas:**
-- `external-leads-crud` — create/update/delete/list/import lead
-- `external-leads-search` — busca paginada com filtros (substitui queries pesadas em Leads.tsx)
-- `external-lead-activity-log` — append no log
+### Riscos e mitigação
 
-**Frontend:**
-- `Leads.tsx`, `Pipeline.tsx`, `CarteiraClientes.tsx`, `ContatoDetalhes.tsx`, `useLeadActivityLog`, `ImportLeadsDialog`, `AddLeadDialog`, `EditLeadDialog`, `DeleteLeadDialog`, `AssignTagsDialog` → todos passam por `getExternalClient()` ou edge function.
+- **Latência extra**: cada webhook agora faz ida ao externo. Mitigado pelo `runInBackground`.
+- **RLS no externo**: já configurado por organization_id via JWT. Edge functions usam service_role (bypass).
+- **Ordem do deploy**: Frontend → webhooks → sends → chatbot. Se algo quebrar, posso reverter por arquivo.
+- **Reset unread**: Frontend chama `external-assignments-write` action `reset_unread` ao abrir chat. Sem essa chamada, badge fica preso.
 
-**Lead.id permanece como UUID para compatibilidade.** `conversation_assignments.lead_id` no externo aponta pra lead externo.
+### Detalhes técnicos
 
-**Sem mais escrita de leads no interno.** Cleanup remove leads antigos do interno em batch.
+- `getExternalDb()` usa service_role do externo (já em secrets).
+- `external-assignments-write` valida JWT do interno e resolve `organization_id` do profile.
+- RPCs já criados no externo: `archive_conversation_ext`, `restore_conversation_ext`, `reset_conversation_unread_ext`, `upsert_conversation_stats_external`, `get_conversations_summary_ext`.
+- Lead lookup: continua no interno (leads não migram nessa fase).
+- Realtime: REPLICA IDENTITY FULL já habilitado nas duas tabelas externas.
 
-## Fase 2C — Mover `campaign_recipients` + processamento de campanha
+### O que NÃO vai mudar
 
-**Externo:** schema de `campaign_recipients`. `campaigns` permanece no interno (tem FK pra `organizations`, `sectors`, `channels`, `pricing`).
+- Tabela `leads` continua interna.
+- Tabela `channels` continua interna.
+- Reports/relatórios continuam puxando do interno (próxima fase).
+- `conversation_metrics` e `conversation_notes` ficam no interno.
 
-**Modelo híbrido:**
-- `campaigns` (config + counters) → interno
-- `campaign_recipients` (volume alto, escritas frequentes) → externo
-- Trigger `sync_campaign_counts` reescrito como **edge function chamada pelo externo** ao mudar status de recipient → atualiza counters no interno via RPC
+### Pós-cutover
 
-**Edge functions modificadas:**
-- `process-campaign-batch` (worker) — lê batch de recipients no externo via `FOR UPDATE SKIP LOCKED`, despacha mensagens, atualiza no externo
-- `meta-send` — atualiza `campaign_recipients.status` no externo
-- `meta-webhook` (status callbacks) — atualiza status no externo
-
-**Frontend:**
-- `CampaignDetailsDialog`, `CampaignReportDialog`, `RecycleFailuresDialog` → leitura de recipients no externo
-- `RecipientSelection` → escreve diretamente no externo na criação
-
-## Fase 2D — Limpeza, hardening e migração de dados antigos
-
-1. **Edge function `migrate-leads-to-external`** — copia leads existentes em batch (similar ao `migrate-messages-to-external`)
-2. **Edge function `migrate-assignments-to-external`** — idem
-3. **Edge function `migrate-recipients-to-external`** — idem
-4. **Cron de auto-purge interno** (`cleanup-internal-cache`):
-   - `conversation_stats` > 48h → DELETE
-   - `conversation_assignments` archived > 48h → DELETE
-   - `whatsapp_messages` > 7 dias → DELETE (já existe parcialmente)
-   - `leads` migrados confirmados → DELETE em batch
-   - `campaign_recipients` migrados confirmados → DELETE em batch
-   - `lead_activity_log` > 30 dias → DELETE
-5. **Remover** `delete_organization_cascade` interno e refazer com cascata cross-DB
-6. **Remover** triggers obsoletos (`sync_campaign_counts` local, etc.)
-
-## Detalhes técnicos críticos
-
-### RLS no externo (já existe pra messages/contacts)
-Mesmo padrão pra todas as novas tabelas:
-```sql
-CREATE POLICY "org_isolation" ON <tabela>
-USING (organization_id = (auth.jwt()->>'organization_id')::uuid);
-```
-
-### JOINs cross-DB resolvidos por ID-based fetching
-Onde antes havia JOIN entre `conversation_assignments` (interno) ↔ `profiles` (interno) ↔ `leads` (interno):
-- `assigned_to_name` → frontend busca uma vez `profiles` e mantém Map em memória (já faz)
-- `lead_name` → vem do próprio externo (lead também migrou)
-- Single-DB JOIN volta a ser viável
-
-### Realtime
-- Subscription direto no externo (Supabase suporta Realtime). Já temos `getExternalClient()`.
-- Interno mantém Realtime só para `channels`, `profiles`, `notifications` operacionais.
-
-### Tokens de canal
-Permanecem no interno em `channel_secrets` (não migram). Edge functions que precisam enviar mensagem buscam token interno e enviam pra Meta API.
-
-## Riscos honestos
-
-1. **Realtime do externo precisa estar habilitado nas tabelas novas.** Sem isso, UI fica estática.
-2. **Latência:** toda mutation agora é uma round-trip extra (UI → edge interna → DB externo). Vai ficar 100-300ms mais lento por ação.
-3. **Custo de edge functions sobe** (mais invocações). Pode ser maior que economia de DB.
-4. **Sem rollback fácil.** Depois que `leads` migra, voltar atrás exige nova migration reversa.
-5. **Janela de inconsistência durante cutover de cada sub-fase.** Vou usar dual-write temporário (escreve nos dois) seguido de cutover de leitura.
-
-## Cronograma estimado
-
-| Sub-fase | Mensagens necessárias | Risco |
-|----------|----------------------|-------|
-| 2A (assignments + stats) | 4-5 | Alto (Realtime crítico) |
-| 2B (leads + activity log) | 3-4 | Médio (volume alto, queries diversas) |
-| 2C (campaign_recipients) | 3-4 | Alto (concorrência de disparo) |
-| 2D (purge + migração + cleanup) | 2-3 | Baixo |
-| **Total** | **12-16 mensagens** | — |
-
-## Próximo passo concreto (esta mensagem)
-
-Começo pela **Fase 2A — passo 1 de 5**:
-
-1. Migration no **externo** criando `conversation_assignments` e `conversation_stats` com RLS
-2. Edge function `external-assignments-rpc` (substitui as RPCs internas)
-3. Habilitar Realtime no externo pra essas tabelas
-
-Não toco no frontend ainda — só preparo o destino. Depois faço dual-write, depois cutover de leitura, depois desligo escrita interna.
-
-## Confirme antes de eu começar
-
-- **OK começar pela 2A agora?** (sim/não)
-- **Aceita latência +100-300ms por ação em troca de redução de custo do interno?** (sim/não)
-- **Pode haver instabilidade momentânea durante cutovers de cada sub-fase?** (sim/não)
+Em 7 dias, se estiver estável:
+- Drop das tabelas locais `conversation_assignments` e `conversation_stats`.
+- Atualizar `mem://arquitetura/migracao-banco-dados-externo-ssot` removendo "local DB handles stats".
