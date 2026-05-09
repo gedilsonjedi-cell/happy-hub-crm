@@ -41,15 +41,16 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
     console.error('[Meta-Webhook] Message write failed:', result.error);
   }
 
-  // Manually update conversation_stats on internal DB (for Realtime + sidebar)
+  // CUTOVER: write conversation_stats DIRECTLY to external (SSoT)
   if (!result.error && data.channel_id && data.direction) {
     const phone = data.direction === 'inbound'
       ? (data.sender_phone as string)
       : ((data.metadata as Record<string, unknown>)?.destination as string);
-    if (phone) {
+    if (phone && externalSupabase) {
       const statsChannelId = internalChannelId || data.channel_id;
       try {
-        const { error: statsError } = await supabase.rpc('upsert_conversation_stats_manual', {
+        const { error: statsError } = await externalSupabase.rpc('upsert_conversation_stats_external', {
+          _organization_id: (data.organization_id as string) || null,
           _channel_id: statsChannelId,
           _conversation_phone: phone,
           _content: (data.content as string) || null,
@@ -59,10 +60,10 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
           _created_at: new Date().toISOString(),
         });
         if (statsError) {
-          console.error('[Stats] upsert_conversation_stats_manual failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+          console.error('[Stats] upsert_conversation_stats_external failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
         }
       } catch (e: unknown) {
-        console.error('[Stats] upsert_conversation_stats_manual exception:', e);
+        console.error('[Stats] upsert_conversation_stats_external exception:', e);
       }
 
       // Upsert contact in external DB (fire-and-forget)
