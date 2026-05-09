@@ -66,16 +66,6 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
         console.error('[Stats] upsert_conversation_stats_external exception:', e);
       }
 
-      // ALSO update internal conversation_stats — REQUIRED for frontend Realtime
-      // (frontend subscribes to internal conversation_stats UPDATE events).
-      // The mirror trigger will replicate this to external (idempotent overwrite).
-      try {
-        const { error: localStatsError } =        if (localStatsError) {
-          console.error('[Stats] internal upsert_conversation_stats_manual failed:', localStatsError.message);
-        }
-      } catch (e: unknown) {
-        console.error('[Stats] internal upsert exception:', e);
-      }
 
       // Upsert contact in external DB (fire-and-forget)
       if (externalSupabase && data.direction === 'inbound') {
