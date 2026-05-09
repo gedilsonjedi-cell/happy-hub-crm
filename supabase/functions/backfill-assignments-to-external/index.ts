@@ -1,12 +1,12 @@
 // Backfill incremental: copia conversation_assignments + conversation_stats
 // do banco INTERNO pro EXTERNO. Idempotente (upsert por id).
-// Pode ser chamada múltiplas vezes; processa em lotes de 500.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { getExternalDb } from '../_shared/externalDb.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-import { getExternalDb } from '../_shared/externalDb.ts';
 
 const internal = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -19,14 +19,34 @@ async function backfillAssignments(offset: number) {
   const ext = getExternalDb();
   const { data, error } = await internal
     .from('conversation_assignments')
-    .select('id,organization_id,channel_id,conversation_phone,assigned_to,status,sector_id,lead_id,is_bot_handling,campaign_chatbot_id,bot_paused_until,created_at,updated_at')
+    .select('id,channel_id,conversation_phone,assigned_to,status,sector_id,lead_id,is_bot_handling,campaign_chatbot_id,bot_paused_until,created_at,updated_at')
     .order('created_at', { ascending: true })
     .range(offset, offset + BATCH - 1);
   if (error) throw error;
   if (!data?.length) return 0;
-  const filtered = data.filter(r => r.organization_id);
-  if (filtered.length) {
-    const { error: upErr } = await ext.from('conversation_assignments').upsert(filtered, { onConflict: 'id' });
+
+  const channelIds = [...new Set(data.map(r => r.channel_id).filter(Boolean) as string[])];
+  const leadIds = [...new Set(data.filter(r => !r.channel_id && r.lead_id).map(r => r.lead_id) as string[])];
+  const orgByChannel: Record<string, string> = {};
+  const orgByLead: Record<string, string> = {};
+  if (channelIds.length) {
+    const { data: chans } = await internal.from('channels').select('id,organization_id').in('id', channelIds);
+    chans?.forEach((c: any) => { if (c.organization_id) orgByChannel[c.id] = c.organization_id; });
+  }
+  if (leadIds.length) {
+    const { data: leads } = await internal.from('leads').select('id,organization_id').in('id', leadIds);
+    leads?.forEach((l: any) => { if (l.organization_id) orgByLead[l.id] = l.organization_id; });
+  }
+
+  const enriched = data
+    .map((r: any) => ({
+      ...r,
+      organization_id: r.channel_id ? orgByChannel[r.channel_id] : (r.lead_id ? orgByLead[r.lead_id] : null),
+    }))
+    .filter((r: any) => r.organization_id);
+
+  if (enriched.length) {
+    const { error: upErr } = await ext.from('conversation_assignments').upsert(enriched, { onConflict: 'id' });
     if (upErr) throw upErr;
   }
   return data.length;
@@ -41,7 +61,17 @@ async function backfillStats(offset: number) {
     .range(offset, offset + BATCH - 1);
   if (error) throw error;
   if (!data?.length) return 0;
-  const filtered = data.filter(r => r.organization_id && r.assignment_id);
+
+  const missing = data.filter((r: any) => !r.organization_id && r.channel_id);
+  if (missing.length) {
+    const channelIds = [...new Set(missing.map((r: any) => r.channel_id))] as string[];
+    const { data: chans } = await internal.from('channels').select('id,organization_id').in('id', channelIds);
+    const map: Record<string, string> = {};
+    chans?.forEach((c: any) => { if (c.organization_id) map[c.id] = c.organization_id; });
+    missing.forEach((r: any) => { r.organization_id = map[r.channel_id] ?? null; });
+  }
+
+  const filtered = data.filter((r: any) => r.organization_id && r.assignment_id);
   if (filtered.length) {
     const { error: upErr } = await ext.from('conversation_stats').upsert(filtered, { onConflict: 'assignment_id' });
     if (upErr) throw upErr;
@@ -55,7 +85,7 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const table = (url.searchParams.get('table') || 'assignments') as 'assignments' | 'stats';
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-    const maxBatches = parseInt(url.searchParams.get('max_batches') || '20', 10);
+    const maxBatches = parseInt(url.searchParams.get('max_batches') || '40', 10);
 
     let processed = 0;
     let cur = offset;
