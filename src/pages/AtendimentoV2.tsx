@@ -3321,6 +3321,8 @@ const AtendimentoV2 = () => {
       return;
     }
 
+    const tplData = templates.get(templateName);
+
     sendMessageMutation.mutate(
       {
         channelId: conversationChannelId,
@@ -3331,6 +3333,8 @@ const AtendimentoV2 = () => {
         messageType: "template",
         templateName,
         templateParams,
+        templateContent: tplData?.content,
+        templateButtons: tplData?.components?.buttons,
       },
       {
         onSuccess: (data) => {

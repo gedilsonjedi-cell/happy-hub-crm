@@ -17,6 +17,23 @@ export interface SendMessagePayload {
   fileName?: string;
   templateName?: string;
   templateParams?: string[];
+  // Optional template metadata used to render optimistic bubble
+  // identical to what the server will persist (avoids duplicate bubbles
+  // when realtime arrives before the HTTP onSuccess handler).
+  templateContent?: string;
+  templateButtons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>;
+  templateHeaderMediaUrl?: string | null;
+  templateHeaderMediaType?: string | null;
+}
+
+function renderTemplateBody(body: string, params: string[] | undefined): string {
+  if (!body) return "";
+  let out = body;
+  (params || []).forEach((p, i) => {
+    const placeholder = `{{${i + 1}}}`;
+    while (out.includes(placeholder)) out = out.replace(placeholder, p ?? "");
+  });
+  return out;
 }
 
 interface SendMessageResult {
@@ -120,6 +137,18 @@ export function useSendMessage(
 
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
+      const isTemplate = payload.messageType === "template";
+      const renderedBody = isTemplate
+        ? renderTemplateBody(payload.templateContent || "", payload.templateParams)
+        : "";
+      // Match exactly the format meta-send persists so content-based dedup
+      // catches the realtime row even if it arrives before HTTP onSuccess.
+      const optimisticContent = isTemplate
+        ? (renderedBody
+            ? `📋 ${payload.templateName}\n\n${renderedBody}`
+            : `Template: ${payload.templateName}`)
+        : (payload.message || payload.mediaCaption || `[${payload.messageType}]`);
+
       const optimisticMessage: MessageRow = {
         id: tempId,
         channel_id: payload.channelId,
@@ -127,12 +156,23 @@ export function useSendMessage(
         sender_phone: payload.channelPhone,
         sender_name: null,
         message_type: payload.messageType === "ptt" ? "audio" : (payload.messageType || "text"),
-        content: payload.message || payload.mediaCaption || `[${payload.messageType}]`,
-        media_url: payload.mediaUrl || null,
+        content: optimisticContent,
+        media_url: payload.mediaUrl || payload.templateHeaderMediaUrl || null,
         direction: "outbound",
         status: "sending",
         created_at: new Date().toISOString(),
-        metadata: { destination: payload.destination },
+        metadata: {
+          destination: payload.destination,
+          ...(isTemplate
+            ? {
+                templateName: payload.templateName,
+                templateParams: payload.templateParams,
+                templateContent: payload.templateContent,
+                templateButtons: payload.templateButtons,
+                mediaType: payload.templateHeaderMediaType || undefined,
+              }
+            : {}),
+        },
         error_message: null,
         is_read: true,
       };
