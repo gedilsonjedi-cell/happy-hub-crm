@@ -624,16 +624,14 @@ Deno.serve(async (req) => {
       pricePerMessage
     });
 
-    // CRITICAL: Create/update conversation assignment BEFORE sending the message
-    // This ensures the conversation persists even if Meta API fails
+    // CRITICAL: Create/update conversation assignment BEFORE sending the message.
+    // CUTOVER: write to EXTERNAL DB directly (SSoT). Falls back to internal if external is unavailable.
     if (userId && userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const now = new Date().toISOString();
-      
-      // Upsert: create if doesn't exist, update if exists
-      // Uses unique constraint on (conversation_phone, channel_id)
-      // NOTE: conversation_assignments does NOT have organization_id column
-      const { error: assignmentError } = await serviceRoleClient
+      const caDb = externalSupabase || serviceRoleClient;
+
+      const { error: assignmentError } = await caDb
         .from('conversation_assignments')
         .upsert({
           channel_id: channelId,
@@ -648,11 +646,11 @@ Deno.serve(async (req) => {
           onConflict: 'conversation_phone,channel_id',
           ignoreDuplicates: false
         });
-      
+
       if (assignmentError) {
-        console.error('Error upserting conversation assignment:', assignmentError);
+        console.error('Error upserting conversation assignment (external):', assignmentError);
       } else {
-        console.log('Ensured conversation assignment BEFORE send:', cleanDestination, 'assigned to:', userId);
+        console.log('Ensured conversation assignment BEFORE send (external):', cleanDestination, 'assigned to:', userId);
       }
     }
 
