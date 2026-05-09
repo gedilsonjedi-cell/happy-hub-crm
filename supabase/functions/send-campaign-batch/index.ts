@@ -634,8 +634,8 @@ Deno.serve(async (req) => {
             channel_id: channel.id
           }).eq('id', recipient.recipientId);
 
-          // Update conversation assignment — NEVER overwrite active conversations
-          const { data: existing } = await supabase.from('conversation_assignments').select('id, status')
+          // Update conversation assignment — NEVER overwrite active conversations (external SSoT)
+          const { data: existing } = await caDb.from('conversation_assignments').select('id, status')
             .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).single();
           if (existing) {
             const updatePayload: Record<string, unknown> = {
@@ -648,9 +648,9 @@ Deno.serve(async (req) => {
             if (existing.status !== 'in_progress' && existing.status !== 'pending') {
               updatePayload.status = 'archived';
             }
-            await supabase.from('conversation_assignments').update(updatePayload).eq('id', existing.id);
+            await caDb.from('conversation_assignments').update(updatePayload).eq('id', existing.id);
           } else {
-            await supabase.from('conversation_assignments').insert({
+            await caDb.from('conversation_assignments').insert({
               conversation_phone: formattedPhone, channel_id: channel.id,
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
