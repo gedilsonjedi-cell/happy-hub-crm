@@ -2376,67 +2376,6 @@ const Conexoes = () => {
             </div>
           )}
 
-          {/* Infobip Form */}
-          {connectionType === 'infobip' && (
-            <div className="space-y-4 py-2">
-              <div className="p-3 bg-sky-500/10 rounded-lg border border-sky-500/20">
-                <p className="text-sm text-sky-400">
-                  <strong>Atenção:</strong> Obtenha API Key e Base URL no{" "}
-                  <a href="https://portal.infobip.com/" target="_blank" className="underline">painel Infobip</a>.
-                </p>
-              </div>
-              {isSuperAdmin && !isImpersonating && (
-              <div className="space-y-2">
-                <Label className="text-foreground">Organização *</Label>
-                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
-                  <SelectTrigger className="bg-muted/30 border-border"><SelectValue placeholder="Selecione a organização" /></SelectTrigger>
-                  <SelectContent className="bg-card border-border z-[100]">
-                    {organizations.map((org) => (<SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              )}
-              <div className="space-y-2">
-                <Label className="text-foreground">Nome do Canal</Label>
-                <Input placeholder="Ex: WhatsApp Vendas" className="bg-muted/30 border-border" value={infobipFormData.name} onChange={(e) => setInfobipFormData({ ...infobipFormData, name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">Número de Telefone</Label>
-                <Input placeholder="Ex: 5511999999999" className="bg-muted/30 border-border" value={infobipFormData.phone} onChange={(e) => setInfobipFormData({ ...infobipFormData, phone: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">URL de Base da API</Label>
-                <Input placeholder="Ex: v33p8m.api.infobip.com" className="bg-muted/30 border-border" value={infobipFormData.baseUrl} onChange={(e) => setInfobipFormData({ ...infobipFormData, baseUrl: e.target.value })} />
-                <p className="text-xs text-muted-foreground">Encontre no painel Infobip em "Para desenvolvedores"</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-foreground">Chave de API</Label>
-                <div className="relative">
-                  <Input type={showAccessToken ? "text" : "password"} placeholder="Chave de API do Infobip" className="bg-muted/30 border-border pr-10" value={infobipFormData.apiKey} onChange={(e) => setInfobipFormData({ ...infobipFormData, apiKey: e.target.value })} />
-                  <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setShowAccessToken(!showAccessToken)}>
-                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                <Label className="text-foreground text-xs font-semibold">URL do Webhook (configure no Infobip)</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="text-xs text-muted-foreground break-all flex-1">{`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/infobip-webhook`}</code>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => { navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/infobip-webhook`); toast.success("URL do webhook copiada!"); }}>
-                    <Copy className="w-3 h-3" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Configure esta URL como Forwarding URL no painel do Infobip</p>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleConnectInfobip} disabled={isConnecting || !infobipFormData.apiKey || !infobipFormData.baseUrl || !infobipFormData.name || !infobipFormData.phone || (isSuperAdmin && !selectedOrgId)} className="gap-2 bg-sky-600 hover:bg-sky-700">
-                  {isConnecting ? (<><Loader2 className="w-4 h-4 animate-spin" />Conectando...</>) : (<><CheckCircle2 className="w-4 h-4" />Conectar Infobip</>)}
-                </Button>
-              </div>
-            </div>
-          )}
-
           {/* Meta Cloud API Form */}
           {connectionType === 'meta' && step === 'credentials' && (
             <div className="space-y-4 py-2">
