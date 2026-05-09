@@ -242,5 +242,5 @@ export function useChatRealtime(
         orgAssignmentsChannelRef.current = null;
       }
     };
-  }, [channelIds, organizationId, impersonatedOrgId, handleAssignmentPayload]);
+  }, [channelKey, organizationId, impersonatedOrgId, handleAssignmentPayload]);
 }
