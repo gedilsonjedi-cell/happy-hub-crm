@@ -52,6 +52,13 @@ export function useChatRealtime(
   const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
+  // Stable string key — only re-subscribe when the actual set of channel IDs
+  // changes, not on every parent re-render that produces a new array reference.
+  const channelKey = useMemo(
+    () => [...channelIds].sort().join(","),
+    [channelIds]
+  );
+
   useEffect(() => {
     channelIdsRef.current = channelIds;
   }, [channelIds]);
