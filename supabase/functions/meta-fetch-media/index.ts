@@ -1,7 +1,8 @@
 // Recovers a WhatsApp media that failed to download in the webhook.
 // Looks up the message by id, fetches media via Meta API using the channel's
-// access token, uploads to whatsapp-media bucket and updates message.media_url.
+// access token, uploads to the EXTERNAL whatsapp-media bucket and updates message.media_url.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { uploadToExternalMedia } from '../_shared/externalStorage.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -95,19 +96,15 @@ Deno.serve(async (req) => {
     const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
     const fileName = `${msg.organization_id}/${Date.now()}_${mediaId}.${ext}`;
 
-    const { error: upErr } = await supabase.storage
-      .from('whatsapp-media')
-      .upload(fileName, buffer, { contentType: mimeType, upsert: false });
-    if (upErr) {
-      return new Response(JSON.stringify({ error: `storage: ${upErr.message}` }), {
+    const publicUrl = await uploadToExternalMedia(fileName, buffer, mimeType);
+    if (!publicUrl) {
+      return new Response(JSON.stringify({ error: 'external storage upload failed' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(fileName);
-    const publicUrl = urlData.publicUrl;
-
-    // 3. Persist
+    // 3. Persist (whatsapp_messages lives on the external DB, but local table mirrors it
+    // and other code may still update via the local client; keep both safe by updating local only here)
     await supabase
       .from('whatsapp_messages')
       .update({ media_url: publicUrl })

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
