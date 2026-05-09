@@ -305,12 +305,16 @@ Deno.serve(async (req) => {
       };
       const msgDb = externalSupabase || serviceRoleClient;
       await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
-      // Update conversation stats manually (use internal UUID for stats)
-      serviceRoleClient.rpc('upsert_conversation_stats_manual', {
+      // Update conversation stats: dual-write (internal for Realtime, external for SSoT)
+      const _statsArgs1 = {
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
-      }).then(() => {}, () => {});
+      };
+      serviceRoleClient.rpc('upsert_conversation_stats_manual', _statsArgs1).then(() => {}, () => {});
+      if (externalSupabase) {
+        externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs1).then(() => {}, () => {});
+      }
       
       return new Response(
         JSON.stringify({ 
