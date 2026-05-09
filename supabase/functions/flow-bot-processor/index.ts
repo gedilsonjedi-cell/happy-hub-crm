@@ -953,9 +953,14 @@ async function sendTextMessage(
     status: resp.ok ? 'sent' : 'failed',
     metadata: { provider: 'meta', destination: contactPhone, flow_bot: true },
   });
-  supabase.rpc('upsert_conversation_stats_manual', {
+  const _statsArgs = {
     _channel_id: channelId, _conversation_phone: contactPhone,
     _content: text, _direction: 'outbound', _is_read: null,
     _sender_name: null, _created_at: new Date().toISOString(),
-  }).then(() => {}, () => {});
+  };
+  // Dual-write: internal for Realtime + external for SSoT
+  supabase.rpc('upsert_conversation_stats_manual', _statsArgs).then(() => {}, () => {});
+  if (db !== supabase) {
+    db.rpc('upsert_conversation_stats_external', _statsArgs).then(() => {}, () => {});
+  }
 }
