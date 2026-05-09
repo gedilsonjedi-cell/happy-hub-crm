@@ -2105,11 +2105,9 @@ const Conexoes = () => {
                 ? 'Conectar via Z-API'
                 : connectionType === 'gupshup'
                   ? 'Conectar via Gupshup'
-                  : connectionType === 'infobip'
-                    ? 'Conectar via Infobip'
-                    : step === 'credentials' 
-                      ? 'Conectar WhatsApp Business' 
-                      : 'Selecionar Números'
+                  : step === 'credentials' 
+                    ? 'Conectar WhatsApp Business' 
+                    : 'Selecionar Números'
               }
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -2117,11 +2115,9 @@ const Conexoes = () => {
                 ? 'Configure a conexão Z-API para este cliente'
                 : connectionType === 'gupshup'
                   ? 'Configure a conexão Gupshup para este cliente'
-                  : connectionType === 'infobip'
-                    ? 'Configure a conexão Infobip para este cliente'
-                    : step === 'credentials' 
-                      ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
-                      : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
+                  : step === 'credentials' 
+                    ? 'Insira as credenciais da sua WABA para buscar os números disponíveis'
+                    : `Selecione os números que deseja conectar (${selectedPhones.length} selecionado${selectedPhones.length !== 1 ? 's' : ''})`
               }
             </DialogDescription>
           </DialogHeader>
