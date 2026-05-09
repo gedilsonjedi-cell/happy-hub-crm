@@ -188,6 +188,11 @@ export function useInfiniteMessages(
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    // Silent fallback poll: refetch every 8s on the active conversation so
+    // missed Realtime events still surface without F5. Background refetch
+    // does not show a loading spinner (notifyOnChangeProps default keeps UI calm).
+    refetchInterval: 8000,
+    refetchIntervalInBackground: false,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
