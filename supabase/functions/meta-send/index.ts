@@ -624,16 +624,14 @@ Deno.serve(async (req) => {
       pricePerMessage
     });
 
-    // CRITICAL: Create/update conversation assignment BEFORE sending the message
-    // This ensures the conversation persists even if Meta API fails
+    // CRITICAL: Create/update conversation assignment BEFORE sending the message.
+    // CUTOVER: write to EXTERNAL DB directly (SSoT). Falls back to internal if external is unavailable.
     if (userId && userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const now = new Date().toISOString();
-      
-      // Upsert: create if doesn't exist, update if exists
-      // Uses unique constraint on (conversation_phone, channel_id)
-      // NOTE: conversation_assignments does NOT have organization_id column
-      const { error: assignmentError } = await serviceRoleClient
+      const caDb = externalSupabase || serviceRoleClient;
+
+      const { error: assignmentError } = await caDb
         .from('conversation_assignments')
         .upsert({
           channel_id: channelId,
@@ -648,11 +646,11 @@ Deno.serve(async (req) => {
           onConflict: 'conversation_phone,channel_id',
           ignoreDuplicates: false
         });
-      
+
       if (assignmentError) {
-        console.error('Error upserting conversation assignment:', assignmentError);
+        console.error('Error upserting conversation assignment (external):', assignmentError);
       } else {
-        console.log('Ensured conversation assignment BEFORE send:', cleanDestination, 'assigned to:', userId);
+        console.log('Ensured conversation assignment BEFORE send (external):', cleanDestination, 'assigned to:', userId);
       }
     }
 
@@ -1096,7 +1094,7 @@ Deno.serve(async (req) => {
       if (failedInsert.error) {
         console.error('[Meta-Send] Error storing failed message:', failedInsert.error);
       }
-      // Update conversation stats (fire-and-forget, ignore errors)
+      // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
       try {
         await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
           _channel_id: channelId, _conversation_phone: cleanDestination,
@@ -1104,6 +1102,16 @@ Deno.serve(async (req) => {
           _sender_name: null, _created_at: new Date().toISOString(),
         });
       } catch (_e) { /* ignore */ }
+      if (externalSupabase) {
+        try {
+          await externalSupabase.rpc('upsert_conversation_stats_external', {
+            _organization_id: channel.organization_id || null,
+            _channel_id: channelId, _conversation_phone: cleanDestination,
+            _content: storedContent, _direction: 'outbound', _is_read: null,
+            _sender_name: null, _created_at: new Date().toISOString(),
+          });
+        } catch (_e) { /* ignore */ }
+      }
       
       return new Response(
         JSON.stringify({ 
@@ -1197,7 +1205,7 @@ Deno.serve(async (req) => {
       console.log('[Meta-Send] Outbound message persisted:', messageId);
     }
 
-    // Update conversation stats (synchronous to ensure sidebar preview)
+    // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
     try {
       await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
         _channel_id: channelId, _conversation_phone: cleanDestination,
@@ -1205,7 +1213,19 @@ Deno.serve(async (req) => {
         _sender_name: null, _created_at: new Date().toISOString(),
       });
     } catch (e) {
-      console.error('[Meta-Send] Stats update error:', e);
+      console.error('[Meta-Send] Internal stats update error:', e);
+    }
+    if (externalSupabase) {
+      try {
+        await externalSupabase.rpc('upsert_conversation_stats_external', {
+          _organization_id: channel.organization_id || null,
+          _channel_id: channelId, _conversation_phone: cleanDestination,
+          _content: storedContent, _direction: 'outbound', _is_read: null,
+          _sender_name: null, _created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error('[Meta-Send] External stats update error:', e);
+      }
     }
 
     // Webhook dispatch can stay in background — non-critical
