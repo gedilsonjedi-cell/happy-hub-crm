@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 
