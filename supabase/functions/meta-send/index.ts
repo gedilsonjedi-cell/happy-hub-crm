@@ -629,7 +629,7 @@ Deno.serve(async (req) => {
     if (userId && userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const now = new Date().toISOString();
-      const caDb = externalSupabase || serviceRoleClient;
+      const caDb = externalSupabase;
 
       const { error: assignmentError } = await caDb
         .from('conversation_assignments')
@@ -1094,14 +1094,6 @@ Deno.serve(async (req) => {
       if (failedInsert.error) {
         console.error('[Meta-Send] Error storing failed message:', failedInsert.error);
       }
-      // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
-      try {
-        await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-          _channel_id: channelId, _conversation_phone: cleanDestination,
-          _content: storedContent, _direction: 'outbound', _is_read: null,
-          _sender_name: null, _created_at: new Date().toISOString(),
-        });
-      } catch (_e) { /* ignore */ }
       if (externalSupabase) {
         try {
           await externalSupabase.rpc('upsert_conversation_stats_external', {
@@ -1205,13 +1197,7 @@ Deno.serve(async (req) => {
       console.log('[Meta-Send] Outbound message persisted:', messageId);
     }
 
-    // Update conversation stats — dual-write: external (SSoT) + internal (Realtime trigger)
     try {
-      await serviceRoleClient.rpc('upsert_conversation_stats_manual', {
-        _channel_id: channelId, _conversation_phone: cleanDestination,
-        _content: storedContent, _direction: 'outbound', _is_read: null,
-        _sender_name: null, _created_at: new Date().toISOString(),
-      });
     } catch (e) {
       console.error('[Meta-Send] Internal stats update error:', e);
     }

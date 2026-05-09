@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
   const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
   const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
   const externalSupabase = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : null;
-  const caDb = externalSupabase || supabase;
+  const caDb = externalSupabase;
 
   // meta-send runs on the internal Supabase (Lovable Cloud)
   const metaSendUrl = supabaseUrl;

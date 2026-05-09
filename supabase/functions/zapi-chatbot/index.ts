@@ -13,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
 const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
-const messageDb = externalSupabase || supabase;
+const messageDb = externalSupabase;
 
 interface ChatbotConfig {
   is_enabled: boolean;
@@ -557,15 +557,6 @@ ${hasPreviousBotMessages || memorySummary ? `- Esta conversa já está em andame
         };
         await messageDb.from('whatsapp_messages').insert(botMsgData);
         // Update conversation stats on Cloud
-        supabase.rpc('upsert_conversation_stats_manual', {
-          _channel_id: channelId,
-          _conversation_phone: senderPhone.replace(/\D/g, ''),
-          _content: responseMessage,
-          _direction: 'outbound',
-          _is_read: null,
-          _sender_name: null,
-          _created_at: new Date().toISOString(),
-        }).then(() => {}, () => {});
       }
     }
 

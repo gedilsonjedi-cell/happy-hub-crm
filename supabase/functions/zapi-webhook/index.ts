@@ -16,9 +16,9 @@ const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
-const messageDb = externalSupabase || supabase;
+const messageDb = externalSupabase;
 /** DB where conversation_assignments live — external SSoT, fallback to internal */
-const caDb = externalSupabase || supabase;
+const caDb = externalSupabase;
 
 /** Write to whatsapp_messages on external DB (no fallback) + dual-write conversation_stats (internal+external) */
 function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
@@ -41,9 +41,6 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
           _sender_name: (data.sender_name as string) || null,
           _created_at: new Date().toISOString(),
         };
-        // Dual-write: internal for Realtime + external for SSoT
-        supabase.rpc('upsert_conversation_stats_manual', statsArgs)
-          .then(() => {}, (e: unknown) => console.error('[Stats internal] Error:', e));
         if (externalSupabase) {
           externalSupabase.rpc('upsert_conversation_stats_external', statsArgs)
             .then(() => {}, (e: unknown) => console.error('[Stats external] Error:', e));

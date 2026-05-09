@@ -20,7 +20,7 @@ const externalSupabase: any = (extUrl && extKey) ? createClient(extUrl, extKey) 
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
 // deno-lint-ignore no-explicit-any
-const messageDb: any = externalSupabase || supabase;
+const messageDb: any = externalSupabase;
 
 function writeMessageRecord(
   // deno-lint-ignore no-explicit-any
@@ -70,16 +70,7 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
       // (frontend subscribes to internal conversation_stats UPDATE events).
       // The mirror trigger will replicate this to external (idempotent overwrite).
       try {
-        const { error: localStatsError } = await supabase.rpc('upsert_conversation_stats_manual', {
-          _channel_id: statsChannelId,
-          _conversation_phone: phone,
-          _content: (data.content as string) || null,
-          _direction: data.direction as string,
-          _is_read: (data.is_read as boolean) ?? null,
-          _sender_name: (data.sender_name as string) || null,
-          _created_at: new Date().toISOString(),
-        });
-        if (localStatsError) {
+        const { error: localStatsError } =        if (localStatsError) {
           console.error('[Stats] internal upsert_conversation_stats_manual failed:', localStatsError.message);
         }
       } catch (e: unknown) {
@@ -572,7 +563,7 @@ async function handleConversationAssignment(
   let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
   // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
-  const caDb = externalSupabase || supabase;
+  const caDb = externalSupabase;
   const { data: exactMatch } = await caDb
     .from('conversation_assignments')
     .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
@@ -1122,7 +1113,6 @@ async function processStatusUpdates(statuses: Record<string, unknown>[]) {
     }
   }
 
-  // Execute one update per status group in whatsapp_messages (dual-write)
   // For failed messages, also save error_message individually
   const updatePromisesWm: Promise<unknown>[] = [];
   for (const [status, ids] of grouped.entries()) {

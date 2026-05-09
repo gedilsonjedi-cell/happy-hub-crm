@@ -16,7 +16,7 @@ const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
 const externalSupabase = (extUrl && extKey) ? createClient(extUrl, extKey) : null;
 
 /** DB where whatsapp_messages live — external only, NO internal fallback */
-const messageDb = externalSupabase || supabase;
+const messageDb = externalSupabase;
 
 /** Write to whatsapp_messages on external DB (no fallback) + update conversation_stats */
 function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: string) {
@@ -30,15 +30,6 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
         : ((data.metadata as Record<string, unknown>)?.destination as string);
       if (phone) {
         const statsChannelId = internalChannelId || data.channel_id;
-        supabase.rpc('upsert_conversation_stats_manual', {
-          _channel_id: statsChannelId,
-          _conversation_phone: phone,
-          _content: (data.content as string) || null,
-          _direction: data.direction as string,
-          _is_read: (data.is_read as boolean) ?? null,
-          _sender_name: (data.sender_name as string) || null,
-          _created_at: new Date().toISOString(),
-        }).then(() => {}, (e: unknown) => console.error('[Stats] Error:', e));
       }
     }
     return result;

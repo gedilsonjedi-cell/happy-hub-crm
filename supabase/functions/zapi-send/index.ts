@@ -303,15 +303,13 @@ Deno.serve(async (req) => {
             originalError: errorMessage
           }
       };
-      const msgDb = externalSupabase || serviceRoleClient;
+      const msgDb = externalSupabase;
       await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
-      // Update conversation stats: dual-write (internal for Realtime, external for SSoT)
       const _statsArgs1 = {
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
       };
-      serviceRoleClient.rpc('upsert_conversation_stats_manual', _statsArgs1).then(() => {}, () => {});
       if (externalSupabase) {
         externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs1).then(() => {}, () => {});
       }
@@ -354,18 +352,16 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role'
         }
     };
-    const msgDb2 = externalSupabase || serviceRoleClient;
+    const msgDb2 = externalSupabase;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
     // Update conversation stats manually (use internal UUID for stats)
-    const msgDb2 = externalSupabase || serviceRoleClient;
+    const msgDb2 = externalSupabase;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
-    // Update conversation stats: dual-write (internal for Realtime, external for SSoT)
     const _statsArgs2 = {
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,
       _sender_name: null, _created_at: new Date().toISOString(),
     };
-    serviceRoleClient.rpc('upsert_conversation_stats_manual', _statsArgs2).then(() => {}, () => {});
     if (externalSupabase) {
       externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs2).then(() => {}, () => {});
     }
@@ -375,7 +371,7 @@ Deno.serve(async (req) => {
     if (userId !== 'service_role') {
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      const caDb = externalSupabase || serviceRoleClient;
+      const caDb = externalSupabase;
       await caDb
         .from('conversation_assignments')
         .update({ 
