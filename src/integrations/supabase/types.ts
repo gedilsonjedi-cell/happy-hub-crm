@@ -2240,6 +2240,51 @@ export type Database = {
           },
         ]
       }
+      media_migration_progress: {
+        Row: {
+          delete_after: boolean
+          failed: number
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          last_folder: string | null
+          migrated: number
+          skipped: number
+          started_at: string
+          status: string
+          updated_at: string
+          urls_updated: number
+        }
+        Insert: {
+          delete_after?: boolean
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_folder?: string | null
+          migrated?: number
+          skipped?: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+          urls_updated?: number
+        }
+        Update: {
+          delete_after?: boolean
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_folder?: string | null
+          migrated?: number
+          skipped?: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+          urls_updated?: number
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           components: Json | null
