@@ -258,7 +258,7 @@ async function processCampaignDispatch(
         if (metaSendResult.success) {
           // Always upsert conversation_assignment with sector_id from campaign
           const campaignSectorId = campaign.sector_id || null;
-          const { data: existingAssignment } = await supabase
+          const { data: existingAssignment } = await messageDb
             .from('conversation_assignments')
             .select('id')
             .eq('conversation_phone', formattedPhone)
@@ -274,7 +274,7 @@ async function processCampaignDispatch(
               updatePayload.campaign_chatbot_id = campaign.chatbot_id;
               updatePayload.is_bot_handling = true;
             }
-            await supabase.from('conversation_assignments').update(updatePayload).eq('id', existingAssignment.id);
+            await messageDb.from('conversation_assignments').update(updatePayload).eq('id', existingAssignment.id);
           } else {
             // IMPORTANT: campaigns start as 'archived' — only become 'pending' when client replies
             const insertPayload: Record<string, unknown> = {
@@ -287,7 +287,7 @@ async function processCampaignDispatch(
               insertPayload.campaign_chatbot_id = campaign.chatbot_id;
               insertPayload.is_bot_handling = true;
             }
-            await supabase.from('conversation_assignments').insert(insertPayload);
+            await messageDb.from('conversation_assignments').insert(insertPayload);
           }
           return { success: true, phone: formattedPhone };
         } else {
