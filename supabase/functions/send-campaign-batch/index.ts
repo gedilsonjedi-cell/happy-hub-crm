@@ -141,6 +141,12 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  // External DB SSoT for conversation_assignments (with internal fallback)
+  const _extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
+  const _extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
+  const externalSupabase = (_extUrl && _extKey) ? createClient(_extUrl, _extKey) : null;
+  const caDb = externalSupabase || supabase;
+
   // meta-send runs on the internal Supabase (Lovable Cloud)
   const metaSendUrl = supabaseUrl;
   const metaSendKey = supabaseServiceKey;
