@@ -17,6 +17,23 @@ export interface SendMessagePayload {
   fileName?: string;
   templateName?: string;
   templateParams?: string[];
+  // Optional template metadata used to render optimistic bubble
+  // identical to what the server will persist (avoids duplicate bubbles
+  // when realtime arrives before the HTTP onSuccess handler).
+  templateContent?: string;
+  templateButtons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>;
+  templateHeaderMediaUrl?: string | null;
+  templateHeaderMediaType?: string | null;
+}
+
+function renderTemplateBody(body: string, params: string[] | undefined): string {
+  if (!body) return "";
+  let out = body;
+  (params || []).forEach((p, i) => {
+    const placeholder = `{{${i + 1}}}`;
+    while (out.includes(placeholder)) out = out.replace(placeholder, p ?? "");
+  });
+  return out;
 }
 
 interface SendMessageResult {
