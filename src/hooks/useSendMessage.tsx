@@ -66,9 +66,7 @@ export function useSendMessage(
         ? "zapi-send"
         : payload.channelProvider === "gupshup"
           ? "gupshup-send"
-          : payload.channelProvider === "infobip"
-            ? "infobip-send"
-            : "meta-send";
+          : "meta-send";
 
       const body: Record<string, unknown> = {
         channelId: payload.channelId,
