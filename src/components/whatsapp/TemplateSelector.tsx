@@ -51,54 +51,74 @@ export const TemplateSelector = ({
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (isOpen && channelId) {
+    if (isOpen) {
       fetchTemplates();
     }
-  }, [isOpen, channelId]);
+  }, [isOpen, channelId, effectiveOrganizationId]);
+
+  const fetchAllApprovedForOrg = async () => {
+    let query = supabase
+      .from("message_templates")
+      .select("*")
+      .eq("status", "approved");
+    if (effectiveOrganizationId) {
+      query = query.eq("organization_id", effectiveOrganizationId);
+    }
+    const { data, error } = await query.order("name");
+    if (error) {
+      console.error("Error fetching templates:", error);
+      return [];
+    }
+    return data || [];
+  };
 
   const fetchTemplates = async () => {
     setLoading(true);
-    
-    // First get templates linked to this channel
-    const { data: channelTemplates, error: ctError } = await supabase
-      .from("channel_templates")
-      .select("template_id")
-      .eq("channel_id", channelId);
-
-    if (ctError) {
-      console.error("Error fetching channel templates:", ctError);
-      setLoading(false);
-      return;
-    }
-
-    const templateIds = channelTemplates?.map(ct => ct.template_id) || [];
-
-    if (templateIds.length === 0) {
-      // If no channel-specific templates, fetch all approved templates for this org
-      const query = supabase
-        .from("message_templates")
-        .select("*")
-        .eq("status", "approved");
-      if (effectiveOrganizationId) query.eq("organization_id", effectiveOrganizationId);
-      const { data, error } = await query.order("name");
-
-      if (!error && data) {
-        setTemplates(data);
+    try {
+      // Sem canal: fallback direto pra todos os aprovados da org
+      if (!channelId) {
+        setTemplates(await fetchAllApprovedForOrg());
+        return;
       }
-    } else {
-      // Fetch templates linked to channel
+
+      const { data: channelTemplates, error: ctError } = await supabase
+        .from("channel_templates")
+        .select("template_id")
+        .eq("channel_id", channelId);
+
+      if (ctError) {
+        console.error("Error fetching channel templates:", ctError);
+        // Fallback em vez de travar a tela
+        setTemplates(await fetchAllApprovedForOrg());
+        return;
+      }
+
+      const templateIds = channelTemplates?.map(ct => ct.template_id) || [];
+
+      if (templateIds.length === 0) {
+        setTemplates(await fetchAllApprovedForOrg());
+        return;
+      }
+
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
         .in("id", templateIds)
+        .eq("status", "approved")
         .order("name");
 
-      if (!error && data) {
-        setTemplates(data);
+      if (error) {
+        console.error("Error fetching templates by ids:", error);
+        setTemplates(await fetchAllApprovedForOrg());
+        return;
       }
+      setTemplates(data || []);
+    } catch (err) {
+      console.error("Unexpected error fetching templates:", err);
+      setTemplates([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleSelectTemplate = (template: Template) => {
