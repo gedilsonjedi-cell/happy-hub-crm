@@ -165,7 +165,9 @@ export function useChatRealtime(
             });
           }
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
+        });
       messagesChannelRef.current = messagesChannel;
 
       // 2. conversation_assignments on EXTERNAL — by channel
@@ -181,7 +183,9 @@ export function useChatRealtime(
           },
           handleAssignmentPayload
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
+        });
       assignmentsChannelRef.current = assignmentsChannel;
 
       // 3. conversation_assignments on EXTERNAL — org-wide for campaigns w/o channel
@@ -205,7 +209,9 @@ export function useChatRealtime(
               handleAssignmentPayload(payload);
             }
           )
-          .subscribe();
+          .subscribe((status, err) => {
+            console.log(`[useChatRealtime] org-assignments channel status: ${status}`, err ?? "");
+          });
         orgAssignmentsChannelRef.current = orgChannel;
       }
     })().catch((err) => {
