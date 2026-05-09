@@ -3169,25 +3169,32 @@ const AtendimentoV2 = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      // Get a signed upload URL on the EXTERNAL bucket
+      const { data: signed, error: signErr } = await supabase.functions.invoke(
+        'external-storage-sign-upload',
+        { body: { fileName: file.name } },
+      );
+      if (signErr || !signed?.signedUrl) {
+        toast.error('Erro ao preparar upload');
+        setUploadingMedia(false);
+        return;
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, file, { cacheControl: '3600', upsert: false });
-
-      if (uploadError) {
+      // PUT directly to the external bucket
+      const putResp = await fetch(signed.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'false' },
+        body: file,
+      });
+      if (!putResp.ok) {
         toast.error('Erro ao fazer upload do arquivo');
         setUploadingMedia(false);
         return;
       }
 
-      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
-
       await handleSendMedia({
         mediaType,
-        mediaUrl: urlData.publicUrl,
+        mediaUrl: signed.publicUrl,
         fileName: file.name
       });
 
@@ -4158,25 +4165,33 @@ const AtendimentoV2 = () => {
       if (!user) throw new Error("Usuário não autenticado");
 
       const fileExt = pastedImage.file.type.split('/')[1] || 'png';
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      const pastedName = `imagem_colada.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, pastedImage.file, { cacheControl: '3600', upsert: false });
+      const { data: signed, error: signErr } = await supabase.functions.invoke(
+        'external-storage-sign-upload',
+        { body: { fileName: pastedName } },
+      );
+      if (signErr || !signed?.signedUrl) {
+        toast.error('Erro ao preparar upload');
+        setUploadingMedia(false);
+        return;
+      }
 
-      if (uploadError) {
+      const putResp = await fetch(signed.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': pastedImage.file.type || 'image/png', 'x-upsert': 'false' },
+        body: pastedImage.file,
+      });
+      if (!putResp.ok) {
         toast.error('Erro ao fazer upload da imagem');
         setUploadingMedia(false);
         return;
       }
 
-      const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
-
       await handleSendMedia({
         mediaType: 'image',
-        mediaUrl: urlData.publicUrl,
-        fileName: `imagem_colada.${fileExt}`
+        mediaUrl: signed.publicUrl,
+        fileName: pastedName
       });
 
       // Clean up
