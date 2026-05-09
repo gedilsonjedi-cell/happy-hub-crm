@@ -175,21 +175,24 @@ export function useSendMessage(
         is_read: true,
       };
 
-      // Prepend into the first page of the infinite cache
+      // Prepend into the first page of the infinite cache. If the cache is
+      // empty (conversation never opened or GC'd), seed it with a fresh page
+      // so the optimistic bubble is still visible immediately.
       queryClient.setQueryData(
         queryKey,
         (old: { pages: MessagePage[]; pageParams: unknown[] } | undefined) => {
-          if (!old) return old;
-          const firstPage = old.pages[0];
-          // Guard against duplicates
-          if (firstPage?.messages.some((m) => m.id === tempId)) return old;
+          if (!old) {
+            return {
+              pages: [{ messages: [optimisticMessage], nextCursor: null, hasMore: false }],
+              pageParams: [null],
+            };
+          }
+          const firstPage = old.pages[0] ?? { messages: [], nextCursor: null, hasMore: false };
+          if (firstPage.messages.some((m) => m.id === tempId)) return old;
           return {
             ...old,
             pages: [
-              {
-                ...firstPage,
-                messages: [optimisticMessage, ...(firstPage?.messages ?? [])],
-              },
+              { ...firstPage, messages: [optimisticMessage, ...firstPage.messages] },
               ...old.pages.slice(1),
             ],
           };
