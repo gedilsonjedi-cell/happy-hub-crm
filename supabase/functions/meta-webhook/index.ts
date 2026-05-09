@@ -669,15 +669,15 @@ async function handleConversationAssignment(
     }
   }
 
-  const { data: newAssignment, error } = await supabase
+  const { data: newAssignment, error } = await caDb
     .from('conversation_assignments')
-    .insert({ channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: finalStatus, sector_id: sectorId, assigned_to: assignedTo })
+    .insert({ organization_id: organizationId, channel_id: channelId, conversation_phone: normalizedPhone, lead_id: leadId, status: finalStatus, sector_id: sectorId, assigned_to: assignedTo })
     .select('id')
     .single();
 
   if (error || !newAssignment) {
     // Race condition: fetch existing
-    const { data: fallback } = await supabase
+    const { data: fallback } = await caDb
       .from('conversation_assignments')
       .select('id, assigned_to, status, sector_id, is_bot_handling')
       .eq('channel_id', channelId).eq('conversation_phone', normalizedPhone).maybeSingle();
