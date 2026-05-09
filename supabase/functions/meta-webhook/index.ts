@@ -66,6 +66,26 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
         console.error('[Stats] upsert_conversation_stats_external exception:', e);
       }
 
+      // ALSO update internal conversation_stats — REQUIRED for frontend Realtime
+      // (frontend subscribes to internal conversation_stats UPDATE events).
+      // The mirror trigger will replicate this to external (idempotent overwrite).
+      try {
+        const { error: localStatsError } = await supabase.rpc('upsert_conversation_stats_manual', {
+          _channel_id: statsChannelId,
+          _conversation_phone: phone,
+          _content: (data.content as string) || null,
+          _direction: data.direction as string,
+          _is_read: (data.is_read as boolean) ?? null,
+          _sender_name: (data.sender_name as string) || null,
+          _created_at: new Date().toISOString(),
+        });
+        if (localStatsError) {
+          console.error('[Stats] internal upsert_conversation_stats_manual failed:', localStatsError.message);
+        }
+      } catch (e: unknown) {
+        console.error('[Stats] internal upsert exception:', e);
+      }
+
       // Upsert contact in external DB (fire-and-forget)
       if (externalSupabase && data.direction === 'inbound') {
         externalSupabase
