@@ -2,7 +2,10 @@
 // do banco INTERNO pro EXTERNO. Idempotente (upsert por id).
 // Pode ser chamada múltiplas vezes; processa em lotes de 500.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { corsHeaders } from '@supabase/supabase-js/cors';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 import { getExternalDb } from '../_shared/externalDb.ts';
 
 const internal = createClient(
