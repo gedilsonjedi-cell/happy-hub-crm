@@ -461,7 +461,7 @@ async function handleConversationAssignment(
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string } | undefined> {
   
   // PRIMARY LOOKUP: By lead_id + channel_id (most reliable)
-  let { data: existingAssignment } = await supabase
+  let { data: existingAssignment } = await caDb
     .from('conversation_assignments')
     .select('id, assigned_to, status, sector_id, conversation_phone, updated_at')
     .eq('lead_id', leadId)
@@ -471,7 +471,7 @@ async function handleConversationAssignment(
   // FALLBACK: If no match by lead_id, try by phone (for legacy data)
   if (!existingAssignment) {
     const phoneEnd8 = normalizedPhone.slice(-8);
-    const { data: phoneMatch } = await supabase
+    const { data: phoneMatch } = await caDb
       .from('conversation_assignments')
       .select('id, assigned_to, status, sector_id, conversation_phone, lead_id, updated_at')
       .eq('channel_id', channelId)
@@ -483,7 +483,7 @@ async function handleConversationAssignment(
       
       // Update the assignment to include lead_id for future lookups
       if (!phoneMatch.lead_id) {
-        await supabase
+        await caDb
           .from('conversation_assignments')
           .update({ 
             lead_id: leadId,
@@ -513,7 +513,7 @@ async function handleConversationAssignment(
     
     // Update conversation_phone to normalized format if different
     if (existingAssignment.conversation_phone !== normalizedPhone) {
-      await supabase
+      await caDb
         .from('conversation_assignments')
         .update({ 
           conversation_phone: normalizedPhone,
@@ -530,7 +530,7 @@ async function handleConversationAssignment(
       if (hasAttendant) {
         console.log('Returning to previous attendant:', existingAssignment.assigned_to);
         
-        await supabase
+        await caDb
           .from('conversation_assignments')
           .update({
             status: 'active',
@@ -553,7 +553,7 @@ async function handleConversationAssignment(
         const nextAttendant = await getNextAvailableAttendant(organizationId, sectorId);
         
         if (nextAttendant) {
-          await supabase
+          await caDb
             .from('conversation_assignments')
             .update({
               assigned_to: nextAttendant.userId,
@@ -575,7 +575,7 @@ async function handleConversationAssignment(
       }
       
       // No attendant available - set to pending
-      await supabase
+      await caDb
         .from('conversation_assignments')
         .update({
           status: 'pending',
@@ -600,7 +600,7 @@ async function handleConversationAssignment(
         const nextAttendant = await getNextAvailableAttendant(organizationId, sectorId);
         
         if (nextAttendant) {
-          await supabase
+          await caDb
             .from('conversation_assignments')
             .update({
               assigned_to: nextAttendant.userId,
@@ -628,7 +628,7 @@ async function handleConversationAssignment(
       const sectorId = await findSectorFromCampaign(organizationId, leadId);
       if (sectorId) {
         console.log('Updating existing conversation with sector_id:', sectorId);
-        await supabase
+        await caDb
           .from('conversation_assignments')
           .update({
             sector_id: sectorId,
@@ -694,7 +694,7 @@ async function handleConversationAssignment(
     }
   }
 
-  const { data: newAssignment, error: assignError } = await supabase
+  const { data: newAssignment, error: assignError } = await caDb
     .from('conversation_assignments')
     .insert({
       conversation_phone: normalizedPhone,
@@ -805,7 +805,7 @@ Deno.serve(async (req) => {
           
           // Find assignment by phone suffix
           const phoneEnd8 = normalizedPhone.slice(-8);
-          const { data: existingAssignment } = await supabase
+          const { data: existingAssignment } = await caDb
             .from('conversation_assignments')
             .select('id')
             .eq('channel_id', channelForPause.id)
@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
             .single();
           
           if (existingAssignment) {
-            await supabase
+            await caDb
               .from('conversation_assignments')
               .update({ 
                 bot_paused_until: botPausedUntil,
@@ -823,7 +823,7 @@ Deno.serve(async (req) => {
               .eq('id', existingAssignment.id);
             console.log('Bot paused for conversation:', normalizedPhone);
           } else {
-            await supabase
+            await caDb
               .from('conversation_assignments')
               .insert({
                 conversation_phone: normalizedPhone,
