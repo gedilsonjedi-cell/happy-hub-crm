@@ -144,13 +144,16 @@ const Index = () => {
       
       const channelIds = orgChannels?.map((c: any) => c.id) || [];
 
-      // Fetch conversation assignments for metrics - filtered by organization's channels
-      const { data: assignments } = channelIds.length > 0 
-        ? await supabase
-            .from("conversation_assignments")
-            .select("*")
-            .in("channel_id", channelIds)
-        : { data: [] };
+      // Fetch conversation assignments for metrics - filtered by organization's channels (EXTERNAL)
+      let assignments: any[] | null = [];
+      if (channelIds.length > 0) {
+        const ext = await getExternalAssignments();
+        const r = await ext
+          .from("conversation_assignments")
+          .select("*")
+          .in("channel_id", channelIds);
+        assignments = r.data;
+      }
 
       const openConversations = assignments?.filter(a => a.status === "active" || a.status === "pending").length || 0;
       const pendingConversations = assignments?.filter(a => a.status === "pending").length || 0;
