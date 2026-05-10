@@ -145,9 +145,10 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     const channelFilter = channelIds.map(id => `channel_id.eq.${id}`).join(',');
 
     const fetchAllAssignments = async () => {
+      const ext = await getExternalAssignments();
       const all: any[] = []; let from = 0; let hasMore = true;
       while (hasMore) {
-        const { data, error } = await supabase.from("conversation_assignments")
+        const { data, error } = await ext.from("conversation_assignments")
           .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
           .or(channelFilter).neq("status", "archived")
           .order("updated_at", { ascending: false }).range(from, from + 999);
