@@ -2707,7 +2707,7 @@ const AtendimentoV2 = () => {
 
       if (error) {
         // Check if it's a RLS error
-        if (error.message?.includes('row-level security') || error.code === '42501') {
+        if (error.message?.includes('row-level security')) {
           const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
           toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
         } else {
