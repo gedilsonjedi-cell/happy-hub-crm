@@ -21,6 +21,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 import { fetchExternalMessages, type ExternalMessageRow } from "@/lib/externalDb";
 import { getPhoneLookupVariants } from "@/lib/phoneThreadKey";
 import { useAuth } from "@/hooks/useAuth";
