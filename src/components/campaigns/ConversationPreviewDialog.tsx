@@ -110,7 +110,8 @@ export function ConversationPreviewDialog({
           new Set([phoneNormalized, phoneNormalized.slice(-9), phoneNormalized.slice(-8)].filter(Boolean))
         );
         const orFilter = phoneVariantsSearch.map((p) => `conversation_phone.eq.${p}`).join(",");
-        const { data: statsRows } = await supabase
+        const ext = await getExternalAssignments();
+        const { data: statsRows } = await ext
           .from("conversation_stats")
           .select("channel_id, last_message_at")
           .eq("organization_id", orgId)
