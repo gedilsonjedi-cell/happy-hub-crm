@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 
 interface MetricsSummary {
