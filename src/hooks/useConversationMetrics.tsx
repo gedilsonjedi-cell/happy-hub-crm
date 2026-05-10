@@ -257,7 +257,8 @@ export function useConversationMetrics(dateRange?: { start: Date; end: Date }) {
       const avgFirstResponseTime = responseCount > 0 ? totalResponseTime / responseCount : 0;
 
       // Count resolved today from assignments
-      const { count: resolvedToday } = await supabase
+      const ext = await getExternalAssignments();
+      const { count: resolvedToday } = await ext
         .from("conversation_assignments")
         .select("*", { count: "exact", head: true })
         .in("channel_id", channelIds)
