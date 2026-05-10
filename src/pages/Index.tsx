@@ -18,6 +18,7 @@ import {
 import { MainLayout } from "@/components/layout/MainLayout";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
