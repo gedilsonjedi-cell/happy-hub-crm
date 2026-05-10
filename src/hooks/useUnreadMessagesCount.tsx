@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 
 export function useUnreadMessagesCount() {
   const [count, setCount] = useState(0);
