@@ -154,49 +154,18 @@ export const AssignAttendantDialog = ({
 
     try {
       if (attendant) {
-        // Upsert assignment
-        const { error } = await supabase
-          .from("conversation_assignments")
-          .upsert({
+        const { error } = await assignmentsWrite("upsert_assignment", {
+          payload: {
             conversation_phone: normalizedPhone,
             channel_id: channelId,
             assigned_to: attendant.user_id,
-            assigned_at: new Date().toISOString(),
-            status: "active"
-          }, {
-            onConflict: "conversation_phone,channel_id"
-          });
-
-        if (error) {
-          // If upsert fails, try update then insert
-          const { error: updateError } = await supabase
-            .from("conversation_assignments")
-            .update({
-              assigned_to: attendant.user_id,
-              assigned_at: new Date().toISOString()
-            })
-            .eq("conversation_phone", normalizedPhone)
-            .eq("channel_id", channelId);
-
-          if (updateError) {
-            // Try insert
-            await supabase
-              .from("conversation_assignments")
-              .insert({
-                conversation_phone: normalizedPhone,
-                channel_id: channelId,
-                assigned_to: attendant.user_id,
-                assigned_at: new Date().toISOString(),
-                status: "active"
-              });
-          }
-        }
+            status: "active",
+          },
+        });
+        if (error) throw new Error(error.message);
 
         const attendantName = attendant.display_name || attendant.email || "Atendente";
-        
-        // Check if this is a transfer (previous attendant existed and is different)
         const isTransfer = previousAssignedTo && previousAssignedTo !== attendant.user_id;
-        
         if (isTransfer) {
           toast.success(
             `Atendimento transferido de ${previousAssignedToName} para ${attendantName}`,
@@ -208,16 +177,14 @@ export const AssignAttendantDialog = ({
         } else {
           toast.success(`Conversa atribuída para ${attendantName}`);
         }
-        
         onAssigned(attendant.user_id, attendantName);
       } else {
-        // Remove assignment
-        await supabase
-          .from("conversation_assignments")
-          .update({ assigned_to: null, assigned_at: null })
-          .eq("conversation_phone", normalizedPhone)
-          .eq("channel_id", channelId);
-
+        await assignmentsWrite("update_by_phone", {
+          channel_id: channelId,
+          phone: normalizedPhone,
+          assigned_to: null,
+          assigned_at: null,
+        });
         toast.success("Atribuição removida");
         onAssigned(null, null);
       }
