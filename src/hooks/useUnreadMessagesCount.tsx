@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 
 export function useUnreadMessagesCount() {
   const [count, setCount] = useState(0);
@@ -89,7 +90,8 @@ export function useUnreadMessagesCount() {
 
       // Fetch conversation_assignments to get sector-filtered unread count
       // Include both 'pending' AND 'in_progress' without assignee (conversations waiting for an attendant)
-      const { data: assignments, error: assignmentsError } = await supabase
+      const ext = await getExternalAssignments();
+      const { data: assignments, error: assignmentsError } = await ext
         .from("conversation_assignments")
         .select("id, conversation_phone, channel_id, sector_id, status, assigned_to")
         .in("channel_id", channelIds)

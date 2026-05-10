@@ -18,6 +18,7 @@ import {
 import { MainLayout } from "@/components/layout/MainLayout";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { getExternalAssignments } from "@/lib/externalAssignments";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -144,13 +145,16 @@ const Index = () => {
       
       const channelIds = orgChannels?.map((c: any) => c.id) || [];
 
-      // Fetch conversation assignments for metrics - filtered by organization's channels
-      const { data: assignments } = channelIds.length > 0 
-        ? await supabase
-            .from("conversation_assignments")
-            .select("*")
-            .in("channel_id", channelIds)
-        : { data: [] };
+      // Fetch conversation assignments for metrics - filtered by organization's channels (EXTERNAL)
+      let assignments: any[] | null = [];
+      if (channelIds.length > 0) {
+        const ext = await getExternalAssignments();
+        const r = await ext
+          .from("conversation_assignments")
+          .select("*")
+          .in("channel_id", channelIds);
+        assignments = r.data;
+      }
 
       const openConversations = assignments?.filter(a => a.status === "active" || a.status === "pending").length || 0;
       const pendingConversations = assignments?.filter(a => a.status === "pending").length || 0;
