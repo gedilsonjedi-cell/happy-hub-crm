@@ -110,19 +110,45 @@ Deno.serve(async (req: Request) => {
 
       case 'update_assignment_status':
       case 'assign_to':
-      case 'transfer': {
+      case 'transfer':
+      case 'update_by_phone': {
         const id = body.id;
-        if (!id) return json({ error: 'id required' }, 400);
+        const channelId = body.channel_id;
+        const phone = body.phone || body.conversation_phone;
         const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
         if (body.status !== undefined) updates.status = body.status;
         if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to;
+        if (body.assigned_at !== undefined) updates.assigned_at = body.assigned_at;
         if (body.sector_id !== undefined) updates.sector_id = body.sector_id;
         if (body.lead_id !== undefined) updates.lead_id = body.lead_id;
         if (body.is_bot_handling !== undefined) updates.is_bot_handling = body.is_bot_handling;
         if (body.bot_paused_until !== undefined) updates.bot_paused_until = body.bot_paused_until;
+
+        let q = ext.from('conversation_assignments').update(updates).eq('organization_id', orgId);
+        if (id) {
+          q = q.eq('id', id);
+        } else if (channelId && phone) {
+          const norm = String(phone).replace(/\D/g, '');
+          q = q.eq('channel_id', channelId).or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`);
+        } else {
+          return json({ error: 'id or (channel_id+phone) required' }, 400);
+        }
+        const { data, error } = await q.select();
+        if (error) return json({ error: error.message }, 500);
+        return json({ success: true, assignment: data });
+      }
+
+      case 'read_assignment_by_phone': {
+        const channelId = body.channel_id;
+        const phone = body.phone || body.conversation_phone;
+        if (!channelId || !phone) return json({ error: 'channel_id+phone required' }, 400);
+        const norm = String(phone).replace(/\D/g, '');
         const { data, error } = await ext.from('conversation_assignments')
-          .update(updates).eq('id', id).eq('organization_id', orgId)
-          .select().single();
+          .select('id, assigned_to, sector_id, status, lead_id, channel_id, conversation_phone')
+          .eq('organization_id', orgId)
+          .eq('channel_id', channelId)
+          .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
+          .maybeSingle();
         if (error) return json({ error: error.message }, 500);
         return json({ success: true, assignment: data });
       }
