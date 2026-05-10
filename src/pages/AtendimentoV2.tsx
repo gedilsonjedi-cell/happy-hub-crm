@@ -66,7 +66,15 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchConversationSummaryExternal } from "@/lib/conversationsExternal";
+import {
+  fetchConversationSummaryExternal,
+  fetchAttendantConversationsExternal,
+  fetchUnreadConversationsExternal,
+  searchConversationsGlobalExternal,
+  fetchAssignmentByPhoneExternal,
+  fetchAssignmentsByChannelsExternal,
+} from "@/lib/conversationsExternal";
+import { assignmentsWrite, getExternalAssignments } from "@/lib/externalAssignments";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -994,21 +1002,12 @@ const AtendimentoV2 = () => {
       updated_at: string;
     }> = [];
 
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
-        .neq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .range(from, from + 999);
-
-      if (error) throw error;
-      if (!data?.length) break;
-
-      assignments.push(...data);
-
-      if (data.length < 1000) break;
+    {
+      const data = await fetchAssignmentsByChannelsExternal({
+        channelIds,
+        status: "not_archived",
+      });
+      assignments.push(...(data as any));
     }
 
     if (assignments.length === 0) {
@@ -1127,14 +1126,16 @@ const AtendimentoV2 = () => {
             });
           } catch (e) { error = e; }
         } else {
-          const r = await supabase.rpc("get_attendant_conversations", {
-            p_user_id: user?.id,
-            p_channel_ids: channelIds,
-            p_organization_id: effectiveOrganizationId,
-            p_limit: 500,
-          });
-          rows = r.data as any[] | null;
-          error = r.error;
+          try {
+            rows = await fetchAttendantConversationsExternal({
+              userId: user!.id,
+              channelIds,
+              organizationId: effectiveOrganizationId!,
+              limit: 500,
+              // sectorIds passed via cast since helper accepts optional p_sector_ids
+              ...(sectorIds?.length ? ({ sectorIds } as any) : {}),
+            }) as any;
+          } catch (e) { error = e; }
         }
 
         if (error) {
@@ -1190,13 +1191,11 @@ const AtendimentoV2 = () => {
     const syncAssignmentsOnce = async () => {
       const channelIds = channels.map(c => c.id);
       
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
-        .in("channel_id", channelIds)
-        .neq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .limit(500);
+      const assignments = await fetchAssignmentsByChannelsExternal({
+        channelIds,
+        status: "not_archived",
+        limit: 500,
+      }).catch(() => null);
       
       if (!assignments) return;
       
@@ -1371,15 +1370,15 @@ const AtendimentoV2 = () => {
       const channelIds = channels.map(c => c.id);
       
       // Fetch archived assignments
-      const { data: archivedAssignments, error } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
-        .eq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .limit(159);
-      
-      if (error || !archivedAssignments || archivedAssignments.length === 0) return;
+      let archivedAssignments: any[] = [];
+      try {
+        archivedAssignments = await fetchAssignmentsByChannelsExternal({
+          channelIds,
+          status: "archived",
+          limit: 159,
+        });
+      } catch (e) { console.warn("archived fetch failed", e); return; }
+      if (!archivedAssignments?.length) return;
       
       // Fetch profiles for names
       const { data: profiles } = await supabase
@@ -1573,11 +1572,11 @@ const AtendimentoV2 = () => {
     const phone = parts.slice(1).join('_');
     
     if (channelId && channelId !== 'unknown') {
-      await supabase
-        .from("conversation_assignments")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("channel_id", channelId)
-        .or(`conversation_phone.eq.${phone},conversation_phone.eq.+${phone}`);
+      await assignmentsWrite("update_by_phone", {
+        channel_id: channelId,
+        phone,
+        status: newStatus,
+      });
     }
   };
 
@@ -1649,12 +1648,10 @@ const AtendimentoV2 = () => {
     isLoadingAllUnreadRef.current = true;
     const channelIds = channels.map(c => c.id);
     try {
-      const { data: rows, error } = await supabase.rpc("get_unread_conversations_full", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
+      const rows = await fetchUnreadConversationsExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId,
       });
-
-      if (error) throw error;
 
       if (rows?.length) {
         const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
@@ -1705,14 +1702,12 @@ const AtendimentoV2 = () => {
 
     try {
       // Use the dedicated search RPC — single query instead of 3-5
-      const { data: rows, error } = await supabase.rpc("search_conversations_global", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
-        p_search_term: term,
-        p_limit: 50,
+      const rows = await searchConversationsGlobalExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId,
+        searchTerm: term,
+        limit: 50,
       });
-
-      if (error) throw error;
 
       const results: Conversation[] = (rows || []).map((row: any) => {
         const normalizedPhone = (row.conversation_phone || "").replace(/\D/g, "");
@@ -2236,13 +2231,11 @@ const AtendimentoV2 = () => {
             if (leadNameFromSystem && leadTagsFromSystem && leadTagsFromSystem.length > 0) break;
           }
 
-          supabase
-            .from('conversation_assignments')
-            .select('sector_id, assigned_to, status')
-            .eq('channel_id', msg.channelId)
-            .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
-            .maybeSingle()
-            .then(async ({ data: assignment }) => {
+          fetchAssignmentByPhoneExternal({
+            channelId: msg.channelId,
+            phone: normalizedContactPhone,
+          })
+            .then(async (assignment) => {
               let assignedToName: string | null = null;
               if (assignment?.assigned_to) {
                 const { data: profile } = await supabase
@@ -2329,12 +2322,11 @@ const AtendimentoV2 = () => {
         if (!existing) {
           // New conversation — need to fetch from DB (async, out of setState)
           const displayPhone = contactPhone.startsWith('+') ? contactPhone : '+' + normalizedContactPhone;
-          supabase.from('conversation_assignments')
-            .select('id, sector_id, assigned_to, status')
-            .eq('channel_id', msg.channelId)
-            .or(`conversation_phone.eq.${normalizedContactPhone},conversation_phone.eq.+${normalizedContactPhone}`)
-            .maybeSingle()
-            .then(async ({ data: newAssignment }) => {
+          fetchAssignmentByPhoneExternal({
+            channelId: msg.channelId,
+            phone: normalizedContactPhone,
+          })
+            .then(async (newAssignment) => {
               let newAssignedToName: string | null = null;
               if (newAssignment?.assigned_to) {
                 const { data: profile } = await supabase
@@ -2635,12 +2627,10 @@ const AtendimentoV2 = () => {
     const normalizedPhone = conversation.phone.replace(/\D/g, '');
 
     // CRÍTICO: Verificar no banco se a conversa já está atribuída a outro atendente
-    const { data: currentAssignment } = await supabase
-      .from('conversation_assignments')
-      .select('assigned_to, sector_id, status')
-      .eq('channel_id', conversation.channelId)
-      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-      .maybeSingle();
+    const currentAssignment = await fetchAssignmentByPhoneExternal({
+      channelId: conversation.channelId,
+      phone: normalizedPhone,
+    });
 
     // CRITICAL: Re-check sector permission using the actual sector_id from DB
     // This prevents race conditions where frontend state is stale
@@ -2705,22 +2695,19 @@ const AtendimentoV2 = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from("conversation_assignments")
-        .upsert({
+      const { error } = await assignmentsWrite("upsert_assignment", {
+        payload: {
           conversation_phone: normalizedPhone,
           channel_id: conversation.channelId,
           assigned_to: user.id,
-          assigned_at: new Date().toISOString(),
           status: "active",
-          sector_id: sectorToAssign
-        }, {
-          onConflict: "conversation_phone,channel_id"
-        });
+          sector_id: sectorToAssign,
+        },
+      });
 
       if (error) {
         // Check if it's a RLS error
-        if (error.message?.includes('row-level security') || error.code === '42501') {
+        if (error.message?.includes('row-level security')) {
           const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
           toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
         } else {
@@ -2980,13 +2967,10 @@ const AtendimentoV2 = () => {
     const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
     let currentAssignment: { assigned_to: string | null; sector_id: string | null } | null = null;
     try {
-      const { data } = await supabase
-        .from('conversation_assignments')
-        .select('assigned_to, sector_id')
-        .eq('channel_id', conversationChannelId)
-        .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-        .maybeSingle();
-      currentAssignment = data ?? null;
+      currentAssignment = await fetchAssignmentByPhoneExternal({
+        channelId: conversationChannelId,
+        phone: normalizedPhone,
+      });
     } catch (err) {
       console.warn('[handleSendMessage] assignment check failed, proceeding anyway:', err);
     }
@@ -3047,16 +3031,15 @@ const AtendimentoV2 = () => {
 
           // Auto-assign when sending first message
           if (!selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await supabase
-              .from('conversation_assignments')
-              .upsert({
+            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
+              payload: {
                 conversation_phone: normalizedPhone,
                 channel_id: conversationChannelId,
                 assigned_to: user.id,
-                assigned_at: new Date().toISOString(),
                 status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
-              }, { onConflict: 'conversation_phone,channel_id' });
+                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+              },
+            });
 
             if (!assignError) {
               setAllConversations(prev => prev.map(c => {
@@ -3087,12 +3070,10 @@ const AtendimentoV2 = () => {
     const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
 
     // CRÍTICO: Verificar no banco se outro atendente já pegou esta conversa
-    const { data: currentAssignment } = await supabase
-      .from('conversation_assignments')
-      .select('assigned_to, sector_id')
-      .eq('channel_id', conversationChannelId)
-      .or(`conversation_phone.eq.${normalizedPhone},conversation_phone.eq.+${normalizedPhone}`)
-      .maybeSingle();
+    const currentAssignment = await fetchAssignmentByPhoneExternal({
+      channelId: conversationChannelId,
+      phone: normalizedPhone,
+    });
 
     if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
       const canIntervene = isAdmin || isSupervisor || isSuperAdmin;
@@ -3142,16 +3123,15 @@ const AtendimentoV2 = () => {
           }
           // Auto-assign
           if (!selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await supabase
-              .from('conversation_assignments')
-              .upsert({
+            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
+              payload: {
                 conversation_phone: normalizedPhone,
                 channel_id: conversationChannelId,
                 assigned_to: user.id,
-                assigned_at: new Date().toISOString(),
                 status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId
-              }, { onConflict: 'conversation_phone,channel_id' });
+                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+              },
+            });
             if (!assignError) {
               setAllConversations(prev => prev.map(c => {
                 const normalizedCPhone = c.phone.replace(/\D/g, '');
@@ -3398,29 +3378,22 @@ const AtendimentoV2 = () => {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      const { data: assignmentData, error: assignmentError } = await supabase
-        .from('conversation_assignments')
-        .upsert({
+      const { data: assignmentData, error: assignmentError } = await assignmentsWrite("upsert_assignment", {
+        payload: {
           channel_id: data.channelId,
           conversation_phone: normalizedPhone,
           assigned_to: user.id,
-          assigned_at: now,
           status: 'in_progress',
           is_bot_handling: false,
           bot_paused_until: botPausedUntil,
-          updated_at: now
-        }, {
-          onConflict: 'conversation_phone,channel_id',
-          ignoreDuplicates: false
-        })
-        .select('id')
-        .single();
+        },
+      });
       
       if (assignmentError) {
         console.error('Error persisting conversation assignment:', assignmentError);
         // Continue anyway - at least try to show in UI
       } else {
-        assignmentId = assignmentData?.id || null;
+        assignmentId = (assignmentData?.assignment?.id) || null;
         console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
       }
     }
@@ -3508,11 +3481,11 @@ const AtendimentoV2 = () => {
     
     // Update assignment with lead_id if found
     if (leadId && user?.id) {
-      await supabase
-        .from('conversation_assignments')
-        .update({ lead_id: leadId })
-        .eq('channel_id', data.channelId)
-        .eq('conversation_phone', normalizedPhone);
+      await assignmentsWrite("update_by_phone", {
+        channel_id: data.channelId,
+        phone: normalizedPhone,
+        lead_id: leadId,
+      });
     }
     
     // Create new conversation in local state with ID

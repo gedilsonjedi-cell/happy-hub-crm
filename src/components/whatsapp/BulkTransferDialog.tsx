@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { assignmentsWrite } from "@/lib/externalAssignments";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { User, UserCheck, Loader2, Users } from "lucide-react";
@@ -111,35 +112,22 @@ export const BulkTransferDialog = ({
       }
 
       try {
-        const { error } = await supabase
-          .from("conversation_assignments")
-          .update({
-            assigned_to: selectedAttendant.user_id,
-            assigned_at: new Date().toISOString(),
-            status: "active",
-          })
-          .eq("conversation_phone", normalizedPhone)
-          .eq("channel_id", channelId);
-
-        if (error) {
-          // Try matching by id if available
-          if (conv.id) {
-            const { error: err2 } = await supabase
-              .from("conversation_assignments")
-              .update({
-                assigned_to: selectedAttendant.user_id,
-                assigned_at: new Date().toISOString(),
-                status: "active",
-              })
-              .eq("id", conv.id);
-            if (err2) errorCount++;
-            else successCount++;
-          } else {
-            errorCount++;
-          }
-        } else {
-          successCount++;
-        }
+        const { error } = conv.id
+          ? await assignmentsWrite("update_by_phone", {
+              id: conv.id,
+              assigned_to: selectedAttendant.user_id,
+              assigned_at: new Date().toISOString(),
+              status: "active",
+            })
+          : await assignmentsWrite("update_by_phone", {
+              channel_id: channelId,
+              phone: normalizedPhone,
+              assigned_to: selectedAttendant.user_id,
+              assigned_at: new Date().toISOString(),
+              status: "active",
+            });
+        if (error) errorCount++;
+        else successCount++;
       } catch {
         errorCount++;
       }

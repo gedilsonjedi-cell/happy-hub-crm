@@ -23,6 +23,8 @@ export type AssignmentWriteAction =
   | "update_assignment_status"
   | "assign_to"
   | "transfer"
+  | "update_by_phone"
+  | "read_assignment_by_phone"
   | "archive"
   | "restore"
   | "reset_unread"
