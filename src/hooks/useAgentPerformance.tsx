@@ -30,7 +30,8 @@ export function useAgentPerformance() {
       if (!channels?.length) { setLoading(false); return; }
       const channelIds = channels.map((c: any) => c.id);
 
-      const { data: allAssignments } = await supabase
+      const ext = await getExternalAssignments();
+      const { data: allAssignments } = await ext
         .from("conversation_assignments")
         .select("assigned_to, status")
         .in("channel_id", channelIds);
