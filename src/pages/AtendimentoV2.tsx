@@ -1002,21 +1002,12 @@ const AtendimentoV2 = () => {
       updated_at: string;
     }> = [];
 
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
-        .neq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .range(from, from + 999);
-
-      if (error) throw error;
-      if (!data?.length) break;
-
-      assignments.push(...data);
-
-      if (data.length < 1000) break;
+    {
+      const data = await fetchAssignmentsByChannelsExternal({
+        channelIds,
+        status: "not_archived",
+      });
+      assignments.push(...(data as any));
     }
 
     if (assignments.length === 0) {
@@ -1135,14 +1126,16 @@ const AtendimentoV2 = () => {
             });
           } catch (e) { error = e; }
         } else {
-          const r = await supabase.rpc("get_attendant_conversations", {
-            p_user_id: user?.id,
-            p_channel_ids: channelIds,
-            p_organization_id: effectiveOrganizationId,
-            p_limit: 500,
-          });
-          rows = r.data as any[] | null;
-          error = r.error;
+          try {
+            rows = await fetchAttendantConversationsExternal({
+              userId: user!.id,
+              channelIds,
+              organizationId: effectiveOrganizationId!,
+              limit: 500,
+              // sectorIds passed via cast since helper accepts optional p_sector_ids
+              ...(sectorIds?.length ? ({ sectorIds } as any) : {}),
+            }) as any;
+          } catch (e) { error = e; }
         }
 
         if (error) {
@@ -1198,13 +1191,11 @@ const AtendimentoV2 = () => {
     const syncAssignmentsOnce = async () => {
       const channelIds = channels.map(c => c.id);
       
-      const { data: assignments } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, sector_id, status")
-        .in("channel_id", channelIds)
-        .neq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .limit(500);
+      const assignments = await fetchAssignmentsByChannelsExternal({
+        channelIds,
+        status: "not_archived",
+        limit: 500,
+      }).catch(() => null);
       
       if (!assignments) return;
       
@@ -1379,15 +1370,15 @@ const AtendimentoV2 = () => {
       const channelIds = channels.map(c => c.id);
       
       // Fetch archived assignments
-      const { data: archivedAssignments, error } = await supabase
-        .from("conversation_assignments")
-        .select("id, conversation_phone, channel_id, assigned_to, status, sector_id, lead_id, updated_at")
-        .in("channel_id", channelIds)
-        .eq("status", "archived")
-        .order("updated_at", { ascending: false })
-        .limit(159);
-      
-      if (error || !archivedAssignments || archivedAssignments.length === 0) return;
+      let archivedAssignments: any[] = [];
+      try {
+        archivedAssignments = await fetchAssignmentsByChannelsExternal({
+          channelIds,
+          status: "archived",
+          limit: 159,
+        });
+      } catch (e) { console.warn("archived fetch failed", e); return; }
+      if (!archivedAssignments?.length) return;
       
       // Fetch profiles for names
       const { data: profiles } = await supabase
@@ -1581,11 +1572,11 @@ const AtendimentoV2 = () => {
     const phone = parts.slice(1).join('_');
     
     if (channelId && channelId !== 'unknown') {
-      await supabase
-        .from("conversation_assignments")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("channel_id", channelId)
-        .or(`conversation_phone.eq.${phone},conversation_phone.eq.+${phone}`);
+      await assignmentsWrite("update_by_phone", {
+        channel_id: channelId,
+        phone,
+        status: newStatus,
+      });
     }
   };
 
@@ -1657,12 +1648,10 @@ const AtendimentoV2 = () => {
     isLoadingAllUnreadRef.current = true;
     const channelIds = channels.map(c => c.id);
     try {
-      const { data: rows, error } = await supabase.rpc("get_unread_conversations_full", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
+      const rows = await fetchUnreadConversationsExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId,
       });
-
-      if (error) throw error;
 
       if (rows?.length) {
         const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
@@ -1713,14 +1702,12 @@ const AtendimentoV2 = () => {
 
     try {
       // Use the dedicated search RPC — single query instead of 3-5
-      const { data: rows, error } = await supabase.rpc("search_conversations_global", {
-        p_channel_ids: channelIds,
-        p_organization_id: effectiveOrganizationId,
-        p_search_term: term,
-        p_limit: 50,
+      const rows = await searchConversationsGlobalExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId,
+        searchTerm: term,
+        limit: 50,
       });
-
-      if (error) throw error;
 
       const results: Conversation[] = (rows || []).map((row: any) => {
         const normalizedPhone = (row.conversation_phone || "").replace(/\D/g, "");
