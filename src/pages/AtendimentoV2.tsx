@@ -1266,9 +1266,9 @@ const AtendimentoV2 = () => {
       });
     };
     
-    // One immediate sync + one debounced for race conditions
+    // One immediate sync + one short debounced for race conditions
     syncAssignmentsOnce();
-    const timer = setTimeout(syncAssignmentsOnce, 3000);
+    const timer = setTimeout(syncAssignmentsOnce, 1000);
     return () => clearTimeout(timer);
     // No interval - Realtime handles ongoing updates
   }, [channels]);
