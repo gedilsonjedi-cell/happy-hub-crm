@@ -2624,7 +2624,7 @@ const AtendimentoV2 = () => {
           });
         }
       });
-    }, 500);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, [selectedConversation?.channelId, selectedConversation?.phone, conversations, prefetchQueryClient]);
