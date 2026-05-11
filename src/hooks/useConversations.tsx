@@ -79,6 +79,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
         rows = await fetchConversationSummaryExternal({
           channelIds,
           organizationId: effectiveOrganizationId!,
+          impersonatedOrgId: externalImpersonatedOrgId,
         });
       } catch (e) {
         error = e;
