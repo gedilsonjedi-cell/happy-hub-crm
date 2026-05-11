@@ -42,7 +42,8 @@ interface LeadInfo {
 
 export function useConversations({ channels, sectorIds, canSeeSector }: UseConversationsOptions) {
   const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
