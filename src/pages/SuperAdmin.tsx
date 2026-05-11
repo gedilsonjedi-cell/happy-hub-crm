@@ -74,6 +74,7 @@ import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalance
 import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
 import { RlsRegressionPanel } from "@/components/admin/RlsRegressionPanel";
 import { PerformanceMetricsPanel } from "@/components/admin/PerformanceMetricsPanel";
+import { UnreadDivergencePanel } from "@/components/admin/UnreadDivergencePanel";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -824,6 +825,10 @@ export default function SuperAdmin() {
               <Activity className="w-4 h-4" />
               Performance
             </TabsTrigger>
+            <TabsTrigger value="diagnostics" className="gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Diagnóstico
+            </TabsTrigger>
           </TabsList>
 
           {/* Payments Tab */}
@@ -1045,6 +1050,10 @@ export default function SuperAdmin() {
           {/* Performance Tab */}
           <TabsContent value="performance">
             <PerformanceMetricsPanel />
+          </TabsContent>
+
+          <TabsContent value="diagnostics">
+            <UnreadDivergencePanel />
           </TabsContent>
         </Tabs>
 
