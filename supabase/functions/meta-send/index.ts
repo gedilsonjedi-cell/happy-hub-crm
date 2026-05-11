@@ -70,6 +70,91 @@ async function insertMessageRecord(data: Record<string, unknown>) {
   return result;
 }
 
+async function markConversationAnswered(params: {
+  organizationId: string | null | undefined;
+  channelId: string;
+  conversationPhone: string;
+  userId: string | null;
+}) {
+  if (!externalSupabase || !params.organizationId || !params.channelId || !params.conversationPhone) return;
+  const norm = params.conversationPhone.replace(/\D/g, '');
+  if (!norm) return;
+  const now = new Date().toISOString();
+  const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: assignments, error: readError } = await externalSupabase
+    .from('conversation_assignments')
+    .select('id, assigned_to')
+    .eq('organization_id', params.organizationId)
+    .eq('channel_id', params.channelId)
+    .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
+    .limit(1);
+
+  if (readError) {
+    console.error('[Meta-Send] Assignment lookup before answer failed:', readError.message);
+    return;
+  }
+
+  let assignmentId = assignments?.[0]?.id ?? null;
+  const currentOwner = assignments?.[0]?.assigned_to ?? null;
+  const humanUserId = params.userId && params.userId !== 'service_role' ? params.userId : null;
+
+  if (!assignmentId) {
+    const { data: created, error: createError } = await externalSupabase
+      .from('conversation_assignments')
+      .upsert({
+        organization_id: params.organizationId,
+        channel_id: params.channelId,
+        conversation_phone: norm,
+        assigned_to: humanUserId,
+        assigned_at: humanUserId ? now : null,
+        status: humanUserId ? 'in_progress' : 'pending',
+        is_bot_handling: false,
+        bot_paused_until: humanUserId ? botPausedUntil : null,
+        updated_at: now,
+      }, { onConflict: 'channel_id,conversation_phone' })
+      .select('id')
+      .single();
+
+    if (createError) {
+      console.error('[Meta-Send] Assignment upsert before answer failed:', createError.message);
+      return;
+    }
+    assignmentId = created?.id ?? null;
+  } else if (humanUserId) {
+    const updates: Record<string, unknown> = {
+      status: 'in_progress',
+      is_bot_handling: false,
+      bot_paused_until: botPausedUntil,
+      updated_at: now,
+    };
+    if (!currentOwner) {
+      updates.assigned_to = humanUserId;
+      updates.assigned_at = now;
+    }
+
+    const { error: updateError } = await externalSupabase
+      .from('conversation_assignments')
+      .update(updates)
+      .eq('id', assignmentId)
+      .eq('organization_id', params.organizationId);
+    if (updateError) {
+      console.error('[Meta-Send] Assignment update after answer failed:', updateError.message);
+    }
+  }
+
+  if (assignmentId) {
+    const { error: resetError } = await externalSupabase
+      .from('conversation_stats')
+      .update({ unread_count: 0, updated_at: now })
+      .eq('assignment_id', assignmentId)
+      .eq('organization_id', params.organizationId);
+    if (resetError) {
+      console.error('[Meta-Send] Unread reset after answer failed:', resetError.message);
+    }
+  }
+}
+
 interface IntegrationWebhookPayload {
   organization_id: string;
   event: 'message_created' | 'message_updated';
