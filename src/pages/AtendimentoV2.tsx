@@ -532,7 +532,7 @@ const useNotificationSound = () => {
     } catch (error) {
       console.log("Could not play notification sound:", error);
     }
-  }, [externalImpersonatedOrgId]);
+  }, []);
   
   return playNotificationSound;
 };
@@ -1556,7 +1556,7 @@ const AtendimentoV2 = () => {
       .eq("is_read", false)
       .or(phoneFilter)
       .then(() => {});
-  }, []);
+  }, [externalImpersonatedOrgId]);
 
   const markConversationAsResponded = useCallback((conversation: {
     channelId: string | null;
