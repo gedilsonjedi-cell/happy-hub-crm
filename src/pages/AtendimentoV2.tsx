@@ -1543,6 +1543,10 @@ const AtendimentoV2 = () => {
       .then(() => {});
   }, []);
 
+  const markConversationAsResponded = useCallback((conversation: { channelId: string | null; phone: string }) => {
+    markConversationAsRead(conversation);
+  }, [markConversationAsRead]);
+
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     const startedAt = performance.now();
     // Cache hit detection: if the messages query for this conversation already
@@ -1563,15 +1567,13 @@ const AtendimentoV2 = () => {
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
 
-    markConversationAsRead(conversation);
-
     // Measure end-to-end perceived latency (commit + first paint).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recordSwitchLatency(performance.now() - startedAt);
       });
     });
-  }, [channels, markConversationAsRead, queryClient, effectiveOrganizationId]);
+  }, [channels, queryClient, effectiveOrganizationId]);
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
