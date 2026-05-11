@@ -1143,6 +1143,7 @@ const AtendimentoV2 = () => {
               organizationId: effectiveOrganizationId!,
               limit: CONVERSATIONS_PAGE_SIZE,
               offset: 0,
+              impersonatedOrgId: externalImpersonatedOrgId,
             });
           } catch (e) { error = e; }
         } else {
@@ -1152,6 +1153,7 @@ const AtendimentoV2 = () => {
               channelIds,
               organizationId: effectiveOrganizationId!,
               limit: 500,
+              impersonatedOrgId: externalImpersonatedOrgId,
               // sectorIds passed via cast since helper accepts optional p_sector_ids
               ...(sectorIds?.length ? ({ sectorIds } as any) : {}),
             }) as any;
