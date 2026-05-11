@@ -75,6 +75,7 @@ async function markConversationAnswered(params: {
   channelId: string;
   conversationPhone: string;
   userId: string | null;
+  resetUnread?: boolean;
 }) {
   if (!externalSupabase || !params.organizationId || !params.channelId || !params.conversationPhone) return;
   const norm = params.conversationPhone.replace(/\D/g, '');
@@ -143,7 +144,7 @@ async function markConversationAnswered(params: {
     }
   }
 
-  if (assignmentId) {
+  if (assignmentId && params.resetUnread !== false) {
     const { error: resetError } = await externalSupabase
       .from('conversation_stats')
       .update({ unread_count: 0, updated_at: now })
@@ -709,34 +710,15 @@ Deno.serve(async (req) => {
       pricePerMessage
     });
 
-    // CRITICAL: Create/update conversation assignment BEFORE sending the message.
-    // CUTOVER: write to EXTERNAL DB directly (SSoT). Falls back to internal if external is unavailable.
+    // CRITICAL: ensure assignment BEFORE sending, preserving any existing owner.
     if (userId && userId !== 'service_role') {
-      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const now = new Date().toISOString();
-      const caDb = externalSupabase;
-
-      const { error: assignmentError } = await caDb
-        .from('conversation_assignments')
-        .upsert({
-          channel_id: channelId,
-          conversation_phone: cleanDestination,
-          assigned_to: userId,
-          assigned_at: now,
-          status: 'in_progress',
-          is_bot_handling: false,
-          bot_paused_until: botPausedUntil,
-          updated_at: now
-        }, {
-          onConflict: 'conversation_phone,channel_id',
-          ignoreDuplicates: false
-        });
-
-      if (assignmentError) {
-        console.error('Error upserting conversation assignment (external):', assignmentError);
-      } else {
-        console.log('Ensured conversation assignment BEFORE send (external):', cleanDestination, 'assigned to:', userId);
-      }
+      await markConversationAnswered({
+        organizationId: channel.organization_id,
+        channelId,
+        conversationPhone: cleanDestination,
+        userId,
+        resetUnread: false,
+      });
     }
 
     let messagePayload: Record<string, unknown> = {
