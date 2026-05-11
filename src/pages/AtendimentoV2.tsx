@@ -728,7 +728,7 @@ const AtendimentoV2 = () => {
       infiniteMessages.invalidate();
       // Trigger a fresh fetch
       setTimeout(() => infiniteMessages.refetchLatestPage(), 50);
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearTimeout(t1);
