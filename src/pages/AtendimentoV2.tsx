@@ -1919,30 +1919,9 @@ const AtendimentoV2 = () => {
       setMessageWindowBaseTime(fallbackWindowBase);
     }
 
-    // Mark unread messages as read (status update only — no new log records)
-    const unreadIds = infiniteMessages.messages
-      .filter(m => m.direction === "inbound" && m.is_read === false)
-      .map(m => m.id);
-
-    if (unreadIds.length > 0) {
-      await supabase
-        .from("whatsapp_messages")
-        .update({ is_read: true })
-        .in("id", unreadIds);
-
-      // Optimistically update status in cache
-      unreadIds.forEach(id => infiniteMessages.updateMessageStatus(id, "read"));
-
-      const conversationKey = getConversationKey(selectedConversation);
-      setAllConversations(prev => prev.map(c => {
-        const key = getConversationKey(c);
-        return key === conversationKey ? { ...c, unreadCount: 0 } : c;
-      }));
-    }
-
     // NOTE: Do NOT auto-change status to in_progress just because the user clicked
-    // on the conversation. The conversation should only leave "Novos" when the
-    // attendant actually sends a message (handled by the send flow).
+    // on the conversation, and do NOT clear unread on open. A customer message
+    // remains unread until the attendant actually responds (handled by send flow).
   }, [selectedConversation, infiniteMessages.messages]);
 
   useEffect(() => {
