@@ -174,6 +174,7 @@ Deno.serve(async (req: Request) => {
         const phone = body.phone || body.conversation_phone;
         if (!channelId || !phone) return json({ error: 'channel_id+phone required' }, 400);
         const norm = String(phone).replace(/\D/g, '');
+        if (!norm) return json({ error: 'valid phone required' }, 400);
         const baseVariants = Array.isArray(body.phone_variants) && body.phone_variants.length
           ? body.phone_variants.map((p: unknown) => String(p).replace(/\D/g, '')).filter(Boolean)
           : [norm];
