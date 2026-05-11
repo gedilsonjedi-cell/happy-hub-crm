@@ -342,6 +342,21 @@ const getSummaryPreviewText = (
   return "";
 };
 
+const hasPendingHumanReplyFromSummary = (
+  row: Pick<ConversationSummaryRow, "last_message_at" | "last_inbound_at">
+) => {
+  if (!row.last_inbound_at) return false;
+  if (!row.last_message_at) return true;
+  return new Date(row.last_message_at).getTime() <= new Date(row.last_inbound_at).getTime();
+};
+
+const getEffectiveUnreadCount = (
+  row: Pick<ConversationSummaryRow, "last_message_at" | "last_inbound_at" | "unread_count">
+) => {
+  const persistedCount = Number(row.unread_count) || 0;
+  return persistedCount > 0 ? persistedCount : hasPendingHumanReplyFromSummary(row) ? 1 : 0;
+};
+
 const mapConversationSummaryRows = (
   rows: ConversationSummaryRow[]
 ): ConversationSummaryMapping => {
@@ -417,7 +432,7 @@ const mapConversationSummaryRows = (
         lastMessage: getSummaryPreviewText(row),
         lastMessageTime: row.last_message_at || row.assignment_updated_at || row.updated_at || new Date().toISOString(),
         lastInboundTime: row.last_inbound_at || null,
-        unreadCount: Number(row.unread_count) || 0,
+        unreadCount: getEffectiveUnreadCount(row),
         channelId: row.channel_id,
         status: mappedStatus,
         assignedTo: row.assigned_to || null,
