@@ -2254,7 +2254,7 @@ const AtendimentoV2 = () => {
       // and the duplicated bubble the user reported. Inbound still refetches to
       // pull the full message body from the external DB.
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
-        setTimeout(() => refetchLatestPageRef.current(), 250);
+        setTimeout(() => refetchLatestPageRef.current(), 80);
       }
     }
 
