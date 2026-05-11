@@ -1399,6 +1399,7 @@ const AtendimentoV2 = () => {
           channelIds,
           status: "archived",
           limit: 159,
+          impersonatedOrgId: externalImpersonatedOrgId,
         });
       } catch (e) { console.warn("archived fetch failed", e); return; }
       if (!archivedAssignments?.length) return;
