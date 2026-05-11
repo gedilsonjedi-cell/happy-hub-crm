@@ -825,6 +825,10 @@ export default function SuperAdmin() {
               <Activity className="w-4 h-4" />
               Performance
             </TabsTrigger>
+            <TabsTrigger value="diagnostics" className="gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Diagnóstico
+            </TabsTrigger>
           </TabsList>
 
           {/* Payments Tab */}
