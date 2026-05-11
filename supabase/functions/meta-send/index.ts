@@ -78,6 +78,8 @@ async function markConversationAnswered(params: {
   resetUnread?: boolean;
 }) {
   if (!externalSupabase || !params.organizationId || !params.channelId || !params.conversationPhone) return;
+  const humanUserId = params.userId && params.userId !== 'service_role' ? params.userId : null;
+  if (!humanUserId) return;
   const norm = params.conversationPhone.replace(/\D/g, '');
   if (!norm) return;
   const now = new Date().toISOString();
@@ -98,7 +100,6 @@ async function markConversationAnswered(params: {
 
   let assignmentId = assignments?.[0]?.id ?? null;
   const currentOwner = assignments?.[0]?.assigned_to ?? null;
-  const humanUserId = params.userId && params.userId !== 'service_role' ? params.userId : null;
 
   if (!assignmentId) {
     const { data: created, error: createError } = await externalSupabase
