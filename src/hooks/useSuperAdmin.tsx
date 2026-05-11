@@ -59,6 +59,13 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
   const setSelectedOrganization = useCallback((org: Organization | null) => {
     setSelectedOrganizationState(org);
     setCachedOrganization(org);
+    // CRÍTICO: ao trocar de cliente impersonado, invalidar todos os clientes
+    // do banco externo em cache. Caso contrário, o JWT antigo (com a claim
+    // organization_id da org anterior) continua sendo usado e a RLS do externo
+    // bloqueia a leitura — sidebar fica vazia até um Ctrl+Shift+R.
+    void import("@/lib/externalSupabaseClient").then(({ clearExternalClient }) => {
+      clearExternalClient();
+    });
   }, []);
 
   // Initialize cached org only for super admins, clear for others

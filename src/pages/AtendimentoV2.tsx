@@ -541,7 +541,12 @@ const AtendimentoV2 = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
+  // Quando super_admin está visualizando outra organização, todos os reads
+  // diretos no banco externo precisam usar um JWT com a claim organization_id
+  // do cliente impersonado — caso contrário a RLS do externo bloqueia tudo
+  // e a sidebar fica vazia até um Ctrl+Shift+R.
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
@@ -1138,6 +1143,7 @@ const AtendimentoV2 = () => {
               organizationId: effectiveOrganizationId!,
               limit: CONVERSATIONS_PAGE_SIZE,
               offset: 0,
+              impersonatedOrgId: externalImpersonatedOrgId,
             });
           } catch (e) { error = e; }
         } else {
@@ -1147,6 +1153,7 @@ const AtendimentoV2 = () => {
               channelIds,
               organizationId: effectiveOrganizationId!,
               limit: 500,
+              impersonatedOrgId: externalImpersonatedOrgId,
               // sectorIds passed via cast since helper accepts optional p_sector_ids
               ...(sectorIds?.length ? ({ sectorIds } as any) : {}),
             }) as any;
@@ -1194,7 +1201,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
@@ -1210,6 +1217,7 @@ const AtendimentoV2 = () => {
         channelIds,
         status: "not_archived",
         limit: 500,
+        impersonatedOrgId: externalImpersonatedOrgId,
       }).catch(() => null);
       
       if (!assignments) return;
@@ -1391,6 +1399,7 @@ const AtendimentoV2 = () => {
           channelIds,
           status: "archived",
           limit: 159,
+          impersonatedOrgId: externalImpersonatedOrgId,
         });
       } catch (e) { console.warn("archived fetch failed", e); return; }
       if (!archivedAssignments?.length) return;
@@ -1609,6 +1618,7 @@ const AtendimentoV2 = () => {
         organizationId: effectiveOrganizationId!,
         limit: CONVERSATIONS_PAGE_SIZE,
         offset: conversationOffset,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
       const error: any = null;
       if (error) throw error;
@@ -1647,7 +1657,7 @@ const AtendimentoV2 = () => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, conversationOffset]);
+  }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, externalImpersonatedOrgId, conversationOffset]);
 
   // Load ALL unread conversations (no pagination, no time limit).
   // Usado exclusivamente pela aba "Não Lidos" para garantir que mensagens
@@ -1668,6 +1678,7 @@ const AtendimentoV2 = () => {
       const rows = await fetchUnreadConversationsExternal({
         channelIds,
         organizationId: effectiveOrganizationId,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
 
       if (rows?.length) {
@@ -1704,7 +1715,7 @@ const AtendimentoV2 = () => {
     } finally {
       isLoadingAllUnreadRef.current = false;
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // Global search function - uses RPC for efficient server-side search
   const searchConversationsGlobal = useCallback(async (term: string) => {
@@ -1724,6 +1735,7 @@ const AtendimentoV2 = () => {
         organizationId: effectiveOrganizationId,
         searchTerm: term,
         limit: 50,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
 
       const results: Conversation[] = (rows || []).map((row: any) => {
@@ -1763,7 +1775,7 @@ const AtendimentoV2 = () => {
       setGlobalSearchResults([]);
       setIsSearchingGlobal(false);
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // Debounced global search — local-first, then DB fallback
   const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
@@ -2227,6 +2239,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
+          impersonatedOrgId: externalImpersonatedOrgId,
           })
             .then(async (assignment) => {
               let assignedToName: string | null = null;
@@ -2318,6 +2331,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
+          impersonatedOrgId: externalImpersonatedOrgId,
           })
             .then(async (newAssignment) => {
               let newAssignedToName: string | null = null;
@@ -2623,7 +2637,8 @@ const AtendimentoV2 = () => {
     const currentAssignment = await fetchAssignmentByPhoneExternal({
       channelId: conversation.channelId,
       phone: normalizedPhone,
-    });
+    impersonatedOrgId: externalImpersonatedOrgId,
+          });
 
     // CRITICAL: Re-check sector permission using the actual sector_id from DB
     // This prevents race conditions where frontend state is stale
@@ -2963,7 +2978,8 @@ const AtendimentoV2 = () => {
       currentAssignment = await fetchAssignmentByPhoneExternal({
         channelId: conversationChannelId,
         phone: normalizedPhone,
-      });
+      impersonatedOrgId: externalImpersonatedOrgId,
+          });
     } catch (err) {
       console.warn('[handleSendMessage] assignment check failed, proceeding anyway:', err);
     }
@@ -3066,7 +3082,8 @@ const AtendimentoV2 = () => {
     const currentAssignment = await fetchAssignmentByPhoneExternal({
       channelId: conversationChannelId,
       phone: normalizedPhone,
-    });
+    impersonatedOrgId: externalImpersonatedOrgId,
+          });
 
     if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
       const canIntervene = isAdmin || isSupervisor || isSuperAdmin;

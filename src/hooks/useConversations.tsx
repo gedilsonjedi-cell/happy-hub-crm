@@ -42,7 +42,8 @@ interface LeadInfo {
 
 export function useConversations({ channels, sectorIds, canSeeSector }: UseConversationsOptions) {
   const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +79,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
         rows = await fetchConversationSummaryExternal({
           channelIds,
           organizationId: effectiveOrganizationId!,
+          impersonatedOrgId: externalImpersonatedOrgId,
         });
       } catch (e) {
         error = e;
@@ -133,7 +135,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       console.error("Error in fetchConversations RPC:", err);
       setLoading(false);
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // ─── Legacy fallback (kept for compatibility) ───────────────────
   const fetchConversationsLegacy = useCallback(async () => {
@@ -197,7 +199,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     mapped.sort((a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
     setAllConversations(mapped);
     setLoading(false);
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // Global search
   const searchConversationsGlobal = useCallback(async (searchTerm: string): Promise<Conversation[]> => {
@@ -273,7 +275,7 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
       setSearchingGlobal(false);
       return [];
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   const updateConversation = useCallback((conversationId: string, updates: Partial<Conversation>) => {
     setAllConversations(prev => prev.map(c => c.id === conversationId ? { ...c, ...updates } : c));
