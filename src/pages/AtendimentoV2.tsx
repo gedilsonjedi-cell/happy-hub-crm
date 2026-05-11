@@ -1380,7 +1380,7 @@ const AtendimentoV2 = () => {
       }
     };
 
-    const timer = setTimeout(enrichMissingPreviews, 350);
+    const timer = setTimeout(enrichMissingPreviews, 120);
     return () => {
       cancelled = true;
       clearTimeout(timer);
