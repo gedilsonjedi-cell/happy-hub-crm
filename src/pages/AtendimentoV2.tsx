@@ -2218,7 +2218,7 @@ const AtendimentoV2 = () => {
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
         if (currentSelectedConv) {
-          markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
+          // Não zera não-lidos ao apenas visualizar; só resposta humana limpa a fila.
         }
       }
     }
@@ -3044,7 +3044,7 @@ const AtendimentoV2 = () => {
         onSuccess: async (data) => {
           if (!data.success) return; // onSuccess in hook already handles error state
 
-          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
 
           // Auto-assign when sending first message
           if (!selectedConversation.assignedTo && user?.id) {
@@ -3132,7 +3132,7 @@ const AtendimentoV2 = () => {
       {
         onSuccess: async (data) => {
           if (!data.success) return;
-          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
           if (mediaData.mediaType === 'ptt') {
             toast.success("Áudio enviado!");
           } else {
@@ -3358,7 +3358,7 @@ const AtendimentoV2 = () => {
       {
         onSuccess: (data) => {
           if (data.success) {
-            markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+            markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
             toast.success("Template enviado!");
           }
         },
