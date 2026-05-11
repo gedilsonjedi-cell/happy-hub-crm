@@ -28,15 +28,16 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: claims, error: claimsErr } = await localSupa.auth.getClaims(
+    const { data: userData, error: userErr } = await localSupa.auth.getUser(
       authHeader.replace('Bearer ', ''),
     );
-    if (claimsErr || !claims?.claims?.sub) {
+    if (userErr || !userData?.user?.id) {
+      console.error('[external-storage-sign-upload] auth failed', userErr?.message);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const userId = claims.claims.sub as string;
+    const userId = userData.user.id;
 
     const body = await req.json().catch(() => ({}));
     const fileName = (body?.fileName as string) || `${Date.now()}.bin`;
