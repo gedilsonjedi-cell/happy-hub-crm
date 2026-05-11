@@ -532,7 +532,7 @@ const useNotificationSound = () => {
     } catch (error) {
       console.log("Could not play notification sound:", error);
     }
-  }, []);
+  }, [externalImpersonatedOrgId]);
   
   return playNotificationSound;
 };
