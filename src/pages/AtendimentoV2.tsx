@@ -1201,7 +1201,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
