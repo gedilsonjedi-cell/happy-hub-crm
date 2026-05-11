@@ -3684,14 +3684,14 @@ const AtendimentoV2 = () => {
     return new Date(conv.lastMessageTime).getTime() > new Date(conv.lastInboundTime).getTime();
   }, []);
 
-  // "Não Lido" REAL: conversa só é considerada não-lida quando a última mensagem
-  // veio do cliente (inbound) e ainda não houve resposta posterior do atendente.
-  // Se o atendente já respondeu DEPOIS da última mensagem do cliente, a conversa
-  // já foi efetivamente lida/respondida e NÃO deve aparecer no filtro de não lidos.
+  // "Não Lido" REAL: conversa é considerada não-lida sempre que a última mensagem
+  // veio do cliente (inbound) e ainda não houve resposta posterior do atendente —
+  // independentemente do contador persistido `unread_count`. Isso garante que
+  // QUALQUER conversa aguardando resposta humana apareça em "Não Lidos", inclusive
+  // as que estão em atendimento ("Meus") e as da fila ("Novos").
   const isTrulyUnread = useCallback(
     (conv: Conversation) =>
       hasClientResponse(conv) &&
-      conv.unreadCount > 0 &&
       !hasOutgoingResponseAfterClient(conv),
     [hasClientResponse, hasOutgoingResponseAfterClient]
   );
@@ -3920,6 +3920,15 @@ const AtendimentoV2 = () => {
       return unreadWaitSort === "desc" ? ta - tb : tb - ta;
     });
   }
+
+  // Garante que o badge "bolinha vermelha" reflita TODA conversa aguardando
+  // resposta humana (cliente mandou mensagem e atendente ainda não respondeu),
+  // independentemente do contador persistido `unread_count` no banco.
+  filteredConversations = filteredConversations.map(conv => {
+    if (conv.unreadCount > 0) return conv;
+    if (isTrulyUnread(conv)) return { ...conv, unreadCount: 1 };
+    return conv;
+  });
 
   const visibleArchivedConversations = canSeeOthers
     ? archivedConversations 
