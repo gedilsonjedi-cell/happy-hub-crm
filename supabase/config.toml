@@ -116,3 +116,5 @@ verify_jwt = false
 
 [functions.manage-labels]
 verify_jwt = false
+[functions.reconcile-unread]
+verify_jwt = false
