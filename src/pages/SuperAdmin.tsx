@@ -1045,15 +1045,10 @@ export default function SuperAdmin() {
                       { body: { reason: "manual-superadmin", hard: true } },
                     );
                     if (error) {
-                      toast({
-                        title: "Falha ao disparar",
-                        description: error.message,
-                        variant: "destructive",
-                      });
+                      toast.error("Falha ao disparar", { description: error.message });
                       return;
                     }
-                    toast({
-                      title: "Disparo enviado",
+                    toast.success("Disparo enviado", {
                       description: `Versão ${(data as { version?: string })?.version ?? "?"} broadcastada`,
                     });
                   }}
