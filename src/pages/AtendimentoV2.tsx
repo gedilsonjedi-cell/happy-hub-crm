@@ -342,6 +342,21 @@ const getSummaryPreviewText = (
   return "";
 };
 
+const hasPendingHumanReplyFromSummary = (
+  row: Pick<ConversationSummaryRow, "last_message_at" | "last_inbound_at">
+) => {
+  if (!row.last_inbound_at) return false;
+  if (!row.last_message_at) return true;
+  return new Date(row.last_message_at).getTime() <= new Date(row.last_inbound_at).getTime();
+};
+
+const getEffectiveUnreadCount = (
+  row: Pick<ConversationSummaryRow, "last_message_at" | "last_inbound_at" | "unread_count">
+) => {
+  const persistedCount = Number(row.unread_count) || 0;
+  return persistedCount > 0 ? persistedCount : hasPendingHumanReplyFromSummary(row) ? 1 : 0;
+};
+
 const mapConversationSummaryRows = (
   rows: ConversationSummaryRow[]
 ): ConversationSummaryMapping => {
@@ -417,7 +432,7 @@ const mapConversationSummaryRows = (
         lastMessage: getSummaryPreviewText(row),
         lastMessageTime: row.last_message_at || row.assignment_updated_at || row.updated_at || new Date().toISOString(),
         lastInboundTime: row.last_inbound_at || null,
-        unreadCount: Number(row.unread_count) || 0,
+        unreadCount: getEffectiveUnreadCount(row),
         channelId: row.channel_id,
         status: mappedStatus,
         assignedTo: row.assigned_to || null,
@@ -1528,6 +1543,10 @@ const AtendimentoV2 = () => {
       .then(() => {});
   }, []);
 
+  const markConversationAsResponded = useCallback((conversation: { channelId: string | null; phone: string }) => {
+    markConversationAsRead(conversation);
+  }, [markConversationAsRead]);
+
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     const startedAt = performance.now();
     // Cache hit detection: if the messages query for this conversation already
@@ -1548,15 +1567,13 @@ const AtendimentoV2 = () => {
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
 
-    markConversationAsRead(conversation);
-
     // Measure end-to-end perceived latency (commit + first paint).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recordSwitchLatency(performance.now() - startedAt);
       });
     });
-  }, [channels, markConversationAsRead, queryClient, effectiveOrganizationId]);
+  }, [channels, queryClient, effectiveOrganizationId]);
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
@@ -1902,30 +1919,9 @@ const AtendimentoV2 = () => {
       setMessageWindowBaseTime(fallbackWindowBase);
     }
 
-    // Mark unread messages as read (status update only — no new log records)
-    const unreadIds = infiniteMessages.messages
-      .filter(m => m.direction === "inbound" && m.is_read === false)
-      .map(m => m.id);
-
-    if (unreadIds.length > 0) {
-      await supabase
-        .from("whatsapp_messages")
-        .update({ is_read: true })
-        .in("id", unreadIds);
-
-      // Optimistically update status in cache
-      unreadIds.forEach(id => infiniteMessages.updateMessageStatus(id, "read"));
-
-      const conversationKey = getConversationKey(selectedConversation);
-      setAllConversations(prev => prev.map(c => {
-        const key = getConversationKey(c);
-        return key === conversationKey ? { ...c, unreadCount: 0 } : c;
-      }));
-    }
-
     // NOTE: Do NOT auto-change status to in_progress just because the user clicked
-    // on the conversation. The conversation should only leave "Novos" when the
-    // attendant actually sends a message (handled by the send flow).
+    // on the conversation, and do NOT clear unread on open. A customer message
+    // remains unread until the attendant actually responds (handled by send flow).
   }, [selectedConversation, infiniteMessages.messages]);
 
   useEffect(() => {
@@ -2200,9 +2196,6 @@ const AtendimentoV2 = () => {
       // pull the full message body from the external DB.
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
-        if (currentSelectedConv) {
-          markConversationAsRead({ channelId: msg.channelId, phone: currentSelectedConv.phone });
-        }
       }
     }
 
@@ -2302,7 +2295,7 @@ const AtendimentoV2 = () => {
                   ...c,
                   lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
                   lastInboundTime: msg.createdAt,
-                  unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                  unreadCount: c.unreadCount + 1,
                   status: existing.status,
                   name: leadNameFromSystem || c.name || contactName,
                   tags: leadTagsFromSystem || c.tags
@@ -3027,7 +3020,7 @@ const AtendimentoV2 = () => {
         onSuccess: async (data) => {
           if (!data.success) return; // onSuccess in hook already handles error state
 
-          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
 
           // Auto-assign when sending first message
           if (!selectedConversation.assignedTo && user?.id) {
@@ -3115,7 +3108,7 @@ const AtendimentoV2 = () => {
       {
         onSuccess: async (data) => {
           if (!data.success) return;
-          markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
           if (mediaData.mediaType === 'ptt') {
             toast.success("Áudio enviado!");
           } else {
@@ -3341,7 +3334,7 @@ const AtendimentoV2 = () => {
       {
         onSuccess: (data) => {
           if (data.success) {
-            markConversationAsRead({ channelId: conversationChannelId, phone: selectedConversation.phone });
+            markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
             toast.success("Template enviado!");
           }
         },
