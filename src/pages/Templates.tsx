@@ -1796,7 +1796,31 @@ const Templates = () => {
                       )}
                     </div>
                   ) : url && fmt === 'IMAGE' ? (
-                    <img src={url} alt="Imagem atual" className="max-h-48 rounded" />
+                    <div className="w-full flex flex-col items-center gap-2">
+                      <img
+                        src={url}
+                        alt="Imagem atual"
+                        className="max-h-48 rounded"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          img.style.display = 'none';
+                          const fb = img.nextElementSibling as HTMLElement | null;
+                          if (fb) fb.style.display = 'flex';
+                        }}
+                      />
+                      <div
+                        style={{ display: 'none' }}
+                        className="flex-col items-center gap-2 text-center text-sm text-muted-foreground"
+                      >
+                        <ImageIcon className="w-8 h-8 opacity-50" />
+                        <span>Pré-visualização indisponível (link expirado da Meta).</span>
+                        <span className="text-xs">A imagem correta segue sendo enviada aos clientes nos disparos.</span>
+                        <a href={url} target="_blank" rel="noreferrer" className="text-primary text-xs underline break-all max-w-full">
+                          Abrir imagem em nova aba
+                        </a>
+                      </div>
+                    </div>
                   ) : url && fmt === 'VIDEO' ? (
                     <video src={url} controls className="max-h-48 rounded" />
                   ) : url ? (
