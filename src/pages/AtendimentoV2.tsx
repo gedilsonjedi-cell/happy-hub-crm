@@ -541,7 +541,12 @@ const AtendimentoV2 = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
+  // Quando super_admin está visualizando outra organização, todos os reads
+  // diretos no banco externo precisam usar um JWT com a claim organization_id
+  // do cliente impersonado — caso contrário a RLS do externo bloqueia tudo
+  // e a sidebar fica vazia até um Ctrl+Shift+R.
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
