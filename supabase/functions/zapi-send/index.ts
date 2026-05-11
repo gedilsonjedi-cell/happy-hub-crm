@@ -164,6 +164,30 @@ Deno.serve(async (req) => {
     const zapiToken = channel.access_token;
     const cleanDestination = destination.replace(/\D/g, '');
 
+    const markAnswered = async () => {
+      if (!externalSupabase || !channel.organization_id || !cleanDestination) return;
+      const now = new Date().toISOString();
+      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { data: assignmentRows } = await externalSupabase
+        .from('conversation_assignments')
+        .select('id, assigned_to')
+        .eq('organization_id', channel.organization_id)
+        .eq('channel_id', channelId)
+        .or(`conversation_phone.eq.${cleanDestination},conversation_phone.eq.+${cleanDestination}`)
+        .limit(1);
+      const assignment = assignmentRows?.[0];
+      const humanUserId = userId && userId !== 'service_role' ? userId : null;
+      if (assignment?.id) {
+        const updates: Record<string, unknown> = { status: 'in_progress', is_bot_handling: false, bot_paused_until: botPausedUntil, updated_at: now };
+        if (humanUserId && !assignment.assigned_to) {
+          updates.assigned_to = humanUserId;
+          updates.assigned_at = now;
+        }
+        await externalSupabase.from('conversation_assignments').update(updates).eq('id', assignment.id).eq('organization_id', channel.organization_id);
+        await externalSupabase.from('conversation_stats').update({ unread_count: 0, updated_at: now }).eq('assignment_id', assignment.id).eq('organization_id', channel.organization_id);
+      }
+    };
+
     console.log('Sending WhatsApp message via Z-API:', {
       instanceId,
       destination: cleanDestination,
@@ -363,7 +387,8 @@ Deno.serve(async (req) => {
       _sender_name: null, _created_at: new Date().toISOString(),
     };
     if (externalSupabase) {
-      externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs2).then(() => {}, () => {});
+      externalSupabase.rpc('upsert_conversation_stats_external', _statsArgs2)
+        .then(() => markAnswered(), () => {});
     }
     
     // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
