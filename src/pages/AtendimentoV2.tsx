@@ -3083,10 +3083,16 @@ const AtendimentoV2 = () => {
         onSuccess: async (data) => {
           if (!data.success) return; // onSuccess in hook already handles error state
 
-          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          const ownerAfterSend = currentAssignment?.assigned_to || selectedConversation.assignedTo || user?.id || null;
+          markConversationAsResponded({
+            channelId: conversationChannelId,
+            phone: selectedConversation.phone,
+            assignedTo: ownerAfterSend,
+            assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
+          });
 
           // Auto-assign when sending first message
-          if (!selectedConversation.assignedTo && user?.id) {
+          if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
             const { error: assignError } = await assignmentsWrite("upsert_assignment", {
               payload: {
                 conversation_phone: normalizedPhone,
@@ -3172,14 +3178,20 @@ const AtendimentoV2 = () => {
       {
         onSuccess: async (data) => {
           if (!data.success) return;
-          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          const ownerAfterSend = currentAssignment?.assigned_to || selectedConversation.assignedTo || user?.id || null;
+          markConversationAsResponded({
+            channelId: conversationChannelId,
+            phone: selectedConversation.phone,
+            assignedTo: ownerAfterSend,
+            assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
+          });
           if (mediaData.mediaType === 'ptt') {
             toast.success("Áudio enviado!");
           } else {
             toast.success("Mídia enviada!");
           }
           // Auto-assign
-          if (!selectedConversation.assignedTo && user?.id) {
+          if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
             const { error: assignError } = await assignmentsWrite("upsert_assignment", {
               payload: {
                 conversation_phone: normalizedPhone,
