@@ -2563,7 +2563,7 @@ const AtendimentoV2 = () => {
           items.forEach(msg => handleNewMessageRealtime(msg));
         });
       },
-      250 // 250ms window — batches bursts without feeling laggy (atendente fluido em alta carga)
+      80 // 80ms — janela curta para sensação realtime, ainda agrupa rajadas
     );
 
     assignmentBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>(
@@ -2572,7 +2572,7 @@ const AtendimentoV2 = () => {
           items.forEach(assignment => handleAssignmentChangeRealtime(assignment));
         });
       },
-      300 // 300ms — assignments podem agrupar mais (menos urgente que mensagem)
+      100 // 100ms — atribuições refletem quase instantaneamente
     );
 
     return () => {
