@@ -4153,7 +4153,7 @@ const AtendimentoV2 = () => {
     // Recarga periódica para capturar novas não lidas que possam surgir
     const interval = setInterval(() => {
       loadAllUnreadConversations(false);
-    }, 60_000);
+    }, 20_000);
     return () => clearInterval(interval);
   }, [filterStatus, showArchived, loading, channels.length, loadAllUnreadConversations]);
 
