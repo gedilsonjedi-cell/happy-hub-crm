@@ -1051,6 +1051,10 @@ export default function SuperAdmin() {
           <TabsContent value="performance">
             <PerformanceMetricsPanel />
           </TabsContent>
+
+          <TabsContent value="diagnostics">
+            <UnreadDivergencePanel />
+          </TabsContent>
         </Tabs>
 
         {/* New Organization Dialog */}
