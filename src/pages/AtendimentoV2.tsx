@@ -1715,7 +1715,7 @@ const AtendimentoV2 = () => {
     } finally {
       isLoadingAllUnreadRef.current = false;
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // Global search function - uses RPC for efficient server-side search
   const searchConversationsGlobal = useCallback(async (term: string) => {
