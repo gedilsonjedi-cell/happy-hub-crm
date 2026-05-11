@@ -170,10 +170,34 @@ Deno.serve(async (req: Request) => {
       }
 
       case 'reset_unread': {
-        const { error } = await ext.rpc('reset_conversation_unread_ext', {
-          p_channel_id: body.channel_id, p_phone: body.phone,
-        });
+        const channelId = body.channel_id;
+        const phone = body.phone || body.conversation_phone;
+        if (!channelId || !phone) return json({ error: 'channel_id+phone required' }, 400);
+        const norm = String(phone).replace(/\D/g, '');
+        if (!norm) return json({ error: 'valid phone required' }, 400);
+        const baseVariants = Array.isArray(body.phone_variants) && body.phone_variants.length
+          ? body.phone_variants.map((p: unknown) => String(p).replace(/\D/g, '')).filter(Boolean)
+          : [norm];
+        const suffixes = Array.from(new Set(baseVariants.map((p: string) => p.slice(-8)).filter(Boolean)));
+
+        const { data, error } = await ext.from('conversation_stats')
+          .update({ unread_count: 0, updated_at: new Date().toISOString() })
+          .eq('organization_id', orgId)
+          .eq('channel_id', channelId)
+          .in('conversation_phone', Array.from(new Set([...baseVariants, ...baseVariants.map((p: string) => `+${p}`)])))
+          .select('id');
         if (error) return json({ error: error.message }, 500);
+
+        if (!data?.length && suffixes.length) {
+          const orFilter = suffixes.map((suffix: string) => `conversation_phone.ilike.%${suffix}`).join(',');
+          const { error: fallbackError } = await ext.from('conversation_stats')
+            .update({ unread_count: 0, updated_at: new Date().toISOString() })
+            .eq('organization_id', orgId)
+            .eq('channel_id', channelId)
+            .or(orFilter);
+          if (fallbackError) return json({ error: fallbackError.message }, 500);
+        }
+
         return json({ success: true });
       }
 

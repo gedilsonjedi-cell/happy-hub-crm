@@ -354,7 +354,7 @@ const getEffectiveUnreadCount = (
   row: Pick<ConversationSummaryRow, "last_message_at" | "last_inbound_at" | "unread_count">
 ) => {
   const persistedCount = Number(row.unread_count) || 0;
-  return persistedCount > 0 ? persistedCount : hasPendingHumanReplyFromSummary(row) ? 1 : 0;
+  return persistedCount;
 };
 
 const mapConversationSummaryRows = (
@@ -1538,15 +1538,17 @@ const AtendimentoV2 = () => {
 
     // Reset unread count via external-assignments-write (external DB SSoT)
     const statsPhoneVariants = Array.from(phoneVariants);
-    supabase.functions.invoke('external-assignments-write', {
-      body: {
-        action: 'reset_unread',
+    assignmentsWrite(
+      'reset_unread',
+      {
         channel_id: conversation.channelId,
         phone: normalizedPhone,
         phone_variants: statsPhoneVariants,
-        impersonatedOrgId: externalImpersonatedOrgId,
       },
-    }).then(() => {});
+      { impersonatedOrgId: externalImpersonatedOrgId }
+    ).then(({ error }) => {
+      if (error) console.warn('[markConversationAsRead] reset_unread failed:', error.message);
+    });
 
     supabase
       .from("whatsapp_messages")
@@ -1619,6 +1621,7 @@ const AtendimentoV2 = () => {
 
     setSelectedConversation(conversation);
     setSelectedConversationStableKey(getConversationKey(conversation));
+    markConversationAsRead(conversation);
 
     const matchingChannel = channels.find((channel) => channel.id === conversation.channelId) || null;
     setSelectedChannel(matchingChannel);
@@ -1629,7 +1632,7 @@ const AtendimentoV2 = () => {
         recordSwitchLatency(performance.now() - startedAt);
       });
     });
-  }, [channels, queryClient, effectiveOrganizationId]);
+  }, [channels, queryClient, effectiveOrganizationId, markConversationAsRead]);
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
@@ -3768,8 +3771,8 @@ const AtendimentoV2 = () => {
   const isTrulyUnread = useCallback(
     (conv: Conversation) =>
       hasClientResponse(conv) &&
-      !hasOutgoingResponseAfterClient(conv),
-    [hasClientResponse, hasOutgoingResponseAfterClient]
+      conv.unreadCount > 0,
+    [hasClientResponse]
   );
 
   const isHandledWithoutOwnerConversation = useCallback(
