@@ -1678,6 +1678,7 @@ const AtendimentoV2 = () => {
       const rows = await fetchUnreadConversationsExternal({
         channelIds,
         organizationId: effectiveOrganizationId,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
 
       if (rows?.length) {
