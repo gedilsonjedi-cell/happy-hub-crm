@@ -1539,7 +1539,13 @@ const AtendimentoV2 = () => {
     // Reset unread count via external-assignments-write (external DB SSoT)
     const statsPhoneVariants = Array.from(phoneVariants);
     supabase.functions.invoke('external-assignments-write', {
-      body: { action: 'reset_unread', channel_id: conversation.channelId, phone_variants: statsPhoneVariants },
+      body: {
+        action: 'reset_unread',
+        channel_id: conversation.channelId,
+        phone: normalizedPhone,
+        phone_variants: statsPhoneVariants,
+        impersonatedOrgId: externalImpersonatedOrgId,
+      },
     }).then(() => {});
 
     supabase
@@ -1550,9 +1556,14 @@ const AtendimentoV2 = () => {
       .eq("is_read", false)
       .or(phoneFilter)
       .then(() => {});
-  }, []);
+  }, [externalImpersonatedOrgId]);
 
-  const markConversationAsResponded = useCallback((conversation: { channelId: string | null; phone: string }) => {
+  const markConversationAsResponded = useCallback((conversation: {
+    channelId: string | null;
+    phone: string;
+    assignedTo?: string | null;
+    assignedToName?: string | null;
+  }) => {
     markConversationAsRead(conversation);
 
     // Bump lastMessageTime locally so the conversation immediately leaves the
@@ -1561,16 +1572,36 @@ const AtendimentoV2 = () => {
     // lastMessageTime <= lastInboundTime, and the conversation stays visible
     // in those tabs even after the agent replied.
     const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
-    const nowIso = new Date().toISOString();
-    setAllConversations(prev => prev.map(c => {
-      if (getConversationKey(c) !== conversationKey) return c;
+    const applyRespondedState = (c: Conversation): Conversation => {
       const inboundT = c.lastInboundTime ? new Date(c.lastInboundTime).getTime() : 0;
       const lastT = c.lastMessageTime ? new Date(c.lastMessageTime).getTime() : 0;
       const baseT = Math.max(inboundT, lastT) + 1; // strictly > lastInboundTime
       const bumped = new Date(Math.max(baseT, Date.now())).toISOString();
-      return { ...c, lastMessageTime: bumped, unreadCount: 0 };
+
+      return {
+        ...c,
+        lastMessageTime: bumped,
+        unreadCount: 0,
+        ...(conversation.assignedTo !== undefined
+          ? {
+              assignedTo: conversation.assignedTo,
+              assignedToName: conversation.assignedToName ?? c.assignedToName,
+              status: conversation.assignedTo ? ("in_progress" as const) : c.status,
+            }
+          : {}),
+      };
+    };
+
+    setAllConversations(prev => prev.map(c => {
+      if (getConversationKey(c) !== conversationKey) return c;
+      return applyRespondedState(c);
     }));
-  }, [markConversationAsRead, getConversationKey]);
+
+    setSelectedConversation(prev => {
+      if (!prev || getConversationKey(prev) !== conversationKey) return prev;
+      return applyRespondedState(prev);
+    });
+  }, [markConversationAsRead, getConversationKey, externalImpersonatedOrgId]);
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     const startedAt = performance.now();
@@ -2559,7 +2590,7 @@ const AtendimentoV2 = () => {
     },
   }), []);
 
-  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId);
+  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId, externalImpersonatedOrgId);
 
   // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
   // Warms TanStack Query cache so switching chat feels instant
@@ -3052,10 +3083,16 @@ const AtendimentoV2 = () => {
         onSuccess: async (data) => {
           if (!data.success) return; // onSuccess in hook already handles error state
 
-          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          const ownerAfterSend = currentAssignment?.assigned_to || selectedConversation.assignedTo || user?.id || null;
+          markConversationAsResponded({
+            channelId: conversationChannelId,
+            phone: selectedConversation.phone,
+            assignedTo: ownerAfterSend,
+            assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
+          });
 
           // Auto-assign when sending first message
-          if (!selectedConversation.assignedTo && user?.id) {
+          if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
             const { error: assignError } = await assignmentsWrite("upsert_assignment", {
               payload: {
                 conversation_phone: normalizedPhone,
@@ -3141,14 +3178,20 @@ const AtendimentoV2 = () => {
       {
         onSuccess: async (data) => {
           if (!data.success) return;
-          markConversationAsResponded({ channelId: conversationChannelId, phone: selectedConversation.phone });
+          const ownerAfterSend = currentAssignment?.assigned_to || selectedConversation.assignedTo || user?.id || null;
+          markConversationAsResponded({
+            channelId: conversationChannelId,
+            phone: selectedConversation.phone,
+            assignedTo: ownerAfterSend,
+            assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
+          });
           if (mediaData.mediaType === 'ptt') {
             toast.success("Áudio enviado!");
           } else {
             toast.success("Mídia enviada!");
           }
           // Auto-assign
-          if (!selectedConversation.assignedTo && user?.id) {
+          if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
             const { error: assignError } = await assignmentsWrite("upsert_assignment", {
               payload: {
                 conversation_phone: normalizedPhone,
