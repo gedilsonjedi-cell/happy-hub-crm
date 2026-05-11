@@ -1618,6 +1618,7 @@ const AtendimentoV2 = () => {
         organizationId: effectiveOrganizationId!,
         limit: CONVERSATIONS_PAGE_SIZE,
         offset: conversationOffset,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
       const error: any = null;
       if (error) throw error;
