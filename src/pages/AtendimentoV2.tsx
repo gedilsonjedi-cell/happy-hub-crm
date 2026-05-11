@@ -532,7 +532,7 @@ const useNotificationSound = () => {
     } catch (error) {
       console.log("Could not play notification sound:", error);
     }
-  }, []);
+  }, [externalImpersonatedOrgId]);
   
   return playNotificationSound;
 };
@@ -2590,7 +2590,7 @@ const AtendimentoV2 = () => {
     },
   }), []);
 
-  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId);
+  useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId, externalImpersonatedOrgId);
 
   // ─── Pre-fetch adjacent conversations (3 below active) ────────────────────
   // Warms TanStack Query cache so switching chat feels instant
