@@ -1029,14 +1029,36 @@ export default function SuperAdmin() {
           <TabsContent value="settings">
             <Card>
               <CardHeader>
-                <CardTitle>Configurações do Sistema</CardTitle>
+                <CardTitle>Atualização Forçada</CardTitle>
                 <CardDescription>
-                  Configurações gerais do sistema
+                  Dispara um broadcast em tempo real que limpa cache e recarrega
+                  TODOS os atendentes online (de todas as organizações).
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Em breve: configurações de email, integrações, etc.
+              <CardContent className="space-y-3">
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (!confirm("Recarregar TODOS os atendentes online agora?")) return;
+                    const { data, error } = await supabase.functions.invoke(
+                      "broadcast-force-reload",
+                      { body: { reason: "manual-superadmin", hard: true } },
+                    );
+                    if (error) {
+                      toast.error("Falha ao disparar", { description: error.message });
+                      return;
+                    }
+                    toast.success("Disparo enviado", {
+                      description: `Versão ${(data as { version?: string })?.version ?? "?"} broadcastada`,
+                    });
+                  }}
+                >
+                  Forçar reload em todos os atendentes online
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Atendentes que estiverem com o bundle antigo (anterior a esta
+                  atualização) precisam dar Ctrl+Shift+R uma única vez. Daí em
+                  diante todos recebem reload automático a cada disparo.
                 </p>
               </CardContent>
             </Card>
