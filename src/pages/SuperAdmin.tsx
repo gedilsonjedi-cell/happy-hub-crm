@@ -74,6 +74,7 @@ import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalance
 import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
 import { RlsRegressionPanel } from "@/components/admin/RlsRegressionPanel";
 import { PerformanceMetricsPanel } from "@/components/admin/PerformanceMetricsPanel";
+import { UnreadDivergencePanel } from "@/components/admin/UnreadDivergencePanel";
 
 interface SubscriptionPricing {
   base_price: number;
