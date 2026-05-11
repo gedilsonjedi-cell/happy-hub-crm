@@ -33,6 +33,7 @@ function dualWriteMessage(data: Record<string, unknown>, internalChannelId?: str
       if (phone) {
         const statsChannelId = internalChannelId || data.channel_id;
         const statsArgs = {
+          _organization_id: (data.organization_id as string) || null,
           _channel_id: statsChannelId,
           _conversation_phone: phone,
           _content: (data.content as string) || null,
