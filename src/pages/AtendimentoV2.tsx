@@ -1554,7 +1554,23 @@ const AtendimentoV2 = () => {
 
   const markConversationAsResponded = useCallback((conversation: { channelId: string | null; phone: string }) => {
     markConversationAsRead(conversation);
-  }, [markConversationAsRead]);
+
+    // Bump lastMessageTime locally so the conversation immediately leaves the
+    // "Não Lidos" / "Novos" tabs without waiting for the realtime echo of the
+    // outbound message. Without this, isTrulyUnread keeps returning true while
+    // lastMessageTime <= lastInboundTime, and the conversation stays visible
+    // in those tabs even after the agent replied.
+    const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
+    const nowIso = new Date().toISOString();
+    setAllConversations(prev => prev.map(c => {
+      if (getConversationKey(c) !== conversationKey) return c;
+      const inboundT = c.lastInboundTime ? new Date(c.lastInboundTime).getTime() : 0;
+      const lastT = c.lastMessageTime ? new Date(c.lastMessageTime).getTime() : 0;
+      const baseT = Math.max(inboundT, lastT) + 1; // strictly > lastInboundTime
+      const bumped = new Date(Math.max(baseT, Date.now())).toISOString();
+      return { ...c, lastMessageTime: bumped, unreadCount: 0 };
+    }));
+  }, [markConversationAsRead, getConversationKey]);
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     const startedAt = performance.now();
