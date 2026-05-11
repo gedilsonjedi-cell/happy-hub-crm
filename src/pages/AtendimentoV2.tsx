@@ -716,7 +716,7 @@ const AtendimentoV2 = () => {
       resetDirectReadCircuit();
       clearExternalClient();
       infiniteMessages.refetchLatestPage();
-    }, 2000);
+    }, 1200);
 
     const t2 = setTimeout(async () => {
       if (!isStuck() || autoRetryRef.current.attempts >= 2) return;
