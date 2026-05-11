@@ -1657,7 +1657,7 @@ const AtendimentoV2 = () => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, conversationOffset]);
+  }, [isLoadingMore, hasMoreConversations, channels, effectiveOrganizationId, externalImpersonatedOrgId, conversationOffset]);
 
   // Load ALL unread conversations (no pagination, no time limit).
   // Usado exclusivamente pela aba "Não Lidos" para garantir que mensagens
