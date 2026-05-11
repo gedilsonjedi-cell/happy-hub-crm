@@ -1735,6 +1735,7 @@ const AtendimentoV2 = () => {
         organizationId: effectiveOrganizationId,
         searchTerm: term,
         limit: 50,
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
 
       const results: Conversation[] = (rows || []).map((row: any) => {
