@@ -1276,6 +1276,12 @@ Deno.serve(async (req) => {
           _content: storedContent, _direction: 'outbound', _is_read: null,
           _sender_name: null, _created_at: new Date().toISOString(),
         });
+        await markConversationAnswered({
+          organizationId: channel.organization_id,
+          channelId,
+          conversationPhone: cleanDestination,
+          userId,
+        });
       } catch (e) {
         console.error('[Meta-Send] External stats update error:', e);
       }
