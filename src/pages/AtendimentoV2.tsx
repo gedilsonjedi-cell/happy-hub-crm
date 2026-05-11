@@ -1775,7 +1775,7 @@ const AtendimentoV2 = () => {
       setGlobalSearchResults([]);
       setIsSearchingGlobal(false);
     }
-  }, [channels, effectiveOrganizationId]);
+  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId]);
 
   // Debounced global search — local-first, then DB fallback
   const [localSearchResults, setLocalSearchResults] = useState<Conversation[]>([]);
