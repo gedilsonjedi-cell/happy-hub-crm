@@ -2239,7 +2239,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          })
+          , impersonatedOrgId: externalImpersonatedOrgId })
             .then(async (assignment) => {
               let assignedToName: string | null = null;
               if (assignment?.assigned_to) {
@@ -2330,7 +2330,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          })
+          , impersonatedOrgId: externalImpersonatedOrgId })
             .then(async (newAssignment) => {
               let newAssignedToName: string | null = null;
               if (newAssignment?.assigned_to) {
@@ -2635,7 +2635,7 @@ const AtendimentoV2 = () => {
     const currentAssignment = await fetchAssignmentByPhoneExternal({
       channelId: conversation.channelId,
       phone: normalizedPhone,
-    });
+    , impersonatedOrgId: externalImpersonatedOrgId });
 
     // CRITICAL: Re-check sector permission using the actual sector_id from DB
     // This prevents race conditions where frontend state is stale
@@ -2975,7 +2975,7 @@ const AtendimentoV2 = () => {
       currentAssignment = await fetchAssignmentByPhoneExternal({
         channelId: conversationChannelId,
         phone: normalizedPhone,
-      });
+      , impersonatedOrgId: externalImpersonatedOrgId });
     } catch (err) {
       console.warn('[handleSendMessage] assignment check failed, proceeding anyway:', err);
     }
@@ -3078,7 +3078,7 @@ const AtendimentoV2 = () => {
     const currentAssignment = await fetchAssignmentByPhoneExternal({
       channelId: conversationChannelId,
       phone: normalizedPhone,
-    });
+    , impersonatedOrgId: externalImpersonatedOrgId });
 
     if (currentAssignment?.assigned_to && currentAssignment.assigned_to !== user?.id) {
       const canIntervene = isAdmin || isSupervisor || isSuperAdmin;
