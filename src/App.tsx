@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
 import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
+import { useForceReload } from "@/hooks/useForceReload";
 import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
@@ -66,6 +67,7 @@ const queryClient = new QueryClient({
 // Component to initialize global notifications
 const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
   usePixPaymentNotifications();
+  useForceReload();
   return <>{children}</>;
 };
 
