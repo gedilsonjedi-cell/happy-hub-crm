@@ -2196,9 +2196,6 @@ const AtendimentoV2 = () => {
       // pull the full message body from the external DB.
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
         setTimeout(() => refetchLatestPageRef.current(), 250);
-        if (currentSelectedConv) {
-          // Não zera não-lidos ao apenas visualizar; só resposta humana limpa a fila.
-        }
       }
     }
 
@@ -2298,7 +2295,7 @@ const AtendimentoV2 = () => {
                   ...c,
                   lastMessage: msg.content || "", lastMessageTime: msg.createdAt,
                   lastInboundTime: msg.createdAt,
-                  unreadCount: isCurrentConversation ? c.unreadCount : c.unreadCount + 1,
+                  unreadCount: c.unreadCount + 1,
                   status: existing.status,
                   name: leadNameFromSystem || c.name || contactName,
                   tags: leadTagsFromSystem || c.tags
