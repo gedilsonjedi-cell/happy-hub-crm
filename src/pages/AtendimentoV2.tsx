@@ -3921,6 +3921,15 @@ const AtendimentoV2 = () => {
     });
   }
 
+  // Garante que o badge "bolinha vermelha" reflita TODA conversa aguardando
+  // resposta humana (cliente mandou mensagem e atendente ainda não respondeu),
+  // independentemente do contador persistido `unread_count` no banco.
+  filteredConversations = filteredConversations.map(conv => {
+    if (conv.unreadCount > 0) return conv;
+    if (isTrulyUnread(conv)) return { ...conv, unreadCount: 1 };
+    return conv;
+  });
+
   const visibleArchivedConversations = canSeeOthers
     ? archivedConversations 
 
