@@ -1217,6 +1217,7 @@ const AtendimentoV2 = () => {
         channelIds,
         status: "not_archived",
         limit: 500,
+        impersonatedOrgId: externalImpersonatedOrgId,
       }).catch(() => null);
       
       if (!assignments) return;
