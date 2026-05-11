@@ -716,7 +716,7 @@ const AtendimentoV2 = () => {
       resetDirectReadCircuit();
       clearExternalClient();
       infiniteMessages.refetchLatestPage();
-    }, 2000);
+    }, 1200);
 
     const t2 = setTimeout(async () => {
       if (!isStuck() || autoRetryRef.current.attempts >= 2) return;
@@ -728,7 +728,7 @@ const AtendimentoV2 = () => {
       infiniteMessages.invalidate();
       // Trigger a fresh fetch
       setTimeout(() => infiniteMessages.refetchLatestPage(), 50);
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearTimeout(t1);
@@ -1266,9 +1266,9 @@ const AtendimentoV2 = () => {
       });
     };
     
-    // One immediate sync + one debounced for race conditions
+    // One immediate sync + one short debounced for race conditions
     syncAssignmentsOnce();
-    const timer = setTimeout(syncAssignmentsOnce, 3000);
+    const timer = setTimeout(syncAssignmentsOnce, 1000);
     return () => clearTimeout(timer);
     // No interval - Realtime handles ongoing updates
   }, [channels]);
@@ -1380,7 +1380,7 @@ const AtendimentoV2 = () => {
       }
     };
 
-    const timer = setTimeout(enrichMissingPreviews, 350);
+    const timer = setTimeout(enrichMissingPreviews, 120);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -2254,7 +2254,7 @@ const AtendimentoV2 = () => {
       // and the duplicated bubble the user reported. Inbound still refetches to
       // pull the full message body from the external DB.
       if (msg.direction === "inbound" && !isSyntheticStatsEcho) {
-        setTimeout(() => refetchLatestPageRef.current(), 250);
+        setTimeout(() => refetchLatestPageRef.current(), 80);
       }
     }
 
@@ -2563,7 +2563,7 @@ const AtendimentoV2 = () => {
           items.forEach(msg => handleNewMessageRealtime(msg));
         });
       },
-      250 // 250ms window — batches bursts without feeling laggy (atendente fluido em alta carga)
+      80 // 80ms — janela curta para sensação realtime, ainda agrupa rajadas
     );
 
     assignmentBatcherRef.current = createRealtimeBatcher<Parameters<typeof handleAssignmentChangeRealtime>[0]>(
@@ -2572,7 +2572,7 @@ const AtendimentoV2 = () => {
           items.forEach(assignment => handleAssignmentChangeRealtime(assignment));
         });
       },
-      300 // 300ms — assignments podem agrupar mais (menos urgente que mensagem)
+      100 // 100ms — atribuições refletem quase instantaneamente
     );
 
     return () => {
@@ -2624,7 +2624,7 @@ const AtendimentoV2 = () => {
           });
         }
       });
-    }, 500);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, [selectedConversation?.channelId, selectedConversation?.phone, conversations, prefetchQueryClient]);
@@ -4153,7 +4153,7 @@ const AtendimentoV2 = () => {
     // Recarga periódica para capturar novas não lidas que possam surgir
     const interval = setInterval(() => {
       loadAllUnreadConversations(false);
-    }, 60_000);
+    }, 20_000);
     return () => clearInterval(interval);
   }, [filterStatus, showArchived, loading, channels.length, loadAllUnreadConversations]);
 
