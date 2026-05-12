@@ -486,6 +486,17 @@ function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<str
   return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
+function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replacementUrl: string): boolean {
+  const headerParam = getTemplateHeaderParameter(payload);
+  if (!headerParam || !replacementUrl) return false;
+  const mediaType = String(headerParam.type || '').toLowerCase();
+  const mediaObject = headerParam[mediaType] as { link?: string; id?: string } | undefined;
+  if (!mediaType || !mediaObject?.link || mediaObject.link === replacementUrl) return false;
+  headerParam[mediaType] = { link: replacementUrl };
+  console.log('[Meta-Send] Retrying template header with Meta-approved sample media link');
+  return true;
+}
+
 async function convertTemplateHeaderLinkToMediaId(
   payload: MutableTemplatePayload,
   phoneNumberId: string,
