@@ -200,7 +200,15 @@ const Disparos = () => {
   
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
-  const [useUnifiedTemplate, setUseUnifiedTemplate] = useState(true);
+  type TemplateMode = 'template_unified' | 'template_per_channel' | 'flow';
+  const [templateMode, setTemplateMode] = useState<TemplateMode>('template_unified');
+  const useUnifiedTemplate = templateMode === 'template_unified';
+  const useFlowMode = templateMode === 'flow';
+  const setUseUnifiedTemplate = (v: boolean) => setTemplateMode(v ? 'template_unified' : 'template_per_channel');
+  // Dispatch flows (flow_bots with flow_type = 'dispatch')
+  const [dispatchFlows, setDispatchFlows] = useState<Array<{ id: string; name: string; template_id: string | null }>>([]);
+  const [selectedFlowId, setSelectedFlowId] = useState<string>("");
+  const [channelFlows, setChannelFlows] = useState<Record<string, string>>({});
   const [recipientData, setRecipientData] = useState<{ phones: string[]; source: "contacts" | "numbers" | null }>({
     phones: [],
     source: null
