@@ -482,12 +482,12 @@ async function uploadMediaToMeta(
   }
 }
 
-function getTemplateHeaderParameter(payload: Record<string, any>) {
-  return payload?.template?.components?.find((component: any) => component?.type === 'header')?.parameters?.[0] || null;
+function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<string, unknown> | null {
+  return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
 async function convertTemplateHeaderLinkToMediaId(
-  payload: Record<string, any>,
+  payload: MutableTemplatePayload,
   phoneNumberId: string,
   accessToken: string,
 ): Promise<boolean> {
@@ -495,8 +495,9 @@ async function convertTemplateHeaderLinkToMediaId(
   if (!headerParam) return false;
 
   const mediaType = String(headerParam.type || '').toLowerCase();
-  const mediaLink = headerParam?.[mediaType]?.link;
-  if (!mediaType || !mediaLink || headerParam?.[mediaType]?.id) return false;
+  const mediaObject = headerParam[mediaType] as { link?: string; id?: string } | undefined;
+  const mediaLink = mediaObject?.link;
+  if (!mediaType || !mediaLink || mediaObject?.id) return false;
 
   const cacheKey = `${phoneNumberId}:${mediaLink}`;
   let mediaId = headerMediaIdCache.get(cacheKey) || null;
