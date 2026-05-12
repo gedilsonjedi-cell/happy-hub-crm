@@ -872,6 +872,7 @@ Deno.serve(async (req) => {
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
     let template135000RecoveryStep = 0;
+    const template132000Recoveries = new Set<string>();
     let activeMetaMessagesApiBase = META_API_BASE;
     let alternateMetaApiBaseIndex = 1;
     const sanitizedTemplateParams = Array.isArray(templateParams)
@@ -1203,6 +1204,19 @@ Deno.serve(async (req) => {
         const errorCode = responseData.error?.code;
         if (
           templateName
+          && Number(errorCode) === 132000
+          && attempt < maxMetaSendAttempts
+          && recoverTemplateParamCountMismatch(
+            messagePayload,
+            responseData.error as Record<string, unknown> | undefined,
+            template132000Recoveries,
+          )
+        ) {
+          lastError = responseData.error;
+          continue;
+        }
+        if (
+          templateName
           && Number(errorCode) === 135000
           && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
           && template135000RecoveryStep === 0
@@ -1284,6 +1298,7 @@ Deno.serve(async (req) => {
         131051: '(#131051) Formato de template incorreto ou parâmetros inválidos.',
         131000: '(#131000) Erro interno do servidor Meta. Tente novamente.',
         130472: '(#130472) Número de destino inválido ou não registrado no WhatsApp.',
+        132000: '(#132000) Variáveis do template não conferem com o template aprovado na Meta. O sistema tentou ajustar automaticamente; se persistir, sincronize/recrie o template.',
         132001: '(#132001) Template não existe ou idioma não disponível. Sincronize os templates.',
         10: '(#10) Sem permissão para enviar mensagens. Configure permissões no Meta Business Suite.',
         3: '(#3) Permissão granular ausente. Configure no Meta Developer Console.',
