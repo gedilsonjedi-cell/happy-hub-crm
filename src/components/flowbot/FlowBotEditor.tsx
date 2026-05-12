@@ -574,6 +574,30 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
             placeholder="Nome do fluxo"
             className="w-64"
           />
+          {isDispatch && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Template inicial:</Label>
+                <Select value={templateId} onValueChange={setTemplateId}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Escolha um template aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTemplates.length === 0 ? (
+                      <div className="p-3 text-center text-muted-foreground text-sm">
+                        Nenhum template aprovado
+                      </div>
+                    ) : (
+                      availableTemplates.map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Generate Sample Flow Button */}
