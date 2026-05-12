@@ -792,6 +792,36 @@ const Disparos = () => {
         ? new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString()
         : null;
       
+      // Resolve flow-mode → effective template/flow ids per channel
+      let effectiveUseUnified = useUnifiedTemplate;
+      let effectiveUnifiedTemplateId: string | null = useUnifiedTemplate ? formData.unifiedTemplate : null;
+      let effectiveUnifiedFlowId: string | null = null;
+      const effectiveChannelTemplateMap: Record<string, string> = { ...channelTemplates };
+      const effectiveChannelFlowMap: Record<string, string | null> = {};
+
+      if (useFlowMode) {
+        const unifiedFlows = getUnifiedFlows();
+        const usingUnifiedFlow = !!selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId);
+        if (usingUnifiedFlow) {
+          const flow = unifiedFlows.find(f => f.id === selectedFlowId)!;
+          effectiveUseUnified = true;
+          effectiveUnifiedTemplateId = flow.template_id;
+          effectiveUnifiedFlowId = flow.id;
+          selectedChannels.forEach(chId => { effectiveChannelFlowMap[chId] = flow.id; });
+        } else {
+          effectiveUseUnified = false;
+          effectiveUnifiedTemplateId = null;
+          selectedChannels.forEach(chId => {
+            const flowId = channelFlows[chId];
+            const flow = dispatchFlows.find(f => f.id === flowId);
+            if (flow?.template_id) {
+              effectiveChannelTemplateMap[chId] = flow.template_id;
+              effectiveChannelFlowMap[chId] = flow.id;
+            }
+          });
+        }
+      }
+
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -804,8 +834,9 @@ const Disparos = () => {
           dispatch_interval: parseInt(formData.minInterval),
           min_interval: parseInt(formData.minInterval),
           max_interval: parseInt(formData.maxInterval),
-          use_unified_template: useUnifiedTemplate,
-          unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
+          use_unified_template: effectiveUseUnified,
+          unified_template_id: effectiveUseUnified ? effectiveUnifiedTemplateId : null,
+          flow_bot_id: effectiveUnifiedFlowId,
           status: formData.startTime === "now" ? "running" : "scheduled",
           scheduled_at: scheduledAt,
           total_recipients: recipientData.phones.length,
@@ -835,7 +866,8 @@ const Disparos = () => {
       const channelInserts = selectedChannels.map((channelId, index) => ({
         campaign_id: campaign.id,
         channel_id: channelId,
-        template_id: useUnifiedTemplate ? formData.unifiedTemplate : channelTemplates[channelId],
+        template_id: effectiveUseUnified ? effectiveUnifiedTemplateId : effectiveChannelTemplateMap[channelId],
+        flow_bot_id: effectiveChannelFlowMap[channelId] ?? null,
         order_index: index,
       }));
 
