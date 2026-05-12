@@ -764,7 +764,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    let messagePayload: Record<string, any> = {
+    let messagePayload: MutableTemplatePayload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: cleanDestination
