@@ -1,63 +1,39 @@
-## Flow de Disparo — Plano de Implementação
+## Terceiro botão "Template Flow" em Campanhas
 
-Criar um novo tipo de automação chamado **"Flow de Disparo"**, que combina template inicial + respostas automatizadas por botão, podendo ser selecionado no momento do disparo de campanhas.
+Adicionar um terceiro modo de seleção em **Templates de Mensagem**, ao lado de "Mesmo template" e "Template por canal", que opera com **Flows de Disparo** (`flow_bots.flow_type = 'dispatch'`) já criados em Chatbots.
 
-### 1. Conceito
+### Comportamento (espelho do que já existe)
 
-Diferente do **Chatbot IA** (conversa livre) e do **Fluxo Visual** (acionado por mensagem do cliente), o **Flow de Disparo**:
-- **Inicia com um template Meta** (com botões) — enviado pela campanha
-- Quando o destinatário clica em um botão, executa a ramificação correspondente do flow (mensagem, mídia, arquivar, transferir, etc.)
-- Fica vinculado à campanha durante o disparo
+- **Mesmo flow (modo unificado)**: lista somente flows cujo `template_id` está aprovado em **todos** os canais selecionados.
+- **Flow por canal**: para cada canal selecionado, lista os flows cujo `template_id` está aprovado **naquele canal** específico.
 
-### 2. Banco de dados
+A escolha entre "mesmo flow" vs "flow por canal" segue exatamente o mesmo padrão UI dos templates (dois botões internos quando o modo "Template Flow" está ativo), e mostra estado vazio quando nenhum flow se qualifica.
 
-Reutilizar a infra existente de `flow_bots` / `flow_nodes` / `flow_edges` adicionando:
+### Mudanças
 
-- `flow_bots.flow_type` → `'reactive' | 'dispatch'` (default: `'reactive'`)
-- `flow_bots.template_id` → uuid (template Meta inicial, obrigatório se `flow_type='dispatch'`)
-- `campaigns.flow_bot_id` → uuid (flow de disparo vinculado à campanha, opcional)
-- Novo node type permitido: `template_start` (representa o template Meta, com 1 handle de saída por botão)
+**Banco**
+- Adicionar coluna `campaign_channels.flow_bot_id uuid` (nullable) para guardar o flow escolhido por canal.
+- (`campaigns.flow_bot_id` já existe — usado quando o modo é "mesmo flow".)
 
-### 3. UI — Página Chatbots
+**Frontend (`src/pages/Disparos.tsx`)**
+- Substituir o boolean `useUnifiedTemplate` por um estado `templateMode: 'unified' | 'per_channel' | 'flow_unified' | 'flow_per_channel'` (3 botões: Mesmo template / Template por canal / Template Flow; ao clicar em Template Flow aparece um sub-toggle Mesmo flow / Por canal).
+- Carregar `flow_bots` ativos com `flow_type='dispatch'` e `template_id` da org.
+- Helpers:
+  - `getUnifiedFlows()` → flows cujo `template_id ∈ getUnifiedTemplates().map(t => t.id)`.
+  - `getFlowsForChannel(chId)` → flows cujo `template_id ∈ getTemplatesForChannel(chId).map(t => t.id)`.
+- Estado `selectedFlowId` (unified) e `channelFlows: Record<channelId, flowBotId>` (per channel).
+- Validação no submit: para modo flow, exigir flow selecionado (unified) ou um flow por canal.
+- Persistência:
+  - `campaigns.flow_bot_id = selectedFlowId` (quando flow_unified) ou `null`.
+  - `campaigns.unified_template_id = flow.template_id` (preserva pipeline atual de envio).
+  - `campaign_channels.template_id = flow.template_id` e `campaign_channels.flow_bot_id = flow.id` para cada canal (no modo flow_per_channel).
+  - `campaign_recipients.flow_bot_id = flow.id` (já existe coluna; preencher no momento de criar os recipients).
+- Preview de mensagem reutiliza o mesmo render dos templates (já que cada flow tem um template associado).
 
-Adicionar terceira aba:
-```
-[ Chatbots com IA ]  [ Fluxos Visuais ]  [ Flow de Disparo ]
-```
+### Fora de escopo neste passo
+- Engine que dispara o próximo nó do flow após clique do botão (já discutido em conversa anterior — fica para depois).
+- Edição do flow a partir da tela de campanha.
+- Criação de novos flows aqui (continua em /chatbot → aba Flow de Disparo).
 
-- Lista própria filtrada por `flow_type='dispatch'`
-- Botão "Novo Flow de Disparo" abre o editor visual já existente, mas:
-  - Node inicial obrigatório é um **TemplateStartNode** (seleciona template Meta com botões)
-  - Para cada botão do template, gera automaticamente um handle de saída
-  - Demais nodes (mensagem, mídia, ação) ficam disponíveis normalmente
-
-### 4. UI — Campanhas
-
-Na criação/edição de campanha (`Disparos.tsx`), adicionar seletor:
-- **Tipo de envio**: `Template direto` (atual) ou `Flow de Disparo` (novo)
-- Se `Flow de Disparo` → seletor dos flows do tipo `dispatch` disponíveis
-- O template do flow substitui o `unified_template_id` no envio
-- Validação: flow precisa ter template definido e nodes conectados
-
-### 5. Backend — Edge Functions
-
-- **`campaign-dispatch`**: quando `campaigns.flow_bot_id` está setado, usa o template do flow em vez de `unified_template_id`. Marca `campaign_recipients.flow_bot_id` para rastreio.
-- **`meta-webhook`**: quando recebe um `button_reply` de um destinatário de campanha com flow vinculado, dispara o motor de execução do flow (semelhante ao já existente para fluxos reativos), partindo do node correspondente ao botão clicado.
-- Reutilizar runtime de execução de nodes já presente em fluxos visuais (mensagem, mídia, transfer, archive).
-
-### 6. Detalhes técnicos
-
-- TemplateStartNode renderiza preview do template + lista de botões com handles
-- Quando o template é trocado, edges órfãs são removidas
-- `flow_sessions` ganha campo `campaign_id` para diferenciar origem
-- Mantém todos os RLS por organização já existentes
-
-### 7. Escopo desta entrega
-
-- Migration (schema)
-- Aba "Flow de Disparo" + editor com TemplateStartNode
-- Seletor no formulário de campanha
-- Ajuste no `campaign-dispatch` para usar template do flow
-- Ajuste no `meta-webhook` para reagir aos cliques de botão e executar o flow
-
-Não inclui: agendamento de mensagens dentro do flow, condicionais avançadas, A/B testing — podem vir depois.
+### Aprovação
+Confirme para eu rodar a migration de `campaign_channels.flow_bot_id` e implementar a UI.
