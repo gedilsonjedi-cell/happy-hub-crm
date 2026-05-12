@@ -173,6 +173,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       setAiEnabled(bot.ai_fallback_enabled);
       setAiMessage(bot.ai_fallback_message);
       setTransferMessage(bot.transfer_message);
+      setTemplateId(((bot as Record<string, unknown>).template_id as string) || "");
       
       // Load nodes
       const { data: dbNodes, error: nodesError } = await supabase
