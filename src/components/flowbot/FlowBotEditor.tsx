@@ -146,7 +146,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
     (async () => {
       const { data } = await supabase
         .from("message_templates")
-        .select("id, name, language, status")
+        .select("id, name, status")
         .eq("organization_id", effectiveOrganizationId)
         .eq("status", "APPROVED")
         .order("name", { ascending: true });
