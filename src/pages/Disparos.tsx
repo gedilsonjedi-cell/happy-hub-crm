@@ -499,6 +499,19 @@ const Disparos = () => {
     });
   };
 
+  // Dispatch flows whose template is approved in ALL selected channels
+  const getUnifiedFlows = () => {
+    if (selectedChannels.length === 0) return [];
+    const unifiedTplIds = new Set(getUnifiedTemplates().map(t => t.id));
+    return dispatchFlows.filter(f => f.template_id && unifiedTplIds.has(f.template_id));
+  };
+
+  // Dispatch flows whose template is approved in a specific channel
+  const getFlowsForChannel = (channelId: string) => {
+    const tplIds = new Set(getTemplatesForChannel(channelId).map(t => t.id));
+    return dispatchFlows.filter(f => f.template_id && tplIds.has(f.template_id));
+  };
+
   // Get manual variables for the selected template (variables without auto-mapping)
   const getManualVariablesForTemplate = (templateId: string): string[] => {
     const template = templates.find(t => t.id === templateId);
