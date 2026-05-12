@@ -116,11 +116,11 @@ const Chatbot = () => {
   };
 
   const loadFlowBots = async (flowType: "reactive" | "dispatch" = "reactive") => {
-    const { data, error } = await supabase
-      .from("flow_bots")
+    const { data, error } = await (supabase
+      .from("flow_bots") as any)
       .select("*")
       .eq("organization_id", effectiveOrganizationId)
-      .eq("flow_type" as any, flowType)
+      .eq("flow_type", flowType)
       .order("created_at", { ascending: false });
 
     if (error) {
