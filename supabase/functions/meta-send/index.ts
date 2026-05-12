@@ -8,9 +8,17 @@ const corsHeaders = {
 // Updated to latest stable Meta API version for better template delivery
 const META_API_VERSION = 'v22.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+const META_TEMPLATE_SEND_API_BASES = [
+  META_API_BASE,
+  'https://graph.facebook.com/v21.0',
+  'https://graph.facebook.com/v20.0',
+  'https://graph.facebook.com/v19.0',
+  'https://graph.facebook.com/v18.0',
+];
 
 // Retry configuration only for transient infra/provider errors.
 const MAX_RETRIES = 2;
+const MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS = 6;
 const RETRY_DELAY_MS = 1500;
 const RETRYABLE_ERROR_CODES = [
   1,      // Internal error
@@ -486,6 +494,30 @@ function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<str
   return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
+function removeTemplateHeaderMediaComponent(payload: MutableTemplatePayload): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components)) return false;
+
+  const nextComponents = components.filter((component) => component?.type !== 'header');
+  if (nextComponents.length === components.length) return false;
+
+  payload.template!.components = nextComponents;
+  console.log('[Meta-Send] Retrying template without explicit media header component');
+  return true;
+}
+
+function removeTemplateBodyComponent(payload: MutableTemplatePayload): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components)) return false;
+
+  const nextComponents = components.filter((component) => component?.type !== 'body');
+  if (nextComponents.length === components.length) return false;
+
+  payload.template!.components = nextComponents;
+  console.log('[Meta-Send] Retrying template without explicit body variables');
+  return true;
+}
+
 function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replacementUrl: string): boolean {
   const headerParam = getTemplateHeaderParameter(payload);
   if (!headerParam || !replacementUrl) return false;
@@ -786,7 +818,9 @@ Deno.serve(async (req) => {
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
-    let retriedTemplateHeaderWithSample = false;
+    let template135000RecoveryStep = 0;
+    let activeMetaMessagesApiBase = META_API_BASE;
+    let alternateMetaApiBaseIndex = 1;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -1080,17 +1114,18 @@ Deno.serve(async (req) => {
     let lastResponseData: Record<string, unknown> | null = null;
     let metaResponse: Response | null = null;
     
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const maxMetaSendAttempts = templateName ? MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS : MAX_RETRIES;
+    for (let attempt = 0; attempt <= maxMetaSendAttempts; attempt++) {
       if (attempt > 0) {
-        const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Exponential backoff
-        console.log(`[Meta-Send] Retry attempt ${attempt}/${MAX_RETRIES} after ${delayMs}ms...`);
+        const delayMs = templateName ? 300 : RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Template recovery should stay fast
+        console.log(`[Meta-Send] Retry attempt ${attempt}/${maxMetaSendAttempts} after ${delayMs}ms...`);
         await sleep(delayMs);
       }
       
       try {
         const payloadForAttempt = JSON.stringify(messagePayload);
         metaResponse = await fetch(
-          `${META_API_BASE}/${phoneNumberId}/messages`,
+          `${activeMetaMessagesApiBase}/${phoneNumberId}/messages`,
           {
             method: 'POST',
             headers: {
@@ -1116,22 +1151,45 @@ Deno.serve(async (req) => {
         if (
           templateName
           && Number(errorCode) === 135000
-          && attempt === 0
-          && !retriedTemplateHeaderWithSample
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep === 0
           && headerInfo?.exampleUrl
           && replaceTemplateHeaderMediaLink(messagePayload, headerInfo.exampleUrl)
         ) {
-          retriedTemplateHeaderWithSample = true;
+          template135000RecoveryStep = 1;
           lastError = responseData.error;
           continue;
         }
         if (
           templateName
           && Number(errorCode) === 135000
-          && attempt <= 1
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep <= 1
           && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
         ) {
           console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
+          template135000RecoveryStep = 2;
+          lastError = responseData.error;
+          continue;
+        }
+        if (templateName && Number(errorCode) === 135000 && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS) {
+          const nextApiBase = META_TEMPLATE_SEND_API_BASES[alternateMetaApiBaseIndex];
+          if (nextApiBase) {
+            activeMetaMessagesApiBase = nextApiBase;
+            alternateMetaApiBaseIndex += 1;
+            template135000RecoveryStep += 1;
+            console.log('[Meta-Send] Retrying template with alternate Meta API version:', activeMetaMessagesApiBase);
+            lastError = responseData.error;
+            continue;
+          }
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && !headerInfo?.exampleUrl
+          && removeTemplateBodyComponent(messagePayload)
+        ) {
           lastError = responseData.error;
           continue;
         }
@@ -1148,7 +1206,7 @@ Deno.serve(async (req) => {
       } catch (fetchError) {
         console.error(`[Meta-Send] Fetch error on attempt ${attempt + 1}:`, fetchError);
         lastError = fetchError;
-        if (attempt === MAX_RETRIES) break;
+        if (attempt === maxMetaSendAttempts) break;
       }
     }
 
