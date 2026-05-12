@@ -494,6 +494,18 @@ function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<str
   return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
+function removeTemplateHeaderMediaComponent(payload: MutableTemplatePayload): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components)) return false;
+
+  const nextComponents = components.filter((component) => component?.type !== 'header');
+  if (nextComponents.length === components.length) return false;
+
+  payload.template!.components = nextComponents;
+  console.log('[Meta-Send] Retrying template without explicit media header component');
+  return true;
+}
+
 function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replacementUrl: string): boolean {
   const headerParam = getTemplateHeaderParameter(payload);
   if (!headerParam || !replacementUrl) return false;
