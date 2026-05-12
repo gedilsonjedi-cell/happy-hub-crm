@@ -290,6 +290,7 @@ const Chatbot = () => {
             flowBotId={selectedFlowBotId}
             onBack={handleBack}
             onSaved={handleSaved}
+            flowType={activeTab === "dispatch" ? "dispatch" : "reactive"}
           />
         </MainLayout>
       );
@@ -299,6 +300,10 @@ const Chatbot = () => {
   const hasItems = activeTab === "ai" ? agents.length > 0 : flowBots.length > 0;
   const filteredItems = activeTab === "ai" ? filteredAgents : filteredFlowBots;
 
+  const newButtonLabel =
+    activeTab === "ai" ? "Novo Chatbot IA" :
+    activeTab === "dispatch" ? "Novo Flow de Disparo" : "Novo Fluxo";
+
   return (
     <MainLayout>
       <div className="space-y-6 animate-fade-in">
@@ -307,7 +312,7 @@ const Chatbot = () => {
           <div>
             <h1 className="text-2xl font-bold">Chatbots</h1>
             <p className="text-muted-foreground">
-              Crie chatbots com IA ou fluxos visuais para automação
+              Crie chatbots com IA, fluxos visuais ou flows de disparo para campanhas
             </p>
           </div>
           <div className="flex gap-2">
@@ -318,13 +323,13 @@ const Chatbot = () => {
             )}
             <Button onClick={handleCreateNew} className="gap-2">
               <Plus className="w-4 h-4" />
-              {activeTab === "ai" ? "Novo Chatbot IA" : "Novo Fluxo"}
+              {newButtonLabel}
             </Button>
           </div>
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ai" | "flow")}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ai" | "flow" | "dispatch")}>
           <TabsList>
             <TabsTrigger value="ai" className="gap-2">
               <Sparkles className="w-4 h-4" />
@@ -333,6 +338,10 @@ const Chatbot = () => {
             <TabsTrigger value="flow" className="gap-2">
               <GitBranch className="w-4 h-4" />
               Fluxos Visuais
+            </TabsTrigger>
+            <TabsTrigger value="dispatch" className="gap-2">
+              <Send className="w-4 h-4" />
+              Flow de Disparo
             </TabsTrigger>
           </TabsList>
         </Tabs>
