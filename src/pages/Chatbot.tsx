@@ -365,21 +365,27 @@ const Chatbot = () => {
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               {activeTab === "ai" ? (
                 <Bot className="w-10 h-10 text-primary" />
+              ) : activeTab === "dispatch" ? (
+                <Send className="w-10 h-10 text-primary" />
               ) : (
                 <GitBranch className="w-10 h-10 text-primary" />
               )}
             </div>
             <h2 className="text-xl font-semibold mb-2">
-              {activeTab === "ai" ? "Nenhum chatbot IA criado" : "Nenhum fluxo criado"}
+              {activeTab === "ai" ? "Nenhum chatbot IA criado"
+                : activeTab === "dispatch" ? "Nenhum flow de disparo criado"
+                : "Nenhum fluxo criado"}
             </h2>
             <p className="text-muted-foreground mb-6 max-w-md">
               {activeTab === "ai" 
                 ? "Crie seu primeiro chatbot com IA para atendimento inteligente"
+                : activeTab === "dispatch"
+                ? "Configure um template inicial e ramificações por botão para usar em campanhas"
                 : "Crie um fluxo visual com mensagens e botões pré-definidos"}
             </p>
             <Button onClick={handleCreateNew} className="gap-2">
               <Plus className="w-4 h-4" />
-              {activeTab === "ai" ? "Criar Chatbot IA" : "Criar Fluxo Visual"}
+              {newButtonLabel}
             </Button>
           </div>
         ) : filteredItems.length === 0 ? (
