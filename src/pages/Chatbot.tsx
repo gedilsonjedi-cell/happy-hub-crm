@@ -115,11 +115,12 @@ const Chatbot = () => {
     }
   };
 
-  const loadFlowBots = async () => {
+  const loadFlowBots = async (flowType: "reactive" | "dispatch" = "reactive") => {
     const { data, error } = await supabase
       .from("flow_bots")
       .select("*")
       .eq("organization_id", effectiveOrganizationId)
+      .eq("flow_type" as any, flowType)
       .order("created_at", { ascending: false });
 
     if (error) {
