@@ -506,6 +506,18 @@ function removeTemplateHeaderMediaComponent(payload: MutableTemplatePayload): bo
   return true;
 }
 
+function removeTemplateBodyComponent(payload: MutableTemplatePayload): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components)) return false;
+
+  const nextComponents = components.filter((component) => component?.type !== 'body');
+  if (nextComponents.length === components.length) return false;
+
+  payload.template!.components = nextComponents;
+  console.log('[Meta-Send] Retrying template without explicit body variables');
+  return true;
+}
+
 function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replacementUrl: string): boolean {
   const headerParam = getTemplateHeaderParameter(payload);
   if (!headerParam || !replacementUrl) return false;
