@@ -8,9 +8,17 @@ const corsHeaders = {
 // Updated to latest stable Meta API version for better template delivery
 const META_API_VERSION = 'v22.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+const META_TEMPLATE_SEND_API_BASES = [
+  META_API_BASE,
+  'https://graph.facebook.com/v21.0',
+  'https://graph.facebook.com/v20.0',
+  'https://graph.facebook.com/v19.0',
+  'https://graph.facebook.com/v18.0',
+];
 
 // Retry configuration only for transient infra/provider errors.
 const MAX_RETRIES = 2;
+const MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS = 6;
 const RETRY_DELAY_MS = 1500;
 const RETRYABLE_ERROR_CODES = [
   1,      // Internal error
