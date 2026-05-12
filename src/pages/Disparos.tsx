@@ -658,7 +658,7 @@ const Disparos = () => {
       }
     }
 
-    if (!useUnifiedTemplate) {
+    if (templateMode === 'template_per_channel') {
       const allHaveTemplates = selectedChannels.every(chId => channelTemplates[chId]);
       if (!allHaveTemplates) {
         toast.error("Selecione um template para cada canal");
@@ -674,6 +674,19 @@ const Disparos = () => {
         if (emptyVars.length > 0) {
           const channel = channels.find(c => c.id === chId);
           toast.error(`Preencha as variáveis do canal ${channel?.name}: ${emptyVars.join(', ')}`);
+          return;
+        }
+      }
+    }
+
+    if (useFlowMode) {
+      const unifiedFlows = getUnifiedFlows();
+      const usingUnifiedFlow = unifiedFlows.length > 0 && selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId);
+      if (!usingUnifiedFlow) {
+        // require a flow per channel
+        const allHaveFlows = selectedChannels.every(chId => channelFlows[chId]);
+        if (!allHaveFlows) {
+          toast.error(unifiedFlows.length > 0 ? "Selecione um flow para a campanha" : "Selecione um flow para cada canal");
           return;
         }
       }
