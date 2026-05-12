@@ -141,6 +141,21 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
     }
   }, [flowBotId]);
 
+  // Load Meta templates approved for this organization (used by dispatch flows)
+  useEffect(() => {
+    if (!isDispatch || !effectiveOrganizationId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("message_templates")
+        .select("id, name, language, status")
+        .eq("organization_id", effectiveOrganizationId)
+        .eq("status", "APPROVED")
+        .order("name", { ascending: true });
+      setAvailableTemplates((data || []) as DispatchTemplateOption[]);
+    })();
+  }, [isDispatch, effectiveOrganizationId]);
+
+
   const loadFlowBot = async () => {
     if (!flowBotId) return;
     
