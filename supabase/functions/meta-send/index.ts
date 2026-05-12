@@ -806,7 +806,8 @@ Deno.serve(async (req) => {
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
-    let retriedTemplateHeaderWithSample = false;
+    let template135000RecoveryStep = 0;
+    let activeMetaMessagesApiBase = META_API_BASE;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -1110,7 +1111,7 @@ Deno.serve(async (req) => {
       try {
         const payloadForAttempt = JSON.stringify(messagePayload);
         metaResponse = await fetch(
-          `${META_API_BASE}/${phoneNumberId}/messages`,
+          `${activeMetaMessagesApiBase}/${phoneNumberId}/messages`,
           {
             method: 'POST',
             headers: {
@@ -1136,24 +1137,47 @@ Deno.serve(async (req) => {
         if (
           templateName
           && Number(errorCode) === 135000
-          && attempt === 0
-          && !retriedTemplateHeaderWithSample
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep === 0
           && headerInfo?.exampleUrl
           && replaceTemplateHeaderMediaLink(messagePayload, headerInfo.exampleUrl)
         ) {
-          retriedTemplateHeaderWithSample = true;
+          template135000RecoveryStep = 1;
           lastError = responseData.error;
           continue;
         }
         if (
           templateName
           && Number(errorCode) === 135000
-          && attempt <= 1
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep <= 1
           && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
         ) {
           console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
+          template135000RecoveryStep = 2;
           lastError = responseData.error;
           continue;
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep <= 2
+          && removeTemplateHeaderMediaComponent(messagePayload)
+        ) {
+          template135000RecoveryStep = 3;
+          lastError = responseData.error;
+          continue;
+        }
+        if (templateName && Number(errorCode) === 135000 && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS) {
+          const nextApiBase = META_TEMPLATE_SEND_API_BASES.find((apiBase) => apiBase !== activeMetaMessagesApiBase);
+          if (nextApiBase) {
+            activeMetaMessagesApiBase = nextApiBase;
+            template135000RecoveryStep += 1;
+            console.log('[Meta-Send] Retrying template with alternate Meta API version:', activeMetaMessagesApiBase);
+            lastError = responseData.error;
+            continue;
+          }
         }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
