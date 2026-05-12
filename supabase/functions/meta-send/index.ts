@@ -786,6 +786,7 @@ Deno.serve(async (req) => {
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
+    let retriedTemplateHeaderWithSample = false;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -1116,6 +1117,18 @@ Deno.serve(async (req) => {
           templateName
           && Number(errorCode) === 135000
           && attempt === 0
+          && !retriedTemplateHeaderWithSample
+          && headerInfo?.exampleUrl
+          && replaceTemplateHeaderMediaLink(messagePayload, headerInfo.exampleUrl)
+        ) {
+          retriedTemplateHeaderWithSample = true;
+          lastError = responseData.error;
+          continue;
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt <= 1
           && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
         ) {
           console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
