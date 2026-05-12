@@ -1177,9 +1177,21 @@ Deno.serve(async (req) => {
           && Number(errorCode) === 135000
           && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
           && template135000RecoveryStep <= 2
+          && headerInfo?.exampleUrl
           && removeTemplateHeaderMediaComponent(messagePayload)
         ) {
           template135000RecoveryStep = 3;
+          lastError = responseData.error;
+          continue;
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && template135000RecoveryStep <= 3
+          && removeTemplateBodyComponent(messagePayload)
+        ) {
+          template135000RecoveryStep = 4;
           lastError = responseData.error;
           continue;
         }
