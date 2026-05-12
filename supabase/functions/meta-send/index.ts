@@ -1172,29 +1172,6 @@ Deno.serve(async (req) => {
           lastError = responseData.error;
           continue;
         }
-        if (
-          templateName
-          && Number(errorCode) === 135000
-          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
-          && template135000RecoveryStep <= 2
-          && headerInfo?.exampleUrl
-          && removeTemplateHeaderMediaComponent(messagePayload)
-        ) {
-          template135000RecoveryStep = 3;
-          lastError = responseData.error;
-          continue;
-        }
-        if (
-          templateName
-          && Number(errorCode) === 135000
-          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
-          && template135000RecoveryStep <= 3
-          && removeTemplateBodyComponent(messagePayload)
-        ) {
-          template135000RecoveryStep = 4;
-          lastError = responseData.error;
-          continue;
-        }
         if (templateName && Number(errorCode) === 135000 && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS) {
           const nextApiBase = META_TEMPLATE_SEND_API_BASES[alternateMetaApiBaseIndex];
           if (nextApiBase) {
@@ -1205,6 +1182,16 @@ Deno.serve(async (req) => {
             lastError = responseData.error;
             continue;
           }
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
+          && !headerInfo?.exampleUrl
+          && removeTemplateBodyComponent(messagePayload)
+        ) {
+          lastError = responseData.error;
+          continue;
         }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
