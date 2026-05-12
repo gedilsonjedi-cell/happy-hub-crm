@@ -70,7 +70,6 @@ interface FlowBotEditorProps {
 interface DispatchTemplateOption {
   id: string;
   name: string;
-  language: string;
   status: string;
 }
 
