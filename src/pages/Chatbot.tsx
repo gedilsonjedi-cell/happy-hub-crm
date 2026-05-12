@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GitBranch, Plus, Loader2, Search, Bot, Sparkles } from "lucide-react";
+import { GitBranch, Plus, Loader2, Search, Bot, Sparkles, Send } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,7 @@ const Chatbot = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   
-  const [activeTab, setActiveTab] = useState<"ai" | "flow">("ai");
+  const [activeTab, setActiveTab] = useState<"ai" | "flow" | "dispatch">("ai");
   const [view, setView] = useState<"list" | "edit">("list");
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [selectedFlowBotId, setSelectedFlowBotId] = useState<string | undefined>();
@@ -54,7 +54,7 @@ const Chatbot = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: "ai" | "flow" } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: "ai" | "flow" | "dispatch" } | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ const Chatbot = () => {
       if (activeTab === "ai") {
         await loadAgents();
       } else {
-        await loadFlowBots();
+        await loadFlowBots(activeTab === "dispatch" ? "dispatch" : "reactive");
       }
     } finally {
       setIsLoading(false);
@@ -115,11 +115,12 @@ const Chatbot = () => {
     }
   };
 
-  const loadFlowBots = async () => {
-    const { data, error } = await supabase
-      .from("flow_bots")
+  const loadFlowBots = async (flowType: "reactive" | "dispatch" = "reactive") => {
+    const { data, error } = await (supabase
+      .from("flow_bots") as any)
       .select("*")
       .eq("organization_id", effectiveOrganizationId)
+      .eq("flow_type", flowType)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -184,7 +185,7 @@ const Chatbot = () => {
     setSelectedFlowBotId(undefined);
   };
 
-  const handleDeleteClick = (id: string, type: "ai" | "flow") => {
+  const handleDeleteClick = (id: string, type: "ai" | "flow" | "dispatch") => {
     setItemToDelete({ id, type });
     setDeleteDialogOpen(true);
   };
@@ -289,6 +290,7 @@ const Chatbot = () => {
             flowBotId={selectedFlowBotId}
             onBack={handleBack}
             onSaved={handleSaved}
+            flowType={activeTab === "dispatch" ? "dispatch" : "reactive"}
           />
         </MainLayout>
       );
@@ -298,6 +300,10 @@ const Chatbot = () => {
   const hasItems = activeTab === "ai" ? agents.length > 0 : flowBots.length > 0;
   const filteredItems = activeTab === "ai" ? filteredAgents : filteredFlowBots;
 
+  const newButtonLabel =
+    activeTab === "ai" ? "Novo Chatbot IA" :
+    activeTab === "dispatch" ? "Novo Flow de Disparo" : "Novo Fluxo";
+
   return (
     <MainLayout>
       <div className="space-y-6 animate-fade-in">
@@ -306,7 +312,7 @@ const Chatbot = () => {
           <div>
             <h1 className="text-2xl font-bold">Chatbots</h1>
             <p className="text-muted-foreground">
-              Crie chatbots com IA ou fluxos visuais para automação
+              Crie chatbots com IA, fluxos visuais ou flows de disparo para campanhas
             </p>
           </div>
           <div className="flex gap-2">
@@ -317,13 +323,13 @@ const Chatbot = () => {
             )}
             <Button onClick={handleCreateNew} className="gap-2">
               <Plus className="w-4 h-4" />
-              {activeTab === "ai" ? "Novo Chatbot IA" : "Novo Fluxo"}
+              {newButtonLabel}
             </Button>
           </div>
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ai" | "flow")}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ai" | "flow" | "dispatch")}>
           <TabsList>
             <TabsTrigger value="ai" className="gap-2">
               <Sparkles className="w-4 h-4" />
@@ -332,6 +338,10 @@ const Chatbot = () => {
             <TabsTrigger value="flow" className="gap-2">
               <GitBranch className="w-4 h-4" />
               Fluxos Visuais
+            </TabsTrigger>
+            <TabsTrigger value="dispatch" className="gap-2">
+              <Send className="w-4 h-4" />
+              Flow de Disparo
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -355,21 +365,27 @@ const Chatbot = () => {
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               {activeTab === "ai" ? (
                 <Bot className="w-10 h-10 text-primary" />
+              ) : activeTab === "dispatch" ? (
+                <Send className="w-10 h-10 text-primary" />
               ) : (
                 <GitBranch className="w-10 h-10 text-primary" />
               )}
             </div>
             <h2 className="text-xl font-semibold mb-2">
-              {activeTab === "ai" ? "Nenhum chatbot IA criado" : "Nenhum fluxo criado"}
+              {activeTab === "ai" ? "Nenhum chatbot IA criado"
+                : activeTab === "dispatch" ? "Nenhum flow de disparo criado"
+                : "Nenhum fluxo criado"}
             </h2>
             <p className="text-muted-foreground mb-6 max-w-md">
               {activeTab === "ai" 
                 ? "Crie seu primeiro chatbot com IA para atendimento inteligente"
+                : activeTab === "dispatch"
+                ? "Configure um template inicial e ramificações por botão para usar em campanhas"
                 : "Crie um fluxo visual com mensagens e botões pré-definidos"}
             </p>
             <Button onClick={handleCreateNew} className="gap-2">
               <Plus className="w-4 h-4" />
-              {activeTab === "ai" ? "Criar Chatbot IA" : "Criar Fluxo Visual"}
+              {newButtonLabel}
             </Button>
           </div>
         ) : filteredItems.length === 0 ? (
@@ -400,7 +416,7 @@ const Chatbot = () => {
                   bot={bot}
                   nodeCount={flowNodeCounts[bot.id] || 0}
                   onEdit={handleEditFlowBot}
-                  onDelete={(id) => handleDeleteClick(id, "flow")}
+                  onDelete={(id) => handleDeleteClick(id, activeTab === "dispatch" ? "dispatch" : "flow")}
                   onToggleActive={handleToggleActiveFlowBot}
                 />
               ))

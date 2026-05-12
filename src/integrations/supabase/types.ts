@@ -438,6 +438,7 @@ export type Database = {
           created_at: string
           delivered_at: string | null
           error_message: string | null
+          flow_bot_id: string | null
           id: string
           last_error_code: string | null
           lead_id: string | null
@@ -458,6 +459,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
+          flow_bot_id?: string | null
           id?: string
           last_error_code?: string | null
           lead_id?: string | null
@@ -478,6 +480,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
+          flow_bot_id?: string | null
           id?: string
           last_error_code?: string | null
           lead_id?: string | null
@@ -516,6 +519,7 @@ export type Database = {
           delivered_count: number
           dispatch_interval: number
           failed_count: number
+          flow_bot_id: string | null
           id: string
           manual_variables: Json | null
           max_interval: number | null
@@ -543,6 +547,7 @@ export type Database = {
           delivered_count?: number
           dispatch_interval?: number
           failed_count?: number
+          flow_bot_id?: string | null
           id?: string
           manual_variables?: Json | null
           max_interval?: number | null
@@ -570,6 +575,7 @@ export type Database = {
           delivered_count?: number
           dispatch_interval?: number
           failed_count?: number
+          flow_bot_id?: string | null
           id?: string
           manual_variables?: Json | null
           max_interval?: number | null
@@ -1450,10 +1456,12 @@ export type Database = {
           ai_fallback_message: string | null
           created_at: string
           description: string | null
+          flow_type: string
           id: string
           is_active: boolean | null
           name: string
           organization_id: string | null
+          template_id: string | null
           transfer_message: string | null
           updated_at: string
           user_id: string
@@ -1463,10 +1471,12 @@ export type Database = {
           ai_fallback_message?: string | null
           created_at?: string
           description?: string | null
+          flow_type?: string
           id?: string
           is_active?: boolean | null
           name: string
           organization_id?: string | null
+          template_id?: string | null
           transfer_message?: string | null
           updated_at?: string
           user_id: string
@@ -1476,10 +1486,12 @@ export type Database = {
           ai_fallback_message?: string | null
           created_at?: string
           description?: string | null
+          flow_type?: string
           id?: string
           is_active?: boolean | null
           name?: string
           organization_id?: string | null
+          template_id?: string | null
           transfer_message?: string | null
           updated_at?: string
           user_id?: string
@@ -1589,6 +1601,7 @@ export type Database = {
       }
       flow_sessions: {
         Row: {
+          campaign_id: string | null
           channel_id: string | null
           collected_data: Json | null
           contact_phone: string
@@ -1604,6 +1617,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          campaign_id?: string | null
           channel_id?: string | null
           collected_data?: Json | null
           contact_phone: string
@@ -1619,6 +1633,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          campaign_id?: string | null
           channel_id?: string | null
           collected_data?: Json | null
           contact_phone?: string

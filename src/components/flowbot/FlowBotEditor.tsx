@@ -64,6 +64,13 @@ interface FlowBotEditorProps {
   flowBotId?: string;
   onBack: () => void;
   onSaved: () => void;
+  flowType?: "reactive" | "dispatch";
+}
+
+interface DispatchTemplateOption {
+  id: string;
+  name: string;
+  status: string;
 }
 
 interface Edge {
@@ -80,7 +87,7 @@ const nodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: 
   { type: "action", label: "Ação", icon: <Zap className="w-4 h-4" />, color: "text-orange-500" },
 ];
 
-export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps) {
+export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive" }: FlowBotEditorProps) {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   
@@ -93,6 +100,10 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiMessage, setAiMessage] = useState("Deixa eu te ajudar com isso!");
   const [transferMessage, setTransferMessage] = useState("Vou transferir você para um de nossos atendentes. Aguarde um momento.");
+  const [templateId, setTemplateId] = useState<string>("");
+  const [availableTemplates, setAvailableTemplates] = useState<DispatchTemplateOption[]>([]);
+
+  const isDispatch = flowType === "dispatch";
   
   // Canvas state
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
@@ -129,6 +140,21 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
     }
   }, [flowBotId]);
 
+  // Load Meta templates approved for this organization (used by dispatch flows)
+  useEffect(() => {
+    if (!isDispatch || !effectiveOrganizationId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("message_templates")
+        .select("id, name, status")
+        .eq("organization_id", effectiveOrganizationId)
+        .eq("status", "APPROVED")
+        .order("name", { ascending: true });
+      setAvailableTemplates((data || []) as DispatchTemplateOption[]);
+    })();
+  }, [isDispatch, effectiveOrganizationId]);
+
+
   const loadFlowBot = async () => {
     if (!flowBotId) return;
     
@@ -147,6 +173,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
       setAiEnabled(bot.ai_fallback_enabled);
       setAiMessage(bot.ai_fallback_message);
       setTransferMessage(bot.transfer_message);
+      setTemplateId(((bot as Record<string, unknown>).template_id as string) || "");
       
       // Load nodes
       const { data: dbNodes, error: nodesError } = await supabase
@@ -204,23 +231,31 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
       toast.error("Nome do fluxo é obrigatório");
       return;
     }
+    if (isDispatch && !templateId) {
+      toast.error("Selecione o template inicial do flow de disparo");
+      return;
+    }
     
     setIsSaving(true);
     
     try {
       let botId = flowBotId;
       
+      const baseFields: Record<string, unknown> = {
+        name,
+        description,
+        ai_fallback_enabled: aiEnabled,
+        ai_fallback_message: aiMessage,
+        transfer_message: transferMessage,
+        flow_type: flowType,
+        template_id: isDispatch ? templateId : null,
+      };
+      
       // Save or create bot
       if (flowBotId) {
         const { error } = await supabase
           .from("flow_bots")
-          .update({
-            name,
-            description,
-            ai_fallback_enabled: aiEnabled,
-            ai_fallback_message: aiMessage,
-            transfer_message: transferMessage
-          } as any)
+          .update(baseFields as any)
           .eq("id", flowBotId);
         
         if (error) throw error;
@@ -230,11 +265,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
           .insert({
             organization_id: effectiveOrganizationId,
             user_id: user.id,
-            name,
-            description,
-            ai_fallback_enabled: aiEnabled,
-            ai_fallback_message: aiMessage,
-            transfer_message: transferMessage
+            ...baseFields,
           } as any)
           .select()
           .single();
@@ -543,6 +574,30 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
             placeholder="Nome do fluxo"
             className="w-64"
           />
+          {isDispatch && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Template inicial:</Label>
+                <Select value={templateId} onValueChange={setTemplateId}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Escolha um template aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTemplates.length === 0 ? (
+                      <div className="p-3 text-center text-muted-foreground text-sm">
+                        Nenhum template aprovado
+                      </div>
+                    ) : (
+                      availableTemplates.map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Generate Sample Flow Button */}
