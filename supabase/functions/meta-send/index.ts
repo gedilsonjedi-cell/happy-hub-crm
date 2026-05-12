@@ -34,6 +34,10 @@ const supabase: any = localMessageDb;
 const messageDb: any = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const headerMediaIdCache = new Map<string, string>();
+type MutableTemplatePayload = Record<string, unknown> & {
+  template?: { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
+};
 
 async function insertMessageRecord(data: Record<string, unknown>) {
   const result = await messageDb
@@ -291,7 +295,7 @@ async function fetchMetaTemplateDefinition(
 function sanitizeTemplateParam(value: string): string {
   return value
     .normalize('NFKC')
-    .replace(/[\u00A0\u200B-\u200D\uFE0E\uFE0F\uFEFF\u20E3]/g, ' ')
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]|\uFE0E|\uFE0F|\u20E3/g, ' ')
     .replace(/(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/gi, '')
     .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '')
     .replace(/\s+/g, ' ')
@@ -302,7 +306,7 @@ function sanitizeTemplateParam(value: string): string {
 function hasUnsupportedTemplateContent(value: string): boolean {
   return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
     || /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu.test(value)
-    || /[\u00A0\u200B-\u200D\uFE0E\uFE0F\uFEFF\u20E3]/.test(value);
+    || /[\u00A0\u200B-\u200D\uFEFF]|\uFE0E|\uFE0F|\u20E3/.test(value);
 }
 
 function getExpectedBodyParamCount(components: unknown[] | null | undefined): number | null {
@@ -423,8 +427,14 @@ async function uploadMediaToMeta(
     formData.append('type', mimeType);
     
     // Determine filename based on mime type
-    let filename = 'audio.ogg';
-    if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+    let filename = 'file.bin';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+      filename = 'image.jpg';
+    } else if (mimeType.includes('png')) {
+      filename = 'image.png';
+    } else if (mimeType.includes('webp')) {
+      filename = 'image.webp';
+    } else if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
       filename = 'audio.m4a';
     } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
       filename = 'audio.mp3';
@@ -470,6 +480,38 @@ async function uploadMediaToMeta(
     console.error('Error uploading media to Meta:', error);
     return { mediaId: null, usedMimeType: mimeType };
   }
+}
+
+function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<string, unknown> | null {
+  return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
+}
+
+async function convertTemplateHeaderLinkToMediaId(
+  payload: MutableTemplatePayload,
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<boolean> {
+  const headerParam = getTemplateHeaderParameter(payload);
+  if (!headerParam) return false;
+
+  const mediaType = String(headerParam.type || '').toLowerCase();
+  const mediaObject = headerParam[mediaType] as { link?: string; id?: string } | undefined;
+  const mediaLink = mediaObject?.link;
+  if (!mediaType || !mediaLink || mediaObject?.id) return false;
+
+  const cacheKey = `${phoneNumberId}:${mediaLink}`;
+  let mediaId = headerMediaIdCache.get(cacheKey) || null;
+  if (!mediaId) {
+    const mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'video' ? 'video/mp4' : 'application/pdf';
+    const uploadResult = await uploadMediaToMeta(phoneNumberId, accessToken, mediaLink, mimeType);
+    mediaId = uploadResult.mediaId;
+    if (mediaId) headerMediaIdCache.set(cacheKey, mediaId);
+  }
+
+  if (!mediaId) return false;
+  headerParam[mediaType] = { id: mediaId };
+  console.log('[Meta-Send] Retrying template header with Meta media_id:', mediaId);
+  return true;
 }
 
 // Helper function to upload audio with automatic retry using different mime types
@@ -722,7 +764,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    let messagePayload: Record<string, unknown> = {
+    let messagePayload: MutableTemplatePayload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: cleanDestination
@@ -1034,6 +1076,7 @@ Deno.serve(async (req) => {
       }
       
       try {
+        const payloadForAttempt = JSON.stringify(messagePayload);
         metaResponse = await fetch(
           `${META_API_BASE}/${phoneNumberId}/messages`,
           {
@@ -1042,7 +1085,7 @@ Deno.serve(async (req) => {
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(messagePayload)
+            body: payloadForAttempt
           }
         );
 
@@ -1058,6 +1101,16 @@ Deno.serve(async (req) => {
         
         // Check if this error is retryable
         const errorCode = responseData.error?.code;
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt === 0
+          && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
+        ) {
+          console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
+          lastError = responseData.error;
+          continue;
+        }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
           lastError = responseData.error;
