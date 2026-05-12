@@ -380,6 +380,7 @@ export type Database = {
         Row: {
           campaign_id: string
           channel_id: string
+          flow_bot_id: string | null
           id: string
           order_index: number
           template_id: string | null
@@ -387,6 +388,7 @@ export type Database = {
         Insert: {
           campaign_id: string
           channel_id: string
+          flow_bot_id?: string | null
           id?: string
           order_index?: number
           template_id?: string | null
@@ -394,6 +396,7 @@ export type Database = {
         Update: {
           campaign_id?: string
           channel_id?: string
+          flow_bot_id?: string | null
           id?: string
           order_index?: number
           template_id?: string | null
