@@ -231,23 +231,31 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       toast.error("Nome do fluxo é obrigatório");
       return;
     }
+    if (isDispatch && !templateId) {
+      toast.error("Selecione o template inicial do flow de disparo");
+      return;
+    }
     
     setIsSaving(true);
     
     try {
       let botId = flowBotId;
       
+      const baseFields: Record<string, unknown> = {
+        name,
+        description,
+        ai_fallback_enabled: aiEnabled,
+        ai_fallback_message: aiMessage,
+        transfer_message: transferMessage,
+        flow_type: flowType,
+        template_id: isDispatch ? templateId : null,
+      };
+      
       // Save or create bot
       if (flowBotId) {
         const { error } = await supabase
           .from("flow_bots")
-          .update({
-            name,
-            description,
-            ai_fallback_enabled: aiEnabled,
-            ai_fallback_message: aiMessage,
-            transfer_message: transferMessage
-          } as any)
+          .update(baseFields as any)
           .eq("id", flowBotId);
         
         if (error) throw error;
@@ -257,11 +265,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
           .insert({
             organization_id: effectiveOrganizationId,
             user_id: user.id,
-            name,
-            description,
-            ai_fallback_enabled: aiEnabled,
-            ai_fallback_message: aiMessage,
-            transfer_message: transferMessage
+            ...baseFields,
           } as any)
           .select()
           .single();
