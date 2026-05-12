@@ -54,7 +54,7 @@ const Chatbot = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: "ai" | "flow" } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: "ai" | "flow" | "dispatch" } | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
   useEffect(() => {
