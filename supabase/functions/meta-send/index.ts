@@ -35,6 +35,9 @@ const messageDb: any = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const headerMediaIdCache = new Map<string, string>();
+type MutableTemplatePayload = Record<string, unknown> & {
+  template?: { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
+};
 
 async function insertMessageRecord(data: Record<string, unknown>) {
   const result = await messageDb
@@ -292,7 +295,7 @@ async function fetchMetaTemplateDefinition(
 function sanitizeTemplateParam(value: string): string {
   return value
     .normalize('NFKC')
-    .replace(/[\u00A0\u200B-\u200D\uFE0E\uFE0F\uFEFF\u20E3]/g, ' ')
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]|\uFE0E|\uFE0F|\u20E3/g, ' ')
     .replace(/(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/gi, '')
     .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '')
     .replace(/\s+/g, ' ')
@@ -303,7 +306,7 @@ function sanitizeTemplateParam(value: string): string {
 function hasUnsupportedTemplateContent(value: string): boolean {
   return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
     || /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu.test(value)
-    || /[\u00A0\u200B-\u200D\uFE0E\uFE0F\uFEFF\u20E3]/.test(value);
+    || /[\u00A0\u200B-\u200D\uFEFF]|\uFE0E|\uFE0F|\u20E3/.test(value);
 }
 
 function getExpectedBodyParamCount(components: unknown[] | null | undefined): number | null {
