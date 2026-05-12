@@ -1105,7 +1105,7 @@ Deno.serve(async (req) => {
     const maxMetaSendAttempts = templateName ? MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS : MAX_RETRIES;
     for (let attempt = 0; attempt <= maxMetaSendAttempts; attempt++) {
       if (attempt > 0) {
-        const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Exponential backoff
+        const delayMs = templateName ? 300 : RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Template recovery should stay fast
         console.log(`[Meta-Send] Retry attempt ${attempt}/${maxMetaSendAttempts} after ${delayMs}ms...`);
         await sleep(delayMs);
       }
@@ -1195,7 +1195,7 @@ Deno.serve(async (req) => {
       } catch (fetchError) {
         console.error(`[Meta-Send] Fetch error on attempt ${attempt + 1}:`, fetchError);
         lastError = fetchError;
-        if (attempt === MAX_RETRIES) break;
+        if (attempt === maxMetaSendAttempts) break;
       }
     }
 
