@@ -112,9 +112,14 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     suggestion: "SOLUÇÃO: No Meta Developer Console, vá em seu app > WhatsApp > Configurações da API e ative todas as permissões necessárias."
   },
   "132000": {
-    title: "Erro de permissão",
-    description: "O app não tem permissão para enviar mensagens.",
-    suggestion: "Verifique as permissões do app no Meta Business Manager."
+    title: "Número de parâmetros não confere",
+    description: "A quantidade de variáveis enviadas não corresponde ao número exigido pelo template aprovado na Meta.",
+    suggestion: "AÇÕES: 1) Verifique se TODAS as variáveis ({{1}}, {{2}}, ...) estão preenchidas no envio, 2) Confirme se o template no Meta Business Manager não foi alterado (variáveis adicionadas/removidas), 3) Sincronize os templates na página de Templates do sistema, 4) Refaça o envio garantindo que cada placeholder tenha um valor não vazio."
+  },
+  "131042": {
+    title: "Problema de pagamento da conta WABA",
+    description: "A Meta sinalizou 'Business eligibility payment issue' — a forma de pagamento da conta do WhatsApp Business está com problema (cartão recusado, fatura em aberto ou método inválido).",
+    suggestion: "AÇÃO URGENTE: Acesse Meta Business Suite > Configurações > Pagamentos da conta do WhatsApp e regularize o método de pagamento / pague faturas em aberto. Sem isso, NENHUMA mensagem de template será entregue por essa WABA."
   },
   "132001": {
     title: "Template não existe",
