@@ -1,59 +1,63 @@
-## Contexto
+## Flow de Disparo — Plano de Implementação
 
-Hoje:
-- **Mensagens** (`whatsapp_messages`) e **contatos** (`whatsapp_contacts`): já 100% externo ✓
-- **Edge functions** (12): já reescrevem assignments/stats só no externo ✓
-- **Frontend**: ainda escreve e lê `conversation_assignments`/`conversation_stats` do **interno** em ~20 pontos. Mirror trigger interno→externo mantém o externo atualizado para esses writes do front.
+Criar um novo tipo de automação chamado **"Flow de Disparo"**, que combina template inicial + respostas automatizadas por botão, podendo ser selecionado no momento do disparo de campanhas.
 
-Objetivo: cortar o último cordão umbilical — frontend passa a ler/escrever direto no externo, e os mirror triggers caem.
+### 1. Conceito
 
-## Escopo dos dados
+Diferente do **Chatbot IA** (conversa livre) e do **Fluxo Visual** (acionado por mensagem do cliente), o **Flow de Disparo**:
+- **Inicia com um template Meta** (com botões) — enviado pela campanha
+- Quando o destinatário clica em um botão, executa a ramificação correspondente do flow (mensagem, mídia, arquivar, transferir, etc.)
+- Fica vinculado à campanha durante o disparo
 
-- `conversation_assignments` e `conversation_stats` já existem no externo (via mirror).
-- `leads`, `profiles`, `channels`, `campaigns` etc. **continuam internos** (não são mensagens nem logs de campanha).
-- A RPC `get_conversations_summary_paginated` faz JOIN com `leads` e `profiles` — não dá pra portar 1:1 pro externo. Solução: nova RPC externa que retorna só assignments+stats; frontend resolve nomes/tags via cache interno.
+### 2. Banco de dados
 
-## Plano
+Reutilizar a infra existente de `flow_bots` / `flow_nodes` / `flow_edges` adicionando:
 
-### 1. Externo: criar RPC `get_conversations_summary_paginated_ext`
-- Query equivalente, **sem JOINs com leads/profiles** (retorna só `lead_id` e `assigned_to`).
-- RLS via `request.jwt.claims.organization_id` (consistente com whatsapp_messages).
-- Manter assinatura: `p_channel_ids uuid[], p_organization_id uuid, p_limit, p_offset`.
+- `flow_bots.flow_type` → `'reactive' | 'dispatch'` (default: `'reactive'`)
+- `flow_bots.template_id` → uuid (template Meta inicial, obrigatório se `flow_type='dispatch'`)
+- `campaigns.flow_bot_id` → uuid (flow de disparo vinculado à campanha, opcional)
+- Novo node type permitido: `template_start` (representa o template Meta, com 1 handle de saída por botão)
 
-### 2. Frontend: read-side
-Pontos a migrar para `externalSupabase`:
-- `src/hooks/useConversations.tsx` (linhas 73, 143, 204, 226)
-- `src/pages/AtendimentoV2.tsx` (linhas 998, 1118, 1185, 1366, 1568, 1582, 2231, 2323, 2630, 2700, 2975, 3042, 3082, 3137, 3393, 3503)
+### 3. UI — Página Chatbots
 
-Para cada read:
-- `supabase.from("conversation_assignments")` → `externalSupabase.from("conversation_assignments")`
-- RPC `get_conversations_summary_paginated` → `get_conversations_summary_paginated_ext` no externalSupabase
-- Após receber rows, fazer um `supabase.from("leads").select("id,name,tags").in("id", leadIds)` e `supabase.from("profiles").select("user_id,display_name,email").in("user_id", assignedIds)` no **interno** e mesclar (usar Map em memória, batch único por página).
+Adicionar terceira aba:
+```
+[ Chatbots com IA ]  [ Fluxos Visuais ]  [ Flow de Disparo ]
+```
 
-### 3. Frontend: write-side
-Mesmos pontos com `.update()`/`.insert()`/`.delete()` em `conversation_assignments`. Mover para `externalSupabase` direto (RLS por org claim já cobre). Onde houver insert sem org_id, garantir que seja preenchido.
+- Lista própria filtrada por `flow_type='dispatch'`
+- Botão "Novo Flow de Disparo" abre o editor visual já existente, mas:
+  - Node inicial obrigatório é um **TemplateStartNode** (seleciona template Meta com botões)
+  - Para cada botão do template, gera automaticamente um handle de saída
+  - Demais nodes (mensagem, mídia, ação) ficam disponíveis normalmente
 
-### 4. Validação (manual ~5 min)
-- Abrir AtendimentoV2, conferir sidebar carrega
-- Mandar mensagem nova de fora → aparece em real-time
-- Transferir conversa, arquivar, mudar status — tudo persiste
-- Conferir contadores de não-lidos zeram ao abrir
+### 4. UI — Campanhas
 
-### 5. Cleanup
-- `DROP TRIGGER trg_mirror_ca ON conversation_assignments;`
-- `DROP TRIGGER trg_mirror_cs ON conversation_stats;`
-- (Manter as tabelas internas por enquanto — drop só depois de 24-48h sem incidente)
-- Atualizar `mem://arquitetura/mirror-trigger-assignments-stats` marcando como DEPRECATED
+Na criação/edição de campanha (`Disparos.tsx`), adicionar seletor:
+- **Tipo de envio**: `Template direto` (atual) ou `Flow de Disparo` (novo)
+- Se `Flow de Disparo` → seletor dos flows do tipo `dispatch` disponíveis
+- O template do flow substitui o `unified_template_id` no envio
+- Validação: flow precisa ter template definido e nodes conectados
 
-## Risco
+### 5. Backend — Edge Functions
 
-- Latência: cada página da sidebar agora faz 1 query externa + 2 queries internas (leads + profiles). Batch único por página, então deve ficar ≤200ms total.
-- Regressões de status/atribuição: temos cobertura de Realtime no externo, então qualquer write inconsistente aparece imediatamente.
-- Mirror inverso: NÃO vamos inverter. Se algo quebrar, basta reativar mirror antigo.
+- **`campaign-dispatch`**: quando `campaigns.flow_bot_id` está setado, usa o template do flow em vez de `unified_template_id`. Marca `campaign_recipients.flow_bot_id` para rastreio.
+- **`meta-webhook`**: quando recebe um `button_reply` de um destinatário de campanha com flow vinculado, dispara o motor de execução do flow (semelhante ao já existente para fluxos reativos), partindo do node correspondente ao botão clicado.
+- Reutilizar runtime de execução de nodes já presente em fluxos visuais (mensagem, mídia, transfer, archive).
 
-## Detalhes técnicos
+### 6. Detalhes técnicos
 
-- A nova RPC externa será criada via SQL direto no externo (não via migration interna).
-- Usar `externalSupabase` que já tem JWT customizado com claim `organization_id` válida.
-- Preservar `is_bot_handling`, `campaign_chatbot_id`, `bot_paused_until` na assinatura da nova RPC.
-- A `get_conversations_summary` (não paginada) usada em `AttendanceReportPanel` é só de relatório — pode permanecer no interno por ora (lê dados antigos via mirror inverso? não — ela ficaria desatualizada). **Decisão**: portar também para externo na mesma rodada; relatório usa external + join interno.
+- TemplateStartNode renderiza preview do template + lista de botões com handles
+- Quando o template é trocado, edges órfãs são removidas
+- `flow_sessions` ganha campo `campaign_id` para diferenciar origem
+- Mantém todos os RLS por organização já existentes
+
+### 7. Escopo desta entrega
+
+- Migration (schema)
+- Aba "Flow de Disparo" + editor com TemplateStartNode
+- Seletor no formulário de campanha
+- Ajuste no `campaign-dispatch` para usar template do flow
+- Ajuste no `meta-webhook` para reagir aos cliques de botão e executar o flow
+
+Não inclui: agendamento de mensagens dentro do flow, condicionais avançadas, A/B testing — podem vir depois.
