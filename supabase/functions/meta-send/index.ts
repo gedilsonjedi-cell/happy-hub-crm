@@ -760,7 +760,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    let messagePayload: Record<string, unknown> = {
+    let messagePayload: Record<string, any> = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: cleanDestination
