@@ -529,6 +529,59 @@ function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replace
   return true;
 }
 
+function adjustTemplateComponentParamCount(
+  payload: MutableTemplatePayload,
+  componentType: 'body' | 'header',
+  expectedCount: number,
+): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components) || expectedCount < 0) return false;
+
+  const component = components.find((item) => item?.type === componentType);
+  if (!component) return false;
+
+  if (expectedCount === 0) {
+    payload.template!.components = components.filter((item) => item?.type !== componentType);
+    console.log(`[Meta-Send] Retrying template without ${componentType} parameters after Meta #132000`);
+    return true;
+  }
+
+  const params = Array.isArray(component.parameters) ? component.parameters : [];
+  if (params.length === expectedCount) return false;
+
+  component.parameters = params
+    .slice(0, expectedCount)
+    .concat(
+      Array.from({ length: Math.max(expectedCount - params.length, 0) }, () => ({
+        type: 'text',
+        text: 'Cliente',
+      })),
+    );
+  console.log(`[Meta-Send] Retrying template with ${expectedCount} ${componentType} parameter(s) after Meta #132000`);
+  return true;
+}
+
+function recoverTemplateParamCountMismatch(
+  payload: MutableTemplatePayload,
+  error: Record<string, unknown> | undefined,
+  usedRecoveries: Set<string>,
+): boolean {
+  const details = String(
+    ((error?.error_data as Record<string, unknown> | undefined)?.details)
+      || error?.message
+      || '',
+  );
+  const match = details.match(/\b(body|header)\b[^()]*\((\d+)\)[^()]*\((\d+)\)/i);
+  const componentType = (match?.[1]?.toLowerCase() || 'body') as 'body' | 'header';
+  const expectedCount = match ? Number(match[3]) : 0;
+  const recoveryKey = `${componentType}:${expectedCount}`;
+
+  if (usedRecoveries.has(recoveryKey)) return false;
+  usedRecoveries.add(recoveryKey);
+
+  return adjustTemplateComponentParamCount(payload, componentType, expectedCount);
+}
+
 async function convertTemplateHeaderLinkToMediaId(
   payload: MutableTemplatePayload,
   phoneNumberId: string,
