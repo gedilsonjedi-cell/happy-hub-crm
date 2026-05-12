@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GitBranch, Plus, Loader2, Search, Bot, Sparkles } from "lucide-react";
+import { GitBranch, Plus, Loader2, Search, Bot, Sparkles, Send } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
