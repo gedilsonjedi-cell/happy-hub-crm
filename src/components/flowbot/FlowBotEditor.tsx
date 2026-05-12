@@ -88,7 +88,7 @@ const nodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: 
   { type: "action", label: "Ação", icon: <Zap className="w-4 h-4" />, color: "text-orange-500" },
 ];
 
-export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps) {
+export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive" }: FlowBotEditorProps) {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   
@@ -101,6 +101,10 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved }: FlowBotEditorProps
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiMessage, setAiMessage] = useState("Deixa eu te ajudar com isso!");
   const [transferMessage, setTransferMessage] = useState("Vou transferir você para um de nossos atendentes. Aguarde um momento.");
+  const [templateId, setTemplateId] = useState<string>("");
+  const [availableTemplates, setAvailableTemplates] = useState<DispatchTemplateOption[]>([]);
+
+  const isDispatch = flowType === "dispatch";
   
   // Canvas state
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
