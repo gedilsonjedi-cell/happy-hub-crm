@@ -185,7 +185,7 @@ const Chatbot = () => {
     setSelectedFlowBotId(undefined);
   };
 
-  const handleDeleteClick = (id: string, type: "ai" | "flow") => {
+  const handleDeleteClick = (id: string, type: "ai" | "flow" | "dispatch") => {
     setItemToDelete({ id, type });
     setDeleteDialogOpen(true);
   };
