@@ -71,7 +71,7 @@ const Chatbot = () => {
       if (activeTab === "ai") {
         await loadAgents();
       } else {
-        await loadFlowBots();
+        await loadFlowBots(activeTab === "dispatch" ? "dispatch" : "reactive");
       }
     } finally {
       setIsLoading(false);
