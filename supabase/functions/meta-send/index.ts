@@ -34,6 +34,7 @@ const supabase: any = localMessageDb;
 const messageDb: any = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const headerMediaIdCache = new Map<string, string>();
 
 async function insertMessageRecord(data: Record<string, unknown>) {
   const result = await messageDb
@@ -423,8 +424,14 @@ async function uploadMediaToMeta(
     formData.append('type', mimeType);
     
     // Determine filename based on mime type
-    let filename = 'audio.ogg';
-    if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+    let filename = 'file.bin';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+      filename = 'image.jpg';
+    } else if (mimeType.includes('png')) {
+      filename = 'image.png';
+    } else if (mimeType.includes('webp')) {
+      filename = 'image.webp';
+    } else if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
       filename = 'audio.m4a';
     } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
       filename = 'audio.mp3';
