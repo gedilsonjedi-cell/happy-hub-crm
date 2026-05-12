@@ -276,6 +276,20 @@ const Disparos = () => {
       .eq("organization_id", effectiveOrganizationId)
       .order("name");
 
+    // Fetch dispatch flows (flow_bots configured for campaign dispatch)
+    const { data: dispatchFlowsData } = await supabase
+      .from("flow_bots")
+      .select("id, name, template_id, flow_type, is_active")
+      .eq("organization_id", effectiveOrganizationId)
+      .eq("flow_type", "dispatch")
+      .eq("is_active", true)
+      .not("template_id", "is", null);
+    setDispatchFlows((dispatchFlowsData || []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      template_id: f.template_id,
+    })));
+
     // Combine real data with demo data
     const realChannels = channelsData || [];
     const realTemplates = templatesData || [];
