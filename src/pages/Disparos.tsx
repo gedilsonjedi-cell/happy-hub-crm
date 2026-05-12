@@ -1567,25 +1567,127 @@ const Disparos = () => {
                 
                 <div className="flex gap-2">
                   <Button
-                    variant={useUnifiedTemplate ? "default" : "outline"}
+                    variant={templateMode === 'template_unified' ? "default" : "outline"}
                     size="sm"
                     className="flex-1"
-                    onClick={() => setUseUnifiedTemplate(true)}
+                    onClick={() => setTemplateMode('template_unified')}
                   >
                     Mesmo template
                   </Button>
                   <Button
-                    variant={!useUnifiedTemplate ? "default" : "outline"}
+                    variant={templateMode === 'template_per_channel' ? "default" : "outline"}
                     size="sm"
                     className="flex-1"
-                    onClick={() => setUseUnifiedTemplate(false)}
+                    onClick={() => setTemplateMode('template_per_channel')}
                   >
                     Template por canal
+                  </Button>
+                  <Button
+                    variant={templateMode === 'flow' ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setTemplateMode('flow')}
+                  >
+                    Template Flow
                   </Button>
                 </div>
               </div>
 
-              {useUnifiedTemplate ? (
+              {useFlowMode ? (
+                (() => {
+                  const unifiedFlows = getUnifiedFlows();
+                  const showUnifiedPicker = unifiedFlows.length > 0;
+                  return (
+                    <div className="space-y-3">
+                      {showUnifiedPicker ? (
+                        <>
+                          <Select value={selectedFlowId} onValueChange={setSelectedFlowId}>
+                            <SelectTrigger className="bg-card border-border">
+                              <SelectValue placeholder="Selecione o flow" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-card border-border">
+                              {unifiedFlows.map(f => {
+                                const tpl = templates.find(t => t.id === f.template_id);
+                                return (
+                                  <SelectItem key={f.id} value={f.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{f.name}</span>
+                                      {tpl && <span className="text-muted-foreground text-xs">· {tpl.name}</span>}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Apenas flows ativos cujo template está aprovado em todos os canais selecionados.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Nenhum flow é compatível com todos os canais. Selecione um flow para cada canal.
+                          </p>
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {selectedChannels.length === 0 ? (
+                              <div className="text-center py-6 text-muted-foreground text-sm">
+                                Selecione pelo menos um canal
+                              </div>
+                            ) : (
+                              selectedChannels.map(chId => {
+                                const channel = channels.find(c => c.id === chId);
+                                const selectedFlow = channelFlows[chId];
+                                const availableFlows = getFlowsForChannel(chId);
+                                return (
+                                  <div key={chId} className="p-3 bg-card rounded-lg border border-border space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Smartphone className="w-4 h-4 text-primary" />
+                                      <span className="text-sm font-medium text-foreground flex-1">{channel?.name}</span>
+                                      {selectedFlow && <Check className="w-4 h-4 text-primary" />}
+                                    </div>
+                                    <Select
+                                      value={selectedFlow || ""}
+                                      onValueChange={(value) => setChannelFlows(prev => ({ ...prev, [chId]: value }))}
+                                    >
+                                      <SelectTrigger className="bg-muted/50 border-border h-9">
+                                        <SelectValue placeholder="Selecione o flow" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-card border-border">
+                                        {availableFlows.length === 0 ? (
+                                          <div className="p-3 text-center text-muted-foreground text-sm">
+                                            Nenhum flow compatível com este canal
+                                          </div>
+                                        ) : (
+                                          availableFlows.map(f => {
+                                            const tpl = templates.find(t => t.id === f.template_id);
+                                            return (
+                                              <SelectItem key={f.id} value={f.id}>
+                                                <div className="flex items-center gap-2">
+                                                  <span>{f.name}</span>
+                                                  {tpl && <span className="text-muted-foreground text-xs">· {tpl.name}</span>}
+                                                </div>
+                                              </SelectItem>
+                                            );
+                                          })
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {dispatchFlows.length === 0 && (
+                        <p className="text-xs text-warning">
+                          Nenhum Flow de Disparo cadastrado. Crie um em Chatbots → Flow de Disparo.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : useUnifiedTemplate ? (
                 <div className="space-y-3">
                   <Select 
                     value={formData.unifiedTemplate} 
