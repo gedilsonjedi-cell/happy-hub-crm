@@ -612,6 +612,24 @@ const Disparos = () => {
   };
 
   const getSelectedTemplatesPreview = () => {
+    if (useFlowMode) {
+      const previewTemplates: MessageTemplate[] = [];
+      const addTpl = (tplId: string | null | undefined) => {
+        if (!tplId) return;
+        const tpl = templates.find(t => t.id === tplId);
+        if (tpl && !previewTemplates.find(t => t.id === tpl.id)) previewTemplates.push(tpl);
+      };
+      const unifiedFlows = getUnifiedFlows();
+      if (selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId)) {
+        addTpl(unifiedFlows.find(f => f.id === selectedFlowId)?.template_id);
+      } else {
+        selectedChannels.forEach(chId => {
+          const flow = dispatchFlows.find(f => f.id === channelFlows[chId]);
+          addTpl(flow?.template_id);
+        });
+      }
+      return previewTemplates;
+    }
     if (useUnifiedTemplate && formData.unifiedTemplate) {
       const template = templates.find(t => t.id === formData.unifiedTemplate);
       return template ? [template] : [];
