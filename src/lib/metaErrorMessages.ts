@@ -49,9 +49,9 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     suggestion: "Entre em contato com o suporte do Meta para resolver a restrição."
   },
   "131042": {
-    title: "Falha na renderização do template",
-    description: "Os parâmetros fornecidos não puderam ser aplicados ao template.",
-    suggestion: "Verifique se os parâmetros correspondem às variáveis do template."
+    title: "Problema de pagamento da conta WABA",
+    description: "A Meta sinalizou 'Business eligibility payment issue' — a forma de pagamento da conta do WhatsApp Business está com problema (cartão recusado, fatura em aberto ou método inválido).",
+    suggestion: "AÇÃO URGENTE: Acesse Meta Business Suite > Configurações > Pagamentos da conta do WhatsApp e regularize o método de pagamento / pague faturas em aberto. Sem isso, NENHUMA mensagem de template será entregue por essa WABA."
   },
   "131045": {
     title: "Template pausado",
