@@ -479,6 +479,37 @@ async function uploadMediaToMeta(
   }
 }
 
+function getTemplateHeaderParameter(payload: Record<string, any>) {
+  return payload?.template?.components?.find((component: any) => component?.type === 'header')?.parameters?.[0] || null;
+}
+
+async function convertTemplateHeaderLinkToMediaId(
+  payload: Record<string, any>,
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<boolean> {
+  const headerParam = getTemplateHeaderParameter(payload);
+  if (!headerParam) return false;
+
+  const mediaType = String(headerParam.type || '').toLowerCase();
+  const mediaLink = headerParam?.[mediaType]?.link;
+  if (!mediaType || !mediaLink || headerParam?.[mediaType]?.id) return false;
+
+  const cacheKey = `${phoneNumberId}:${mediaLink}`;
+  let mediaId = headerMediaIdCache.get(cacheKey) || null;
+  if (!mediaId) {
+    const mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'video' ? 'video/mp4' : 'application/pdf';
+    const uploadResult = await uploadMediaToMeta(phoneNumberId, accessToken, mediaLink, mimeType);
+    mediaId = uploadResult.mediaId;
+    if (mediaId) headerMediaIdCache.set(cacheKey, mediaId);
+  }
+
+  if (!mediaId) return false;
+  headerParam[mediaType] = { id: mediaId };
+  console.log('[Meta-Send] Retrying template header with Meta media_id:', mediaId);
+  return true;
+}
+
 // Helper function to upload audio with automatic retry using different mime types
 async function uploadAudioWithRetry(
   phoneNumberId: string,
