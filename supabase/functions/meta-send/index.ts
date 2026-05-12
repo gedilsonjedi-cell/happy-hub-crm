@@ -486,6 +486,17 @@ function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<str
   return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
+function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replacementUrl: string): boolean {
+  const headerParam = getTemplateHeaderParameter(payload);
+  if (!headerParam || !replacementUrl) return false;
+  const mediaType = String(headerParam.type || '').toLowerCase();
+  const mediaObject = headerParam[mediaType] as { link?: string; id?: string } | undefined;
+  if (!mediaType || !mediaObject?.link || mediaObject.link === replacementUrl) return false;
+  headerParam[mediaType] = { link: replacementUrl };
+  console.log('[Meta-Send] Retrying template header with Meta-approved sample media link');
+  return true;
+}
+
 async function convertTemplateHeaderLinkToMediaId(
   payload: MutableTemplatePayload,
   phoneNumberId: string,
@@ -775,6 +786,7 @@ Deno.serve(async (req) => {
     let templateButtons: unknown[] | null = null;
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
+    let retriedTemplateHeaderWithSample = false;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -1105,6 +1117,18 @@ Deno.serve(async (req) => {
           templateName
           && Number(errorCode) === 135000
           && attempt === 0
+          && !retriedTemplateHeaderWithSample
+          && headerInfo?.exampleUrl
+          && replaceTemplateHeaderMediaLink(messagePayload, headerInfo.exampleUrl)
+        ) {
+          retriedTemplateHeaderWithSample = true;
+          lastError = responseData.error;
+          continue;
+        }
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt <= 1
           && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
         ) {
           console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
