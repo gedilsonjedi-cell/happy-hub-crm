@@ -416,7 +416,7 @@ const Chatbot = () => {
                   bot={bot}
                   nodeCount={flowNodeCounts[bot.id] || 0}
                   onEdit={handleEditFlowBot}
-                  onDelete={(id) => handleDeleteClick(id, "flow")}
+                  onDelete={(id) => handleDeleteClick(id, activeTab === "dispatch" ? "dispatch" : "flow")}
                   onToggleActive={handleToggleActiveFlowBot}
                 />
               ))
