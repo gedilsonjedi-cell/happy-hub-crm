@@ -38,7 +38,7 @@ const Chatbot = () => {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   
-  const [activeTab, setActiveTab] = useState<"ai" | "flow">("ai");
+  const [activeTab, setActiveTab] = useState<"ai" | "flow" | "dispatch">("ai");
   const [view, setView] = useState<"list" | "edit">("list");
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [selectedFlowBotId, setSelectedFlowBotId] = useState<string | undefined>();
