@@ -64,6 +64,14 @@ interface FlowBotEditorProps {
   flowBotId?: string;
   onBack: () => void;
   onSaved: () => void;
+  flowType?: "reactive" | "dispatch";
+}
+
+interface DispatchTemplateOption {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
 }
 
 interface Edge {
