@@ -200,7 +200,15 @@ const Disparos = () => {
   
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string>>({});
-  const [useUnifiedTemplate, setUseUnifiedTemplate] = useState(true);
+  type TemplateMode = 'template_unified' | 'template_per_channel' | 'flow';
+  const [templateMode, setTemplateMode] = useState<TemplateMode>('template_unified');
+  const useUnifiedTemplate = templateMode === 'template_unified';
+  const useFlowMode = templateMode === 'flow';
+  const setUseUnifiedTemplate = (v: boolean) => setTemplateMode(v ? 'template_unified' : 'template_per_channel');
+  // Dispatch flows (flow_bots with flow_type = 'dispatch')
+  const [dispatchFlows, setDispatchFlows] = useState<Array<{ id: string; name: string; template_id: string | null }>>([]);
+  const [selectedFlowId, setSelectedFlowId] = useState<string>("");
+  const [channelFlows, setChannelFlows] = useState<Record<string, string>>({});
   const [recipientData, setRecipientData] = useState<{ phones: string[]; source: "contacts" | "numbers" | null }>({
     phones: [],
     source: null
@@ -267,6 +275,20 @@ const Disparos = () => {
       .select("id, name, description")
       .eq("organization_id", effectiveOrganizationId)
       .order("name");
+
+    // Fetch dispatch flows (flow_bots configured for campaign dispatch)
+    const { data: dispatchFlowsData } = await supabase
+      .from("flow_bots")
+      .select("id, name, template_id, flow_type, is_active")
+      .eq("organization_id", effectiveOrganizationId)
+      .eq("flow_type", "dispatch")
+      .eq("is_active", true)
+      .not("template_id", "is", null);
+    setDispatchFlows((dispatchFlowsData || []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      template_id: f.template_id,
+    })));
 
     // Combine real data with demo data
     const realChannels = channelsData || [];
@@ -477,6 +499,19 @@ const Disparos = () => {
     });
   };
 
+  // Dispatch flows whose template is approved in ALL selected channels
+  const getUnifiedFlows = () => {
+    if (selectedChannels.length === 0) return [];
+    const unifiedTplIds = new Set(getUnifiedTemplates().map(t => t.id));
+    return dispatchFlows.filter(f => f.template_id && unifiedTplIds.has(f.template_id));
+  };
+
+  // Dispatch flows whose template is approved in a specific channel
+  const getFlowsForChannel = (channelId: string) => {
+    const tplIds = new Set(getTemplatesForChannel(channelId).map(t => t.id));
+    return dispatchFlows.filter(f => f.template_id && tplIds.has(f.template_id));
+  };
+
   // Get manual variables for the selected template (variables without auto-mapping)
   const getManualVariablesForTemplate = (templateId: string): string[] => {
     const template = templates.find(t => t.id === templateId);
@@ -577,6 +612,24 @@ const Disparos = () => {
   };
 
   const getSelectedTemplatesPreview = () => {
+    if (useFlowMode) {
+      const previewTemplates: MessageTemplate[] = [];
+      const addTpl = (tplId: string | null | undefined) => {
+        if (!tplId) return;
+        const tpl = templates.find(t => t.id === tplId);
+        if (tpl && !previewTemplates.find(t => t.id === tpl.id)) previewTemplates.push(tpl);
+      };
+      const unifiedFlows = getUnifiedFlows();
+      if (selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId)) {
+        addTpl(unifiedFlows.find(f => f.id === selectedFlowId)?.template_id);
+      } else {
+        selectedChannels.forEach(chId => {
+          const flow = dispatchFlows.find(f => f.id === channelFlows[chId]);
+          addTpl(flow?.template_id);
+        });
+      }
+      return previewTemplates;
+    }
     if (useUnifiedTemplate && formData.unifiedTemplate) {
       const template = templates.find(t => t.id === formData.unifiedTemplate);
       return template ? [template] : [];
@@ -623,7 +676,7 @@ const Disparos = () => {
       }
     }
 
-    if (!useUnifiedTemplate) {
+    if (templateMode === 'template_per_channel') {
       const allHaveTemplates = selectedChannels.every(chId => channelTemplates[chId]);
       if (!allHaveTemplates) {
         toast.error("Selecione um template para cada canal");
@@ -639,6 +692,19 @@ const Disparos = () => {
         if (emptyVars.length > 0) {
           const channel = channels.find(c => c.id === chId);
           toast.error(`Preencha as variáveis do canal ${channel?.name}: ${emptyVars.join(', ')}`);
+          return;
+        }
+      }
+    }
+
+    if (useFlowMode) {
+      const unifiedFlows = getUnifiedFlows();
+      const usingUnifiedFlow = unifiedFlows.length > 0 && selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId);
+      if (!usingUnifiedFlow) {
+        // require a flow per channel
+        const allHaveFlows = selectedChannels.every(chId => channelFlows[chId]);
+        if (!allHaveFlows) {
+          toast.error(unifiedFlows.length > 0 ? "Selecione um flow para a campanha" : "Selecione um flow para cada canal");
           return;
         }
       }
@@ -744,6 +810,36 @@ const Disparos = () => {
         ? new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString()
         : null;
       
+      // Resolve flow-mode → effective template/flow ids per channel
+      let effectiveUseUnified = useUnifiedTemplate;
+      let effectiveUnifiedTemplateId: string | null = useUnifiedTemplate ? formData.unifiedTemplate : null;
+      let effectiveUnifiedFlowId: string | null = null;
+      const effectiveChannelTemplateMap: Record<string, string> = { ...channelTemplates };
+      const effectiveChannelFlowMap: Record<string, string | null> = {};
+
+      if (useFlowMode) {
+        const unifiedFlows = getUnifiedFlows();
+        const usingUnifiedFlow = !!selectedFlowId && unifiedFlows.some(f => f.id === selectedFlowId);
+        if (usingUnifiedFlow) {
+          const flow = unifiedFlows.find(f => f.id === selectedFlowId)!;
+          effectiveUseUnified = true;
+          effectiveUnifiedTemplateId = flow.template_id;
+          effectiveUnifiedFlowId = flow.id;
+          selectedChannels.forEach(chId => { effectiveChannelFlowMap[chId] = flow.id; });
+        } else {
+          effectiveUseUnified = false;
+          effectiveUnifiedTemplateId = null;
+          selectedChannels.forEach(chId => {
+            const flowId = channelFlows[chId];
+            const flow = dispatchFlows.find(f => f.id === flowId);
+            if (flow?.template_id) {
+              effectiveChannelTemplateMap[chId] = flow.template_id;
+              effectiveChannelFlowMap[chId] = flow.id;
+            }
+          });
+        }
+      }
+
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -756,8 +852,9 @@ const Disparos = () => {
           dispatch_interval: parseInt(formData.minInterval),
           min_interval: parseInt(formData.minInterval),
           max_interval: parseInt(formData.maxInterval),
-          use_unified_template: useUnifiedTemplate,
-          unified_template_id: useUnifiedTemplate ? formData.unifiedTemplate : null,
+          use_unified_template: effectiveUseUnified,
+          unified_template_id: effectiveUseUnified ? effectiveUnifiedTemplateId : null,
+          flow_bot_id: effectiveUnifiedFlowId,
           status: formData.startTime === "now" ? "running" : "scheduled",
           scheduled_at: scheduledAt,
           total_recipients: recipientData.phones.length,
@@ -787,7 +884,8 @@ const Disparos = () => {
       const channelInserts = selectedChannels.map((channelId, index) => ({
         campaign_id: campaign.id,
         channel_id: channelId,
-        template_id: useUnifiedTemplate ? formData.unifiedTemplate : channelTemplates[channelId],
+        template_id: effectiveUseUnified ? effectiveUnifiedTemplateId : effectiveChannelTemplateMap[channelId],
+        flow_bot_id: effectiveChannelFlowMap[channelId] ?? null,
         order_index: index,
       }));
 
@@ -934,7 +1032,9 @@ const Disparos = () => {
   const resetForm = () => {
     setSelectedChannels([]);
     setChannelTemplates({});
-    setUseUnifiedTemplate(true);
+    setTemplateMode('template_unified');
+    setSelectedFlowId("");
+    setChannelFlows({});
     setRecipientData({ phones: [], source: null });
     setManualVariables({});
     setChannelManualVariables({});
@@ -1485,25 +1585,127 @@ const Disparos = () => {
                 
                 <div className="flex gap-2">
                   <Button
-                    variant={useUnifiedTemplate ? "default" : "outline"}
+                    variant={templateMode === 'template_unified' ? "default" : "outline"}
                     size="sm"
                     className="flex-1"
-                    onClick={() => setUseUnifiedTemplate(true)}
+                    onClick={() => setTemplateMode('template_unified')}
                   >
                     Mesmo template
                   </Button>
                   <Button
-                    variant={!useUnifiedTemplate ? "default" : "outline"}
+                    variant={templateMode === 'template_per_channel' ? "default" : "outline"}
                     size="sm"
                     className="flex-1"
-                    onClick={() => setUseUnifiedTemplate(false)}
+                    onClick={() => setTemplateMode('template_per_channel')}
                   >
                     Template por canal
+                  </Button>
+                  <Button
+                    variant={templateMode === 'flow' ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setTemplateMode('flow')}
+                  >
+                    Template Flow
                   </Button>
                 </div>
               </div>
 
-              {useUnifiedTemplate ? (
+              {useFlowMode ? (
+                (() => {
+                  const unifiedFlows = getUnifiedFlows();
+                  const showUnifiedPicker = unifiedFlows.length > 0;
+                  return (
+                    <div className="space-y-3">
+                      {showUnifiedPicker ? (
+                        <>
+                          <Select value={selectedFlowId} onValueChange={setSelectedFlowId}>
+                            <SelectTrigger className="bg-card border-border">
+                              <SelectValue placeholder="Selecione o flow" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-card border-border">
+                              {unifiedFlows.map(f => {
+                                const tpl = templates.find(t => t.id === f.template_id);
+                                return (
+                                  <SelectItem key={f.id} value={f.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{f.name}</span>
+                                      {tpl && <span className="text-muted-foreground text-xs">· {tpl.name}</span>}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Apenas flows ativos cujo template está aprovado em todos os canais selecionados.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Nenhum flow é compatível com todos os canais. Selecione um flow para cada canal.
+                          </p>
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {selectedChannels.length === 0 ? (
+                              <div className="text-center py-6 text-muted-foreground text-sm">
+                                Selecione pelo menos um canal
+                              </div>
+                            ) : (
+                              selectedChannels.map(chId => {
+                                const channel = channels.find(c => c.id === chId);
+                                const selectedFlow = channelFlows[chId];
+                                const availableFlows = getFlowsForChannel(chId);
+                                return (
+                                  <div key={chId} className="p-3 bg-card rounded-lg border border-border space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Smartphone className="w-4 h-4 text-primary" />
+                                      <span className="text-sm font-medium text-foreground flex-1">{channel?.name}</span>
+                                      {selectedFlow && <Check className="w-4 h-4 text-primary" />}
+                                    </div>
+                                    <Select
+                                      value={selectedFlow || ""}
+                                      onValueChange={(value) => setChannelFlows(prev => ({ ...prev, [chId]: value }))}
+                                    >
+                                      <SelectTrigger className="bg-muted/50 border-border h-9">
+                                        <SelectValue placeholder="Selecione o flow" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-card border-border">
+                                        {availableFlows.length === 0 ? (
+                                          <div className="p-3 text-center text-muted-foreground text-sm">
+                                            Nenhum flow compatível com este canal
+                                          </div>
+                                        ) : (
+                                          availableFlows.map(f => {
+                                            const tpl = templates.find(t => t.id === f.template_id);
+                                            return (
+                                              <SelectItem key={f.id} value={f.id}>
+                                                <div className="flex items-center gap-2">
+                                                  <span>{f.name}</span>
+                                                  {tpl && <span className="text-muted-foreground text-xs">· {tpl.name}</span>}
+                                                </div>
+                                              </SelectItem>
+                                            );
+                                          })
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {dispatchFlows.length === 0 && (
+                        <p className="text-xs text-warning">
+                          Nenhum Flow de Disparo cadastrado. Crie um em Chatbots → Flow de Disparo.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : useUnifiedTemplate ? (
                 <div className="space-y-3">
                   <Select 
                     value={formData.unifiedTemplate} 
