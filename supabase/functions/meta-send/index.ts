@@ -529,6 +529,59 @@ function replaceTemplateHeaderMediaLink(payload: MutableTemplatePayload, replace
   return true;
 }
 
+function adjustTemplateComponentParamCount(
+  payload: MutableTemplatePayload,
+  componentType: 'body' | 'header',
+  expectedCount: number,
+): boolean {
+  const components = payload.template?.components;
+  if (!Array.isArray(components) || expectedCount < 0) return false;
+
+  const component = components.find((item) => item?.type === componentType);
+  if (!component) return false;
+
+  if (expectedCount === 0) {
+    payload.template!.components = components.filter((item) => item?.type !== componentType);
+    console.log(`[Meta-Send] Retrying template without ${componentType} parameters after Meta #132000`);
+    return true;
+  }
+
+  const params = Array.isArray(component.parameters) ? component.parameters : [];
+  if (params.length === expectedCount) return false;
+
+  component.parameters = params
+    .slice(0, expectedCount)
+    .concat(
+      Array.from({ length: Math.max(expectedCount - params.length, 0) }, () => ({
+        type: 'text',
+        text: 'Cliente',
+      })),
+    );
+  console.log(`[Meta-Send] Retrying template with ${expectedCount} ${componentType} parameter(s) after Meta #132000`);
+  return true;
+}
+
+function recoverTemplateParamCountMismatch(
+  payload: MutableTemplatePayload,
+  error: Record<string, unknown> | undefined,
+  usedRecoveries: Set<string>,
+): boolean {
+  const details = String(
+    ((error?.error_data as Record<string, unknown> | undefined)?.details)
+      || error?.message
+      || '',
+  );
+  const match = details.match(/\b(body|header)\b[^()]*\((\d+)\)[^()]*\((\d+)\)/i);
+  const componentType = (match?.[1]?.toLowerCase() || 'body') as 'body' | 'header';
+  const expectedCount = match ? Number(match[3]) : 0;
+  const recoveryKey = `${componentType}:${expectedCount}`;
+
+  if (usedRecoveries.has(recoveryKey)) return false;
+  usedRecoveries.add(recoveryKey);
+
+  return adjustTemplateComponentParamCount(payload, componentType, expectedCount);
+}
+
 async function convertTemplateHeaderLinkToMediaId(
   payload: MutableTemplatePayload,
   phoneNumberId: string,
@@ -819,6 +872,7 @@ Deno.serve(async (req) => {
     let headerInfo: ReturnType<typeof getHeaderInfo> | null = null;
     let customHeaderMediaUrl: string | null = null;
     let template135000RecoveryStep = 0;
+    const template132000Recoveries = new Set<string>();
     let activeMetaMessagesApiBase = META_API_BASE;
     let alternateMetaApiBaseIndex = 1;
     const sanitizedTemplateParams = Array.isArray(templateParams)
@@ -1150,6 +1204,19 @@ Deno.serve(async (req) => {
         const errorCode = responseData.error?.code;
         if (
           templateName
+          && Number(errorCode) === 132000
+          && attempt < maxMetaSendAttempts
+          && recoverTemplateParamCountMismatch(
+            messagePayload,
+            responseData.error as Record<string, unknown> | undefined,
+            template132000Recoveries,
+          )
+        ) {
+          lastError = responseData.error;
+          continue;
+        }
+        if (
+          templateName
           && Number(errorCode) === 135000
           && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
           && template135000RecoveryStep === 0
@@ -1231,6 +1298,7 @@ Deno.serve(async (req) => {
         131051: '(#131051) Formato de template incorreto ou parâmetros inválidos.',
         131000: '(#131000) Erro interno do servidor Meta. Tente novamente.',
         130472: '(#130472) Número de destino inválido ou não registrado no WhatsApp.',
+        132000: '(#132000) Variáveis do template não conferem com o template aprovado na Meta. O sistema tentou ajustar automaticamente; se persistir, sincronize/recrie o template.',
         132001: '(#132001) Template não existe ou idioma não disponível. Sincronize os templates.',
         10: '(#10) Sem permissão para enviar mensagens. Configure permissões no Meta Business Suite.',
         3: '(#3) Permissão granular ausente. Configure no Meta Developer Console.',
