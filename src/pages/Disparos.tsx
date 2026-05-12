@@ -1014,7 +1014,9 @@ const Disparos = () => {
   const resetForm = () => {
     setSelectedChannels([]);
     setChannelTemplates({});
-    setUseUnifiedTemplate(true);
+    setTemplateMode('template_unified');
+    setSelectedFlowId("");
+    setChannelFlows({});
     setRecipientData({ phones: [], source: null });
     setManualVariables({});
     setChannelManualVariables({});
