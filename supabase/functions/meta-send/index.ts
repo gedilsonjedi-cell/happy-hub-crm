@@ -808,6 +808,7 @@ Deno.serve(async (req) => {
     let customHeaderMediaUrl: string | null = null;
     let template135000RecoveryStep = 0;
     let activeMetaMessagesApiBase = META_API_BASE;
+    let alternateMetaApiBaseIndex = 1;
     const sanitizedTemplateParams = Array.isArray(templateParams)
       ? templateParams.map((param) => sanitizeTemplateParam(String(param ?? '')))
       : [];
@@ -1101,10 +1102,11 @@ Deno.serve(async (req) => {
     let lastResponseData: Record<string, unknown> | null = null;
     let metaResponse: Response | null = null;
     
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const maxMetaSendAttempts = templateName ? MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS : MAX_RETRIES;
+    for (let attempt = 0; attempt <= maxMetaSendAttempts; attempt++) {
       if (attempt > 0) {
         const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Exponential backoff
-        console.log(`[Meta-Send] Retry attempt ${attempt}/${MAX_RETRIES} after ${delayMs}ms...`);
+        console.log(`[Meta-Send] Retry attempt ${attempt}/${maxMetaSendAttempts} after ${delayMs}ms...`);
         await sleep(delayMs);
       }
       
@@ -1170,9 +1172,10 @@ Deno.serve(async (req) => {
           continue;
         }
         if (templateName && Number(errorCode) === 135000 && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS) {
-          const nextApiBase = META_TEMPLATE_SEND_API_BASES.find((apiBase) => apiBase !== activeMetaMessagesApiBase);
+          const nextApiBase = META_TEMPLATE_SEND_API_BASES[alternateMetaApiBaseIndex];
           if (nextApiBase) {
             activeMetaMessagesApiBase = nextApiBase;
+            alternateMetaApiBaseIndex += 1;
             template135000RecoveryStep += 1;
             console.log('[Meta-Send] Retrying template with alternate Meta API version:', activeMetaMessagesApiBase);
             lastError = responseData.error;
