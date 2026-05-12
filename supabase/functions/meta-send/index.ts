@@ -1072,6 +1072,7 @@ Deno.serve(async (req) => {
       }
       
       try {
+        const payloadForAttempt = JSON.stringify(messagePayload);
         metaResponse = await fetch(
           `${META_API_BASE}/${phoneNumberId}/messages`,
           {
@@ -1080,7 +1081,7 @@ Deno.serve(async (req) => {
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(messagePayload)
+            body: payloadForAttempt
           }
         );
 
@@ -1096,6 +1097,16 @@ Deno.serve(async (req) => {
         
         // Check if this error is retryable
         const errorCode = responseData.error?.code;
+        if (
+          templateName
+          && Number(errorCode) === 135000
+          && attempt === 0
+          && await convertTemplateHeaderLinkToMediaId(messagePayload, phoneNumberId, accessToken)
+        ) {
+          console.log('[Meta-Send] Generic template error may be header media link related; retrying with uploaded media id...');
+          lastError = responseData.error;
+          continue;
+        }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
           lastError = responseData.error;
