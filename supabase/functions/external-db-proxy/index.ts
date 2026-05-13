@@ -387,6 +387,9 @@ Deno.serve(async (req: Request) => {
       case "messages": {
         return await handleMessages(extSupabase, organizationId, body);
       }
+      case "lead_messages": {
+        return await handleLeadMessages(extSupabase, organizationId, body);
+      }
       case "leads": {
         return await handleLeads(extSupabase, organizationId, body);
       }
@@ -526,6 +529,94 @@ async function handleMessages(
     JSON.stringify({ messages: page, nextCursor, hasMore }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
+}
+
+async function handleLeadMessages(
+  ext: ReturnType<typeof createClient>,
+  organizationId: string,
+  body: Record<string, unknown>
+) {
+  const {
+    phoneVariants,
+    channelIds = [],
+    limit = 100,
+  } = body as {
+    phoneVariants: string[];
+    channelIds?: string[];
+    limit?: number;
+  };
+
+  if (!phoneVariants?.length) {
+    return new Response(JSON.stringify({ error: "phoneVariants required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const phoneLookup = buildPhoneLookup(phoneVariants);
+  const suffixes = Array.from(phoneLookup.suffixes).sort((a, b) => b.length - a.length);
+  const inboundOr = suffixes.map((suffix) => `sender_phone.like.%${suffix}`).join(",");
+  const outboundOr = suffixes
+    .flatMap((suffix) =>
+      ["destination", "to", "phone", "contact_phone", "contactPhone", "recipient_phone", "recipientPhone"]
+        .map((field) => `metadata->>${field}.like.%${suffix}`)
+    )
+    .join(",");
+
+  if (!suffixes.length || !inboundOr || !outboundOr) {
+    return new Response(JSON.stringify({ messages: [] }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const selectFields =
+    "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+
+  const buildQuery = (direction: "inbound" | "outbound", scopedToChannels: boolean) => {
+    let query = ext
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("organization_id", organizationId)
+      .eq("direction", direction);
+
+    if (scopedToChannels && channelIds.length > 0) {
+      query = query.in("channel_id", channelIds);
+    }
+
+    return query;
+  };
+
+  const runPair = async (scopedToChannels: boolean) => {
+    const [inboundResult, outboundResult] = await Promise.all([
+      buildQuery("inbound", scopedToChannels).or(inboundOr).order("created_at", { ascending: false }).limit(limit),
+      buildQuery("outbound", scopedToChannels).or(outboundOr).order("created_at", { ascending: false }).limit(limit),
+    ]);
+
+    if (inboundResult.error) throw inboundResult.error;
+    if (outboundResult.error) throw outboundResult.error;
+    return ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as MessageRecord[]);
+  };
+
+  let rows = await runPair(channelIds.length > 0);
+  if (rows.length === 0 && channelIds.length > 0) {
+    rows = await runPair(false);
+  }
+
+  const seen = new Set<string>();
+  const messages = rows
+    .filter((message) => {
+      if (seen.has(message.id)) return false;
+      const direction = message.direction === "outbound" ? "outbound" : "inbound";
+      if (!messageMatchesConversation(message, direction, phoneLookup)) return false;
+      seen.add(message.id);
+      return true;
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit);
+
+  return new Response(JSON.stringify({ messages }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 async function handleLeads(
