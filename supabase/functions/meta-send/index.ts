@@ -339,6 +339,27 @@ function getExpectedBodyParamCount(components: unknown[] | null | undefined): nu
   return placeholderIndexes.size;
 }
 
+function getBodyParameterNames(components: unknown[] | null | undefined): string[] {
+  if (!Array.isArray(components)) return [];
+
+  const bodyComponent = components.find((component) => {
+    const typedComponent = component as MetaTemplateComponent;
+    return typedComponent?.type?.toUpperCase() === 'BODY';
+  }) as MetaTemplateComponent | undefined;
+
+  const namedParams = bodyComponent?.example?.body_text_named_params;
+  if (Array.isArray(namedParams) && namedParams.length > 0) {
+    return namedParams
+      .map((param) => String(param?.param_name || '').trim())
+      .filter(Boolean);
+  }
+
+  if (!bodyComponent?.text) return [];
+  return [...bodyComponent.text.matchAll(/\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/gi)]
+    .map((match) => match[1])
+    .filter(Boolean);
+}
+
 interface MetaHeaderInfo {
   format: string | null; // TEXT, IMAGE, VIDEO, DOCUMENT
   hasVariable: boolean;
