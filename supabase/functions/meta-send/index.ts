@@ -239,12 +239,16 @@ async function sleep(ms: number): Promise<void> {
 interface MetaTemplateDefinition {
   languageCode: string | null;
   status?: string | null;
+  parameterFormat?: string | null;
   components?: unknown[] | null;
 }
 
 interface MetaTemplateComponent {
   type?: string;
   text?: string;
+  example?: {
+    body_text_named_params?: Array<{ param_name?: string; example?: string }>;
+  };
 }
 
 async function fetchMetaTemplateDefinition(
@@ -267,13 +271,13 @@ async function fetchMetaTemplateDefinition(
     }
 
     return await response.json() as {
-      data?: Array<{ name?: string; language?: string; status?: string; components?: unknown[] }>;
+      data?: Array<{ name?: string; language?: string; status?: string; parameter_format?: string; components?: unknown[] }>;
       paging?: { next?: string };
     };
   };
 
   const initialUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
-  initialUrl.searchParams.set('fields', 'name,language,status,components');
+  initialUrl.searchParams.set('fields', 'name,language,status,parameter_format,components');
   initialUrl.searchParams.set('limit', '100');
   initialUrl.searchParams.set('name', templateName);
 
@@ -287,6 +291,7 @@ async function fetchMetaTemplateDefinition(
       return {
         languageCode: match.language ?? null,
         status: match.status ?? null,
+        parameterFormat: match.parameter_format ?? null,
         components: match.components ?? null,
       };
     }
