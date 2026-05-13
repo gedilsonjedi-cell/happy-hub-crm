@@ -176,20 +176,90 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
   } | null>(null);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
 
-  useEffect(() => {
-    if (flowBotId) {
-      loadFlowBot();
-    } else {
-      // Create default start node
-      setNodes([{
-        id: `node_${Date.now()}`,
-        type: "start",
-        position: { x: 100, y: 100 },
-        data: { label: "Início" }
-      }]);
-      setIsLoading(false);
+  // ===== Draft persistence (localStorage) =====
+  // Mantém o trabalho em progresso mesmo se o usuário sair da tela ou fechar o navegador.
+  const draftKey = `flowbot_draft_v1:${effectiveOrganizationId || "anon"}:${flowType}:${flowBotId || "new"}`;
+  const draftLoadedRef = useRef(false);
+  const draftHydratingRef = useRef(true);
+
+  const tryLoadDraft = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.nodes) || parsed.nodes.length === 0) return false;
+      setName(parsed.name || "");
+      setDescription(parsed.description || "");
+      setAiEnabled(parsed.aiEnabled ?? true);
+      setAiMessage(parsed.aiMessage ?? "Deixa eu te ajudar com isso!");
+      setTransferMessage(parsed.transferMessage ?? "Vou transferir você para um de nossos atendentes. Aguarde um momento.");
+      setNodes(parsed.nodes);
+      setEdges(parsed.edges || []);
+      if (parsed.zoom) setZoom(parsed.zoom);
+      if (parsed.panOffset) setPanOffset(parsed.panOffset);
+      return true;
+    } catch {
+      return false;
     }
-  }, [flowBotId]);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
+    if (flowBotId) {
+      loadFlowBot().then(() => {
+        const restored = tryLoadDraft();
+        if (restored) toast.info("Rascunho não salvo restaurado");
+        setTimeout(() => { draftHydratingRef.current = false; }, 0);
+      });
+    } else {
+      const restored = tryLoadDraft();
+      if (restored) {
+        toast.info("Rascunho não salvo restaurado");
+      } else {
+        setNodes([{
+          id: `node_${Date.now()}`,
+          type: "start",
+          position: { x: 100, y: 100 },
+          data: { label: "Início" }
+        }]);
+      }
+      setIsLoading(false);
+      setTimeout(() => { draftHydratingRef.current = false; }, 0);
+    }
+  }, [flowBotId, tryLoadDraft]);
+
+  // Auto-save draft (debounced) sempre que algo muda
+  useEffect(() => {
+    if (draftHydratingRef.current) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          name, description, aiEnabled, aiMessage, transferMessage,
+          nodes, edges, zoom, panOffset, savedAt: Date.now(),
+        }));
+      } catch { /* quota cheia — ignora */ }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [draftKey, name, description, aiEnabled, aiMessage, transferMessage, nodes, edges, zoom, panOffset]);
+
+  // Persistir imediatamente se o usuário fechar a aba
+  useEffect(() => {
+    const handler = () => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          name, description, aiEnabled, aiMessage, transferMessage,
+          nodes, edges, zoom, panOffset, savedAt: Date.now(),
+        }));
+      } catch { /* noop */ }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [draftKey, name, description, aiEnabled, aiMessage, transferMessage, nodes, edges, zoom, panOffset]);
+
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(draftKey); } catch { /* noop */ }
+  }, [draftKey]);
 
   // Load Meta templates approved for this organization (used by dispatch flows)
   useEffect(() => {
