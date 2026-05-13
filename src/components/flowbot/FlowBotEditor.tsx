@@ -943,9 +943,19 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                             Nenhum template aprovado
                           </div>
                         ) : (
-                          availableTemplates.map(t => (
-                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                          ))
+                          availableTemplates.map(t => {
+                            const chLabel = t.channels.length
+                              ? t.channels.map(c => c.phone || c.name).join(", ")
+                              : "sem canal vinculado";
+                            return (
+                              <SelectItem key={t.id} value={t.id}>
+                                <div className="flex flex-col">
+                                  <span className="text-sm">{t.name}</span>
+                                  <span className="text-xs text-muted-foreground">{chLabel}</span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })
                         )}
                       </SelectContent>
                     </Select>
