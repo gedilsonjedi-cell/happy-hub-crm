@@ -221,7 +221,7 @@ const ContatoDetalhes = () => {
     const cleanPhone = lead.phone.replace(/\D/g, "");
     const params = new URLSearchParams({ phone: cleanPhone });
     if (channelId) params.set("channelId", channelId);
-    navigate(`/atendimento?${params.toString()}`);
+    navigate(`/atendimento-v2?${params.toString()}`);
   };
 
   const handleLeadUpdated = () => {
