@@ -52,6 +52,22 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
+async function isPhoneBlacklisted(organizationId: string, phone: string): Promise<boolean> {
+  const clean = normalizePhone(phone);
+  const suffix8 = clean.slice(-8);
+  const { data, error } = await supabase
+    .from('blacklist')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .or(`phone.eq.${clean},phone.eq.+${clean},phone.ilike.%${suffix8}`)
+    .limit(1);
+  if (error) {
+    console.warn('[Gupshup Webhook] Blacklist check failed:', error.message);
+    return false;
+  }
+  return !!data?.length;
+}
+
 // ===========================================
 // BUSINESS HOURS CHECK
 // ===========================================
@@ -627,6 +643,11 @@ async function processInboundMessage(
   const normalizedPhone = normalizePhone(senderPhone);
   const channelId = channel.id as string;
   const organizationId = channel.organization_id as string | null;
+
+  if (organizationId && await isPhoneBlacklisted(organizationId, normalizedPhone)) {
+    console.log('Ignoring inbound from blacklisted phone:', normalizedPhone);
+    return new Response('OK', { status: 200, headers: corsHeaders });
+  }
 
   // Extract message content
   let content = '';
