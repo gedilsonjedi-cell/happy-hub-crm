@@ -33,6 +33,7 @@ import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
 import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { fetchExternalMessagesForLead } from "@/lib/externalDb";
 
 interface Lead {
   id: string;
@@ -66,6 +67,7 @@ interface CustomFieldDefinition {
 
 interface WhatsAppMessage {
   id: string;
+  channel_id: string | null;
   content: string | null;
   direction: string;
   message_type: string;
@@ -84,8 +86,13 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 const ContatoDetalhes = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const {
+    effectiveOrganizationId: organizationId,
+    isImpersonating,
+    impersonatedOrganizationId,
+  } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
