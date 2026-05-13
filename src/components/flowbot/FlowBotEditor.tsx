@@ -925,9 +925,14 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
             {nodes.map(node => (
               <div
                 key={node.id}
-                className="absolute"
+                data-node-id={node.id}
+                className={cn(
+                  "absolute select-none",
+                  isDraggingNode && draggingNodeRef.current?.id === node.id ? "cursor-grabbing" : "cursor-grab"
+                )}
                 style={{ left: node.position.x, top: node.position.y, zIndex: 1 }}
-                onClick={() => handleNodeClick(node.id)}
+                onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
+                onClick={(e) => { e.stopPropagation(); handleNodeClick(node.id); }}
               >
                 {node.type === "start" && (
                   <StartNode 
