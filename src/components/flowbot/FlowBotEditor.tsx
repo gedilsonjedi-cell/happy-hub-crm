@@ -497,6 +497,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       }
       
       toast.success("Fluxo salvo com sucesso!");
+      clearDraft();
       onSaved();
     } catch (error) {
       console.error("Error saving flow bot:", error);
