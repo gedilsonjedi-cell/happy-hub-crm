@@ -111,7 +111,7 @@ const ContatoDetalhes = () => {
         .select("id, name, phone, provider")
         .eq("organization_id", organizationId)
         .in("provider", ["meta", "zapi", "gupshup"])
-        .order("created_at", { ascending: false });
+        .eq("connected", true);
 
       if (error) throw error;
       return data || [];
