@@ -42,6 +42,12 @@ export interface StartNodeData {
   label: string;
 }
 
+export interface TemplateNodeData {
+  label: string;
+  template_id: string;
+  template_name?: string;
+}
+
 export interface MessageNodeData {
   label: string;
   message: string;
