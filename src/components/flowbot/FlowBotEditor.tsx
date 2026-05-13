@@ -920,6 +920,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                 y: (mousePosition.y - panOffset.y) / zoom
               } : null}
               onDeleteEdge={handleDeleteEdge}
+              zoom={zoom}
             />
           
             {nodes.map(node => (
