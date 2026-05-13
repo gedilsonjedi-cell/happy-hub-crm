@@ -645,7 +645,9 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         <div className="w-56 border-r border-border bg-muted/30 p-4">
           <h3 className="text-sm font-medium mb-3">Blocos</h3>
           <div className="space-y-2">
-            {nodeTypes.map(nt => (
+            {baseNodeTypes
+              .filter(nt => isDispatch || !nt.dispatchOnly)
+              .map(nt => (
               <div
                 key={nt.type}
                 draggable
