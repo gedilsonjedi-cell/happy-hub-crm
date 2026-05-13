@@ -74,6 +74,22 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
+async function isPhoneBlacklisted(organizationId: string, phone: string): Promise<boolean> {
+  const clean = normalizePhone(phone);
+  const suffix8 = clean.slice(-8);
+  const { data, error } = await supabase
+    .from('blacklist')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .or(`phone.eq.${clean},phone.eq.+${clean},phone.ilike.%${suffix8}`)
+    .limit(1);
+  if (error) {
+    console.warn('[Z-API Webhook] Blacklist check failed:', error.message);
+    return false;
+  }
+  return !!data?.length;
+}
+
 // Helper function to check if currently within business hours
 async function isWithinBusinessHours(organizationId: string): Promise<{ isOpen: boolean; awayMessage: string | null }> {
   const now = new Date();
@@ -888,6 +904,11 @@ Deno.serve(async (req) => {
       // Normalize phone immediately
       const normalizedPhone = normalizePhone(phone);
       let senderName = body.senderName || body.pushName || null;
+
+      if (channel.organization_id && await isPhoneBlacklisted(channel.organization_id, normalizedPhone)) {
+        console.log('Ignoring inbound from blacklisted phone:', normalizedPhone);
+        return new Response('OK', { status: 200, headers: corsHeaders });
+      }
 
       // Extract message content
       let content = '';
