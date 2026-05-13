@@ -90,7 +90,7 @@ function getSourcePosition(node: CanvasNode, handle?: string): { x: number; y: n
 }
 
 function getTargetPosition(node: CanvasNode): { x: number; y: number } {
-  const dims = getNodeDimensions(node.type);
+  const dims = getNodeDimensions(node);
   
   if (node.type === "start") {
     // Circle node - no input
