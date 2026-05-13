@@ -111,7 +111,7 @@ const ContatoDetalhes = () => {
         .select("id, name, phone, provider")
         .eq("organization_id", organizationId)
         .in("provider", ["meta", "zapi", "gupshup"])
-        .eq("connected", true);
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       return data || [];
@@ -184,24 +184,19 @@ const ContatoDetalhes = () => {
 
   // Fetch message history
   const { data: messages = [] } = useQuery({
-    queryKey: ["lead-messages", lead?.phone],
+    queryKey: ["lead-messages", organizationId, lead?.phone, channels.map((c: any) => c.id).join("|")],
     queryFn: async () => {
       if (!lead?.phone || !organizationId) return [];
 
-      const cleanPhone = lead.phone.replace(/\D/g, "");
-      
-      const { data, error } = await supabase
-        .from("whatsapp_messages")
-        .select("id, content, direction, message_type, created_at, sender_name")
-        .eq("organization_id", organizationId)
-        .eq("sender_phone", cleanPhone)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return (data || []) as WhatsAppMessage[];
+      return fetchExternalMessagesForLead({
+        phone: lead.phone,
+        organizationId,
+        channelIds: channels.map((channel: any) => channel.id),
+        impersonatedOrgId: externalImpersonatedOrgId,
+        limit: 100,
+      }) as Promise<WhatsAppMessage[]>;
     },
-    enabled: !!lead?.phone && !!organizationId,
+    enabled: !!lead?.phone && !!organizationId && channels.length > 0,
   });
 
   const handleLeadUpdated = () => {
