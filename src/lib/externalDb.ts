@@ -417,8 +417,38 @@ export async function fetchExternalMessagesForLead(params: {
   if (inboundResult.error) throw new Error(inboundResult.error.message);
   if (outboundResult.error) throw new Error(outboundResult.error.message);
 
+  let combined = ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as ExternalMessageRow[]);
+
+  // Legacy campaign/webhook rows may have channel_id saved as the contact phone
+  // instead of the WhatsApp channel UUID. If channel filtering hides everything,
+  // retry organization-wide by phone so existing history is never shown as empty.
+  if (combined.length === 0 && channelIds.length > 0) {
+    const [wideInboundResult, wideOutboundResult] = await Promise.all([
+      ext
+        .from("whatsapp_messages")
+        .select(selectFields)
+        .eq("organization_id", params.organizationId)
+        .eq("direction", "inbound")
+        .or(inboundOr)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      ext
+        .from("whatsapp_messages")
+        .select(selectFields)
+        .eq("organization_id", params.organizationId)
+        .eq("direction", "outbound")
+        .or(outboundOr)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    ]);
+
+    if (wideInboundResult.error) throw new Error(wideInboundResult.error.message);
+    if (wideOutboundResult.error) throw new Error(wideOutboundResult.error.message);
+    combined = ([...(wideInboundResult.data ?? []), ...(wideOutboundResult.data ?? [])] as ExternalMessageRow[]);
+  }
+
   const seen = new Set<string>();
-  return ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as ExternalMessageRow[])
+  return combined
     .filter((message) => {
       if (seen.has(message.id)) return false;
       const direction = message.direction === "outbound" ? "outbound" : "inbound";
