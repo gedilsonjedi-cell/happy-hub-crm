@@ -489,9 +489,12 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
   };
 
   const handleNodeClick = (nodeId: string) => {
-    // Don't open editor if we're connecting
+    // Don't open editor if we're connecting or just finished a drag
     if (connectingFrom) return;
-    
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     const node = nodes.find(n => n.id === nodeId);
     if (node && node.type !== "start") {
       setSelectedNodeId(nodeId);
