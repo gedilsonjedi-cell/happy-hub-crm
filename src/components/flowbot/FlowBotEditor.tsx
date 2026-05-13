@@ -165,6 +165,17 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
+  // Node-drag state (move blocks around the canvas)
+  const draggingNodeRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startNodeX: number;
+    startNodeY: number;
+    moved: boolean;
+  } | null>(null);
+  const [isDraggingNode, setIsDraggingNode] = useState(false);
+
   useEffect(() => {
     if (flowBotId) {
       loadFlowBot();
