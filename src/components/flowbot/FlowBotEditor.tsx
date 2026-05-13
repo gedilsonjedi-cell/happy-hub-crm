@@ -879,6 +879,38 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                   />
                 </div>
 
+                {/* Template Node */}
+                {selectedNode.type === "template" && (
+                  <div className="space-y-2">
+                    <Label>Template aprovado</Label>
+                    <Select
+                      value={(selectedNode.data as TemplateNodeData).template_id || ""}
+                      onValueChange={v => {
+                        const tpl = availableTemplates.find(t => t.id === v);
+                        updateNodeData(selectedNode.id, { template_id: v, template_name: tpl?.name || "" });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Escolha um template aprovado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableTemplates.length === 0 ? (
+                          <div className="p-3 text-center text-muted-foreground text-sm">
+                            Nenhum template aprovado
+                          </div>
+                        ) : (
+                          availableTemplates.map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Este será o disparo inicial da campanha. Só aparece para canais que possuem este template aprovado.
+                    </p>
+                  </div>
+                )}
+
                 {/* Message Node */}
                 {selectedNode.type === "message" && (
                   <div className="space-y-2">
