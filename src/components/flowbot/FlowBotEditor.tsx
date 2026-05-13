@@ -204,6 +204,17 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         });
       }
       
+      // Backfill: if dispatch flow has legacy template_id on bot but no template node, create one
+      const legacyTemplateId = ((bot as Record<string, unknown>).template_id as string) || "";
+      if (flowType === "dispatch" && legacyTemplateId && !canvasNodes.some(n => n.type === "template")) {
+        canvasNodes.push({
+          id: `node_tpl_${Date.now()}`,
+          type: "template",
+          position: { x: 380, y: 100 },
+          data: { label: "Template Inicial", template_id: legacyTemplateId, template_name: "" }
+        });
+      }
+      
       setNodes(canvasNodes);
       
       // Load edges
