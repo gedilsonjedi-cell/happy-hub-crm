@@ -77,7 +77,7 @@ function scheduleAutoRefresh(scopeKey: string, impersonatedOrgId?: string | null
 async function refreshTokenInPlace(
   scopeKey: string,
   impersonatedOrgId?: string | null
-): Promise<void> {
+): Promise<ExternalAuthResponse> {
   let refreshPromise = refreshPromises.get(scopeKey);
   if (!refreshPromise) {
     refreshPromise = fetchExternalAuth(impersonatedOrgId).finally(() => {
@@ -91,10 +91,15 @@ async function refreshTokenInPlace(
 
   const client = clientCache.get(scopeKey);
   if (client) {
-    // Update Authorization header for REST calls
-    (client as unknown as { rest: { headers: Record<string, string> } }).rest.headers[
-      "Authorization"
-    ] = `Bearer ${auth.token}`;
+    // Best-effort: update REST headers in place (some supabase-js internals
+    // read from this Map; the accessToken callback below is the real fix).
+    try {
+      (client as unknown as { rest: { headers: Record<string, string> } }).rest.headers[
+        "Authorization"
+      ] = `Bearer ${auth.token}`;
+    } catch {
+      /* ignore */
+    }
     // Update Realtime WebSocket auth (keeps the connection alive)
     try {
       client.realtime.setAuth(auth.token);
@@ -104,6 +109,23 @@ async function refreshTokenInPlace(
   }
 
   scheduleAutoRefresh(scopeKey, impersonatedOrgId);
+  return auth;
+}
+
+/**
+ * Returns a valid (non-expired) JWT for the given scope, refreshing it
+ * synchronously if needed. Used as the `accessToken` callback so that every
+ * REST request sent by supabase-js carries a fresh Authorization header.
+ */
+async function getValidToken(
+  scopeKey: string,
+  impersonatedOrgId?: string | null
+): Promise<string> {
+  if (isTokenValid(scopeKey)) {
+    return authCache.get(scopeKey)!.token;
+  }
+  const auth = await refreshTokenInPlace(scopeKey, impersonatedOrgId);
+  return auth.token;
 }
 
 /**
@@ -190,6 +212,11 @@ export async function getExternalClient(
         Authorization: `Bearer ${auth.token}`,
       },
     },
+    // Per-request fresh token: supabase-js >=2.43 invokes this callback on
+    // every REST/Realtime call and uses the returned value as the bearer
+    // token. This guarantees we never send an expired JWT, even after the
+    // 5-minute TTL elapses while the tab was idle.
+    accessToken: async () => getValidToken(scopeKey, impersonatedOrgId),
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -199,7 +226,7 @@ export async function getExternalClient(
         eventsPerSecond: 10,
       },
     },
-  });
+  } as Parameters<typeof createClient>[2]);
 
   // Authenticate the Realtime WebSocket with our custom JWT so RLS applies
   try {
