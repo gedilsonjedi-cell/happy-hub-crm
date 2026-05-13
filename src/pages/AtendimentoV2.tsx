@@ -2000,11 +2000,21 @@ const AtendimentoV2 = () => {
     const phoneEnd = normalizedPhoneToOpen.slice(-8);
     
     // First, try to find in existing conversations (any status including archived)
+    // Prefer the channel sent in the URL so links from lead history open the exact thread.
     let matchingConversation = allConversations.find(c => {
       const conversationPhoneNormalized = c.phone.replace(/\D/g, '');
-      return conversationPhoneNormalized.endsWith(phoneEnd) || 
-             normalizedPhoneToOpen.endsWith(conversationPhoneNormalized.slice(-8));
+      const phoneMatches = conversationPhoneNormalized.endsWith(phoneEnd) ||
+        normalizedPhoneToOpen.endsWith(conversationPhoneNormalized.slice(-8));
+      return phoneMatches && (!channelIdToOpen || c.channelId === channelIdToOpen);
     });
+
+    if (!matchingConversation) {
+      matchingConversation = allConversations.find(c => {
+        const conversationPhoneNormalized = c.phone.replace(/\D/g, '');
+        return conversationPhoneNormalized.endsWith(phoneEnd) ||
+          normalizedPhoneToOpen.endsWith(conversationPhoneNormalized.slice(-8));
+      });
+    }
     
     if (matchingConversation) {
       // If archived, show archived view
@@ -2051,7 +2061,7 @@ const AtendimentoV2 = () => {
       setPhoneToOpen(null);
       setSearchParams({}, { replace: true });
     }
-  }, [phoneToOpen, allConversations, channels, selectedConversation]);
+  }, [phoneToOpen, allConversations, channels, selectedConversation, channelIdToOpen, setSearchParams]);
 
   // Fetch contact tags
   useEffect(() => {
