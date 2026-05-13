@@ -80,6 +80,13 @@ interface LeadTag {
   color: string;
 }
 
+const normalizeSearchText = (value: string | null | undefined) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const statusConfig: Record<string, { label: string; className: string }> = {
   new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/30" },
   contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/30" },
@@ -146,7 +153,8 @@ const Leads = () => {
     queryFn: async () => {
       if (!effectiveOrganizationId) return [];
 
-      const term = debouncedSearchTerm.trim().toLowerCase();
+      const rawTerm = debouncedSearchTerm.trim();
+      const term = normalizeSearchText(rawTerm);
       const termDigits = debouncedSearchTerm.replace(/\D/g, '');
       
       // Split search term into individual words for better matching
@@ -160,44 +168,47 @@ const Leads = () => {
           .select("*")
           .eq("organization_id", effectiveOrganizationId);
 
-        // Use or() for multiple field search
+        // Use server-side narrowing, then client-side normalized matching.
+        // Multi-word names must match ALL typed words anywhere in the name,
+        // otherwise common words like "da/de/silva" can push the real lead out
+        // of the 10k result window.
         const orConditions: string[] = [];
         
-        // Name search - if multiple words, each word must be present
+        let nameAndQuery = query;
         if (searchWords.length > 1) {
-          // For multi-word search, we'll search for the whole phrase first
-          orConditions.push(`name.ilike.%${term}%`);
-          // Also add individual word matching - find records where ALL words appear
-          // This is done by searching for each word separately
-          searchWords.forEach(word => {
-            orConditions.push(`name.ilike.%${word}%`);
+          searchWords.filter(word => word.length >= 3).forEach(word => {
+            nameAndQuery = nameAndQuery.ilike("name", `%${word}%`);
           });
         } else {
           // Single word search
-          orConditions.push(`name.ilike.%${term}%`);
+          orConditions.push(`name.ilike.%${rawTerm}%`);
         }
         
         // Email search
-        orConditions.push(`email.ilike.%${term}%`);
+        orConditions.push(`email.ilike.%${rawTerm}%`);
         
         // Document search
-        orConditions.push(`document.ilike.%${term}%`);
+        orConditions.push(`document.ilike.%${rawTerm}%`);
         
         // City search
-        orConditions.push(`city.ilike.%${term}%`);
+        orConditions.push(`city.ilike.%${rawTerm}%`);
         
         // State search
-        orConditions.push(`state.ilike.%${term}%`);
+        orConditions.push(`state.ilike.%${rawTerm}%`);
         
         // Notes search
-        orConditions.push(`notes.ilike.%${term}%`);
+        orConditions.push(`notes.ilike.%${rawTerm}%`);
 
         // Phone search - use digits only for better matching
         if (termDigits.length >= 4) {
           orConditions.push(`phone.ilike.%${termDigits}%`);
         }
 
-        query = query.or(orConditions.join(','));
+        if (searchWords.length > 1) {
+          query = nameAndQuery;
+        } else {
+          query = query.or(orConditions.join(','));
+        }
 
         // Apply tag filter if selected
         if (selectedTagFilters.length > 0) {
@@ -213,7 +224,7 @@ const Leads = () => {
         // If multiple search words, filter client-side to ensure ALL words match the name
         if (searchWords.length > 1 && data) {
           data = data.filter(lead => {
-            const leadName = lead.name.toLowerCase();
+            const leadName = normalizeSearchText(lead.name);
             return searchWords.every(word => leadName.includes(word));
           });
         }
