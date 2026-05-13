@@ -21,33 +21,67 @@ const NODE_WIDTH = 256; // w-64 = 16rem = 256px
 const NODE_HEIGHT_START = 64;
 const NODE_HEIGHT_DEFAULT = 120;
 const START_NODE_WIDTH = 128;
+const TEMPLATE_NODE_WIDTH = 320; // w-80
 
-function getNodeDimensions(type: string) {
-  if (type === "start") {
+function estimateTemplateHeight(data: any): number {
+  let h = 44; // header bar
+  h += 12; // top padding of body container
+  if (data?.header_url) h += 132 + 8; // image + gap
+  if (data?.body) {
+    const lines = Math.min(8, Math.ceil(String(data.body).length / 38));
+    h += 16 + lines * 14 + 8; // body box
+  }
+  if (data?.footer) h += 16;
+  const btns = (data?.buttons || []) as any[];
+  if (btns.length) h += 4 + btns.length * 32;
+  h += 12; // bottom padding
+  return h;
+}
+
+function getNodeDimensions(node: CanvasNode) {
+  if (node.type === "start") {
     return { width: START_NODE_WIDTH, height: NODE_HEIGHT_START };
+  }
+  if (node.type === "template") {
+    return { width: TEMPLATE_NODE_WIDTH, height: estimateTemplateHeight(node.data) };
   }
   return { width: NODE_WIDTH, height: NODE_HEIGHT_DEFAULT };
 }
 
 function getSourcePosition(node: CanvasNode, handle?: string): { x: number; y: number } {
-  const dims = getNodeDimensions(node.type);
+  const dims = getNodeDimensions(node);
   
   if (node.type === "start") {
-    // Circle node - output from right center
     return { x: node.position.x + dims.width, y: node.position.y + dims.height / 2 };
   }
   
   if (node.type === "buttons" && handle) {
-    // Buttons have handles for each button option
     const buttons = (node.data as any).buttons || [];
     const buttonIndex = buttons.findIndex((b: any) => b.id === handle);
     if (buttonIndex >= 0) {
-      // Position handle at the right side, spaced vertically for each button
-      const headerHeight = 44; // Header height
-      const buttonAreaStart = headerHeight + 40; // Message area
+      const headerHeight = 44;
+      const buttonAreaStart = headerHeight + 40;
       const buttonSpacing = 24;
       const yOffset = buttonAreaStart + buttonIndex * buttonSpacing + 12;
       return { x: node.position.x + dims.width, y: node.position.y + Math.min(yOffset, dims.height - 10) };
+    }
+  }
+  
+  if (node.type === "template" && handle) {
+    const data: any = node.data || {};
+    const buttons = (data.buttons || []) as any[];
+    const buttonIndex = buttons.findIndex((b: any) => b.id === handle);
+    if (buttonIndex >= 0) {
+      let yStart = 44 + 12;
+      if (data.header_url) yStart += 132 + 8;
+      if (data.body) {
+        const lines = Math.min(8, Math.ceil(String(data.body).length / 38));
+        yStart += 16 + lines * 14 + 8;
+      }
+      if (data.footer) yStart += 16;
+      yStart += 4; // pt-1
+      const y = yStart + buttonIndex * 32 + 14;
+      return { x: node.position.x + dims.width, y: node.position.y + y };
     }
   }
   
@@ -56,7 +90,7 @@ function getSourcePosition(node: CanvasNode, handle?: string): { x: number; y: n
 }
 
 function getTargetPosition(node: CanvasNode): { x: number; y: number } {
-  const dims = getNodeDimensions(node.type);
+  const dims = getNodeDimensions(node);
   
   if (node.type === "start") {
     // Circle node - no input

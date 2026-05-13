@@ -74,7 +74,42 @@ interface DispatchTemplateOption {
   id: string;
   name: string;
   status: string;
+  content: string;
+  components: any[] | null;
   channels: { id: string; name: string; phone: string }[];
+}
+
+// Parse Meta-style template components into header_url, body, footer, buttons
+export function parseTemplateComponents(content: string, components: any[] | null) {
+  let header_url = "";
+  let body = content || "";
+  let footer = "";
+  const buttons: { id: string; text: string; type: string }[] = [];
+  if (Array.isArray(components)) {
+    for (const c of components) {
+      const type = String(c?.type || "").toUpperCase();
+      if (type === "HEADER") {
+        const fmt = String(c?.format || "").toUpperCase();
+        if (fmt === "IMAGE" || fmt === "VIDEO" || fmt === "DOCUMENT") {
+          header_url = c?.example?.header_handle?.[0] || "";
+        }
+      } else if (type === "BODY") {
+        body = c?.text || body;
+      } else if (type === "FOOTER") {
+        footer = c?.text || "";
+      } else if (type === "BUTTONS") {
+        const list = Array.isArray(c?.buttons) ? c.buttons : [];
+        list.forEach((b: any, i: number) => {
+          buttons.push({
+            id: `tplbtn_${i}`,
+            text: String(b?.text || `Botão ${i + 1}`),
+            type: String(b?.type || "QUICK_REPLY").toUpperCase(),
+          });
+        });
+      }
+    }
+  }
+  return { header_url, body, footer, buttons };
 }
 
 interface Edge {
@@ -152,11 +187,11 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       // Templates approved (case-insensitive)
       const { data: tpls } = await supabase
         .from("message_templates")
-        .select("id, name, status")
+        .select("id, name, status, content, components")
         .eq("organization_id", effectiveOrganizationId)
         .ilike("status", "approved")
         .order("name", { ascending: true });
-      const tplList = (tpls || []) as { id: string; name: string; status: string }[];
+      const tplList = (tpls || []) as { id: string; name: string; status: string; content: string; components: any }[];
 
       // Load channels of this organization
       const { data: chs } = await supabase
@@ -931,7 +966,18 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                       value={(selectedNode.data as TemplateNodeData).template_id || ""}
                       onValueChange={v => {
                         const tpl = availableTemplates.find(t => t.id === v);
-                        updateNodeData(selectedNode.id, { template_id: v, template_name: tpl?.name || "" });
+                        const parsed = tpl ? parseTemplateComponents(tpl.content || "", tpl.components) : { header_url: "", body: "", footer: "", buttons: [] };
+                        // Remove edges from old template buttons that no longer exist
+                        const validHandles = new Set(parsed.buttons.map(b => b.id));
+                        setEdges(prev => prev.filter(e => e.source !== selectedNode.id || !e.sourceHandle?.startsWith("tplbtn_") || validHandles.has(e.sourceHandle)));
+                        updateNodeData(selectedNode.id, {
+                          template_id: v,
+                          template_name: tpl?.name || "",
+                          header_url: parsed.header_url,
+                          body: parsed.body,
+                          footer: parsed.footer,
+                          buttons: parsed.buttons,
+                        });
                       }}
                     >
                       <SelectTrigger>
