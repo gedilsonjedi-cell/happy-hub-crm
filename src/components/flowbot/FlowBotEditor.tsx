@@ -795,6 +795,15 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                     onStartConnect={() => handleStartConnect(node.id)}
                   />
                 )}
+                {node.type === "template" && (
+                  <TemplateNode 
+                    data={node.data as TemplateNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={() => handleStartConnect(node.id)}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
                 {node.type === "message" && (
                   <MessageNode 
                     data={node.data as MessageNodeData} 
