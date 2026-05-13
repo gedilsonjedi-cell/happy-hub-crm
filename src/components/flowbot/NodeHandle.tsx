@@ -10,6 +10,9 @@ interface NodeHandleProps {
   className?: string;
 }
 
+// Marker class so the EdgeRenderer can locate the handle DOM nodes precisely.
+const HANDLE_MARKER_CLASS = "flowbot-handle";
+
 export function NodeHandle({ 
   type, 
   position, 
@@ -43,7 +46,8 @@ export function NodeHandle({
   return (
     <div
       className={cn(
-        "absolute w-4 h-4 rounded-full border-2 border-primary bg-background z-10 transition-all",
+        HANDLE_MARKER_CLASS,
+        "absolute w-4 h-4 rounded-full border-2 border-primary bg-background z-20 transition-all",
         type === "source" && "cursor-crosshair hover:bg-primary hover:scale-125",
         type === "target" && isConnecting && "bg-primary/50 scale-125 animate-pulse",
         positionStyles[position],
@@ -52,7 +56,8 @@ export function NodeHandle({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       data-handle-type={type}
-      data-handle-id={handleId}
+      data-handle-id={handleId ?? ""}
+      data-flowbot-handle="true"
     />
   );
 }
