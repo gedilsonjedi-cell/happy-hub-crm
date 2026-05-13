@@ -187,11 +187,11 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       // Templates approved (case-insensitive)
       const { data: tpls } = await supabase
         .from("message_templates")
-        .select("id, name, status")
+        .select("id, name, status, content, components")
         .eq("organization_id", effectiveOrganizationId)
         .ilike("status", "approved")
         .order("name", { ascending: true });
-      const tplList = (tpls || []) as { id: string; name: string; status: string }[];
+      const tplList = (tpls || []) as { id: string; name: string; status: string; content: string; components: any }[];
 
       // Load channels of this organization
       const { data: chs } = await supabase
