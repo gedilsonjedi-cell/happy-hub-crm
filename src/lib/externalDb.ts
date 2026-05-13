@@ -397,14 +397,25 @@ export async function fetchExternalMessagesForLead(params: {
   };
 
   const fetchViaProxy = async () => {
-    const data = await invokeExternalProxy<{ messages: ExternalMessageRow[] }>({
-      action: "lead_messages",
-      phoneVariants,
-      channelIds,
-      limit,
-      impersonatedOrgId: params.impersonatedOrgId,
-    });
-    return filterAndSort(data.messages ?? []);
+    if (channelIds.length === 0) return [];
+
+    const pages = await Promise.all(
+      channelIds.map((channelId) =>
+        invokeExternalProxy<{ messages: ExternalMessageRow[] }>({
+          action: "messages",
+          channelId,
+          phoneVariants,
+          cursor: null,
+          pageSize: limit,
+          impersonatedOrgId: params.impersonatedOrgId,
+        }).catch((error) => {
+          console.warn(`[externalDb] Lead history proxy failed for channel ${channelId}:`, getErrorMessage(error));
+          return { messages: [] as ExternalMessageRow[] };
+        })
+      )
+    );
+
+    return filterAndSort(pages.flatMap((page) => page.messages ?? []));
   };
 
   if (isDirectReadDisabled()) {
