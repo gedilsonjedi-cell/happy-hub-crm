@@ -196,8 +196,16 @@ const ContatoDetalhes = () => {
         limit: 100,
       }) as Promise<WhatsAppMessage[]>;
     },
-    enabled: !!lead?.phone && !!organizationId && channels.length > 0,
+    enabled: !!lead?.phone && !!organizationId,
   });
+
+  const openConversationInAttendance = (channelId?: string | null) => {
+    if (!lead?.phone) return;
+    const cleanPhone = lead.phone.replace(/\D/g, "");
+    const params = new URLSearchParams({ phone: cleanPhone });
+    if (channelId) params.set("channelId", channelId);
+    navigate(`/atendimento?${params.toString()}`);
+  };
 
   const handleLeadUpdated = () => {
     queryClient.invalidateQueries({ queryKey: ["lead-details", id] });
@@ -221,23 +229,12 @@ const ContatoDetalhes = () => {
     setCheckingConversation(true);
 
     try {
-      const cleanPhone = lead.phone.replace(/\D/g, "");
+      const latestMessage = messages[0];
 
-      // Check if there's an existing conversation with messages
-      const { data: existingMessages, error } = await supabase
-        .from("whatsapp_messages")
-        .select("id, channel_id")
-        .eq("organization_id", organizationId)
-        .eq("sender_phone", cleanPhone)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (error) throw error;
-
-      if (existingMessages && existingMessages.length > 0) {
+      if (latestMessage) {
         // There's an existing conversation - navigate to chat with phone pre-selected
         toast.success("Abrindo conversa existente...");
-        navigate(`/atendimento?phone=${cleanPhone}`);
+        openConversationInAttendance(latestMessage.channel_id);
       } else {
         // No existing conversation - open the manual send dialog
         if (!selectedChannel && channels.length > 0) {
