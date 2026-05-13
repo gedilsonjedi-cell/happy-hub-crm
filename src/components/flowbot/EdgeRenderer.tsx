@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CanvasNode } from "./types";
 
 interface Edge {
@@ -14,185 +14,113 @@ interface EdgeRendererProps {
   connectingFrom: { nodeId: string; handle?: string } | null;
   mousePosition: { x: number; y: number } | null;
   onDeleteEdge?: (edgeId: string) => void;
+  zoom?: number;
 }
 
-// Node dimensions for calculating handle positions
-const NODE_WIDTH = 256; // w-64 = 16rem = 256px
-const NODE_HEIGHT_START = 64;
-const NODE_HEIGHT_DEFAULT = 120;
-const START_NODE_WIDTH = 128;
-const TEMPLATE_NODE_WIDTH = 320; // w-80
+type Point = { x: number; y: number };
 
-function estimateTemplateHeight(data: any): number {
-  let h = 44; // header bar
-  h += 12; // top padding of body container
-  if (data?.header_url) h += 132 + 8; // image + gap
-  if (data?.body) {
-    const lines = Math.min(8, Math.ceil(String(data.body).length / 38));
-    h += 16 + lines * 14 + 8; // body box
-  }
-  if (data?.footer) h += 16;
-  const btns = (data?.buttons || []) as any[];
-  if (btns.length) h += 4 + btns.length * 32;
-  h += 12; // bottom padding
-  return h;
+// Measure a handle DOM element relative to the .canvas-content (untransformed coords).
+function measureHandle(nodeId: string, handle: string | undefined, type: "source" | "target", zoom: number): Point | null {
+  const root = document.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`);
+  if (!root) return null;
+  const handles = root.querySelectorAll(`[data-handle-type="${type}"]`);
+  let el: HTMLElement | null = null;
+  const wanted = handle ?? "";
+  handles.forEach((h) => {
+    if (el) return;
+    const hid = h.getAttribute("data-handle-id") ?? "";
+    if (hid === wanted) el = h as HTMLElement;
+  });
+  if (!el && handles.length > 0) el = handles[0] as HTMLElement;
+  if (!el) return null;
+
+  const canvas = document.querySelector(".canvas-content") as HTMLElement | null;
+  if (!canvas) return null;
+  const cRect = canvas.getBoundingClientRect();
+  const hRect = el.getBoundingClientRect();
+  const z = zoom || 1;
+  return {
+    x: (hRect.left + hRect.width / 2 - cRect.left) / z,
+    y: (hRect.top + hRect.height / 2 - cRect.top) / z,
+  };
 }
 
-function getNodeDimensions(node: CanvasNode) {
-  if (node.type === "start") {
-    return { width: START_NODE_WIDTH, height: NODE_HEIGHT_START };
-  }
-  if (node.type === "template") {
-    return { width: TEMPLATE_NODE_WIDTH, height: estimateTemplateHeight(node.data) };
-  }
-  return { width: NODE_WIDTH, height: NODE_HEIGHT_DEFAULT };
+function fallbackNodeCenter(node: CanvasNode | undefined): Point {
+  if (!node) return { x: 0, y: 0 };
+  return { x: node.position.x + 100, y: node.position.y + 40 };
 }
 
-function getSourcePosition(node: CanvasNode, handle?: string): { x: number; y: number } {
-  const dims = getNodeDimensions(node);
-  
-  if (node.type === "start") {
-    return { x: node.position.x + dims.width, y: node.position.y + dims.height / 2 };
-  }
-  
-  if (node.type === "buttons" && handle) {
-    const buttons = (node.data as any).buttons || [];
-    const buttonIndex = buttons.findIndex((b: any) => b.id === handle);
-    if (buttonIndex >= 0) {
-      const headerHeight = 44;
-      const buttonAreaStart = headerHeight + 40;
-      const buttonSpacing = 24;
-      const yOffset = buttonAreaStart + buttonIndex * buttonSpacing + 12;
-      return { x: node.position.x + dims.width, y: node.position.y + Math.min(yOffset, dims.height - 10) };
-    }
-  }
-  
-  if (node.type === "template" && handle) {
-    const data: any = node.data || {};
-    const buttons = (data.buttons || []) as any[];
-    const buttonIndex = buttons.findIndex((b: any) => b.id === handle);
-    if (buttonIndex >= 0) {
-      let yStart = 44 + 12;
-      if (data.header_url) yStart += 132 + 8;
-      if (data.body) {
-        const lines = Math.min(8, Math.ceil(String(data.body).length / 38));
-        yStart += 16 + lines * 14 + 8;
-      }
-      if (data.footer) yStart += 16;
-      yStart += 4; // pt-1
-      const y = yStart + buttonIndex * 32 + 14;
-      return { x: node.position.x + dims.width, y: node.position.y + y };
-    }
-  }
-  
-  // Default - output from bottom center
-  return { x: node.position.x + dims.width / 2, y: node.position.y + dims.height };
-}
-
-function getTargetPosition(node: CanvasNode): { x: number; y: number } {
-  const dims = getNodeDimensions(node);
-  
-  if (node.type === "start") {
-    // Circle node - no input
-    return { x: node.position.x, y: node.position.y + dims.height / 2 };
-  }
-  
-  // Default - input from top center
-  return { x: node.position.x + dims.width / 2, y: node.position.y };
-}
-
-function createCurvePath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+function createCurvePath(from: Point, to: Point): string {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  
-  // Determine curve direction
-  const controlPointOffset = Math.min(Math.abs(dy) * 0.5, 80);
-  
+  const controlPointOffset = Math.min(Math.max(Math.abs(dx) * 0.5, 40), 120);
   if (Math.abs(dx) > Math.abs(dy)) {
-    // Horizontal dominant - curve with horizontal control points
     return `M ${from.x} ${from.y} C ${from.x + controlPointOffset} ${from.y}, ${to.x - controlPointOffset} ${to.y}, ${to.x} ${to.y}`;
   } else {
-    // Vertical dominant - curve with vertical control points
-    return `M ${from.x} ${from.y} C ${from.x} ${from.y + controlPointOffset}, ${to.x} ${to.y - controlPointOffset}, ${to.x} ${to.y}`;
+    const v = Math.min(Math.abs(dy) * 0.5, 80);
+    return `M ${from.x} ${from.y} C ${from.x} ${from.y + v}, ${to.x} ${to.y - v}, ${to.x} ${to.y}`;
   }
 }
 
-export function EdgeRenderer({ edges, nodes, connectingFrom, mousePosition, onDeleteEdge }: EdgeRendererProps) {
-  const nodeMap = useMemo(() => {
-    return nodes.reduce((acc, node) => {
-      acc[node.id] = node;
-      return acc;
-    }, {} as Record<string, CanvasNode>);
-  }, [nodes]);
+export function EdgeRenderer({ edges, nodes, connectingFrom, mousePosition, onDeleteEdge, zoom = 1 }: EdgeRendererProps) {
+  const [computed, setComputed] = useState<Array<Edge & { path: string; from: Point; to: Point }>>([]);
+  const [connectingPath, setConnectingPath] = useState<{ from: Point; to: Point; path: string } | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  const edgePaths = useMemo(() => {
-    return edges.map(edge => {
-      const sourceNode = nodeMap[edge.source];
-      const targetNode = nodeMap[edge.target];
-      
-      if (!sourceNode || !targetNode) return null;
-      
-      const from = getSourcePosition(sourceNode, edge.sourceHandle);
-      const to = getTargetPosition(targetNode);
-      const path = createCurvePath(from, to);
-      
-      return { ...edge, path, from, to };
-    }).filter(Boolean);
-  }, [edges, nodeMap]);
+  // Recompute paths whenever nodes/edges/zoom change — uses live DOM measurements
+  // so handles always line up exactly with the rendered bolinhas.
+  useLayoutEffect(() => {
+    const compute = () => {
+      const nodeMap: Record<string, CanvasNode> = {};
+      for (const n of nodes) nodeMap[n.id] = n;
+      const next = edges
+        .map((edge) => {
+          const sNode = nodeMap[edge.source];
+          const tNode = nodeMap[edge.target];
+          if (!sNode || !tNode) return null;
+          const from =
+            measureHandle(edge.source, edge.sourceHandle, "source", zoom) ?? fallbackNodeCenter(sNode);
+          const to = measureHandle(edge.target, undefined, "target", zoom) ?? fallbackNodeCenter(tNode);
+          return { ...edge, from, to, path: createCurvePath(from, to) };
+        })
+        .filter(Boolean) as Array<Edge & { path: string; from: Point; to: Point }>;
+      setComputed(next);
+    };
+    // Defer one frame so newly mounted handles are measurable.
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(compute);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [edges, nodes, zoom]);
 
-  // Connecting line (when dragging to create a new edge)
-  const connectingPath = useMemo(() => {
-    if (!connectingFrom || !mousePosition) return null;
-    
-    const sourceNode = nodeMap[connectingFrom.nodeId];
-    if (!sourceNode) return null;
-    
-    const from = getSourcePosition(sourceNode, connectingFrom.handle);
-    const to = mousePosition;
-    const path = createCurvePath(from, to);
-    
-    return { from, to, path };
-  }, [connectingFrom, mousePosition, nodeMap]);
+  // Recompute the temporary "while-connecting" line as the mouse moves.
+  useEffect(() => {
+    if (!connectingFrom || !mousePosition) {
+      setConnectingPath(null);
+      return;
+    }
+    const from = measureHandle(connectingFrom.nodeId, connectingFrom.handle, "source", zoom);
+    if (!from) {
+      setConnectingPath(null);
+      return;
+    }
+    setConnectingPath({ from, to: mousePosition, path: createCurvePath(from, mousePosition) });
+  }, [connectingFrom, mousePosition, zoom]);
 
   return (
-    <svg 
-      className="absolute inset-0 pointer-events-none overflow-visible"
-      style={{ zIndex: 0 }}
-    >
+    <svg className="absolute inset-0 pointer-events-none overflow-visible" style={{ zIndex: 0, width: "100%", height: "100%" }}>
       <defs>
-        <marker
-          id="arrowhead"
-          markerWidth="10"
-          markerHeight="7"
-          refX="9"
-          refY="3.5"
-          orient="auto"
-        >
-          <polygon
-            points="0 0, 10 3.5, 0 7"
-            fill="hsl(var(--primary))"
-          />
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="hsl(var(--primary))" />
         </marker>
-        <marker
-          id="arrowhead-muted"
-          markerWidth="10"
-          markerHeight="7"
-          refX="9"
-          refY="3.5"
-          orient="auto"
-        >
-          <polygon
-            points="0 0, 10 3.5, 0 7"
-            fill="hsl(var(--muted-foreground))"
-            opacity="0.5"
-          />
+        <marker id="arrowhead-muted" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="hsl(var(--muted-foreground))" opacity="0.5" />
         </marker>
       </defs>
-      
-      {/* Existing edges */}
-      {edgePaths.map((edge) => edge && (
+
+      {computed.map((edge) => (
         <g key={edge.id} className="group">
-          {/* Invisible wider path for easier interaction */}
           <path
             d={edge.path}
             stroke="transparent"
@@ -201,7 +129,6 @@ export function EdgeRenderer({ edges, nodes, connectingFrom, mousePosition, onDe
             className="pointer-events-auto cursor-pointer"
             onClick={() => onDeleteEdge?.(edge.id)}
           />
-          {/* Visible edge */}
           <path
             d={edge.path}
             stroke="hsl(var(--primary))"
@@ -210,17 +137,11 @@ export function EdgeRenderer({ edges, nodes, connectingFrom, mousePosition, onDe
             markerEnd="url(#arrowhead)"
             className="transition-all group-hover:stroke-[3px]"
           />
-          {/* Delete button on hover */}
-          <g 
+          <g
             className="opacity-0 group-hover:opacity-100 pointer-events-auto cursor-pointer transition-opacity"
             onClick={() => onDeleteEdge?.(edge.id)}
           >
-            <circle
-              cx={(edge.from.x + edge.to.x) / 2}
-              cy={(edge.from.y + edge.to.y) / 2}
-              r="10"
-              fill="hsl(var(--destructive))"
-            />
+            <circle cx={(edge.from.x + edge.to.x) / 2} cy={(edge.from.y + edge.to.y) / 2} r="10" fill="hsl(var(--destructive))" />
             <text
               x={(edge.from.x + edge.to.x) / 2}
               y={(edge.from.y + edge.to.y) / 2}
@@ -235,8 +156,7 @@ export function EdgeRenderer({ edges, nodes, connectingFrom, mousePosition, onDe
           </g>
         </g>
       ))}
-      
-      {/* Connecting line while dragging */}
+
       {connectingPath && (
         <path
           d={connectingPath.path}
