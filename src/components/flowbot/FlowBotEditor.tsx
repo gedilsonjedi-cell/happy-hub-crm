@@ -235,9 +235,26 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       toast.error("Nome do fluxo é obrigatório");
       return;
     }
-    if (isDispatch && !templateId) {
-      toast.error("Selecione o template inicial do flow de disparo");
-      return;
+    // For dispatch flows, derive template_id from the template node on the canvas
+    let derivedTemplateId: string | null = null;
+    if (isDispatch) {
+      const templateNodes = nodes.filter(n => n.type === "template");
+      if (templateNodes.length === 0) {
+        toast.error("Adicione um bloco Template no canvas para definir o disparo inicial.");
+        return;
+      }
+      if (templateNodes.length > 1) {
+        toast.error("Apenas um bloco Template é permitido por fluxo de disparo.");
+        return;
+      }
+      const tplNode = templateNodes[0];
+      const tplId = (tplNode.data as TemplateNodeData).template_id;
+      if (!tplId) {
+        toast.error("Selecione um template aprovado no bloco Template.");
+        return;
+      }
+      derivedTemplateId = tplId;
+      setTemplateId(tplId);
     }
     
     setIsSaving(true);
@@ -252,7 +269,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         ai_fallback_message: aiMessage,
         transfer_message: transferMessage,
         flow_type: flowType,
-        template_id: isDispatch ? templateId : null,
+        template_id: isDispatch ? derivedTemplateId : null,
       };
       
       // Save or create bot
