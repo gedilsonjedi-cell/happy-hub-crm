@@ -343,8 +343,9 @@ const Conexoes = () => {
       const { data, error } = await supabase
         .from("channels")
         .select(`
-          *,
-          organization:organizations(id, name)
+          id, name, phone, provider, app_name, waba_id, connected, created_at, user_id, organization_id,
+          organization:organizations(id, name),
+          channel_secrets(access_token, api_token, meta_app_secret, webhook_verify_token)
         `)
         .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false });
@@ -355,7 +356,18 @@ const Conexoes = () => {
         return;
       }
 
-      setChannels((data as Channel[]) || []);
+      // Flatten channel_secrets into the channel object so downstream code keeps working
+      const flattened = (data || []).map((ch: any) => {
+        const secrets = Array.isArray(ch.channel_secrets) ? ch.channel_secrets[0] : ch.channel_secrets;
+        return {
+          ...ch,
+          access_token: secrets?.access_token ?? null,
+          api_token: secrets?.api_token ?? null,
+          meta_app_secret: secrets?.meta_app_secret ?? null,
+          webhook_verify_token: secrets?.webhook_verify_token ?? null,
+        } as Channel;
+      });
+      setChannels(flattened);
     } else {
       // Fallback: no organization ID available
       setChannels([]);

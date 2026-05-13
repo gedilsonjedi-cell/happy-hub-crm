@@ -1133,20 +1133,21 @@ const Disparos = () => {
         const channelIds = campaignChannelsData.map(cc => cc.channel_id);
         const { data: channelsList } = await supabase
           .from("channels")
-          .select("id, app_name, access_token, waba_id, provider")
+          .select("id, app_name, waba_id, provider, channel_secrets(access_token)")
           .in("id", channelIds)
           .eq("provider", "meta");
 
         if (channelsList) {
-          await Promise.all(channelsList.map(ch =>
-            supabase.functions.invoke("meta-subscribe-webhook", {
+          await Promise.all(channelsList.map((ch: any) => {
+            const secrets = Array.isArray(ch.channel_secrets) ? ch.channel_secrets[0] : ch.channel_secrets;
+            return supabase.functions.invoke("meta-subscribe-webhook", {
               body: {
                 phoneNumberId: ch.app_name,
-                accessToken: ch.access_token,
+                accessToken: secrets?.access_token,
                 wabaId: ch.waba_id,
               }
-            })
-          ));
+            });
+          }));
         }
       }
 
