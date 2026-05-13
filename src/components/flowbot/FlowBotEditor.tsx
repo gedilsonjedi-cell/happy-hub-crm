@@ -383,6 +383,8 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
     switch (type) {
       case "start":
         return { label: "Início" };
+      case "template":
+        return { label: "Template Inicial", template_id: "", template_name: "" };
       case "message":
         return { label: "Nova Mensagem", message: "" };
       case "buttons":
