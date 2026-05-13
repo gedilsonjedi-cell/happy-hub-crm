@@ -10,6 +10,9 @@ interface NodeHandleProps {
   className?: string;
 }
 
+// Marker class so the EdgeRenderer can locate the handle DOM nodes precisely.
+const HANDLE_MARKER_CLASS = "flowbot-handle";
+
 export function NodeHandle({ 
   type, 
   position, 
