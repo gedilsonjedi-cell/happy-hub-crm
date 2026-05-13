@@ -8,6 +8,7 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
+import { getPhoneLookupVariants } from "@/lib/phoneThreadKey";
 
 const HISTORY_SCAN_BATCH_SIZE = 150;
 const HISTORY_SCAN_MAX_BATCHES = 8;
@@ -161,6 +162,16 @@ function messageMatchesConversation(
 
 const SELECT_FIELDS =
   "id, channel_id, organization_id, message_id, sender_phone, sender_name, message_type, content, media_url, direction, status, created_at, metadata, error_message, is_read";
+
+const OUTBOUND_PHONE_METADATA_FIELDS = [
+  "destination",
+  "to",
+  "phone",
+  "contact_phone",
+  "contactPhone",
+  "recipient_phone",
+  "recipientPhone",
+];
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
