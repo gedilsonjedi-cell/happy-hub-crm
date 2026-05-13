@@ -74,7 +74,42 @@ interface DispatchTemplateOption {
   id: string;
   name: string;
   status: string;
+  content: string;
+  components: any[] | null;
   channels: { id: string; name: string; phone: string }[];
+}
+
+// Parse Meta-style template components into header_url, body, footer, buttons
+export function parseTemplateComponents(content: string, components: any[] | null) {
+  let header_url = "";
+  let body = content || "";
+  let footer = "";
+  const buttons: { id: string; text: string; type: string }[] = [];
+  if (Array.isArray(components)) {
+    for (const c of components) {
+      const type = String(c?.type || "").toUpperCase();
+      if (type === "HEADER") {
+        const fmt = String(c?.format || "").toUpperCase();
+        if (fmt === "IMAGE" || fmt === "VIDEO" || fmt === "DOCUMENT") {
+          header_url = c?.example?.header_handle?.[0] || "";
+        }
+      } else if (type === "BODY") {
+        body = c?.text || body;
+      } else if (type === "FOOTER") {
+        footer = c?.text || "";
+      } else if (type === "BUTTONS") {
+        const list = Array.isArray(c?.buttons) ? c.buttons : [];
+        list.forEach((b: any, i: number) => {
+          buttons.push({
+            id: `tplbtn_${i}`,
+            text: String(b?.text || `Botão ${i + 1}`),
+            type: String(b?.type || "QUICK_REPLY").toUpperCase(),
+          });
+        });
+      }
+    }
+  }
+  return { header_url, body, footer, buttons };
 }
 
 interface Edge {
