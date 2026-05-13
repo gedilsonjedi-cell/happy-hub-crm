@@ -239,6 +239,22 @@ function normalizePhone(phone: string): string {
   return digits.startsWith('55') ? digits : '55' + digits;
 }
 
+async function isPhoneBlacklisted(organizationId: string, phone: string): Promise<boolean> {
+  const clean = normalizePhone(phone);
+  const suffix8 = clean.slice(-8);
+  const { data, error } = await supabase
+    .from('blacklist')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .or(`phone.eq.${clean},phone.eq.+${clean},phone.ilike.%${suffix8}`)
+    .limit(1);
+  if (error) {
+    console.warn('[Meta-Webhook] Blacklist check failed:', error.message);
+    return false;
+  }
+  return !!data?.length;
+}
+
 /** Generate Brazilian phone variants (with/without 9th digit) for matching */
 function getPhoneVariants(phone: string): string[] {
   const normalized = normalizePhone(phone);
@@ -757,6 +773,11 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const messageType = msg.type as string;
   const normalizedPhone = normalizePhone(senderPhone);
   const organizationId = channel.organization_id as string;
+
+  if (await isPhoneBlacklisted(organizationId, normalizedPhone)) {
+    console.log('[processMessage] Ignoring inbound from blacklisted phone:', normalizedPhone);
+    return;
+  }
 
   // ── Extract Facebook/Instagram referral data (ads/click-to-WhatsApp) ──
   const referral = msg.referral as Record<string, unknown> | undefined;
