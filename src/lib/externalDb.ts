@@ -380,84 +380,115 @@ export async function fetchExternalMessagesForLead(params: {
   const lookup = buildPhoneLookup(phoneVariants);
   const suffixes = Array.from(lookup.suffixes).sort((a, b) => b.length - a.length);
   if (suffixes.length === 0) return [];
-
-  const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
-  const selectFields = SELECT_FIELDS;
   const channelIds = (params.channelIds ?? []).filter(Boolean);
-  const inboundOr = suffixes.map((suffix) => `sender_phone.like.%${suffix}`).join(",");
-  const outboundOr = suffixes
-    .flatMap((suffix) => OUTBOUND_PHONE_METADATA_FIELDS.map((field) => `metadata->>${field}.like.%${suffix}`))
-    .join(",");
 
-  const buildBaseQuery = (direction: "inbound" | "outbound") => {
-    let query = ext
-      .from("whatsapp_messages")
-      .select(selectFields)
-      .eq("organization_id", params.organizationId)
-      .eq("direction", direction);
-
-    if (channelIds.length > 0) {
-      query = query.in("channel_id", channelIds);
-    }
-
-    return query;
+  const filterAndSort = (rows: ExternalMessageRow[]) => {
+    const seen = new Set<string>();
+    return rows
+      .filter((message) => {
+        if (seen.has(message.id)) return false;
+        const direction = message.direction === "outbound" ? "outbound" : "inbound";
+        if (!messageMatchesConversation(message, direction, lookup)) return false;
+        seen.add(message.id);
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
   };
 
-  const [inboundResult, outboundResult] = await Promise.all([
-    buildBaseQuery("inbound")
-      .or(inboundOr)
-      .order("created_at", { ascending: false })
-      .limit(limit),
-    buildBaseQuery("outbound")
-      .or(outboundOr)
-      .order("created_at", { ascending: false })
-      .limit(limit),
-  ]);
+  const fetchViaProxy = async () => {
+    const data = await invokeExternalProxy<{ messages: ExternalMessageRow[] }>({
+      action: "lead_messages",
+      phoneVariants,
+      channelIds,
+      limit,
+      impersonatedOrgId: params.impersonatedOrgId,
+    });
+    return filterAndSort(data.messages ?? []);
+  };
 
-  if (inboundResult.error) throw new Error(inboundResult.error.message);
-  if (outboundResult.error) throw new Error(outboundResult.error.message);
+  if (isDirectReadDisabled()) {
+    return fetchViaProxy();
+  }
 
-  let combined = ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as ExternalMessageRow[]);
+  try {
+    const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
+    const selectFields = SELECT_FIELDS;
+    const inboundOr = suffixes.map((suffix) => `sender_phone.like.%${suffix}`).join(",");
+    const outboundOr = suffixes
+      .flatMap((suffix) => OUTBOUND_PHONE_METADATA_FIELDS.map((field) => `metadata->>${field}.like.%${suffix}`))
+      .join(",");
 
-  // Legacy campaign/webhook rows may have channel_id saved as the contact phone
-  // instead of the WhatsApp channel UUID. If channel filtering hides everything,
-  // retry organization-wide by phone so existing history is never shown as empty.
-  if (combined.length === 0 && channelIds.length > 0) {
-    const [wideInboundResult, wideOutboundResult] = await Promise.all([
-      ext
+    const buildBaseQuery = (direction: "inbound" | "outbound") => {
+      let query = ext
         .from("whatsapp_messages")
         .select(selectFields)
         .eq("organization_id", params.organizationId)
-        .eq("direction", "inbound")
+        .eq("direction", direction);
+
+      if (channelIds.length > 0) {
+        query = query.in("channel_id", channelIds);
+      }
+
+      return query;
+    };
+
+    const [inboundResult, outboundResult] = await Promise.all([
+      buildBaseQuery("inbound")
         .or(inboundOr)
         .order("created_at", { ascending: false })
         .limit(limit),
-      ext
-        .from("whatsapp_messages")
-        .select(selectFields)
-        .eq("organization_id", params.organizationId)
-        .eq("direction", "outbound")
+      buildBaseQuery("outbound")
         .or(outboundOr)
         .order("created_at", { ascending: false })
         .limit(limit),
     ]);
 
-    if (wideInboundResult.error) throw new Error(wideInboundResult.error.message);
-    if (wideOutboundResult.error) throw new Error(wideOutboundResult.error.message);
-    combined = ([...(wideInboundResult.data ?? []), ...(wideOutboundResult.data ?? [])] as ExternalMessageRow[]);
-  }
+    if (inboundResult.error) throw new Error(inboundResult.error.message);
+    if (outboundResult.error) throw new Error(outboundResult.error.message);
 
-  const seen = new Set<string>();
-  return combined
-    .filter((message) => {
-      if (seen.has(message.id)) return false;
-      const direction = message.direction === "outbound" ? "outbound" : "inbound";
-      if (!messageMatchesConversation(message, direction, lookup)) return false;
-      seen.add(message.id);
-      return true;
-    })
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, limit);
+    let combined = ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as ExternalMessageRow[]);
+
+    // Legacy campaign/webhook rows may have channel_id saved as the contact phone
+    // instead of the WhatsApp channel UUID. If channel filtering hides everything,
+    // retry organization-wide by phone so existing history is never shown as empty.
+    if (combined.length === 0 && channelIds.length > 0) {
+      const [wideInboundResult, wideOutboundResult] = await Promise.all([
+        ext
+          .from("whatsapp_messages")
+          .select(selectFields)
+          .eq("organization_id", params.organizationId)
+          .eq("direction", "inbound")
+          .or(inboundOr)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        ext
+          .from("whatsapp_messages")
+          .select(selectFields)
+          .eq("organization_id", params.organizationId)
+          .eq("direction", "outbound")
+          .or(outboundOr)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      ]);
+
+      if (wideInboundResult.error) throw new Error(wideInboundResult.error.message);
+      if (wideOutboundResult.error) throw new Error(wideOutboundResult.error.message);
+      combined = ([...(wideInboundResult.data ?? []), ...(wideOutboundResult.data ?? [])] as ExternalMessageRow[]);
+    }
+
+    return filterAndSort(combined);
+  } catch (directError) {
+    const msg = getErrorMessage(directError);
+    if (isPermissionError(msg)) disableDirectRead(msg);
+    console.warn("[externalDb] Lead history direct read failed, using proxy fallback:", msg);
+    try {
+      return await fetchViaProxy();
+    } catch (proxyError) {
+      console.error("[externalDb] Lead history proxy fallback failed:", getErrorMessage(proxyError));
+      return [];
+    }
+  }
 }
 
 // ── Conversation stats fallback (reads from INTERNAL DB) ──────────
