@@ -74,6 +74,7 @@ interface DispatchTemplateOption {
   id: string;
   name: string;
   status: string;
+  channels: { id: string; name: string; phone: string }[];
 }
 
 interface Edge {
