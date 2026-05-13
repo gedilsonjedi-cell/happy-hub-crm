@@ -512,10 +512,12 @@ const ContatoDetalhes = () => {
                 <ScrollArea className="h-[400px] pr-4">
                   <div className="space-y-3">
                     {messages.map((msg) => (
-                      <div 
+                      <button
+                        type="button"
                         key={msg.id}
+                        onClick={() => openConversationInAttendance(msg.channel_id)}
                         className={cn(
-                          "p-3 rounded-lg text-sm",
+                          "w-full p-3 rounded-lg text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           msg.direction === "outbound" 
                             ? "bg-primary/10 ml-4" 
                             : "bg-muted mr-4"
@@ -527,7 +529,7 @@ const ContatoDetalhes = () => {
                         <p className="text-xs text-muted-foreground mt-1">
                           {format(new Date(msg.created_at), "dd/MM/yyyy HH:mm")}
                         </p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </ScrollArea>
