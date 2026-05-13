@@ -33,6 +33,7 @@ import { AssignTagsDialog } from "@/components/leads/AssignTagsDialog";
 import { ManualSendDialog } from "@/components/whatsapp/ManualSendDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { fetchExternalMessagesForLead } from "@/lib/externalDb";
 
 interface Lead {
   id: string;
@@ -66,6 +67,7 @@ interface CustomFieldDefinition {
 
 interface WhatsAppMessage {
   id: string;
+  channel_id: string | null;
   content: string | null;
   direction: string;
   message_type: string;
@@ -84,8 +86,13 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 const ContatoDetalhes = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { effectiveOrganizationId: organizationId } = useEffectiveOrganizationId();
+  const {
+    effectiveOrganizationId: organizationId,
+    isImpersonating,
+    impersonatedOrganizationId,
+  } = useEffectiveOrganizationId();
   const queryClient = useQueryClient();
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -113,6 +120,23 @@ const ContatoDetalhes = () => {
   });
 
   const [selectedChannel, setSelectedChannel] = useState<typeof channels[0] | null>(null);
+
+  const { data: historyChannelIds = [] } = useQuery({
+    queryKey: ["history-channel-ids", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await (supabase as any)
+        .from("channels_public")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .in("provider", ["meta", "zapi", "gupshup"]);
+
+      if (error) throw error;
+      return (data || []).map((channel: { id: string }) => channel.id);
+    },
+    enabled: !!organizationId,
+  });
 
   // Set default channel when channels are loaded
   useEffect(() => {
@@ -177,25 +201,28 @@ const ContatoDetalhes = () => {
 
   // Fetch message history
   const { data: messages = [] } = useQuery({
-    queryKey: ["lead-messages", lead?.phone],
+    queryKey: ["lead-messages", organizationId, lead?.phone, historyChannelIds.join("|")],
     queryFn: async () => {
       if (!lead?.phone || !organizationId) return [];
 
-      const cleanPhone = lead.phone.replace(/\D/g, "");
-      
-      const { data, error } = await supabase
-        .from("whatsapp_messages")
-        .select("id, content, direction, message_type, created_at, sender_name")
-        .eq("organization_id", organizationId)
-        .eq("sender_phone", cleanPhone)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return (data || []) as WhatsAppMessage[];
+      return fetchExternalMessagesForLead({
+        phone: lead.phone,
+        organizationId,
+        channelIds: historyChannelIds,
+        impersonatedOrgId: externalImpersonatedOrgId,
+        limit: 100,
+      }) as Promise<WhatsAppMessage[]>;
     },
     enabled: !!lead?.phone && !!organizationId,
   });
+
+  const openConversationInAttendance = (channelId?: string | null) => {
+    if (!lead?.phone) return;
+    const cleanPhone = lead.phone.replace(/\D/g, "");
+    const params = new URLSearchParams({ phone: cleanPhone });
+    if (channelId) params.set("channelId", channelId);
+    navigate(`/atendimento?${params.toString()}`);
+  };
 
   const handleLeadUpdated = () => {
     queryClient.invalidateQueries({ queryKey: ["lead-details", id] });
@@ -219,23 +246,12 @@ const ContatoDetalhes = () => {
     setCheckingConversation(true);
 
     try {
-      const cleanPhone = lead.phone.replace(/\D/g, "");
+      const latestMessage = messages[0];
 
-      // Check if there's an existing conversation with messages
-      const { data: existingMessages, error } = await supabase
-        .from("whatsapp_messages")
-        .select("id, channel_id")
-        .eq("organization_id", organizationId)
-        .eq("sender_phone", cleanPhone)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (error) throw error;
-
-      if (existingMessages && existingMessages.length > 0) {
+      if (latestMessage) {
         // There's an existing conversation - navigate to chat with phone pre-selected
         toast.success("Abrindo conversa existente...");
-        navigate(`/atendimento?phone=${cleanPhone}`);
+        openConversationInAttendance(latestMessage.channel_id);
       } else {
         // No existing conversation - open the manual send dialog
         if (!selectedChannel && channels.length > 0) {
@@ -513,10 +529,12 @@ const ContatoDetalhes = () => {
                 <ScrollArea className="h-[400px] pr-4">
                   <div className="space-y-3">
                     {messages.map((msg) => (
-                      <div 
+                      <button
+                        type="button"
                         key={msg.id}
+                        onClick={() => openConversationInAttendance(msg.channel_id)}
                         className={cn(
-                          "p-3 rounded-lg text-sm",
+                          "w-full p-3 rounded-lg text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           msg.direction === "outbound" 
                             ? "bg-primary/10 ml-4" 
                             : "bg-muted mr-4"
@@ -528,7 +546,7 @@ const ContatoDetalhes = () => {
                         <p className="text-xs text-muted-foreground mt-1">
                           {format(new Date(msg.created_at), "dd/MM/yyyy HH:mm")}
                         </p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </ScrollArea>
