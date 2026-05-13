@@ -1284,16 +1284,6 @@ Deno.serve(async (req) => {
             continue;
           }
         }
-        if (
-          templateName
-          && Number(errorCode) === 135000
-          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
-          && !headerInfo?.exampleUrl
-          && removeTemplateBodyComponent(messagePayload)
-        ) {
-          lastError = responseData.error;
-          continue;
-        }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
           lastError = responseData.error;
