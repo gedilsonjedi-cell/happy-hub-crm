@@ -50,6 +50,7 @@ import {
   ButtonsNodeData,
   CollectDataNodeData,
   ActionNodeData,
+  TemplateNodeData,
   ActionType
 } from "./types";
 import { StartNode } from "./nodes/StartNode";
@@ -57,6 +58,7 @@ import { MessageNode } from "./nodes/MessageNode";
 import { ButtonsNode } from "./nodes/ButtonsNode";
 import { CollectDataNode } from "./nodes/CollectDataNode";
 import { ActionNode } from "./nodes/ActionNode";
+import { TemplateNode } from "./nodes/TemplateNode";
 import { EdgeRenderer } from "./EdgeRenderer";
 import { sampleFlows } from "./sampleFlows";
 
