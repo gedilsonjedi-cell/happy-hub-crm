@@ -368,6 +368,68 @@ export async function fetchExternalMessages(params: {
   return { messages: [], nextCursor: null, hasMore: false };
 }
 
+export async function fetchExternalMessagesForLead(params: {
+  phone: string;
+  organizationId: string;
+  channelIds?: string[];
+  limit?: number;
+  impersonatedOrgId?: string | null;
+}): Promise<ExternalMessageRow[]> {
+  const limit = params.limit ?? 100;
+  const phoneVariants = getPhoneLookupVariants(params.phone);
+  const lookup = buildPhoneLookup(phoneVariants);
+  const suffixes = Array.from(lookup.suffixes).sort((a, b) => b.length - a.length);
+  if (suffixes.length === 0) return [];
+
+  const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
+  const selectFields = SELECT_FIELDS;
+  const channelIds = (params.channelIds ?? []).filter(Boolean);
+  const inboundOr = suffixes.map((suffix) => `sender_phone.like.%${suffix}`).join(",");
+  const outboundOr = suffixes
+    .flatMap((suffix) => OUTBOUND_PHONE_METADATA_FIELDS.map((field) => `metadata->>${field}.like.%${suffix}`))
+    .join(",");
+
+  const buildBaseQuery = (direction: "inbound" | "outbound") => {
+    let query = ext
+      .from("whatsapp_messages")
+      .select(selectFields)
+      .eq("organization_id", params.organizationId)
+      .eq("direction", direction);
+
+    if (channelIds.length > 0) {
+      query = query.in("channel_id", channelIds);
+    }
+
+    return query;
+  };
+
+  const [inboundResult, outboundResult] = await Promise.all([
+    buildBaseQuery("inbound")
+      .or(inboundOr)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    buildBaseQuery("outbound")
+      .or(outboundOr)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
+
+  if (inboundResult.error) throw new Error(inboundResult.error.message);
+  if (outboundResult.error) throw new Error(outboundResult.error.message);
+
+  const seen = new Set<string>();
+  return ([...(inboundResult.data ?? []), ...(outboundResult.data ?? [])] as ExternalMessageRow[])
+    .filter((message) => {
+      if (seen.has(message.id)) return false;
+      const direction = message.direction === "outbound" ? "outbound" : "inbound";
+      if (!messageMatchesConversation(message, direction, lookup)) return false;
+      seen.add(message.id);
+      return true;
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit);
+}
+
 // ── Conversation stats fallback (reads from INTERNAL DB) ──────────
 
 function getSyntheticMessageDirection(row: ConversationStatsFallbackRow): "inbound" | "outbound" {
