@@ -581,25 +581,9 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
           {isDispatch && (
             <>
               <Separator orientation="vertical" className="h-6" />
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground whitespace-nowrap">Template inicial:</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Escolha um template aprovado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTemplates.length === 0 ? (
-                      <div className="p-3 text-center text-muted-foreground text-sm">
-                        Nenhum template aprovado
-                      </div>
-                    ) : (
-                      availableTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+              <span className="text-xs text-muted-foreground">
+                Arraste o bloco <span className="text-emerald-500 font-medium">Template</span> para definir o disparo inicial.
+              </span>
             </>
           )}
         </div>
