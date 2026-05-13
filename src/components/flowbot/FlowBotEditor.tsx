@@ -584,21 +584,69 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    // Node drag takes priority
+    const drag = draggingNodeRef.current;
+    if (drag) {
+      const dxScreen = e.clientX - drag.startMouseX;
+      const dyScreen = e.clientY - drag.startMouseY;
+      const dx = dxScreen / zoom;
+      const dy = dyScreen / zoom;
+      if (!drag.moved && Math.hypot(dxScreen, dyScreen) > 3) {
+        drag.moved = true;
+      }
+      if (drag.moved) {
+        const nx = drag.startNodeX + dx;
+        const ny = drag.startNodeY + dy;
+        setNodes((prev) => prev.map((n) => (n.id === drag.id ? { ...n, position: { x: nx, y: ny } } : n)));
+      }
+      return;
+    }
+
     if (!connectingFrom || !canvasRef.current) return;
-    
     const rect = canvasRef.current.getBoundingClientRect();
     setMousePosition({
       x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      y: e.clientY - rect.top,
     });
   };
 
   const handleCanvasMouseUp = () => {
+    if (draggingNodeRef.current) {
+      const wasDragged = draggingNodeRef.current.moved;
+      draggingNodeRef.current = null;
+      setIsDraggingNode(false);
+      // Suppress click-to-open if user actually dragged
+      if (wasDragged) {
+        // small flag via setTimeout-free approach: handled by handleNodeClick check below
+        suppressNextClickRef.current = true;
+      }
+    }
     if (connectingFrom) {
       setConnectingFrom(null);
       setMousePosition(null);
     }
     setIsPanning(false);
+  };
+
+  const suppressNextClickRef = useRef(false);
+
+  const handleNodeMouseDown = (e: React.MouseEvent, nodeId: string) => {
+    // Ignore if user is starting a connection from a handle
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-flowbot-handle="true"]')) return;
+    if (e.button !== 0) return;
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    e.stopPropagation();
+    draggingNodeRef.current = {
+      id: nodeId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startNodeX: node.position.x,
+      startNodeY: node.position.y,
+      moved: false,
+    };
+    setIsDraggingNode(true);
   };
 
   // Pan and Zoom handlers
