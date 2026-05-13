@@ -916,6 +916,9 @@ Deno.serve(async (req) => {
       );
       const resolvedTemplateLanguage = metaTemplateDefinition?.languageCode || templateLanguage || 'pt_BR';
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
+      const bodyParameterNames = getBodyParameterNames(metaTemplateDefinition?.components);
+      const usesNamedBodyParams = (metaTemplateDefinition?.parameterFormat || '').toLowerCase() === 'named'
+        || bodyParameterNames.length > 0;
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
       headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
@@ -926,8 +929,10 @@ Deno.serve(async (req) => {
         requestedLanguage: templateLanguage,
         resolvedLanguage: resolvedTemplateLanguage,
         metaStatus: metaTemplateDefinition?.status ?? null,
+        parameterFormat: metaTemplateDefinition?.parameterFormat ?? null,
         expectedBodyParamCount,
         providedTemplateParamCount: sanitizedTemplateParams.length,
+        bodyParameterNames,
         headerInfo,
         buttonComponentsCount: buttonComponents.length,
         metaComponents: JSON.stringify(metaTemplateDefinition?.components ?? []),
@@ -1035,9 +1040,12 @@ Deno.serve(async (req) => {
 
         components.push({
           type: 'body',
-          parameters: sanitizedTemplateParams.map((param: string) => ({
+          parameters: sanitizedTemplateParams.map((param: string, index: number) => ({
             type: 'text',
-            text: param
+            ...(usesNamedBodyParams && bodyParameterNames[index]
+              ? { parameter_name: bodyParameterNames[index] }
+              : {}),
+            text: param,
           }))
         });
       }
