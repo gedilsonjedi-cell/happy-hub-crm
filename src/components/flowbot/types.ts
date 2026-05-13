@@ -90,6 +90,7 @@ export interface ActionNodeData {
 
 export type NodeData = 
   | StartNodeData 
+  | TemplateNodeData
   | MessageNodeData 
   | ButtonsNodeData 
   | CollectDataNodeData 
