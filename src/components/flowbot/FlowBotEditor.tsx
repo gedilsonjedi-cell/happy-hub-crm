@@ -7,6 +7,7 @@ import {
   LayoutGrid, 
   FormInput, 
   Zap,
+  FileText,
   Trash2,
   Copy,
   Check,
@@ -50,6 +51,7 @@ import {
   ButtonsNodeData,
   CollectDataNodeData,
   ActionNodeData,
+  TemplateNodeData,
   ActionType
 } from "./types";
 import { StartNode } from "./nodes/StartNode";
@@ -57,6 +59,7 @@ import { MessageNode } from "./nodes/MessageNode";
 import { ButtonsNode } from "./nodes/ButtonsNode";
 import { CollectDataNode } from "./nodes/CollectDataNode";
 import { ActionNode } from "./nodes/ActionNode";
+import { TemplateNode } from "./nodes/TemplateNode";
 import { EdgeRenderer } from "./EdgeRenderer";
 import { sampleFlows } from "./sampleFlows";
 
@@ -80,7 +83,8 @@ interface Edge {
   sourceHandle?: string;
 }
 
-const nodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: string }[] = [
+const baseNodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: string; dispatchOnly?: boolean }[] = [
+  { type: "template", label: "Template", icon: <FileText className="w-4 h-4" />, color: "text-emerald-500", dispatchOnly: true },
   { type: "message", label: "Mensagem", icon: <MessageSquare className="w-4 h-4" />, color: "text-blue-500" },
   { type: "buttons", label: "Botões", icon: <LayoutGrid className="w-4 h-4" />, color: "text-purple-500" },
   { type: "collect_data", label: "Coletar Dados", icon: <FormInput className="w-4 h-4" />, color: "text-green-500" },
@@ -200,6 +204,17 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         });
       }
       
+      // Backfill: if dispatch flow has legacy template_id on bot but no template node, create one
+      const legacyTemplateId = ((bot as Record<string, unknown>).template_id as string) || "";
+      if (flowType === "dispatch" && legacyTemplateId && !canvasNodes.some(n => n.type === "template")) {
+        canvasNodes.push({
+          id: `node_tpl_${Date.now()}`,
+          type: "template",
+          position: { x: 380, y: 100 },
+          data: { label: "Template Inicial", template_id: legacyTemplateId, template_name: "" }
+        });
+      }
+      
       setNodes(canvasNodes);
       
       // Load edges
@@ -231,9 +246,26 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
       toast.error("Nome do fluxo é obrigatório");
       return;
     }
-    if (isDispatch && !templateId) {
-      toast.error("Selecione o template inicial do flow de disparo");
-      return;
+    // For dispatch flows, derive template_id from the template node on the canvas
+    let derivedTemplateId: string | null = null;
+    if (isDispatch) {
+      const templateNodes = nodes.filter(n => n.type === "template");
+      if (templateNodes.length === 0) {
+        toast.error("Adicione um bloco Template no canvas para definir o disparo inicial.");
+        return;
+      }
+      if (templateNodes.length > 1) {
+        toast.error("Apenas um bloco Template é permitido por fluxo de disparo.");
+        return;
+      }
+      const tplNode = templateNodes[0];
+      const tplId = (tplNode.data as TemplateNodeData).template_id;
+      if (!tplId) {
+        toast.error("Selecione um template aprovado no bloco Template.");
+        return;
+      }
+      derivedTemplateId = tplId;
+      setTemplateId(tplId);
     }
     
     setIsSaving(true);
@@ -248,7 +280,7 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         ai_fallback_message: aiMessage,
         transfer_message: transferMessage,
         flow_type: flowType,
-        template_id: isDispatch ? templateId : null,
+        template_id: isDispatch ? derivedTemplateId : null,
       };
       
       // Save or create bot
@@ -362,6 +394,8 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
     switch (type) {
       case "start":
         return { label: "Início" };
+      case "template":
+        return { label: "Template Inicial", template_id: "", template_name: "" };
       case "message":
         return { label: "Nova Mensagem", message: "" };
       case "buttons":
@@ -577,25 +611,9 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
           {isDispatch && (
             <>
               <Separator orientation="vertical" className="h-6" />
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground whitespace-nowrap">Template inicial:</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Escolha um template aprovado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTemplates.length === 0 ? (
-                      <div className="p-3 text-center text-muted-foreground text-sm">
-                        Nenhum template aprovado
-                      </div>
-                    ) : (
-                      availableTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+              <span className="text-xs text-muted-foreground">
+                Arraste o bloco <span className="text-emerald-500 font-medium">Template</span> para definir o disparo inicial.
+              </span>
             </>
           )}
         </div>
@@ -641,7 +659,9 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
         <div className="w-56 border-r border-border bg-muted/30 p-4">
           <h3 className="text-sm font-medium mb-3">Blocos</h3>
           <div className="space-y-2">
-            {nodeTypes.map(nt => (
+            {baseNodeTypes
+              .filter(nt => isDispatch || !nt.dispatchOnly)
+              .map(nt => (
               <div
                 key={nt.type}
                 draggable
@@ -786,6 +806,15 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                     onStartConnect={() => handleStartConnect(node.id)}
                   />
                 )}
+                {node.type === "template" && (
+                  <TemplateNode 
+                    data={node.data as TemplateNodeData} 
+                    selected={selectedNodeId === node.id}
+                    isConnecting={!!connectingFrom}
+                    onStartConnect={() => handleStartConnect(node.id)}
+                    onEndConnect={() => handleEndConnect(node.id)}
+                  />
+                )}
                 {node.type === "message" && (
                   <MessageNode 
                     data={node.data as MessageNodeData} 
@@ -860,6 +889,38 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                     placeholder="Nome identificador"
                   />
                 </div>
+
+                {/* Template Node */}
+                {selectedNode.type === "template" && (
+                  <div className="space-y-2">
+                    <Label>Template aprovado</Label>
+                    <Select
+                      value={(selectedNode.data as TemplateNodeData).template_id || ""}
+                      onValueChange={v => {
+                        const tpl = availableTemplates.find(t => t.id === v);
+                        updateNodeData(selectedNode.id, { template_id: v, template_name: tpl?.name || "" });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Escolha um template aprovado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableTemplates.length === 0 ? (
+                          <div className="p-3 text-center text-muted-foreground text-sm">
+                            Nenhum template aprovado
+                          </div>
+                        ) : (
+                          availableTemplates.map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Este será o disparo inicial da campanha. Só aparece para canais que possuem este template aprovado.
+                    </p>
+                  </div>
+                )}
 
                 {/* Message Node */}
                 {selectedNode.type === "message" && (

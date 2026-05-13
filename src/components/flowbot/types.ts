@@ -14,7 +14,7 @@ export interface FlowBot {
   updated_at: string;
 }
 
-export type NodeType = 'start' | 'message' | 'buttons' | 'collect_data' | 'action';
+export type NodeType = 'start' | 'template' | 'message' | 'buttons' | 'collect_data' | 'action';
 
 export interface FlowNode {
   id: string;
@@ -40,6 +40,12 @@ export interface FlowEdge {
 // Node Data Types
 export interface StartNodeData {
   label: string;
+}
+
+export interface TemplateNodeData {
+  label: string;
+  template_id: string;
+  template_name?: string;
 }
 
 export interface MessageNodeData {
@@ -84,6 +90,7 @@ export interface ActionNodeData {
 
 export type NodeData = 
   | StartNodeData 
+  | TemplateNodeData
   | MessageNodeData 
   | ButtonsNodeData 
   | CollectDataNodeData 
