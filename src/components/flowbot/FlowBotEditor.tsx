@@ -149,13 +149,45 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
   useEffect(() => {
     if (!isDispatch || !effectiveOrganizationId) return;
     (async () => {
-      const { data } = await supabase
+      // Templates approved (case-insensitive)
+      const { data: tpls } = await supabase
         .from("message_templates")
         .select("id, name, status")
         .eq("organization_id", effectiveOrganizationId)
-        .eq("status", "APPROVED")
+        .ilike("status", "approved")
         .order("name", { ascending: true });
-      setAvailableTemplates((data || []) as DispatchTemplateOption[]);
+      const tplList = (tpls || []) as { id: string; name: string; status: string }[];
+
+      // Load channels of this organization
+      const { data: chs } = await supabase
+        .from("channels")
+        .select("id, name, phone")
+        .eq("organization_id", effectiveOrganizationId);
+      const channelMap = new Map((chs || []).map(c => [c.id, c]));
+
+      // Load channel<->template links for these templates
+      const tplIds = tplList.map(t => t.id);
+      let links: { channel_id: string; template_id: string }[] = [];
+      if (tplIds.length) {
+        const { data: ct } = await supabase
+          .from("channel_templates")
+          .select("channel_id, template_id")
+          .in("template_id", tplIds);
+        links = (ct || []) as typeof links;
+      }
+      const byTpl = new Map<string, { id: string; name: string; phone: string }[]>();
+      for (const l of links) {
+        const ch = channelMap.get(l.channel_id);
+        if (!ch) continue;
+        const arr = byTpl.get(l.template_id) || [];
+        arr.push({ id: ch.id, name: ch.name || "", phone: ch.phone || "" });
+        byTpl.set(l.template_id, arr);
+      }
+
+      setAvailableTemplates(tplList.map(t => ({
+        ...t,
+        channels: byTpl.get(t.id) || [],
+      })));
     })();
   }, [isDispatch, effectiveOrganizationId]);
 
