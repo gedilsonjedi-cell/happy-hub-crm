@@ -42,10 +42,20 @@ export interface StartNodeData {
   label: string;
 }
 
+export interface TemplateButton {
+  id: string;            // stable handle id (e.g., tplbtn_0)
+  text: string;          // visible label
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | string;
+}
+
 export interface TemplateNodeData {
   label: string;
   template_id: string;
   template_name?: string;
+  header_url?: string;
+  body?: string;
+  footer?: string;
+  buttons?: TemplateButton[];
 }
 
 export interface MessageNodeData {
