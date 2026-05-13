@@ -129,7 +129,22 @@ Deno.serve(async (req: Request) => {
           q = q.eq('id', id);
         } else if (channelId && phone) {
           const norm = String(phone).replace(/\D/g, '');
-          q = q.eq('channel_id', channelId).or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`);
+          const variants = new Set<string>([norm, `+${norm}`]);
+          if (norm.startsWith('55') && norm.length >= 12) {
+            const ddd = norm.slice(2, 4);
+            const local = norm.slice(4);
+            if (local.length === 9 && local.startsWith('9')) {
+              variants.add(`55${ddd}${local.slice(1)}`);
+              variants.add(`+55${ddd}${local.slice(1)}`);
+            } else if (local.length === 8) {
+              variants.add(`55${ddd}9${local}`);
+              variants.add(`+55${ddd}9${local}`);
+            }
+          }
+          const suffix8 = norm.slice(-8);
+          const exactFilter = Array.from(variants).map((p) => `conversation_phone.eq.${p}`);
+          const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+          q = q.eq('channel_id', channelId).or([...exactFilter, ...fallbackFilter].join(','));
         } else {
           return json({ error: 'id or (channel_id+phone) required' }, 400);
         }
