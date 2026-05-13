@@ -966,7 +966,18 @@ export function FlowBotEditor({ flowBotId, onBack, onSaved, flowType = "reactive
                       value={(selectedNode.data as TemplateNodeData).template_id || ""}
                       onValueChange={v => {
                         const tpl = availableTemplates.find(t => t.id === v);
-                        updateNodeData(selectedNode.id, { template_id: v, template_name: tpl?.name || "" });
+                        const parsed = tpl ? parseTemplateComponents(tpl.content || "", tpl.components) : { header_url: "", body: "", footer: "", buttons: [] };
+                        // Remove edges from old template buttons that no longer exist
+                        const validHandles = new Set(parsed.buttons.map(b => b.id));
+                        setEdges(prev => prev.filter(e => e.source !== selectedNode.id || !e.sourceHandle?.startsWith("tplbtn_") || validHandles.has(e.sourceHandle)));
+                        updateNodeData(selectedNode.id, {
+                          template_id: v,
+                          template_name: tpl?.name || "",
+                          header_url: parsed.header_url,
+                          body: parsed.body,
+                          footer: parsed.footer,
+                          buttons: parsed.buttons,
+                        });
                       }}
                     >
                       <SelectTrigger>
