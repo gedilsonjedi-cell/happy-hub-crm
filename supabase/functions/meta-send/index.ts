@@ -332,11 +332,11 @@ function getExpectedBodyParamCount(components: unknown[] | null | undefined): nu
 
   if (!bodyComponent?.text) return 0;
 
-  const matches = [...bodyComponent.text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)];
+  const matches = [...bodyComponent.text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)];
   if (matches.length === 0) return 0;
 
-  const placeholderIndexes = new Set(matches.map((match) => Number(match[1])));
-  return placeholderIndexes.size;
+  const placeholders = new Set(matches.map((match) => match[1]));
+  return placeholders.size;
 }
 
 function getBodyParameterNames(components: unknown[] | null | undefined): string[] {
