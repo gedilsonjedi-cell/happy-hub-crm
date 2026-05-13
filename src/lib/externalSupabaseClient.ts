@@ -212,6 +212,11 @@ export async function getExternalClient(
         Authorization: `Bearer ${auth.token}`,
       },
     },
+    // Per-request fresh token: supabase-js >=2.43 invokes this callback on
+    // every REST/Realtime call and uses the returned value as the bearer
+    // token. This guarantees we never send an expired JWT, even after the
+    // 5-minute TTL elapses while the tab was idle.
+    accessToken: async () => getValidToken(scopeKey, impersonatedOrgId),
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -221,7 +226,7 @@ export async function getExternalClient(
         eventsPerSecond: 10,
       },
     },
-  });
+  } as Parameters<typeof createClient>[2]);
 
   // Authenticate the Realtime WebSocket with our custom JWT so RLS applies
   try {
