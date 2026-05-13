@@ -11,12 +11,14 @@ interface MetaTemplate {
   status: string;
   category: string;
   language: string;
+  parameter_format?: string;
   components: Array<{
     type: string;
     text?: string;
     format?: string;
     example?: {
       body_text?: string[][];
+      body_text_named_params?: Array<{ param_name?: string; example?: string }>;
     };
   }>;
 }
@@ -190,7 +192,7 @@ Deno.serve(async (req) => {
         console.log('Fetching templates for WABA:', wabaGroup.waba_id);
         
         const response = await fetch(
-          `https://graph.facebook.com/v18.0/${wabaGroup.waba_id}/message_templates?limit=250`,
+          `https://graph.facebook.com/v18.0/${wabaGroup.waba_id}/message_templates?fields=id,name,status,category,language,parameter_format,components&limit=250`,
           {
             headers: {
               'Authorization': `Bearer ${wabaGroup.access_token}`,
@@ -235,12 +237,21 @@ Deno.serve(async (req) => {
             dispatch_type = 'service';
           }
 
-          // Extract variables from content
-          const variableRegex = /\{\{(\d+)\}\}/g;
-          const variables: string[] = [];
-          let match;
-          while ((match = variableRegex.exec(content)) !== null) {
-            variables.push(`VAR_${match[1]}`);
+          // Extract variables from content. Meta supports positional ({{1}})
+          // and named ({{first_name}}) templates; keep named labels so sends
+          // can include parameter_name and avoid #132000/localizable_params=0.
+          const namedParams = bodyComponent?.example?.body_text_named_params;
+          let variables: string[] = [];
+          if (Array.isArray(namedParams) && namedParams.length > 0) {
+            variables = namedParams
+              .map((param) => param?.param_name?.trim())
+              .filter((paramName): paramName is string => !!paramName);
+          } else {
+            const variableRegex = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+            let match;
+            while ((match = variableRegex.exec(content)) !== null) {
+              variables.push(/^\d+$/.test(match[1]) ? `VAR_${match[1]}` : match[1]);
+            }
           }
 
           // Check if template already exists by name for this organization

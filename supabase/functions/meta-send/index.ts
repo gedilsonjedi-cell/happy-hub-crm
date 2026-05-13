@@ -239,12 +239,16 @@ async function sleep(ms: number): Promise<void> {
 interface MetaTemplateDefinition {
   languageCode: string | null;
   status?: string | null;
+  parameterFormat?: string | null;
   components?: unknown[] | null;
 }
 
 interface MetaTemplateComponent {
   type?: string;
   text?: string;
+  example?: {
+    body_text_named_params?: Array<{ param_name?: string; example?: string }>;
+  };
 }
 
 async function fetchMetaTemplateDefinition(
@@ -267,13 +271,13 @@ async function fetchMetaTemplateDefinition(
     }
 
     return await response.json() as {
-      data?: Array<{ name?: string; language?: string; status?: string; components?: unknown[] }>;
+      data?: Array<{ name?: string; language?: string; status?: string; parameter_format?: string; components?: unknown[] }>;
       paging?: { next?: string };
     };
   };
 
   const initialUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
-  initialUrl.searchParams.set('fields', 'name,language,status,components');
+  initialUrl.searchParams.set('fields', 'name,language,status,parameter_format,components');
   initialUrl.searchParams.set('limit', '100');
   initialUrl.searchParams.set('name', templateName);
 
@@ -287,6 +291,7 @@ async function fetchMetaTemplateDefinition(
       return {
         languageCode: match.language ?? null,
         status: match.status ?? null,
+        parameterFormat: match.parameter_format ?? null,
         components: match.components ?? null,
       };
     }
@@ -327,11 +332,32 @@ function getExpectedBodyParamCount(components: unknown[] | null | undefined): nu
 
   if (!bodyComponent?.text) return 0;
 
-  const matches = [...bodyComponent.text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)];
+  const matches = [...bodyComponent.text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)];
   if (matches.length === 0) return 0;
 
-  const placeholderIndexes = new Set(matches.map((match) => Number(match[1])));
-  return placeholderIndexes.size;
+  const placeholders = new Set(matches.map((match) => match[1]));
+  return placeholders.size;
+}
+
+function getBodyParameterNames(components: unknown[] | null | undefined): string[] {
+  if (!Array.isArray(components)) return [];
+
+  const bodyComponent = components.find((component) => {
+    const typedComponent = component as MetaTemplateComponent;
+    return typedComponent?.type?.toUpperCase() === 'BODY';
+  }) as MetaTemplateComponent | undefined;
+
+  const namedParams = bodyComponent?.example?.body_text_named_params;
+  if (Array.isArray(namedParams) && namedParams.length > 0) {
+    return namedParams
+      .map((param) => String(param?.param_name || '').trim())
+      .filter(Boolean);
+  }
+
+  if (!bodyComponent?.text) return [];
+  return [...bodyComponent.text.matchAll(/\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/gi)]
+    .map((match) => match[1])
+    .filter(Boolean);
 }
 
 interface MetaHeaderInfo {
@@ -890,6 +916,9 @@ Deno.serve(async (req) => {
       );
       const resolvedTemplateLanguage = metaTemplateDefinition?.languageCode || templateLanguage || 'pt_BR';
       const expectedBodyParamCount = getExpectedBodyParamCount(metaTemplateDefinition?.components);
+      const bodyParameterNames = getBodyParameterNames(metaTemplateDefinition?.components);
+      const usesNamedBodyParams = (metaTemplateDefinition?.parameterFormat || '').toLowerCase() === 'named'
+        || bodyParameterNames.length > 0;
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
       headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
@@ -900,8 +929,10 @@ Deno.serve(async (req) => {
         requestedLanguage: templateLanguage,
         resolvedLanguage: resolvedTemplateLanguage,
         metaStatus: metaTemplateDefinition?.status ?? null,
+        parameterFormat: metaTemplateDefinition?.parameterFormat ?? null,
         expectedBodyParamCount,
         providedTemplateParamCount: sanitizedTemplateParams.length,
+        bodyParameterNames,
         headerInfo,
         buttonComponentsCount: buttonComponents.length,
         metaComponents: JSON.stringify(metaTemplateDefinition?.components ?? []),
@@ -1009,9 +1040,12 @@ Deno.serve(async (req) => {
 
         components.push({
           type: 'body',
-          parameters: sanitizedTemplateParams.map((param: string) => ({
+          parameters: sanitizedTemplateParams.map((param: string, index: number) => ({
             type: 'text',
-            text: param
+            ...(usesNamedBodyParams && bodyParameterNames[index]
+              ? { parameter_name: bodyParameterNames[index] }
+              : {}),
+            text: param,
           }))
         });
       }
@@ -1249,16 +1283,6 @@ Deno.serve(async (req) => {
             lastError = responseData.error;
             continue;
           }
-        }
-        if (
-          templateName
-          && Number(errorCode) === 135000
-          && attempt < MAX_TEMPLATE_135000_RECOVERY_ATTEMPTS
-          && !headerInfo?.exampleUrl
-          && removeTemplateBodyComponent(messagePayload)
-        ) {
-          lastError = responseData.error;
-          continue;
         }
         if (errorCode && RETRYABLE_ERROR_CODES.includes(errorCode) && attempt < MAX_RETRIES) {
           console.log(`[Meta-Send] Retryable error ${errorCode}, will retry...`);
