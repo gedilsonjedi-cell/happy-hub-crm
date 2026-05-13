@@ -73,6 +73,8 @@ interface WhatsAppMessage {
   message_type: string;
   created_at: string;
   sender_name: string | null;
+  sender_phone?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -216,12 +218,31 @@ const ContatoDetalhes = () => {
     enabled: !!lead?.phone && !!organizationId,
   });
 
+  const resolveMessageChannelId = (message?: WhatsAppMessage | null) => {
+    if (!message) return null;
+    const validIds = new Set(historyChannelIds);
+    if (message.channel_id && validIds.has(message.channel_id)) return message.channel_id;
+
+    const metadata = (message.metadata ?? {}) as Record<string, unknown>;
+    const metadataChannelId = String(metadata.channelId || metadata.channel_id || "");
+    if (metadataChannelId && validIds.has(metadataChannelId)) return metadataChannelId;
+
+    const normalizedSender = (message.sender_phone || "").replace(/\D/g, "");
+    const metadataChannelPhone = String(metadata.channel_phone || metadata.channelPhone || "").replace(/\D/g, "");
+    const matchedChannel = channels.find((channel) => {
+      const channelPhone = (channel.phone || "").replace(/\D/g, "");
+      return channelPhone && (normalizedSender.endsWith(channelPhone.slice(-8)) || metadataChannelPhone.endsWith(channelPhone.slice(-8)));
+    });
+
+    return matchedChannel?.id ?? null;
+  };
+
   const openConversationInAttendance = (channelId?: string | null) => {
     if (!lead?.phone) return;
     const cleanPhone = lead.phone.replace(/\D/g, "");
     const params = new URLSearchParams({ phone: cleanPhone });
     if (channelId) params.set("channelId", channelId);
-    navigate(`/atendimento?${params.toString()}`);
+    navigate(`/atendimento-v2?${params.toString()}`);
   };
 
   const handleLeadUpdated = () => {
@@ -251,7 +272,7 @@ const ContatoDetalhes = () => {
       if (latestMessage) {
         // There's an existing conversation - navigate to chat with phone pre-selected
         toast.success("Abrindo conversa existente...");
-        openConversationInAttendance(latestMessage.channel_id);
+        openConversationInAttendance(resolveMessageChannelId(latestMessage));
       } else {
         // No existing conversation - open the manual send dialog
         if (!selectedChannel && channels.length > 0) {
@@ -532,7 +553,7 @@ const ContatoDetalhes = () => {
                       <button
                         type="button"
                         key={msg.id}
-                        onClick={() => openConversationInAttendance(msg.channel_id)}
+                        onClick={() => openConversationInAttendance(resolveMessageChannelId(msg))}
                         className={cn(
                           "w-full p-3 rounded-lg text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           msg.direction === "outbound" 
