@@ -83,7 +83,8 @@ interface Edge {
   sourceHandle?: string;
 }
 
-const nodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: string }[] = [
+const baseNodeTypes: { type: NodeType; label: string; icon: React.ReactNode; color: string; dispatchOnly?: boolean }[] = [
+  { type: "template", label: "Template", icon: <FileText className="w-4 h-4" />, color: "text-emerald-500", dispatchOnly: true },
   { type: "message", label: "Mensagem", icon: <MessageSquare className="w-4 h-4" />, color: "text-blue-500" },
   { type: "buttons", label: "Botões", icon: <LayoutGrid className="w-4 h-4" />, color: "text-purple-500" },
   { type: "collect_data", label: "Coletar Dados", icon: <FormInput className="w-4 h-4" />, color: "text-green-500" },
