@@ -121,6 +121,23 @@ const ContatoDetalhes = () => {
 
   const [selectedChannel, setSelectedChannel] = useState<typeof channels[0] | null>(null);
 
+  const { data: historyChannelIds = [] } = useQuery({
+    queryKey: ["history-channel-ids", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const { data, error } = await (supabase as any)
+        .from("channels_public")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .in("provider", ["meta", "zapi", "gupshup"]);
+
+      if (error) throw error;
+      return (data || []).map((channel: { id: string }) => channel.id);
+    },
+    enabled: !!organizationId,
+  });
+
   // Set default channel when channels are loaded
   useEffect(() => {
     if (channels.length > 0 && !selectedChannel) {
@@ -184,14 +201,14 @@ const ContatoDetalhes = () => {
 
   // Fetch message history
   const { data: messages = [] } = useQuery({
-    queryKey: ["lead-messages", organizationId, lead?.phone, channels.map((c: any) => c.id).join("|")],
+    queryKey: ["lead-messages", organizationId, lead?.phone, historyChannelIds.join("|")],
     queryFn: async () => {
       if (!lead?.phone || !organizationId) return [];
 
       return fetchExternalMessagesForLead({
         phone: lead.phone,
         organizationId,
-        channelIds: channels.map((channel: any) => channel.id),
+        channelIds: historyChannelIds,
         impersonatedOrgId: externalImpersonatedOrgId,
         limit: 100,
       }) as Promise<WhatsAppMessage[]>;
