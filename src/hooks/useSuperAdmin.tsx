@@ -149,10 +149,24 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const FALLBACK_SUPER_ADMIN: SuperAdminContextType = {
+  organizations: [],
+  selectedOrganization: null,
+  setSelectedOrganization: () => {},
+  isImpersonating: false,
+  loading: false,
+  refetch: () => {},
+};
+
 export function useSuperAdmin() {
   const context = useContext(SuperAdminContext);
   if (context === undefined) {
-    throw new Error("useSuperAdmin must be used within a SuperAdminProvider");
+    // Resilient fallback: avoid crashing pages rendered outside the provider
+    // (e.g., during HMR remounts or route transitions before the auth tree mounts).
+    if (typeof window !== "undefined") {
+      console.warn("[useSuperAdmin] used outside SuperAdminProvider — returning fallback");
+    }
+    return FALLBACK_SUPER_ADMIN;
   }
   return context;
 }
