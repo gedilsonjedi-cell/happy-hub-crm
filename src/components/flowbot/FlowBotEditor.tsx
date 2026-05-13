@@ -7,6 +7,7 @@ import {
   LayoutGrid, 
   FormInput, 
   Zap,
+  FileText,
   Trash2,
   Copy,
   Check,
