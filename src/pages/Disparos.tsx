@@ -358,17 +358,28 @@ const Disparos = () => {
       }
     }
 
-    setAllCampaigns((campaignsData || []).map(c => {
-      const real = realCountsMap.get(c.id);
-      return {
-        ...c,
-        status: c.status as Campaign["status"],
-        // Prefer real counters from campaign_recipients (source of truth) when available.
-        sent_count: real ? real.sent : c.sent_count,
-        delivered_count: real ? real.delivered : c.delivered_count,
-        failed_count: real ? real.failed : c.failed_count,
-      };
-    }));
+    setAllCampaigns((prev) => {
+      const prevById = new Map(prev.map(p => [p.id, p]));
+      return (campaignsData || []).map(c => {
+        const real = realCountsMap.get(c.id);
+        const previous = prevById.get(c.id);
+        // Counters are append-only in the UI: take the maximum across stored
+        // value, real recipient count and the previously displayed value, so
+        // refreshes never shrink historical numbers.
+        const sent = Math.max(c.sent_count ?? 0, real?.sent ?? 0, previous?.sent_count ?? 0);
+        const delivered = Math.max(c.delivered_count ?? 0, real?.delivered ?? 0, previous?.delivered_count ?? 0);
+        const failed = Math.max(c.failed_count ?? 0, real?.failed ?? 0, previous?.failed_count ?? 0);
+        const total = Math.max(c.total_recipients ?? 0, previous?.total_recipients ?? 0);
+        return {
+          ...c,
+          status: c.status as Campaign["status"],
+          total_recipients: total,
+          sent_count: sent,
+          delivered_count: delivered,
+          failed_count: failed,
+        };
+      });
+    });
     setAiAgents(agentsData || []);
     setSectors(sectorsData || []);
     setLoading(false);
