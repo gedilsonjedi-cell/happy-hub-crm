@@ -432,6 +432,56 @@ export type Database = {
           },
         ]
       }
+      campaign_metric_snapshots: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          delivered_count: number
+          failed_count: number
+          interacted_count: number
+          last_recalculated_at: string
+          organization_id: string
+          read_count: number
+          recipients_count: number
+          sent_count: number
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          delivered_count?: number
+          failed_count?: number
+          interacted_count?: number
+          last_recalculated_at?: string
+          organization_id: string
+          read_count?: number
+          recipients_count?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          delivered_count?: number
+          failed_count?: number
+          interacted_count?: number
+          last_recalculated_at?: string
+          organization_id?: string
+          read_count?: number
+          recipients_count?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_metric_snapshots_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_recipients: {
         Row: {
           button_clicked: string | null
@@ -3949,6 +3999,10 @@ export type Database = {
             }
             Returns: boolean
           }
+      refresh_campaign_metric_snapshot: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
+      }
       regenerate_channel_api_token: {
         Args: { _channel_id: string }
         Returns: string
