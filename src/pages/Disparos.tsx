@@ -424,10 +424,18 @@ const Disparos = () => {
                   return c;
                 }
 
+                // CRITICAL: campaign metric columns are append-only from the user's
+                // perspective. The DB occasionally publishes stale/lower aggregates
+                // (e.g. sync routines or backfill). Never let a realtime payload
+                // shrink the displayed counters — keep the maximum we've ever seen.
                 return {
                   ...c,
                   ...newCampaign,
-                  status: newCampaign.status as Campaign["status"]
+                  status: newCampaign.status as Campaign["status"],
+                  total_recipients: Math.max(c.total_recipients ?? 0, newCampaign.total_recipients ?? 0),
+                  sent_count: Math.max(c.sent_count ?? 0, newCampaign.sent_count ?? 0),
+                  delivered_count: Math.max(c.delivered_count ?? 0, newCampaign.delivered_count ?? 0),
+                  failed_count: Math.max(c.failed_count ?? 0, newCampaign.failed_count ?? 0),
                 };
               })
             );
