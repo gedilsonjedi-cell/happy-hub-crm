@@ -267,6 +267,7 @@ async function processCampaignDispatch(
 
           if (existingAssignment) {
             const updatePayload: Record<string, unknown> = { 
+              organization_id: channel.organization_id,
               sector_id: campaignSectorId,
               updated_at: new Date().toISOString()
             };
@@ -278,6 +279,7 @@ async function processCampaignDispatch(
           } else {
             // IMPORTANT: campaigns start as 'archived' — only become 'pending' when client replies
             const insertPayload: Record<string, unknown> = {
+              organization_id: channel.organization_id,
               conversation_phone: formattedPhone, 
               channel_id: channel.id,
               sector_id: campaignSectorId,

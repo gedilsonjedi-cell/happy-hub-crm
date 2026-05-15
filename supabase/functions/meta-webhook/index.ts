@@ -61,9 +61,29 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
         });
         if (statsError) {
           console.error('[Stats] upsert_conversation_stats_external failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+          await recoverConversationStatsExternal({
+            organizationId: (data.organization_id as string) || null,
+            channelId: statsChannelId,
+            phone,
+            content: (data.content as string) || '',
+            direction: data.direction as string,
+            isRead: (data.is_read as boolean) ?? false,
+            senderName: (data.sender_name as string) || null,
+            createdAt: new Date().toISOString(),
+          });
         }
       } catch (e: unknown) {
         console.error('[Stats] upsert_conversation_stats_external exception:', e);
+        await recoverConversationStatsExternal({
+          organizationId: (data.organization_id as string) || null,
+          channelId: statsChannelId,
+          phone,
+          content: (data.content as string) || '',
+          direction: data.direction as string,
+          isRead: (data.is_read as boolean) ?? false,
+          senderName: (data.sender_name as string) || null,
+          createdAt: new Date().toISOString(),
+        });
       }
 
 
@@ -88,6 +108,91 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
   }
 
   return result;
+}
+
+async function recoverConversationStatsExternal(params: {
+  organizationId: string | null;
+  channelId: string | null;
+  phone: string;
+  content: string;
+  direction: string;
+  isRead: boolean;
+  senderName: string | null;
+  createdAt: string;
+}) {
+  if (!externalSupabase || !params.organizationId || !params.channelId || !params.phone) return;
+
+  const normalized = normalizePhone(params.phone);
+  const variants = Array.from(new Set([...getPhoneVariants(normalized), normalized].flatMap((p) => [p, `+${p}`])));
+  const suffix8 = normalized.slice(-8);
+
+  let { data: assignment } = await externalSupabase
+    .from('conversation_assignments')
+    .select('id, organization_id, conversation_phone')
+    .eq('channel_id', params.channelId)
+    .in('conversation_phone', variants)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!assignment && suffix8) {
+    const { data } = await externalSupabase
+      .from('conversation_assignments')
+      .select('id, organization_id, conversation_phone')
+      .eq('channel_id', params.channelId)
+      .ilike('conversation_phone', `%${suffix8}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    assignment = data;
+  }
+
+  if (!assignment && params.direction === 'inbound') {
+    const { data } = await externalSupabase
+      .from('conversation_assignments')
+      .insert({
+        organization_id: params.organizationId,
+        channel_id: params.channelId,
+        conversation_phone: normalized,
+        status: 'pending',
+        updated_at: new Date().toISOString(),
+      })
+      .select('id, conversation_phone')
+      .maybeSingle();
+    assignment = data;
+  }
+
+  if (!assignment?.id) return;
+
+  if (!assignment.organization_id) {
+    await externalSupabase
+      .from('conversation_assignments')
+      .update({ organization_id: params.organizationId, updated_at: new Date().toISOString() })
+      .eq('id', assignment.id);
+  }
+
+  const statRow = {
+    assignment_id: assignment.id,
+    channel_id: params.channelId,
+    conversation_phone: assignment.conversation_phone || normalized,
+    organization_id: params.organizationId,
+    last_message_content: params.content,
+    last_message_at: params.createdAt,
+    last_inbound_at: params.direction === 'inbound' ? params.createdAt : null,
+    unread_count: params.direction === 'inbound' && !params.isRead ? 1 : 0,
+    sender_name: params.direction === 'inbound' ? params.senderName : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await externalSupabase
+    .from('conversation_stats')
+    .upsert(statRow, { onConflict: 'assignment_id' });
+
+  if (error) {
+    console.error('[Stats] recovery upsert failed:', error.message, { channelId: params.channelId, phone: normalized, assignmentId: assignment.id });
+  } else {
+    console.log('[Stats] recovery upsert ok:', { channelId: params.channelId, phone: normalized, assignmentId: assignment.id });
+  }
 }
 
 /** Update whatsapp_messages on external DB only */
@@ -559,13 +664,13 @@ async function handleConversationAssignment(
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
   // Try exact match first, then variants
-  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
+  let existing: { id: string; organization_id?: string | null; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
   // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
   const caDb = externalSupabase;
   const { data: exactMatch } = await caDb
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
@@ -577,7 +682,7 @@ async function handleConversationAssignment(
     for (const variant of phoneVariants.slice(1)) {
       const { data: variantMatch } = await caDb
         .from('conversation_assignments')
-        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
         .eq('channel_id', channelId)
         .eq('conversation_phone', variant)
         .maybeSingle();
@@ -601,7 +706,7 @@ async function handleConversationAssignment(
     }
 
     // Trigger update when: archived, missing lead, OR unassigned (e.g. campaign-created assignments)
-    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to;
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to || !existing.organization_id;
     if (needsUpdate) {
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
@@ -630,7 +735,7 @@ async function handleConversationAssignment(
 
       await caDb
         .from('conversation_assignments')
-        .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
+        .update({ organization_id: organizationId, status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
       console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${existing.sector_id})`);
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
