@@ -61,9 +61,29 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
         });
         if (statsError) {
           console.error('[Stats] upsert_conversation_stats_external failed:', statsError.message, { statsChannelId, phone, direction: data.direction });
+          await recoverConversationStatsExternal({
+            organizationId: (data.organization_id as string) || null,
+            channelId: statsChannelId,
+            phone,
+            content: (data.content as string) || '',
+            direction: data.direction as string,
+            isRead: (data.is_read as boolean) ?? false,
+            senderName: (data.sender_name as string) || null,
+            createdAt: new Date().toISOString(),
+          });
         }
       } catch (e: unknown) {
         console.error('[Stats] upsert_conversation_stats_external exception:', e);
+        await recoverConversationStatsExternal({
+          organizationId: (data.organization_id as string) || null,
+          channelId: statsChannelId,
+          phone,
+          content: (data.content as string) || '',
+          direction: data.direction as string,
+          isRead: (data.is_read as boolean) ?? false,
+          senderName: (data.sender_name as string) || null,
+          createdAt: new Date().toISOString(),
+        });
       }
 
 
