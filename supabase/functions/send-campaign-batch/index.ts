@@ -639,6 +639,7 @@ Deno.serve(async (req) => {
             .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).single();
           if (existing) {
             const updatePayload: Record<string, unknown> = {
+              organization_id: channel.organization_id,
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
               sector_id: campaign.sector_id || null,
@@ -651,6 +652,7 @@ Deno.serve(async (req) => {
             await caDb.from('conversation_assignments').update(updatePayload).eq('id', existing.id);
           } else {
             await caDb.from('conversation_assignments').insert({
+              organization_id: channel.organization_id,
               conversation_phone: formattedPhone, channel_id: channel.id,
               campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
               is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
