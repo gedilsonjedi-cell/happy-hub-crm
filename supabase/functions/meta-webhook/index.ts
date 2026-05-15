@@ -128,8 +128,7 @@ async function recoverConversationStatsExternal(params: {
 
   let { data: assignment } = await externalSupabase
     .from('conversation_assignments')
-    .select('id, conversation_phone')
-    .eq('organization_id', params.organizationId)
+    .select('id, organization_id, conversation_phone')
     .eq('channel_id', params.channelId)
     .in('conversation_phone', variants)
     .order('updated_at', { ascending: false })
@@ -139,8 +138,7 @@ async function recoverConversationStatsExternal(params: {
   if (!assignment && suffix8) {
     const { data } = await externalSupabase
       .from('conversation_assignments')
-      .select('id, conversation_phone')
-      .eq('organization_id', params.organizationId)
+      .select('id, organization_id, conversation_phone')
       .eq('channel_id', params.channelId)
       .ilike('conversation_phone', `%${suffix8}`)
       .order('updated_at', { ascending: false })
@@ -165,6 +163,13 @@ async function recoverConversationStatsExternal(params: {
   }
 
   if (!assignment?.id) return;
+
+  if (!assignment.organization_id) {
+    await externalSupabase
+      .from('conversation_assignments')
+      .update({ organization_id: params.organizationId, updated_at: new Date().toISOString() })
+      .eq('id', assignment.id);
+  }
 
   const statRow = {
     assignment_id: assignment.id,
