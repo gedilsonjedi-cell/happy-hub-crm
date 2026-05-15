@@ -664,13 +664,13 @@ async function handleConversationAssignment(
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
   // Try exact match first, then variants
-  let existing: { id: string; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
+  let existing: { id: string; organization_id?: string | null; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
   
   // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
   const caDb = externalSupabase;
   const { data: exactMatch } = await caDb
     .from('conversation_assignments')
-    .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
@@ -682,7 +682,7 @@ async function handleConversationAssignment(
     for (const variant of phoneVariants.slice(1)) {
       const { data: variantMatch } = await caDb
         .from('conversation_assignments')
-        .select('id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
         .eq('channel_id', channelId)
         .eq('conversation_phone', variant)
         .maybeSingle();
@@ -706,7 +706,7 @@ async function handleConversationAssignment(
     }
 
     // Trigger update when: archived, missing lead, OR unassigned (e.g. campaign-created assignments)
-    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to;
+    const needsUpdate = existing.status === 'archived' || !existing.lead_id || !existing.assigned_to || !existing.organization_id;
     if (needsUpdate) {
       let assignedTo = existing.assigned_to;
       let newStatus = existing.status === 'archived'
@@ -735,7 +735,7 @@ async function handleConversationAssignment(
 
       await caDb
         .from('conversation_assignments')
-        .update({ status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
+        .update({ organization_id: organizationId, status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
       console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${existing.sector_id})`);
       return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
