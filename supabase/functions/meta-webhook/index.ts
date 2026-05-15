@@ -110,6 +110,86 @@ async function dualWriteMessage(data: Record<string, unknown>, upsert = false, i
   return result;
 }
 
+async function recoverConversationStatsExternal(params: {
+  organizationId: string | null;
+  channelId: string | null;
+  phone: string;
+  content: string;
+  direction: string;
+  isRead: boolean;
+  senderName: string | null;
+  createdAt: string;
+}) {
+  if (!externalSupabase || !params.organizationId || !params.channelId || !params.phone) return;
+
+  const normalized = normalizePhone(params.phone);
+  const variants = Array.from(new Set([...getPhoneVariants(normalized), normalized].flatMap((p) => [p, `+${p}`])));
+  const suffix8 = normalized.slice(-8);
+
+  let { data: assignment } = await externalSupabase
+    .from('conversation_assignments')
+    .select('id, conversation_phone')
+    .eq('organization_id', params.organizationId)
+    .eq('channel_id', params.channelId)
+    .in('conversation_phone', variants)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!assignment && suffix8) {
+    const { data } = await externalSupabase
+      .from('conversation_assignments')
+      .select('id, conversation_phone')
+      .eq('organization_id', params.organizationId)
+      .eq('channel_id', params.channelId)
+      .ilike('conversation_phone', `%${suffix8}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    assignment = data;
+  }
+
+  if (!assignment && params.direction === 'inbound') {
+    const { data } = await externalSupabase
+      .from('conversation_assignments')
+      .insert({
+        organization_id: params.organizationId,
+        channel_id: params.channelId,
+        conversation_phone: normalized,
+        status: 'pending',
+        updated_at: new Date().toISOString(),
+      })
+      .select('id, conversation_phone')
+      .maybeSingle();
+    assignment = data;
+  }
+
+  if (!assignment?.id) return;
+
+  const statRow = {
+    assignment_id: assignment.id,
+    channel_id: params.channelId,
+    conversation_phone: assignment.conversation_phone || normalized,
+    organization_id: params.organizationId,
+    last_message_content: params.content,
+    last_message_at: params.createdAt,
+    last_inbound_at: params.direction === 'inbound' ? params.createdAt : null,
+    unread_count: params.direction === 'inbound' && !params.isRead ? 1 : 0,
+    sender_name: params.direction === 'inbound' ? params.senderName : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await externalSupabase
+    .from('conversation_stats')
+    .upsert(statRow, { onConflict: 'assignment_id' });
+
+  if (error) {
+    console.error('[Stats] recovery upsert failed:', error.message, { channelId: params.channelId, phone: normalized, assignmentId: assignment.id });
+  } else {
+    console.log('[Stats] recovery upsert ok:', { channelId: params.channelId, phone: normalized, assignmentId: assignment.id });
+  }
+}
+
 /** Update whatsapp_messages on external DB only */
 async function dualUpdateMessages(filter: { column: string; values: string[] }, updateData: Record<string, unknown>) {
   return await messageDb.from('whatsapp_messages').update(updateData).in(filter.column, filter.values);
