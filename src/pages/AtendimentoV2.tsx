@@ -2586,7 +2586,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchAndApply();
-  }, [channelIdSet]);
+  }, [channelIdSet, effectiveOrganizationId, getLeadFromCache]);
 
   // ─── Throttled Realtime: batch rapid messages into single render cycle ────
   const messageBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>> | null>(null);
