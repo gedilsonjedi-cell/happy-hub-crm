@@ -1136,6 +1136,11 @@ const AtendimentoV2 = () => {
         return;
       }
 
+      if (!canSeeAllConversations && sectorsLoading) {
+        setLoading(true);
+        return;
+      }
+
       if (channels.length === 0) {
         setConversationStatuses({});
         setAllConversations([]);
@@ -1224,7 +1229,7 @@ const AtendimentoV2 = () => {
     return () => {
       cancelled = true;
     };
-  }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorIds]);
+  }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorsLoading, sectorIds]);
 
   useEffect(() => {
     const refreshVisibleConversations = () => {
