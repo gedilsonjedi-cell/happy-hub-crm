@@ -23,7 +23,9 @@ export function useAttendantStatus() {
       let query = supabase
         .from("attendant_availability")
         .select("id, is_available, organization_id")
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
       if (effectiveOrganizationId) {
         query = query.eq("organization_id", effectiveOrganizationId);
@@ -38,6 +40,7 @@ export function useAttendantStatus() {
           .from("attendant_availability")
           .select("id, is_available, organization_id")
           .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 

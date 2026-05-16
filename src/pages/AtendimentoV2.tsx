@@ -94,6 +94,7 @@ import {
   fetchBulkPreviews,
   getPreviewTextFromBulkResult,
 } from "@/lib/externalDb";
+import { refreshExternalToken } from "@/lib/externalSupabaseClient";
 import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
@@ -569,6 +570,7 @@ const AtendimentoV2 = () => {
   const [channelIdToOpen] = useState<string | null>(searchParams.get("channelId"));
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelsLoaded, setChannelsLoaded] = useState(false);
   
   // CRITICAL: Build a set of valid channel IDs for safety filtering
   const validChannelIds = useMemo(() => new Set(channels.map(c => c.id)), [channels]);
@@ -650,6 +652,7 @@ const AtendimentoV2 = () => {
   const [bulkSelectedKeys, setBulkSelectedKeys] = useState<Set<string>>(new Set());
   const [showBulkTransferDialog, setShowBulkTransferDialog] = useState(false);
   const [conversationRefetchTrigger, setConversationRefetchTrigger] = useState(0);
+  const lastForegroundRefreshRef = useRef(0);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -853,6 +856,8 @@ const AtendimentoV2 = () => {
       if (!effectiveOrganizationId) {
         return;
       }
+
+      setChannelsLoaded(false);
       
       const { data, error } = await (supabase as any)
         .from("channels_public")
@@ -864,6 +869,7 @@ const AtendimentoV2 = () => {
       if (error) {
         console.error("Error fetching channels:", error);
         setChannels([]);
+        setChannelsLoaded(true);
         setLoading(false);
         return;
       }
@@ -888,12 +894,15 @@ const AtendimentoV2 = () => {
           setSelectedChannel(data[0]);
         }
       }
+
+      setChannelsLoaded(true);
     };
 
     if (user && effectiveOrganizationId) {
       const orgChanged = prevOrgIdRef.current !== null && prevOrgIdRef.current !== effectiveOrganizationId;
       
       if (orgChanged) {
+        setChannelsLoaded(false);
         setChannels([]);
         setAllConversations([]);
         setSelectedConversation(null);
@@ -1026,6 +1035,7 @@ const AtendimentoV2 = () => {
       const data = await fetchAssignmentsByChannelsExternal({
         channelIds,
         status: "not_archived",
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
       assignments.push(...(data as any));
     }
@@ -1100,7 +1110,7 @@ const AtendimentoV2 = () => {
     });
 
     return mapConversationSummaryRows(fallbackRows);
-  }, [effectiveOrganizationId]);
+  }, [effectiveOrganizationId, externalImpersonatedOrgId]);
 
   const getLeadFromCache = useCallback((phone: string) => {
     const candidates = getPhoneComparisonVariants(phone)
@@ -1118,7 +1128,19 @@ const AtendimentoV2 = () => {
   // Fetch conversations using the precomputed summary RPC.
   // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
+    let cancelled = false;
+
     const fetchConversations = async () => {
+      if (!channelsLoaded) {
+        setLoading(true);
+        return;
+      }
+
+      if (!canSeeAllConversations && sectorsLoading) {
+        setLoading(true);
+        return;
+      }
+
       if (channels.length === 0) {
         setConversationStatuses({});
         setAllConversations([]);
@@ -1166,6 +1188,7 @@ const AtendimentoV2 = () => {
 
         if (rows?.length) {
           const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = mappedData.leadLookups;
           setConversationStatuses(mappedData.statuses);
@@ -1175,6 +1198,7 @@ const AtendimentoV2 = () => {
         } else {
           // Try legacy fallback
           const fallbackData = await fetchConversationsFallback(channelIds);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = fallbackData.leadLookups;
           setConversationStatuses(fallbackData.statuses);
@@ -1187,6 +1211,7 @@ const AtendimentoV2 = () => {
 
         try {
           const fallbackData = await fetchConversationsFallback(channelIds);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = fallbackData.leadLookups;
           setConversationStatuses(fallbackData.statuses);
@@ -1196,12 +1221,35 @@ const AtendimentoV2 = () => {
           console.error("Error fetching conversations fallback:", fallbackError);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
+    return () => {
+      cancelled = true;
+    };
+  }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorsLoading, sectorIds]);
+
+  useEffect(() => {
+    const refreshVisibleConversations = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!effectiveOrganizationId || !channelsLoaded) return;
+      const now = Date.now();
+      if (now - lastForegroundRefreshRef.current < 1_500) return;
+      lastForegroundRefreshRef.current = now;
+      refreshExternalToken(externalImpersonatedOrgId).catch(() => {});
+      setConversationRefetchTrigger((value) => value + 1);
+    };
+
+    window.addEventListener("focus", refreshVisibleConversations);
+    document.addEventListener("visibilitychange", refreshVisibleConversations);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleConversations);
+      document.removeEventListener("visibilitychange", refreshVisibleConversations);
+    };
+  }, [effectiveOrganizationId, externalImpersonatedOrgId, channelsLoaded]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
@@ -1271,7 +1319,7 @@ const AtendimentoV2 = () => {
     const timer = setTimeout(syncAssignmentsOnce, 1000);
     return () => clearTimeout(timer);
     // No interval - Realtime handles ongoing updates
-  }, [channels]);
+  }, [channels, externalImpersonatedOrgId]);
 
   // Background enrichment: fetch last message for conversations missing preview
   const conversationsMissingPreview = useMemo(
@@ -2128,13 +2176,17 @@ const AtendimentoV2 = () => {
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
   const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
+  const userIdRef = useRef<string | null>(user?.id ?? null);
+  const externalImpersonatedOrgIdRef = useRef<string | null>(externalImpersonatedOrgId);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
     refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage]);
+    userIdRef.current = user?.id ?? null;
+    externalImpersonatedOrgIdRef.current = externalImpersonatedOrgId;
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage, user?.id, externalImpersonatedOrgId]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
@@ -2225,7 +2277,7 @@ const AtendimentoV2 = () => {
       // conversations handled by other attendants.
       setAllConversations(convs => {
         const matchingConv = convs.find(isConversationMatch);
-        const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === user?.id;
+        const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === userIdRef.current;
 
         if (isAssignedToMe) {
           showNotificationRef.current(newMsg);
@@ -2299,7 +2351,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          impersonatedOrgId: externalImpersonatedOrgId,
+            impersonatedOrgId: externalImpersonatedOrgIdRef.current,
           })
             .then(async (assignment) => {
               let assignedToName: string | null = null;
@@ -2391,7 +2443,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          impersonatedOrgId: externalImpersonatedOrgId,
+            impersonatedOrgId: externalImpersonatedOrgIdRef.current,
           })
             .then(async (newAssignment) => {
               let newAssignedToName: string | null = null;
@@ -2436,7 +2488,7 @@ const AtendimentoV2 = () => {
                   );
                 }
                 const newConv: Conversation = {
-                  id: newAssignment?.id, phone: displayPhone,
+                  id: newAssignment?.id || getConversationThreadKey(msg.channelId, displayPhone), phone: displayPhone,
                   name: resolvedName, lastMessage: msg.content || "",
                   lastMessageTime: msg.createdAt, lastInboundTime: msg.createdAt, unreadCount: 1,
                   channelId: msg.channelId, status: mappedStatus,
@@ -2450,7 +2502,7 @@ const AtendimentoV2 = () => {
       return prev; // no mutation in this pass
       });
     }
-  }, []);
+  }, [externalImpersonatedOrgId, effectiveOrganizationId, getLeadFromCache, queryClient]);
 
   const handleAssignmentChangeRealtime = useCallback((assignment: {
     id: string;
@@ -2537,7 +2589,7 @@ const AtendimentoV2 = () => {
             }
             return c;
           });
-        } else if (assignment.assignedTo && assignment.channelId) {
+        } else if (assignment.channelId) {
           const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
           const newConv: Conversation = {
             id: assignment.id, phone: displayPhone, name: prefetchedLeadName,
@@ -2562,7 +2614,7 @@ const AtendimentoV2 = () => {
     };
 
     fetchAndApply();
-  }, [channelIdSet]);
+  }, [channelIdSet, effectiveOrganizationId, getLeadFromCache]);
 
   // ─── Throttled Realtime: batch rapid messages into single render cycle ────
   const messageBatcherRef = useRef<ReturnType<typeof createRealtimeBatcher<Parameters<typeof handleNewMessageRealtime>[0]>> | null>(null);
