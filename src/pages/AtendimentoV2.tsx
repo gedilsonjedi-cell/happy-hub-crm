@@ -1319,7 +1319,7 @@ const AtendimentoV2 = () => {
     const timer = setTimeout(syncAssignmentsOnce, 1000);
     return () => clearTimeout(timer);
     // No interval - Realtime handles ongoing updates
-  }, [channels]);
+  }, [channels, externalImpersonatedOrgId]);
 
   // Background enrichment: fetch last message for conversations missing preview
   const conversationsMissingPreview = useMemo(
