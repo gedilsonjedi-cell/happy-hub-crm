@@ -569,6 +569,7 @@ const AtendimentoV2 = () => {
   const [channelIdToOpen] = useState<string | null>(searchParams.get("channelId"));
   const [conversationNotes, setConversationNotes] = useState<ConversationNote[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelsLoaded, setChannelsLoaded] = useState(false);
   
   // CRITICAL: Build a set of valid channel IDs for safety filtering
   const validChannelIds = useMemo(() => new Set(channels.map(c => c.id)), [channels]);
@@ -853,6 +854,8 @@ const AtendimentoV2 = () => {
       if (!effectiveOrganizationId) {
         return;
       }
+
+      setChannelsLoaded(false);
       
       const { data, error } = await (supabase as any)
         .from("channels_public")
@@ -864,6 +867,7 @@ const AtendimentoV2 = () => {
       if (error) {
         console.error("Error fetching channels:", error);
         setChannels([]);
+        setChannelsLoaded(true);
         setLoading(false);
         return;
       }
@@ -888,12 +892,15 @@ const AtendimentoV2 = () => {
           setSelectedChannel(data[0]);
         }
       }
+
+      setChannelsLoaded(true);
     };
 
     if (user && effectiveOrganizationId) {
       const orgChanged = prevOrgIdRef.current !== null && prevOrgIdRef.current !== effectiveOrganizationId;
       
       if (orgChanged) {
+        setChannelsLoaded(false);
         setChannels([]);
         setAllConversations([]);
         setSelectedConversation(null);
