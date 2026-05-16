@@ -2272,7 +2272,7 @@ const AtendimentoV2 = () => {
       // conversations handled by other attendants.
       setAllConversations(convs => {
         const matchingConv = convs.find(isConversationMatch);
-        const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === user?.id;
+        const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === userIdRef.current;
 
         if (isAssignedToMe) {
           showNotificationRef.current(newMsg);
