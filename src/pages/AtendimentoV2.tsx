@@ -94,6 +94,7 @@ import {
   fetchBulkPreviews,
   getPreviewTextFromBulkResult,
 } from "@/lib/externalDb";
+import { refreshExternalToken } from "@/lib/externalSupabaseClient";
 import { createRealtimeBatcher } from "@/lib/realtimeThrottle";
 
 import { QuickResponsesPanel } from "@/components/whatsapp/QuickResponsesPanel";
@@ -1033,6 +1034,7 @@ const AtendimentoV2 = () => {
       const data = await fetchAssignmentsByChannelsExternal({
         channelIds,
         status: "not_archived",
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
       assignments.push(...(data as any));
     }
@@ -1107,7 +1109,7 @@ const AtendimentoV2 = () => {
     });
 
     return mapConversationSummaryRows(fallbackRows);
-  }, [effectiveOrganizationId]);
+  }, [effectiveOrganizationId, externalImpersonatedOrgId]);
 
   const getLeadFromCache = useCallback((phone: string) => {
     const candidates = getPhoneComparisonVariants(phone)
