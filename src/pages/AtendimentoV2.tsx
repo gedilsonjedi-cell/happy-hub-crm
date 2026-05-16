@@ -1125,7 +1125,14 @@ const AtendimentoV2 = () => {
   // Fetch conversations using the precomputed summary RPC.
   // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
+    let cancelled = false;
+
     const fetchConversations = async () => {
+      if (!channelsLoaded) {
+        setLoading(true);
+        return;
+      }
+
       if (channels.length === 0) {
         setConversationStatuses({});
         setAllConversations([]);
@@ -1173,6 +1180,7 @@ const AtendimentoV2 = () => {
 
         if (rows?.length) {
           const mappedData = mapConversationSummaryRows(rows as ConversationSummaryRow[]);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = mappedData.leadLookups;
           setConversationStatuses(mappedData.statuses);
@@ -1182,6 +1190,7 @@ const AtendimentoV2 = () => {
         } else {
           // Try legacy fallback
           const fallbackData = await fetchConversationsFallback(channelIds);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = fallbackData.leadLookups;
           setConversationStatuses(fallbackData.statuses);
@@ -1194,6 +1203,7 @@ const AtendimentoV2 = () => {
 
         try {
           const fallbackData = await fetchConversationsFallback(channelIds);
+          if (cancelled) return;
           previewHydrationAttemptsRef.current.clear();
           leadsMapRef.current = fallbackData.leadLookups;
           setConversationStatuses(fallbackData.statuses);
@@ -1203,12 +1213,15 @@ const AtendimentoV2 = () => {
           console.error("Error fetching conversations fallback:", fallbackError);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchConversations();
-  }, [channels, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations]);
+    return () => {
+      cancelled = true;
+    };
+  }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorIds]);
 
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
