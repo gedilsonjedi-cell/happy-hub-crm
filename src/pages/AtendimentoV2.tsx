@@ -1226,6 +1226,26 @@ const AtendimentoV2 = () => {
     };
   }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorIds]);
 
+  useEffect(() => {
+    const refreshVisibleConversations = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!effectiveOrganizationId || !channelsLoaded) return;
+      const now = Date.now();
+      if (now - lastForegroundRefreshRef.current < 1_500) return;
+      lastForegroundRefreshRef.current = now;
+      refreshExternalToken(externalImpersonatedOrgId).catch(() => {});
+      setConversationRefetchTrigger((value) => value + 1);
+    };
+
+    window.addEventListener("focus", refreshVisibleConversations);
+    document.addEventListener("visibilitychange", refreshVisibleConversations);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleConversations);
+      document.removeEventListener("visibilitychange", refreshVisibleConversations);
+    };
+  }, [effectiveOrganizationId, externalImpersonatedOrgId, channelsLoaded]);
+
   // OPTIMIZATION: Realtime-driven assignment sync replaces polling
   // The useChatRealtime hook below handles all assignment changes via Realtime,
   // eliminating the need for the 30-second polling interval (was ~200 queries/min at 100 users)
