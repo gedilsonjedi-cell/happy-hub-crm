@@ -2460,7 +2460,7 @@ const AtendimentoV2 = () => {
                   );
                 }
                 const newConv: Conversation = {
-                  id: newAssignment?.id, phone: displayPhone,
+                  id: newAssignment?.id || getConversationThreadKey(msg.channelId, displayPhone), phone: displayPhone,
                   name: resolvedName, lastMessage: msg.content || "",
                   lastMessageTime: msg.createdAt, lastInboundTime: msg.createdAt, unreadCount: 1,
                   channelId: msg.channelId, status: mappedStatus,
@@ -2474,7 +2474,7 @@ const AtendimentoV2 = () => {
       return prev; // no mutation in this pass
       });
     }
-  }, []);
+  }, [externalImpersonatedOrgId, effectiveOrganizationId, getLeadFromCache, queryClient]);
 
   const handleAssignmentChangeRealtime = useCallback((assignment: {
     id: string;
@@ -2561,7 +2561,7 @@ const AtendimentoV2 = () => {
             }
             return c;
           });
-        } else if (assignment.assignedTo && assignment.channelId) {
+        } else if (assignment.channelId) {
           const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
           const newConv: Conversation = {
             id: assignment.id, phone: displayPhone, name: prefetchedLeadName,
