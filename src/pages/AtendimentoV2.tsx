@@ -2148,13 +2148,17 @@ const AtendimentoV2 = () => {
   const soundEnabledRef = useRef(soundEnabled);
   const playNotificationSoundRef = useRef(playNotificationSound);
   const refetchLatestPageRef = useRef(infiniteMessages.refetchLatestPage);
+  const userIdRef = useRef<string | null>(user?.id ?? null);
+  const externalImpersonatedOrgIdRef = useRef<string | null>(externalImpersonatedOrgId);
   
   useEffect(() => {
     showNotificationRef.current = showNotification;
     soundEnabledRef.current = soundEnabled;
     playNotificationSoundRef.current = playNotificationSound;
     refetchLatestPageRef.current = infiniteMessages.refetchLatestPage;
-  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage]);
+    userIdRef.current = user?.id ?? null;
+    externalImpersonatedOrgIdRef.current = externalImpersonatedOrgId;
+  }, [showNotification, soundEnabled, playNotificationSound, infiniteMessages.refetchLatestPage, user?.id, externalImpersonatedOrgId]);
 
   // Measure the conversation list container so the virtualized list fills it exactly
   useEffect(() => {
