@@ -2346,7 +2346,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          impersonatedOrgId: externalImpersonatedOrgId,
+            impersonatedOrgId: externalImpersonatedOrgIdRef.current,
           })
             .then(async (assignment) => {
               let assignedToName: string | null = null;
@@ -2438,7 +2438,7 @@ const AtendimentoV2 = () => {
           fetchAssignmentByPhoneExternal({
             channelId: msg.channelId,
             phone: normalizedContactPhone,
-          impersonatedOrgId: externalImpersonatedOrgId,
+            impersonatedOrgId: externalImpersonatedOrgIdRef.current,
           })
             .then(async (newAssignment) => {
               let newAssignedToName: string | null = null;
