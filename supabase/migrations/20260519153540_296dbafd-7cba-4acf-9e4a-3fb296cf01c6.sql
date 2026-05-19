@@ -1,0 +1,1 @@
+DELETE FROM public.attendant_availability WHERE organization_id='af40ef26-cb9b-4894-87d1-c4b721597f55' AND user_id IN ('dacc3b6f-01d8-4e30-8523-eb6de57c7e40','e3f51356-92df-4800-8388-494139d5d2f1') AND is_available = false;
