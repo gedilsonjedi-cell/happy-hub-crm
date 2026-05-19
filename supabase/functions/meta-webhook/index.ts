@@ -649,23 +649,16 @@ async function getNextAvailableAttendant(
     console.log(`[getNextAvailableAttendant] No one online in sector ${sectorId}, fallback round-robin among ${eligible.length} sector members → ${chosenUserId}`);
   }
 
-  // Update last_assignment_at, inserting row if missing (fire and forget)
-  (async () => {
-    const { data: upd } = await supabase
-      .from('attendant_availability')
-      .update({ last_assignment_at: new Date().toISOString() })
-      .eq('user_id', chosenUserId)
-      .eq('organization_id', organizationId)
-      .select('id');
-    if (!upd || upd.length === 0) {
-      await supabase.from('attendant_availability').insert({
-        user_id: chosenUserId,
-        organization_id: organizationId,
-        is_available: false,
-        last_assignment_at: new Date().toISOString(),
-      });
-    }
-  })().catch(() => {});
+  // Bump last_assignment_at if a row exists (fire and forget).
+  // Do NOT insert a row here — auto-created rows would be is_available=false
+  // and shadow attendants we actually want to keep eligible. Absence of a
+  // row means "never toggled" and is treated as eligible by the fallback.
+  supabase
+    .from('attendant_availability')
+    .update({ last_assignment_at: new Date().toISOString() })
+    .eq('user_id', chosenUserId)
+    .eq('organization_id', organizationId)
+    .then(() => {}, () => {});
 
   return { userId: chosenUserId };
 }
