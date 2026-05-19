@@ -85,8 +85,9 @@ Deno.serve(async (req) => {
         while (true) {
           const { data, error } = await ext
             .from("conversation_assignments")
-            .select("id, conversation_phone")
+            .select("id, conversation_phone, updated_at")
             .in("channel_id", fromChannelIds)
+            .order("updated_at", { ascending: false })
             .range(offset, offset + 999);
           if (error) { results.conversation_assignments = { error: error.message }; break; }
           if (!data || data.length === 0) break;
@@ -95,25 +96,39 @@ Deno.serve(async (req) => {
           offset += 1000;
         }
 
-        const toDelete = allOld.filter((r) => existingPhones.has(r.conversation_phone)).map((r) => r.id);
-        const toUpdate = allOld.filter((r) => !existingPhones.has(r.conversation_phone)).map((r) => r.id);
+        // Dedupe within old set (keep most recent per phone)
+        const seenPhones = new Set<string>();
+        const toDelete: string[] = [];
+        const toUpdate: string[] = [];
+        for (const r of allOld) {
+          if (existingPhones.has(r.conversation_phone)) {
+            toDelete.push(r.id);
+          } else if (seenPhones.has(r.conversation_phone)) {
+            toDelete.push(r.id); // older dupe within old set
+          } else {
+            seenPhones.add(r.conversation_phone);
+            toUpdate.push(r.id);
+          }
+        }
 
         let deletedCount = 0;
+        let delError: string | null = null;
         for (let i = 0; i < toDelete.length; i += 500) {
           const chunk = toDelete.slice(i, i + 500);
           const { error } = await ext.from("conversation_assignments").delete().in("id", chunk);
-          if (error) { results.conversation_assignments = { error: error.message, phase: "delete" }; break; }
+          if (error) { delError = error.message; break; }
           deletedCount += chunk.length;
         }
 
         let updatedCount = 0;
+        let updError: string | null = null;
         for (let i = 0; i < toUpdate.length; i += 500) {
           const chunk = toUpdate.slice(i, i + 500);
           const { error } = await ext
             .from("conversation_assignments")
             .update({ channel_id: toChannelId, organization_id: organizationId })
             .in("id", chunk);
-          if (error) { results.conversation_assignments = { error: error.message, phase: "update" }; break; }
+          if (error) { updError = error.message; break; }
           updatedCount += chunk.length;
         }
 
@@ -121,6 +136,7 @@ Deno.serve(async (req) => {
           totalOld: allOld.length,
           deleted_duplicates: deletedCount,
           updated: updatedCount,
+          delError, updError,
         };
       }
     }
