@@ -52,8 +52,10 @@ Deno.serve(async (req) => {
     const sectorCache = new Map<string, string[]>();
     async function getEligible(sId: string): Promise<string[]> {
       if (sectorCache.has(sId)) return sectorCache.get(sId)!;
-      const { data: sectorUsers } = await internal
+      const { data: sectorUsers, error: suErr } = await internal
         .from("user_sectors").select("user_id").eq("sector_id", sId);
+      if (suErr) console.error("[user_sectors error]", suErr);
+      console.log(`[getEligible] sector=${sId} found ${sectorUsers?.length || 0} users`);
       const userIds = (sectorUsers || []).map((u: any) => u.user_id);
       if (userIds.length === 0) { sectorCache.set(sId, []); return []; }
       const { data: offRows } = await internal
@@ -64,6 +66,7 @@ Deno.serve(async (req) => {
         .in("user_id", userIds);
       const offIds = new Set((offRows || []).map((r: any) => r.user_id));
       const eligible = userIds.filter((id: string) => !offIds.has(id));
+      console.log(`[getEligible] sector=${sId} eligible=${eligible.length}`);
       sectorCache.set(sId, eligible);
       return eligible;
     }
