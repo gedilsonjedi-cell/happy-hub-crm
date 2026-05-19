@@ -99,18 +99,11 @@ Deno.serve(async (req) => {
     }
 
     async function bumpLast(userId: string) {
-      const { data: upd } = await internal
+      await internal
         .from("attendant_availability")
         .update({ last_assignment_at: new Date().toISOString() })
         .eq("user_id", userId)
-        .eq("organization_id", organizationId)
-        .select("id");
-      if (!upd || upd.length === 0) {
-        await internal.from("attendant_availability").insert({
-          user_id: userId, organization_id: organizationId,
-          is_available: false, last_assignment_at: new Date().toISOString(),
-        });
-      }
+        .eq("organization_id", organizationId);
     }
 
     const results: any[] = [];
