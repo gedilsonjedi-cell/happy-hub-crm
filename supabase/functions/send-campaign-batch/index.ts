@@ -615,6 +615,28 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Detect Lovable/edge-runtime rate-limit errors so we recycle to pending
+      // instead of permanently marking the recipient as failed.
+      const isRateLimitError = (status: number | null, msg: string | null | undefined): boolean => {
+        if (status === 429) return true;
+        if (!msg) return false;
+        const s = String(msg);
+        return /rate\s*limit/i.test(s) || /RateLimitError/i.test(s) || /too many requests/i.test(s);
+      };
+
+      const recycleToPending = async (reason: string) => {
+        // Recycle: send back to pending so campaign keeps moving. Don't count as failure.
+        // Small backoff so we don't immediately re-trip the same per-trace bucket.
+        await supabase.from('campaign_recipients').update({
+          status: 'pending',
+          error_message: reason,
+          last_error_code: 'RATE_LIMIT',
+          next_retry_at: new Date(Date.now() + 65_000).toISOString(),
+          channel_id: channel.id
+        }).eq('id', recipient.recipientId);
+        return { sent: false, failed: false, retry: true };
+      };
+
       try {
         const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
@@ -626,7 +648,13 @@ Deno.serve(async (req) => {
           }),
         });
 
-        const result = await response.json();
+        // Edge-runtime rate limit (429) — recycle without marking failed
+        if (response.status === 429) {
+          const text = await response.text().catch(() => 'Rate limit');
+          return await recycleToPending(text.slice(0, 200) || 'Rate limit (429)');
+        }
+
+        const result = await response.json().catch(() => ({ success: false, error: `HTTP ${response.status}` }));
 
         if (result.success) {
           await supabase.from('campaign_recipients').update({
@@ -661,6 +689,11 @@ Deno.serve(async (req) => {
           }
           return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
+          // Rate limit returned as success=false body — recycle, don't mark failed
+          if (isRateLimitError(response.status, result.error)) {
+            return await recycleToPending(String(result.error || 'Rate limit').slice(0, 200));
+          }
+
           const rawErrorCode = result.errorCode ?? extractMetaErrorCode(result.error || '');
           const errorCode = rawErrorCode ? String(rawErrorCode) : null;
 
@@ -672,6 +705,10 @@ Deno.serve(async (req) => {
         }
       } catch (error) {
         const errorMessage = String(error);
+        // Network/transport rate-limit (thrown by runtime) — recycle to pending
+        if (isRateLimitError(null, errorMessage)) {
+          return await recycleToPending(errorMessage.slice(0, 200));
+        }
         await supabase.from('campaign_recipients').update({
           status: 'failed',
           error_message: errorMessage,
