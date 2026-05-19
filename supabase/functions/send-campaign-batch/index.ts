@@ -307,8 +307,11 @@ Deno.serve(async (req) => {
     const templatesMap = new Map(templates.map(t => [t.id, t]));
     const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0;
     const standardTickSize = Math.max(activeCampaignChannels.length, 1);
+    // FULL mode: cap parallel calls per tick at 25 to stay under the edge-runtime
+    // per-trace rate limit (~100/min). Higher values caused mass "RateLimitError"
+    // failures (Retry after 60s) when sending 99 meta-send calls in parallel.
     const effectiveBatchSize = isFullMode
-      ? Math.min(Math.max(Number(batchSize) || 99, 1), 99)
+      ? Math.min(Math.max(Number(batchSize) || 25, 1), 25)
       : standardTickSize;
     const recoverableFailedCodes: string[] = [];
 
