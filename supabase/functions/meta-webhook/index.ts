@@ -649,15 +649,23 @@ async function getNextAvailableAttendant(
     console.log(`[getNextAvailableAttendant] No one online in sector ${sectorId}, fallback round-robin among ${eligible.length} sector members → ${chosenUserId}`);
   }
 
-  // Upsert last_assignment_at (fire and forget)
-  supabase
-    .from('attendant_availability')
-    .upsert({
-      user_id: chosenUserId,
-      organization_id: organizationId,
-      last_assignment_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,organization_id' })
-    .then(() => {}, () => {});
+  // Update last_assignment_at, inserting row if missing (fire and forget)
+  (async () => {
+    const { data: upd } = await supabase
+      .from('attendant_availability')
+      .update({ last_assignment_at: new Date().toISOString() })
+      .eq('user_id', chosenUserId)
+      .eq('organization_id', organizationId)
+      .select('id');
+    if (!upd || upd.length === 0) {
+      await supabase.from('attendant_availability').insert({
+        user_id: chosenUserId,
+        organization_id: organizationId,
+        is_available: false,
+        last_assignment_at: new Date().toISOString(),
+      });
+    }
+  })().catch(() => {});
 
   return { userId: chosenUserId };
 }
