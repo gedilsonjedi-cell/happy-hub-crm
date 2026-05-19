@@ -51,7 +51,7 @@ export function useCampaignProcessor({
     try {
       const isFullMode = (campaign.min_interval === 0 && campaign.max_interval === 0);
       const requestBody = isFullMode
-        ? { campaignId: campaign.id, batchSize: 99 }
+        ? { campaignId: campaign.id, batchSize: 25 }
         : { campaignId: campaign.id };
 
       const { data, error } = await supabase.functions.invoke('send-campaign-batch', {
