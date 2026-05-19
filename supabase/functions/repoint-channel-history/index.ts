@@ -1,7 +1,6 @@
-// One-off admin: repoint conversation history (messages, contacts, assignments, stats)
-// from old channel_ids to a new active channel_id on the EXTERNAL Supabase DB.
-//
-// POST { fromChannelIds: string[], toChannelId: string, organizationId: string, dryRun?: boolean }
+// Repoint conversation history from old channel_ids to a new active channel_id.
+// Handles unique-constraint conflicts (deletes conflicting old-channel rows) and
+// batches large updates to avoid statement timeouts.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -17,12 +16,12 @@ Deno.serve(async (req) => {
     const fromChannelIds: string[] = body.fromChannelIds ?? [];
     const toChannelId: string = body.toChannelId;
     const organizationId: string = body.organizationId;
-    const dryRun: boolean = !!body.dryRun;
+    const onlyTable: string | undefined = body.onlyTable;
+    const batchSize: number = body.batchSize ?? 500;
 
     if (!fromChannelIds.length || !toChannelId || !organizationId) {
       return new Response(JSON.stringify({ error: "missing params" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -31,37 +30,117 @@ Deno.serve(async (req) => {
       Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const counts: Record<string, any> = {};
-
-    // Count before
-    for (const t of ["whatsapp_messages", "whatsapp_contacts", "conversation_assignments", "conversation_stats"]) {
-      const { count } = await ext.from(t).select("*", { count: "exact", head: true }).in("channel_id", fromChannelIds);
-      counts[`${t}_before`] = count ?? 0;
-    }
-
-    if (dryRun) {
-      return new Response(JSON.stringify({ dryRun: true, counts }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const results: Record<string, any> = {};
-    for (const t of ["whatsapp_messages", "whatsapp_contacts", "conversation_assignments", "conversation_stats"]) {
+
+    // ---- 1. whatsapp_messages — batched by id ----
+    if (!onlyTable || onlyTable === "whatsapp_messages") {
+      let totalUpdated = 0;
+      let lastError: string | null = null;
+      let iter = 0;
+      while (iter < 200) {
+        iter++;
+        const { data: rows, error: selErr } = await ext
+          .from("whatsapp_messages")
+          .select("id")
+          .in("channel_id", fromChannelIds)
+          .limit(batchSize);
+        if (selErr) { lastError = selErr.message; break; }
+        if (!rows || rows.length === 0) break;
+        const ids = rows.map((r: any) => r.id);
+        const { error: updErr } = await ext
+          .from("whatsapp_messages")
+          .update({ channel_id: toChannelId, organization_id: organizationId })
+          .in("id", ids);
+        if (updErr) { lastError = updErr.message; break; }
+        totalUpdated += ids.length;
+      }
+      results.whatsapp_messages = { updated: totalUpdated, batches: iter, error: lastError };
+    }
+
+    // ---- 2. whatsapp_contacts — single update ----
+    if (!onlyTable || onlyTable === "whatsapp_contacts") {
       const { error, count } = await ext
-        .from(t)
+        .from("whatsapp_contacts")
         .update({ channel_id: toChannelId, organization_id: organizationId }, { count: "exact" })
         .in("channel_id", fromChannelIds)
-        .select("id", { count: "exact", head: true });
-      results[t] = { updated: count ?? 0, error: error?.message ?? null };
+        .select("id", { head: true, count: "exact" });
+      results.whatsapp_contacts = { updated: count ?? 0, error: error?.message ?? null };
     }
 
-    return new Response(JSON.stringify({ counts, results }), {
+    // ---- 3. conversation_assignments — handle unique(conversation_phone, channel_id) ----
+    if (!onlyTable || onlyTable === "conversation_assignments") {
+      // Find existing target-channel phones
+      const { data: existing, error: exErr } = await ext
+        .from("conversation_assignments")
+        .select("conversation_phone")
+        .eq("channel_id", toChannelId);
+      if (exErr) {
+        results.conversation_assignments = { error: exErr.message };
+      } else {
+        const existingPhones = new Set((existing ?? []).map((r: any) => r.conversation_phone));
+
+        // Pull all old-channel assignments
+        let allOld: any[] = [];
+        let offset = 0;
+        while (true) {
+          const { data, error } = await ext
+            .from("conversation_assignments")
+            .select("id, conversation_phone")
+            .in("channel_id", fromChannelIds)
+            .range(offset, offset + 999);
+          if (error) { results.conversation_assignments = { error: error.message }; break; }
+          if (!data || data.length === 0) break;
+          allOld = allOld.concat(data);
+          if (data.length < 1000) break;
+          offset += 1000;
+        }
+
+        const toDelete = allOld.filter((r) => existingPhones.has(r.conversation_phone)).map((r) => r.id);
+        const toUpdate = allOld.filter((r) => !existingPhones.has(r.conversation_phone)).map((r) => r.id);
+
+        let deletedCount = 0;
+        for (let i = 0; i < toDelete.length; i += 500) {
+          const chunk = toDelete.slice(i, i + 500);
+          const { error } = await ext.from("conversation_assignments").delete().in("id", chunk);
+          if (error) { results.conversation_assignments = { error: error.message, phase: "delete" }; break; }
+          deletedCount += chunk.length;
+        }
+
+        let updatedCount = 0;
+        for (let i = 0; i < toUpdate.length; i += 500) {
+          const chunk = toUpdate.slice(i, i + 500);
+          const { error } = await ext
+            .from("conversation_assignments")
+            .update({ channel_id: toChannelId, organization_id: organizationId })
+            .in("id", chunk);
+          if (error) { results.conversation_assignments = { error: error.message, phase: "update" }; break; }
+          updatedCount += chunk.length;
+        }
+
+        results.conversation_assignments = {
+          totalOld: allOld.length,
+          deleted_duplicates: deletedCount,
+          updated: updatedCount,
+        };
+      }
+    }
+
+    // ---- 4. conversation_stats — already done previously but idempotent ----
+    if (!onlyTable || onlyTable === "conversation_stats") {
+      const { error, count } = await ext
+        .from("conversation_stats")
+        .update({ channel_id: toChannelId, organization_id: organizationId }, { count: "exact" })
+        .in("channel_id", fromChannelIds)
+        .select("id", { head: true, count: "exact" });
+      results.conversation_stats = { updated: count ?? 0, error: error?.message ?? null };
+    }
+
+    return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
