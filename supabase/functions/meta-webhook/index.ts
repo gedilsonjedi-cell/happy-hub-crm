@@ -604,7 +604,7 @@ async function getNextAvailableAttendant(
 
   const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
 
-  // Prefer attendants explicitly online (is_available=true)
+  // Only distribute to attendants explicitly online (is_available=true).
   const { data: availableAttendants } = await supabase
     .from('attendant_availability')
     .select('user_id, last_assignment_at')
@@ -613,62 +613,19 @@ async function getNextAvailableAttendant(
     .in('user_id', userIds)
     .order('last_assignment_at', { ascending: true, nullsFirst: true });
 
-  let chosenUserId: string | null = availableAttendants?.[0]?.user_id || null;
+  if (!availableAttendants || availableAttendants.length === 0) return null;
 
-  // FALLBACK: if no attendant is explicitly online, still distribute among
-  // sector users that are NOT explicitly offline (no row OR is_available=true).
-  // This ensures campaigns with a configured sector always distribute, even
-  // when attendants forgot to toggle online.
-  if (!chosenUserId) {
-    const { data: offlineRows } = await supabase
-      .from('attendant_availability')
-      .select('user_id')
-      .eq('organization_id', organizationId)
-      .eq('is_available', false)
-      .in('user_id', userIds);
-    const offlineIds = new Set((offlineRows || []).map((r: { user_id: string }) => r.user_id));
-    const eligible = userIds.filter((id) => !offlineIds.has(id));
-    if (eligible.length === 0) return null;
+  const nextAttendant = availableAttendants[0];
 
-    // Round-robin by last_assignment_at across eligible (no row = oldest)
-    const { data: rows } = await supabase
-      .from('attendant_availability')
-      .select('user_id, last_assignment_at')
-      .eq('organization_id', organizationId)
-      .in('user_id', eligible);
-    const lastMap = new Map((rows || []).map((r: { user_id: string; last_assignment_at: string | null }) => [r.user_id, r.last_assignment_at]));
-    eligible.sort((a, b) => {
-      const la = lastMap.get(a);
-      const lb = lastMap.get(b);
-      if (!la && !lb) return 0;
-      if (!la) return -1;
-      if (!lb) return 1;
-      return new Date(la).getTime() - new Date(lb).getTime();
-    });
-    chosenUserId = eligible[0];
-    console.log(`[getNextAvailableAttendant] No one online in sector ${sectorId}, fallback round-robin among ${eligible.length} sector members → ${chosenUserId}`);
-  }
+  // Update last_assignment_at (fire and forget)
+  supabase
+    .from('attendant_availability')
+    .update({ last_assignment_at: new Date().toISOString() })
+    .eq('user_id', nextAttendant.user_id)
+    .eq('organization_id', organizationId)
+    .then(() => {}, () => {});
 
-  // Bump last_assignment_at; if no row exists, create one as available so
-  // round-robin rotation keeps working (absence of row = implicit available).
-  (async () => {
-    const { data: upd } = await supabase
-      .from('attendant_availability')
-      .update({ last_assignment_at: new Date().toISOString() })
-      .eq('user_id', chosenUserId)
-      .eq('organization_id', organizationId)
-      .select('id');
-    if (!upd || upd.length === 0) {
-      await supabase.from('attendant_availability').insert({
-        user_id: chosenUserId,
-        organization_id: organizationId,
-        is_available: true,
-        last_assignment_at: new Date().toISOString(),
-      });
-    }
-  })().catch(() => {});
-
-  return { userId: chosenUserId };
+  return { userId: nextAttendant.user_id };
 }
 
 // =============================================
