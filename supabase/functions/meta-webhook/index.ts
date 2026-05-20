@@ -696,13 +696,15 @@ async function handleConversationAssignment(
   }
 
   if (existing) {
-    // Grace period: don't reactivate conversations archived less than 2 minutes ago
-    // Only applies to MANUALLY archived conversations (has assigned_to), not campaign-created ones
-    const wasRecentlyArchived = existing.status === 'archived' && existing.assigned_to && existing.updated_at &&
-      (Date.now() - new Date(existing.updated_at).getTime()) < 2 * 60 * 1000;
+    // Grace period: don't reactivate conversations archived less than 5 minutes ago.
+    // Applies to ALL archived conversations (with or without assigned_to). Antes só
+    // protegia as que tinham atendente — isso fazia arquivar "Novos" voltar imediato
+    // ao chegar a próxima mensagem inbound.
+    const wasRecentlyArchived = existing.status === 'archived' && existing.updated_at &&
+      (Date.now() - new Date(existing.updated_at).getTime()) < 5 * 60 * 1000;
 
     if (wasRecentlyArchived) {
-      console.log(`[handleConversationAssignment] Skipping reactivation for recently archived conversation: ${normalizedPhone} (archived ${Math.round((Date.now() - new Date(existing.updated_at!).getTime()) / 1000)}s ago)`);
+      console.log(`[handleConversationAssignment] Skipping reactivation for recently archived conversation: ${normalizedPhone} (archived ${Math.round((Date.now() - new Date(existing.updated_at!).getTime()) / 1000)}s ago, assigned_to=${existing.assigned_to})`);
       return { assignmentId: existing.id, assignedTo: existing.assigned_to, status: existing.status, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
     }
 
