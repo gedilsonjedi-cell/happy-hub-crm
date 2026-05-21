@@ -208,8 +208,44 @@ Deno.serve(async (req) => {
 
         const data = await response.json();
         const metaTemplates: MetaTemplate[] = data.data || [];
+        const metaTemplateNamesForWaba = new Set(metaTemplates.map((template) => template.name));
 
         console.log('Found templates from Meta:', metaTemplates.length);
+
+        // When a phone number is moved between WABAs/accounts, old channel-template
+        // links can remain in our DB. Remove links for this WABA's channels when
+        // the template name is not returned by the current WABA anymore.
+        const { data: existingLinks } = await supabase
+          .from('channel_templates')
+          .select('id, channel_id, template_id')
+          .in('channel_id', wabaGroup.channel_ids);
+
+        const linkedTemplateIds = [...new Set((existingLinks || []).map((link) => link.template_id).filter(Boolean))];
+        if (linkedTemplateIds.length > 0) {
+          const { data: linkedTemplates } = await supabase
+            .from('message_templates')
+            .select('id, name, organization_id')
+            .in('id', linkedTemplateIds)
+            .eq('organization_id', organizationId);
+
+          const templatesStillInCurrentWaba = new Set(
+            (linkedTemplates || [])
+              .filter((template) => metaTemplateNamesForWaba.has(template.name))
+              .map((template) => template.id)
+          );
+
+          const staleLinkIds = (existingLinks || [])
+            .filter((link) => !templatesStillInCurrentWaba.has(link.template_id))
+            .map((link) => link.id);
+
+          if (staleLinkIds.length > 0) {
+            console.log('Removing stale channel-template links for WABA:', wabaGroup.waba_id, staleLinkIds.length);
+            await supabase
+              .from('channel_templates')
+              .delete()
+              .in('id', staleLinkIds);
+          }
+        }
 
         for (const metaTemplate of metaTemplates) {
           // Track template name for cleanup
