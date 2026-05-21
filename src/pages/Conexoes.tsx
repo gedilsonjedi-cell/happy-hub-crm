@@ -946,6 +946,29 @@ const Conexoes = () => {
         }));
         
         await fetchChannels();
+      } else if (data.blocked || data.code === 131031) {
+        toast.error(data.error || "Conta bloqueada pela Meta", { duration: 10000 });
+        if (data.suggestion) {
+          toast.info(data.suggestion, { duration: 15000 });
+        }
+        if (data.status) {
+          setMetaPhoneStatuses(prev => ({
+            ...prev,
+            [channel.id]: {
+              code: data.status.status || 'PENDING',
+              isConnected: false,
+              isPending: data.status.status === 'PENDING',
+              message: data.error || data.status.status || 'Conta bloqueada pela Meta',
+              qualityRating: data.status.quality_rating,
+              nameStatus: data.status.name_status,
+              displayName: data.status.verified_name,
+              displayPhoneNumber: data.status.display_phone_number,
+              accountMode: data.status.account_mode,
+              codeVerificationStatus: data.status.code_verification_status,
+              rawStatus: data.status.status,
+            }
+          }));
+        }
       } else if (data.pending) {
         toast.warning("Número ainda pendente após re-registro");
         if (data.actions) {
