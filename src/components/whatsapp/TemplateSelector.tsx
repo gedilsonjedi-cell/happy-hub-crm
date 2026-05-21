@@ -56,28 +56,13 @@ export const TemplateSelector = ({
     }
   }, [isOpen, channelId, effectiveOrganizationId]);
 
-  const fetchAllApprovedForOrg = async () => {
-    let query = supabase
-      .from("message_templates")
-      .select("*")
-      .eq("status", "approved");
-    if (effectiveOrganizationId) {
-      query = query.eq("organization_id", effectiveOrganizationId);
-    }
-    const { data, error } = await query.order("name");
-    if (error) {
-      console.error("Error fetching templates:", error);
-      return [];
-    }
-    return data || [];
-  };
-
   const fetchTemplates = async () => {
     setLoading(true);
     try {
-      // Sem canal: fallback direto pra todos os aprovados da org
+      // Sem canal selecionado não exibimos fallback da organização, porque
+      // números migrados entre contas podem carregar histórico de templates antigo.
       if (!channelId) {
-        setTemplates(await fetchAllApprovedForOrg());
+        setTemplates([]);
         return;
       }
 
@@ -88,15 +73,14 @@ export const TemplateSelector = ({
 
       if (ctError) {
         console.error("Error fetching channel templates:", ctError);
-        // Fallback em vez de travar a tela
-        setTemplates(await fetchAllApprovedForOrg());
+        setTemplates([]);
         return;
       }
 
       const templateIds = channelTemplates?.map(ct => ct.template_id) || [];
 
       if (templateIds.length === 0) {
-        setTemplates(await fetchAllApprovedForOrg());
+        setTemplates([]);
         return;
       }
 
@@ -109,7 +93,7 @@ export const TemplateSelector = ({
 
       if (error) {
         console.error("Error fetching templates by ids:", error);
-        setTemplates(await fetchAllApprovedForOrg());
+        setTemplates([]);
         return;
       }
       setTemplates(data || []);
