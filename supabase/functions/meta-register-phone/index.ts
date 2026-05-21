@@ -130,10 +130,19 @@ serve(async (req) => {
       const errorMessage = registerData.error.message || '';
       const errorSubcode = registerData.error.error_subcode;
       
-      if (errorCode === 131031 || errorMessage.includes('already registered')) {
+      if (errorMessage.includes('already registered')) {
         console.log(`[meta-register-phone] Phone already registered`);
         registerSuccess = true;
       } 
+      else if (errorCode === 131031) {
+        registerError = {
+          code: errorCode,
+          message: 'Conta bloqueada pela Meta (Business Account locked).',
+          suggestion: 'O PIN já consta como verificado, mas a Meta bloqueou a conta/número para registro. Acesse o WhatsApp Manager, conclua a verificação da empresa e a aprovação do nome comercial, procure avisos de restrição e solicite revisão. Forçar re-registro não resolve até a Meta liberar.',
+          details: registerData.error,
+          blocked: true
+        };
+      }
       else if (errorCode === 136025 || errorSubcode === 136025) {
         registerError = {
           code: errorCode,
@@ -175,6 +184,25 @@ serve(async (req) => {
     } else {
       registerSuccess = true;
       console.log(`[meta-register-phone] Registration successful!`);
+    }
+
+    if (registerError) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: registerError.message,
+          code: registerError.code,
+          suggestion: registerError.suggestion,
+          requiresPin: registerError.requiresPin,
+          blocked: registerError.blocked,
+          status: initialStatus,
+          details: registerError.details
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     // Step 3: Subscribe to webhook
