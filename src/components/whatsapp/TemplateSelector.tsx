@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { 
   FileText, 
   Search, 
@@ -43,7 +42,6 @@ export const TemplateSelector = ({
   onSend,
   channelId 
 }: TemplateSelectorProps) => {
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,7 +52,7 @@ export const TemplateSelector = ({
     if (isOpen) {
       fetchTemplates();
     }
-  }, [isOpen, channelId, effectiveOrganizationId]);
+  }, [isOpen, channelId]);
 
   const fetchTemplates = async () => {
     setLoading(true);

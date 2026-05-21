@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { 
   Send, 
   Phone,
@@ -72,7 +71,6 @@ export const ManualSendDialog = ({
   onPhoneUsed,
   onTemplateSent
 }: ManualSendDialogProps) => {
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);

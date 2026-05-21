@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { Calendar, Clock, Loader2, Send, FileText, Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +50,6 @@ export const ScheduleMessageDialog = ({
   channelId,
   leadId
 }: ScheduleMessageDialogProps) => {
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
