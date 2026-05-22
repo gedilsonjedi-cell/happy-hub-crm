@@ -859,12 +859,14 @@ const AtendimentoV2 = () => {
 
       setChannelsLoaded(false);
       
+      // Include disconnected channels too — we only hide conversations when the
+      // channel is REMOVED from the database, not when it's just disconnected.
+      // This preserves history for channels that lost auth on Meta/Z-API/etc.
       const { data, error } = await (supabase as any)
         .from("channels_public")
-        .select("id, name, phone, provider")
+        .select("id, name, phone, provider, connected")
         .eq("organization_id", effectiveOrganizationId)
-        .in("provider", ["meta", "zapi", "gupshup"])
-        .eq("connected", true);
+        .in("provider", ["meta", "zapi", "gupshup"]);
 
       if (error) {
         console.error("Error fetching channels:", error);
