@@ -23,8 +23,10 @@ import {
   Bot,
   Zap,
   Workflow,
-  ArrowRightLeft
+  ArrowRightLeft,
+  ShieldCheck
 } from "lucide-react";
+import { ValidatePinDialog } from "@/components/connections/ValidatePinDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -179,6 +181,7 @@ const Conexoes = () => {
   
   // Register phone state
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
+  const [pinChannel, setPinChannel] = useState<Channel | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
   const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
@@ -2042,6 +2045,15 @@ const Conexoes = () => {
                         )}
                       </Button>
                     )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full gap-2 text-xs"
+                      onClick={() => setPinChannel(channel)}
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      Validar PIN
+                    </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -3206,6 +3218,15 @@ const Conexoes = () => {
         open={!!showMigrateWabaDialog}
         onOpenChange={(open) => !open && setShowMigrateWabaDialog(null)}
         onSuccess={fetchChannels}
+      />
+      <ValidatePinDialog
+        open={!!pinChannel}
+        onOpenChange={(open) => !open && setPinChannel(null)}
+        channel={pinChannel}
+        onValidated={async () => {
+          await fetchChannels();
+          if (pinChannel) await checkMetaPhoneStatus(pinChannel, true);
+        }}
       />
     </MainLayout>
   );
