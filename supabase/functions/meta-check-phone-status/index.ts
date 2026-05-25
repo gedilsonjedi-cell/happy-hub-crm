@@ -137,6 +137,7 @@ serve(async (req) => {
         statusMessage = 'Restrito';
       } else if (status === 'PENDING') {
         connectionStatus = 'PENDING';
+        isConnected = false;
         isPending = true;
         statusMessage = 'Pendente';
       } else if (status === 'RATE_LIMITED') {
