@@ -181,6 +181,7 @@ const Conexoes = () => {
   
   // Register phone state
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
+  const [pinChannel, setPinChannel] = useState<Channel | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
   const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
