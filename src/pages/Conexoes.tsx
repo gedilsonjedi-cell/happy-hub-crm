@@ -3219,6 +3219,15 @@ const Conexoes = () => {
         onOpenChange={(open) => !open && setShowMigrateWabaDialog(null)}
         onSuccess={fetchChannels}
       />
+      <ValidatePinDialog
+        open={!!pinChannel}
+        onOpenChange={(open) => !open && setPinChannel(null)}
+        channel={pinChannel}
+        onValidated={async () => {
+          await fetchChannels();
+          if (pinChannel) await checkMetaPhoneStatus(pinChannel, true);
+        }}
+      />
     </MainLayout>
   );
 };
