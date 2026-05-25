@@ -70,11 +70,18 @@ export function ValidatePinDialog({ open, onOpenChange, channel, onValidated }: 
           return;
         }
         if (setData?.error || setData?.success === false) {
-          toast.error(setData?.error || "Falha ao definir PIN no Meta.");
-          if (setData?.suggestion) toast.info(setData.suggestion, { duration: 10000 });
-          return;
+          const isNotRegistered = setData?.code === 133010 || setData?.details?.error_subcode === 2593006;
+
+          if (isNotRegistered) {
+            toast.info("Número ainda não existe na Cloud API. Vou registrar usando este PIN...");
+          } else {
+            toast.error(setData?.error || "Falha ao definir PIN no Meta.");
+            if (setData?.suggestion) toast.info(setData.suggestion, { duration: 10000 });
+            return;
+          }
+        } else {
+          toast.success("PIN definido no Meta com sucesso.");
         }
-        toast.success("PIN definido no Meta com sucesso.");
       }
 
       // 2) Registra (ou re-registra) o número usando o PIN informado

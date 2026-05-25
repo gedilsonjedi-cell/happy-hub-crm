@@ -137,6 +137,7 @@ serve(async (req) => {
         statusMessage = 'Restrito';
       } else if (status === 'PENDING') {
         connectionStatus = 'PENDING';
+        isConnected = false;
         isPending = true;
         statusMessage = 'Pendente';
       } else if (status === 'RATE_LIMITED') {
@@ -148,11 +149,12 @@ serve(async (req) => {
     
     // Check account_mode for additional context
     if (phoneStatus.account_mode) {
+      const statusBlocksConnection = ['PENDING', 'DISCONNECTED', 'OFFLINE', 'FLAGGED', 'RESTRICTED'].includes(connectionStatus);
       if (phoneStatus.account_mode === 'SANDBOX') {
         connectionStatus = 'SANDBOX';
         statusMessage = 'Modo Sandbox';
-        isConnected = true; // Sandbox still works for testing
-      } else if (phoneStatus.account_mode === 'LIVE') {
+        isConnected = !statusBlocksConnection; // Sandbox still works for testing unless Meta says pending/disconnected/restricted
+      } else if (phoneStatus.account_mode === 'LIVE' && !statusBlocksConnection) {
         isConnected = true;
         if (connectionStatus === 'VERIFIED' || connectionStatus === 'UNKNOWN' || connectionStatus === 'NOT_VERIFIED') {
           connectionStatus = 'CONNECTED';
