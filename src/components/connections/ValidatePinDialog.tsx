@@ -79,8 +79,9 @@ export function ValidatePinDialog({ open, onOpenChange, channel, onValidated }: 
             if (setData?.suggestion) toast.info(setData.suggestion, { duration: 10000 });
             return;
           }
+        } else {
+          toast.success("PIN definido no Meta com sucesso.");
         }
-        toast.success("PIN definido no Meta com sucesso.");
       }
 
       // 2) Registra (ou re-registra) o número usando o PIN informado
