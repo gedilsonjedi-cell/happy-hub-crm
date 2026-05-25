@@ -2045,6 +2045,15 @@ const Conexoes = () => {
                         )}
                       </Button>
                     )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full gap-2 text-xs"
+                      onClick={() => setPinChannel(channel)}
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      Validar PIN
+                    </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
