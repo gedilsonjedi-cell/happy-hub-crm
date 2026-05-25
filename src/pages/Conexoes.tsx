@@ -1701,6 +1701,15 @@ const Conexoes = () => {
                           Migrar WABA
                         </DropdownMenuItem>
                       )}
+                      {channel.provider === 'meta' && (
+                        <DropdownMenuItem
+                          className="gap-2 cursor-pointer"
+                          onClick={() => setPinChannel(channel)}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          Validar PIN
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="gap-2 cursor-pointer"
                         onClick={() => {
