@@ -933,8 +933,8 @@ const Disparos = () => {
         console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
       }
       
-      // Reuse the org leads pre-fetched at the top (no second roundtrip).
-      const allOrgLeads = orgLeadsAll;
+      // Reusa os leads casados pré-buscados acima.
+      const allOrgLeads = matchedOrgLeads;
 
       // Build a flexible phone lookup map, prioritizing real names over auto-generated ones
       const leadMatches = new Map<string, LeadMatch>();
