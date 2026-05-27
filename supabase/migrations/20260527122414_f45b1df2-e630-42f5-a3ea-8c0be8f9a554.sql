@@ -1,0 +1,1 @@
+UPDATE public.campaigns SET total_recipients = 2011, status = 'completed', completed_at = now(), updated_at = now() WHERE id = '970a000d-3b3f-4ed3-a228-fb7bb8a6e040';
