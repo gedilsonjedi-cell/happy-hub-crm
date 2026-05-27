@@ -42,6 +42,9 @@ export async function fetchAllLeads<T = any>({
     if (orderBy) {
       query = query.order(orderBy.column, { ascending: orderBy.ascending ?? false });
     }
+    // Tiebreaker estável — sem isso, leads com mesmo created_at podem se repetir
+    // entre páginas paralelas e sumir do conjunto final após dedup.
+    query = query.order("id", { ascending: true });
 
     const { data, error } = await query;
     if (error) throw error;
@@ -50,7 +53,7 @@ export async function fetchAllLeads<T = any>({
 
   // Página inicial
   const first = await fetchPage(0);
-  if (first.length < PAGE_SIZE) return first;
+  if (first.length < PAGE_SIZE) return dedupeById(first);
 
   const all: T[][] = [first];
   let nextPage = 1;
@@ -70,6 +73,22 @@ export async function fetchAllLeads<T = any>({
     nextPage += MAX_CONCURRENCY;
   }
 
-  const flat = all.flat();
+  const flat = dedupeById(all.flat());
   return flat.length > maxRows ? flat.slice(0, maxRows) : flat;
+}
+
+function dedupeById<T>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const id = (r as { id?: string })?.id;
+    if (!id) {
+      out.push(r);
+      continue;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(r);
+  }
+  return out;
 }
