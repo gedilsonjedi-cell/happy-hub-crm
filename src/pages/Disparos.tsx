@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
   Send, 
@@ -468,33 +468,66 @@ const Disparos = () => {
     };
   }, [effectiveOrganizationId]);
 
-  // Hook que processa campanhas em loop contínuo no frontend
-  // Garante que campanhas NUNCA parem enquanto a página estiver aberta
-  const { startProcessing } = useCampaignProcessor({
-    campaigns: campaigns.map(c => ({
+  // Debounced refetch — realtime já atualiza contadores granularmente,
+  // só recarregamos a página inteira no máximo a cada 8s mesmo que o
+  // processor sinalize várias vezes por segundo.
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchData = useCallback(() => {
+    if (refetchTimerRef.current) return;
+    refetchTimerRef.current = setTimeout(() => {
+      refetchTimerRef.current = null;
+      fetchData();
+    }, 8000);
+  }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Memoiza input do processor para não recriar o array a cada render
+  const processorSignature = campaigns
+    .map(c => `${c.id}:${c.status}:${c.sent_count}:${c.total_recipients}`)
+    .join('|');
+  const processorCampaigns = useMemo(
+    () => campaigns.map(c => ({
       id: c.id,
       name: c.name,
       status: c.status,
       sent_count: c.sent_count,
       total_recipients: c.total_recipients,
       min_interval: c.min_interval,
-      max_interval: c.max_interval
+      max_interval: c.max_interval,
     })),
-    onUpdate: fetchData,
-    enabled: true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [processorSignature]
+  );
+
+  const { startProcessing } = useCampaignProcessor({
+    campaigns: processorCampaigns,
+    onUpdate: debouncedFetchData,
+    enabled: true,
   });
 
-  // Polling para atualizar dados a cada 5 segundos quando há campanhas rodando (fallback)
-  useEffect(() => {
-    const hasRunningCampaigns = campaigns.some(c => c.status === "running");
-    if (!hasRunningCampaigns) return;
+  // Polling fallback estabilizado: depende apenas da flag, não do array
+  const hasRunningCampaigns = useMemo(
+    () => campaigns.some(c => c.status === "running"),
+    [campaigns]
+  );
 
+  useEffect(() => {
+    if (!hasRunningCampaigns) return;
     const pollInterval = setInterval(() => {
       fetchData();
-    }, 10000); // Increased to 10s since we have realtime now
-
+    }, 15000);
     return () => clearInterval(pollInterval);
-  }, [campaigns, fetchData]);
+  }, [hasRunningCampaigns, fetchData]);
+
+
 
 
   // Get templates available for a specific channel
