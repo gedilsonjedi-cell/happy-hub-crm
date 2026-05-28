@@ -228,7 +228,7 @@ export function TagSelector({
             : "Nenhuma tag criada. Crie tags em Personalização → Tags."}
         </div>
       ) : (
-        <ScrollArea className="max-h-48">
+        <ScrollArea className="h-64 w-full rounded-md border">
           <div className="flex flex-wrap gap-2 p-1">
             {tags.map((tag) => {
               const isSelected = selectedTags.includes(tag.name);
