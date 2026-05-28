@@ -573,7 +573,7 @@ const Leads = () => {
                   Nenhuma tag criada ainda.
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 max-h-72 overflow-y-auto pr-1">
                   {availableTags.map((tag) => {
                     const isSelected = selectedTagFilters.includes(tag.name);
                     return (
