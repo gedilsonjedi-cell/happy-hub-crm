@@ -248,7 +248,8 @@ async function processCampaignDispatch(
             destination: formattedPhone,
             templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
-            templateLanguage: 'pt_BR',
+            // templateLanguage intentionally omitted: meta-send resolves the
+            // actual language from Meta so any approved language works.
             campaignId: campaignId
           }),
         });
