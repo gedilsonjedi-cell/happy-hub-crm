@@ -3974,6 +3974,10 @@ export type Database = {
         Args: { _organization_id: string; _phone: string }
         Returns: boolean
       }
+      is_sector_in_user_organization: {
+        Args: { _sector_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       maintenance_purge_operational_garbage: {
         Args: never
