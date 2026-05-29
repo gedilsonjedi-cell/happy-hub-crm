@@ -276,32 +276,67 @@ async function fetchMetaTemplateDefinition(
     };
   };
 
-  const initialUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
-  initialUrl.searchParams.set('fields', 'name,language,status,parameter_format,components');
-  initialUrl.searchParams.set('limit', '100');
-  initialUrl.searchParams.set('name', templateName);
+  const wantedName = templateName.trim();
+  const wantedLower = wantedName.toLowerCase();
 
-  let page = await fetchPage(initialUrl.toString());
+  const matchTemplate = (entry: { name?: string; language?: string; status?: string; parameter_format?: string; components?: unknown[] }) => {
+    if (!entry?.name) return false;
+    return entry.name === wantedName || entry.name.toLowerCase() === wantedLower;
+  };
+
+  const pickBest = (
+    entries: Array<{ name?: string; language?: string; status?: string; parameter_format?: string; components?: unknown[] }>,
+  ) => {
+    const matches = entries.filter(matchTemplate);
+    if (matches.length === 0) return null;
+    // Prefer APPROVED language variant; otherwise first match.
+    const approved = matches.find((m) => (m.status || '').toUpperCase() === 'APPROVED');
+    const chosen = approved || matches[0];
+    return {
+      languageCode: chosen.language ?? null,
+      status: chosen.status ?? null,
+      parameterFormat: chosen.parameter_format ?? null,
+      components: chosen.components ?? null,
+    } as MetaTemplateDefinition;
+  };
+
+  // 1) Try a name-filtered fetch first (cheap, usually returns all language variants).
+  const filteredUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
+  filteredUrl.searchParams.set('fields', 'name,language,status,parameter_format,components');
+  filteredUrl.searchParams.set('limit', '100');
+  filteredUrl.searchParams.set('name', wantedName);
+
+  let page = await fetchPage(filteredUrl.toString());
   let nextPageUrl = page?.paging?.next;
   let attempts = 0;
-
-  while (page && attempts < 3) {
-    const match = page.data?.find((template) => template.name === templateName);
-    if (match) {
-      return {
-        languageCode: match.language ?? null,
-        status: match.status ?? null,
-        parameterFormat: match.parameter_format ?? null,
-        components: match.components ?? null,
-      };
-    }
-
-    if (!nextPageUrl) break;
+  while (page) {
+    const best = pickBest(page.data ?? []);
+    if (best) return best;
+    if (!nextPageUrl || attempts >= 3) break;
     attempts += 1;
     page = await fetchPage(nextPageUrl);
     nextPageUrl = page?.paging?.next;
   }
 
+  // 2) Fallback: some WABAs/templates don't honor the `name` filter properly.
+  // Paginate through all templates (capped) and find the match — supports any language.
+  const fallbackUrl = new URL(`${META_API_BASE}/${wabaId}/message_templates`);
+  fallbackUrl.searchParams.set('fields', 'name,language,status,parameter_format,components');
+  fallbackUrl.searchParams.set('limit', '200');
+
+  let fbPage = await fetchPage(fallbackUrl.toString());
+  let fbNext = fbPage?.paging?.next;
+  let fbAttempts = 0;
+  while (fbPage) {
+    const best = pickBest(fbPage.data ?? []);
+    if (best) return best;
+    if (!fbNext || fbAttempts >= 10) break;
+    fbAttempts += 1;
+    fbPage = await fetchPage(fbNext);
+    fbNext = fbPage?.paging?.next;
+  }
+
+  console.warn('[Meta-Send] Template not found on Meta after fallback scan:', wantedName);
   return null;
 }
 
