@@ -477,14 +477,16 @@ Deno.serve(async (req) => {
       }
 
       const c = await getCounts();
+      const actualRecipientTotal = await getRecipientTotal();
       const hasFutureRetries = (Number(c.total_waiting_retry) || 0) > 0;
       const hasPending = (Number(c.total_pending) || 0) > 0;
       const hasProcessing = (Number(c.total_processing) || 0) > 0;
       const totalTerminal = (Number(c.total_sent) || 0) + (Number(c.total_failed) || 0);
-      const isComplete = !hasPending && !hasProcessing && !hasFutureRetries && totalTerminal >= campaign.total_recipients;
+      const completionTarget = actualRecipientTotal || campaign.total_recipients;
+      const isComplete = !hasPending && !hasProcessing && !hasFutureRetries && totalTerminal >= completionTarget;
 
       const newStatus = isComplete ? 'completed' : 'running';
-      await persistCampaignState(c, newStatus);
+      await persistCampaignState(c, newStatus, actualRecipientTotal || undefined);
 
       return new Response(
         JSON.stringify({
@@ -494,7 +496,7 @@ Deno.serve(async (req) => {
           sent: Number(c.total_sent) || 0,
           delivered: Number(c.total_delivered) || 0,
           failed: Number(c.total_failed) || 0,
-          total: campaign.total_recipients,
+          total: actualRecipientTotal || campaign.total_recipients,
           pendingRetries: Number(c.total_waiting_retry) || 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
