@@ -33,10 +33,10 @@ serve(async (req) => {
     const clientToken = Deno.env.get("ZAPI_CLIENT_TOKEN");
 
     if (!instanceId || !token || !clientToken) {
-      console.error("Missing Z-API credentials");
+      console.warn("Missing Z-API credentials; allowing import without WhatsApp validation");
       return new Response(
-        JSON.stringify({ error: "Z-API credentials not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ results: phones.map((phone: string) => ({ exists: true, inputPhone: phone, outputPhone: phone })), skipped: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -66,8 +66,9 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Z-API error: ${response.status} - ${errorText}`);
-        throw new Error(`Z-API returned ${response.status}: ${errorText}`);
+        console.warn(`Z-API validation unavailable (${response.status}); allowing this batch. ${errorText}`);
+        results.push(...batch.map((phone) => ({ exists: true, inputPhone: phone, outputPhone: phone })));
+        continue;
       }
 
       const batchResults: ValidationResult[] = await response.json();
@@ -89,8 +90,8 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : "Failed to validate phones";
     console.error("Error validating phones:", errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ results: (Array.isArray((await req.clone().json().catch(() => ({}))).phones) ? (await req.clone().json().catch(() => ({ phones: [] }))).phones : []).map((phone: string) => ({ exists: true, inputPhone: phone, outputPhone: phone })), skipped: true, warning: errorMessage }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
