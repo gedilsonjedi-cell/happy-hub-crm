@@ -81,6 +81,24 @@ interface ExistingLead {
   custom_fields: Record<string, string> | null;
 }
 
+interface LeadImportPayload {
+  organization_id: string;
+  user_id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  document: string | null;
+  city: string | null;
+  state: string | null;
+  custom_fields: Record<string, string> | null;
+  tags: string[] | null;
+  status: "new";
+}
+
+type LeadUpdatePayload = Omit<LeadImportPayload, "organization_id" | "user_id" | "phone" | "status"> & {
+  updated_at: string;
+};
+
 // Conflict types
 interface SpreadsheetConflict {
   type: "spreadsheet";
