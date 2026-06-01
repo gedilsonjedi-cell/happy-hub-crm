@@ -1686,6 +1686,7 @@ const AtendimentoV2 = () => {
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
+    const previousStatus = conversationStatuses[conversationKey] || allConversations.find(c => getConversationKey(c) === conversationKey)?.status;
     setConversationStatuses(prev => ({ ...prev, [conversationKey]: newStatus }));
     setAllConversations(prev => prev.map(c => {
       const key = getConversationKey(c);
@@ -1698,11 +1699,24 @@ const AtendimentoV2 = () => {
     const phone = parts.slice(1).join('_');
     
     if (channelId && channelId !== 'unknown') {
-      await assignmentsWrite("update_by_phone", {
+      const { data, error } = await assignmentsWrite("update_by_phone", {
         channel_id: channelId,
         phone,
         status: newStatus,
+      }, {
+        impersonatedOrgId: externalImpersonatedOrgId,
       });
+
+      const updatedRows = Array.isArray(data?.assignment) ? data.assignment.length : 0;
+      if (error || updatedRows === 0) {
+        const fallbackStatus = previousStatus || "pending";
+        setConversationStatuses(prev => ({ ...prev, [conversationKey]: fallbackStatus }));
+        setAllConversations(prev => prev.map(c => {
+          const key = getConversationKey(c);
+          return key === conversationKey ? { ...c, status: fallbackStatus } : c;
+        }));
+        throw new Error(error?.message || "Conversa não encontrada para atualizar status");
+      }
     }
   };
 
@@ -2706,7 +2720,13 @@ const AtendimentoV2 = () => {
     if (!conversationToArchive) return;
     
     const key = getConversationKey(conversationToArchive);
-    updateConversationStatus(key, "archived");
+    try {
+      await updateConversationStatus(key, "archived");
+    } catch (error) {
+      console.error("Erro ao arquivar conversa:", error);
+      toast.error("Não foi possível arquivar a conversa. Tente novamente.");
+      return;
+    }
     
     if (saleCompleted) {
       toast.success("Venda registrada!");
@@ -2724,8 +2744,13 @@ const AtendimentoV2 = () => {
 
   const handleRestore = async (conversation: Conversation) => {
     const key = getConversationKey(conversation);
-    updateConversationStatus(key, "pending");
-    toast.success("Conversa restaurada");
+    try {
+      await updateConversationStatus(key, "pending");
+      toast.success("Conversa restaurada");
+    } catch (error) {
+      console.error("Erro ao restaurar conversa:", error);
+      toast.error("Não foi possível restaurar a conversa. Tente novamente.");
+    }
   };
 
   // Accept conversation handler
