@@ -143,7 +143,7 @@ async function processCampaignDispatch(
     const campaignChannels: CampaignChannel[] = campaign.campaign_channels || [];
     if (campaignChannels.length === 0) {
       console.error('[Campaign] No channels configured');
-      await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
+      await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId).eq('status', 'running');
       return;
     }
 
