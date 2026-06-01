@@ -60,7 +60,7 @@ export async function fetchLeadsByPhones<T = MatchedLead>(
     batches.push(allVariants.slice(i, i + BATCH));
   }
 
-  const results: MatchedLead[] = [];
+  const results: T[] = [];
   let cursor = 0;
 
   async function worker() {
@@ -72,7 +72,7 @@ export async function fetchLeadsByPhones<T = MatchedLead>(
         .eq("organization_id", organizationId)
         .in("phone", batches[idx]);
       if (error) throw error;
-      if (data) results.push(...(data as MatchedLead[]));
+      if (data) results.push(...(data as unknown as T[]));
     }
   }
 
@@ -83,8 +83,10 @@ export async function fetchLeadsByPhones<T = MatchedLead>(
   // dedup por id
   const seen = new Set<string>();
   return results.filter((l) => {
-    if (seen.has(l.id)) return false;
-    seen.add(l.id);
+    const id = (l as { id?: string }).id;
+    if (!id) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
     return true;
-  }) as T[];
+  });
 }
