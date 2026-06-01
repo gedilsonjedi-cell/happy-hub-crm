@@ -155,7 +155,7 @@ async function processCampaignDispatch(
 
     if (!channels || channels.length === 0 || !templates || templates.length === 0) {
       console.error('[Campaign] Missing channels or templates');
-      await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
+      await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId).eq('status', 'running');
       return;
     }
 
