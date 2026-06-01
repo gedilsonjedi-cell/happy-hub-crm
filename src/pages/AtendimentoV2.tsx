@@ -1686,7 +1686,7 @@ const AtendimentoV2 = () => {
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
-    const previousStatus = conversationStatuses[conversationKey];
+    const previousStatus = conversationStatuses[conversationKey] || allConversations.find(c => getConversationKey(c) === conversationKey)?.status;
     setConversationStatuses(prev => ({ ...prev, [conversationKey]: newStatus }));
     setAllConversations(prev => prev.map(c => {
       const key = getConversationKey(c);
