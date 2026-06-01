@@ -215,21 +215,41 @@ Deno.serve(async (req) => {
       return data?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
     }
 
+    async function getRecipientTotal() {
+      const { count, error } = await supabase
+        .from('campaign_recipients')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId);
+
+      if (error) {
+        console.error('[Batch] Error counting campaign recipients:', error);
+      }
+
+      return Number(count) || 0;
+    }
+
     async function persistCampaignState(
       counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
-      status: 'running' | 'completed'
+      status: 'running' | 'completed',
+      totalRecipientsOverride?: number
     ) {
       // CRITICAL: only overwrite status when the campaign is still in a state
       // where the batch is authoritative. If the user paused, cancelled or
       // deleted the campaign meanwhile, NEVER resurrect it back to running.
-      await supabase.from('campaigns').update({
+      const payload: Record<string, unknown> = {
         status,
         sent_count: Number(counts.total_sent) || 0,
         delivered_count: Number(counts.total_delivered) || 0,
         failed_count: Number(counts.total_failed) || 0,
         completed_at: status === 'completed' ? nowIso() : null,
         updated_at: nowIso()
-      }).eq('id', campaignId).in('status', ['running', 'completed']);
+      };
+
+      if (typeof totalRecipientsOverride === 'number' && totalRecipientsOverride > 0) {
+        payload.total_recipients = totalRecipientsOverride;
+      }
+
+      await supabase.from('campaigns').update(payload).eq('id', campaignId).in('status', ['running', 'completed']);
     }
 
     async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
@@ -457,14 +477,16 @@ Deno.serve(async (req) => {
       }
 
       const c = await getCounts();
+      const actualRecipientTotal = await getRecipientTotal();
       const hasFutureRetries = (Number(c.total_waiting_retry) || 0) > 0;
       const hasPending = (Number(c.total_pending) || 0) > 0;
       const hasProcessing = (Number(c.total_processing) || 0) > 0;
       const totalTerminal = (Number(c.total_sent) || 0) + (Number(c.total_failed) || 0);
-      const isComplete = !hasPending && !hasProcessing && !hasFutureRetries && totalTerminal >= campaign.total_recipients;
+      const completionTarget = actualRecipientTotal || campaign.total_recipients;
+      const isComplete = !hasPending && !hasProcessing && !hasFutureRetries && totalTerminal >= completionTarget;
 
       const newStatus = isComplete ? 'completed' : 'running';
-      await persistCampaignState(c, newStatus);
+      await persistCampaignState(c, newStatus, actualRecipientTotal || undefined);
 
       return new Response(
         JSON.stringify({
@@ -474,7 +496,7 @@ Deno.serve(async (req) => {
           sent: Number(c.total_sent) || 0,
           delivered: Number(c.total_delivered) || 0,
           failed: Number(c.total_failed) || 0,
-          total: campaign.total_recipients,
+          total: actualRecipientTotal || campaign.total_recipients,
           pendingRetries: Number(c.total_waiting_retry) || 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -772,14 +794,16 @@ Deno.serve(async (req) => {
     }
 
     fc = await getCounts();
+    const actualRecipientTotal = await getRecipientTotal();
     hasPending = (Number(fc.total_pending) || 0) > 0;
     hasProcessing = (Number(fc.total_processing) || 0) > 0;
     hasRetries = (Number(fc.total_waiting_retry) || 0) > 0;
     const totalTerminal = (Number(fc.total_sent) || 0) + (Number(fc.total_failed) || 0);
-    const isComplete = !hasPending && !hasProcessing && !hasRetries && totalTerminal >= campaign.total_recipients;
+    const completionTarget = actualRecipientTotal || campaign.total_recipients;
+    const isComplete = !hasPending && !hasProcessing && !hasRetries && totalTerminal >= completionTarget;
 
     const newStatus = isComplete ? 'completed' : 'running';
-    await persistCampaignState(fc, newStatus);
+    await persistCampaignState(fc, newStatus, actualRecipientTotal || undefined);
 
     console.log(`[Batch] Campaign ${campaign.name}: sent=${fc.total_sent}, failed=${fc.total_failed}, pending=${fc.total_pending}, retry=${fc.total_waiting_retry}, processing=${fc.total_processing}`);
 
@@ -791,7 +815,7 @@ Deno.serve(async (req) => {
         sent: Number(fc.total_sent) || 0,
         delivered: Number(fc.total_delivered) || 0,
         failed: Number(fc.total_failed) || 0,
-        total: campaign.total_recipients,
+        total: actualRecipientTotal || campaign.total_recipients,
         batchProcessed: sentThisBatch,
         scheduledRetries: scheduledRetryThisBatch,
         pendingRetries: Number(fc.total_waiting_retry) || 0

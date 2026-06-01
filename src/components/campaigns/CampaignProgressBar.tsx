@@ -143,10 +143,11 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
             : 0;
           
           const isFinishing = processedCount >= campaign.total_recipients;
+          const isFullMode = campaign.min_interval === 0 && campaign.max_interval === 0;
           
           // Estimate remaining time based on pending recipients
           const pendingCount = Math.max(0, campaign.total_recipients - processedCount);
-          const avgInterval = ((campaign.min_interval || 5) + (campaign.max_interval || 120)) / 2;
+          const avgInterval = isFullMode ? 0 : ((campaign.min_interval ?? 5) + (campaign.max_interval ?? 120)) / 2;
           const estimatedMinutes = Math.ceil((pendingCount * avgInterval) / 60);
 
           return (
@@ -188,7 +189,9 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
                 <span>
                   {isFinishing 
                     ? `${progress}% • Finalizando...` 
-                    : `${progress}% • ~${estimatedMinutes} min restantes`
+                    : isFullMode
+                      ? `${progress}% • Full em andamento`
+                      : `${progress}% • ~${estimatedMinutes} min restantes`
                   }
                 </span>
               </div>
