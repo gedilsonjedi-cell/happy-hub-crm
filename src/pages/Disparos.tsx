@@ -507,7 +507,7 @@ const Disparos = () => {
     [processorSignature]
   );
 
-  const { startProcessing } = useCampaignProcessor({
+  const { startProcessing, stopProcessing } = useCampaignProcessor({
     campaigns: processorCampaigns,
     onUpdate: debouncedFetchData,
     enabled: true,
