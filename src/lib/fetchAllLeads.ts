@@ -12,7 +12,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const PAGE_SIZE = 1000;
-const MAX_CONCURRENCY = 10;
+const MAX_CONCURRENCY = 4;
 
 export interface FetchAllLeadsOptions {
   organizationId: string;
@@ -29,7 +29,7 @@ export async function fetchAllLeads<T = any>({
   orderBy = null,
   maxRows = 100_000,
 }: FetchAllLeadsOptions): Promise<T[]> {
-  const fetchPage = async (pageIdx: number): Promise<T[]> => {
+  const fetchPage = async (pageIdx: number, attempt = 0): Promise<T[]> => {
     const from = pageIdx * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
@@ -47,7 +47,14 @@ export async function fetchAllLeads<T = any>({
     query = query.order("id", { ascending: true });
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      // Retry transient failures (timeouts, rate-limits) up to 3 vezes com backoff.
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        return fetchPage(pageIdx, attempt + 1);
+      }
+      throw error;
+    }
     return (data ?? []) as T[];
   };
 

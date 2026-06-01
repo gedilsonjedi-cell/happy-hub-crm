@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+import { toast } from "@/hooks/use-toast";
 
 type RecipientSourceType = "contacts" | "numbers" | null;
 type ContactFilterType = "tag" | "upload_date" | "all";
@@ -197,18 +198,27 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     if (!effectiveOrganizationId) return;
 
     setLoadingLeads(true);
+    console.log("[RecipientSelection] fetchLeads start", { orgId: effectiveOrganizationId });
 
-    try {
-      // Tags são globais — busca leads com cap de 10k para manter a UI responsiva.
-      // Clientes raramente disparam para mais de 5-10k de uma vez.
-      const raw = await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
+    const tryFetch = async (withOrder: boolean) => {
+      return await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
         organizationId: effectiveOrganizationId,
         columns: "id, name, phone, tags, created_at",
-        orderBy: { column: "created_at", ascending: false }, // mais recentes primeiro
-        maxRows: 10_000,
+        orderBy: withOrder ? { column: "created_at", ascending: false } : null,
+        maxRows: 20_000,
       });
-      const data = raw;
+    };
 
+    try {
+      let data: Array<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }> = [];
+      try {
+        data = await tryFetch(true);
+      } catch (orderedErr) {
+        console.warn("[RecipientSelection] ordered fetch failed, retrying without order", orderedErr);
+        data = await tryFetch(false);
+      }
+
+      console.log("[RecipientSelection] fetchLeads success", { count: data.length });
       setLeads(data);
       setFilteredLeads(data);
 
@@ -217,8 +227,21 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
         lead.tags?.forEach(tag => tags.add(tag));
       });
       setAvailableTags(Array.from(tags));
+
+      if (data.length === 0) {
+        toast({
+          title: "Nenhum contato encontrado",
+          description: "Esta organização ainda não tem leads cadastrados. Importe contatos antes de criar uma campanha.",
+        });
+      }
     } catch (error) {
-      console.error("Error fetching leads:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("[RecipientSelection] Error fetching leads:", error);
+      toast({
+        title: "Erro ao carregar contatos",
+        description: msg || "Não foi possível buscar os leads. Tente novamente em alguns segundos.",
+        variant: "destructive",
+      });
     } finally {
       setLoadingLeads(false);
     }
