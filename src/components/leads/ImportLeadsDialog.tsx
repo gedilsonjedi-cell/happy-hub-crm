@@ -818,7 +818,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       const databaseConflicts = conflicts as DatabaseConflict[];
       
       // All spreadsheet duplicates were already resolved before validation
-      let leadsToProcess = parsedLeads;
+      const leadsToProcess = parsedLeads;
       
       if (leadsToProcess.length === 0) {
         toast.error("Nenhum lead para importar");
@@ -832,8 +832,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       );
       
       // Separate into updates and inserts
-      const leadsToInsert: any[] = [];
-      const leadsToUpdate: { id: string; data: any }[] = [];
+      const leadsToInsert: LeadImportPayload[] = [];
+      const leadsToUpdate: { id: string; data: LeadUpdatePayload }[] = [];
       const processedSuffixes = new Set<string>();
 
       for (const lead of leadsToProcess) {
@@ -949,9 +949,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       onSuccess?.();
       handleReset();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao importar leads:", error);
-      toast.error("Erro ao importar leads: " + error.message);
+      const message = error instanceof Error ? error.message : "erro desconhecido";
+      toast.error("Erro ao importar leads: " + message);
     } finally {
       setImporting(false);
     }
