@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from "react";
 import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users, Loader2, CheckCircle2, XCircle, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllLeads } from "@/lib/fetchAllLeads";
+import { fetchLeadsByPhones } from "@/lib/fetchLeadsByPhones";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -105,6 +105,8 @@ const PRESET_COLORS = [
   "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
   "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
 ];
+
+const IMPORT_BATCH_SIZE = 500;
 
 export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeadsDialogProps) {
   const { user } = useAuth();
