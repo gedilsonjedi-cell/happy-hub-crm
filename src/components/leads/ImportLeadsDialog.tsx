@@ -627,13 +627,13 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       // Now check for database conflicts only
       setCheckingConflicts(true);
       
-      // Check which phones already exist in database using suffix matching
-      // Paginated to bypass Supabase's 1000-row default limit.
-      const existingLeads = await fetchAllLeads<ExistingLead>({
+      // Check only phones from this import. Fetching the entire leads table times out
+      // for large CRMs and blocks imports with hundreds/thousands of contacts.
+      const existingLeads = await fetchLeadsByPhones<ExistingLead>(
         organizationId,
-        columns: "id, phone, name, email, document, city, state, tags, custom_fields",
-        orderBy: null,
-      });
+        leadsWithWhatsApp.map((lead) => lead.phone),
+        "id, phone, name, email, document, city, state, tags, custom_fields",
+      );
       
       const existingMap = new Map<string, ExistingLead>();
       (existingLeads || []).forEach(lead => {
