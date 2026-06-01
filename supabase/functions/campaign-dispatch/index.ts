@@ -463,12 +463,35 @@ Deno.serve(async (req) => {
 
     console.log(`Starting campaign ${campaignId} - ${recipients.length} recipients`);
 
-    // Update campaign status
+    // SAFETY: refuse to start/resume a campaign the user has paused, cancelled or deleted.
+    // Only the explicit "Retomar" button (which sets status='running' first) or initial
+    // creation (status='draft'/'scheduled') may proceed.
+    const { data: currentCampaign } = await supabase
+      .from('campaigns')
+      .select('status')
+      .eq('id', campaignId)
+      .single();
+    if (!currentCampaign) {
+      return new Response(
+        JSON.stringify({ error: 'Campaign not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (!['running', 'draft', 'scheduled'].includes(currentCampaign.status)) {
+      console.log(`[campaign-dispatch] Refusing to start campaign ${campaignId} in status ${currentCampaign.status}`);
+      return new Response(
+        JSON.stringify({ success: false, skipped: true, status: currentCampaign.status, message: `Campaign is ${currentCampaign.status}; not dispatching.` }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Update campaign status only if not already paused/cancelled/deleted
     await supabase.from('campaigns').update({ 
       status: 'running', 
       started_at: new Date().toISOString(),
       total_recipients: recipients.length 
-    }).eq('id', campaignId);
+    }).eq('id', campaignId).in('status', ['running', 'draft', 'scheduled']);
+
 
     // Run in background using EdgeRuntime.waitUntil
     // @ts-ignore
