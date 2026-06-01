@@ -379,7 +379,8 @@ async function processCampaignDispatch(
   } catch (error) {
     console.error('[Campaign] Fatal error:', error);
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
+    // Don't resurrect paused/cancelled/deleted campaigns into failed
+    await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId).eq('status', 'running');
   }
 }
 
