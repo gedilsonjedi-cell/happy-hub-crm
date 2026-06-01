@@ -867,6 +867,13 @@ const Disparos = () => {
       const scheduledAt = formData.startTime === "scheduled" && formData.scheduledDate && formData.scheduledTime
         ? new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString()
         : null;
+      // Deduplica antes de criar a campanha: a campanha só vira "running"
+      // depois que TODOS os destinatários forem persistidos com sucesso.
+      const uniquePhones = [...new Set(recipientData.phones)];
+      const duplicatesRemoved = recipientData.phones.length - uniquePhones.length;
+      if (duplicatesRemoved > 0) {
+        console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
+      }
       
       // Resolve flow-mode → effective template/flow ids per channel
       let effectiveUseUnified = useUnifiedTemplate;
@@ -913,9 +920,9 @@ const Disparos = () => {
           use_unified_template: effectiveUseUnified,
           unified_template_id: effectiveUseUnified ? effectiveUnifiedTemplateId : null,
           flow_bot_id: effectiveUnifiedFlowId,
-          status: formData.startTime === "now" ? "running" : "scheduled",
+          status: formData.startTime === "now" ? "draft" : "scheduled",
           scheduled_at: scheduledAt,
-          total_recipients: recipientData.phones.length,
+          total_recipients: uniquePhones.length,
           // CRITICAL: Save manual variables for template substitution in batch processor
           // For per-channel mode, merge all channel variables (if same var name across channels, last wins)
           manual_variables: useUnifiedTemplate 
@@ -959,13 +966,6 @@ const Disparos = () => {
 
       // CRITICAL: Save campaign recipients BEFORE starting the campaign
       // IMPORTANT: Remove duplicate phone numbers to prevent sending multiple times
-      const uniquePhones = [...new Set(recipientData.phones)];
-      const duplicatesRemoved = recipientData.phones.length - uniquePhones.length;
-      
-      if (duplicatesRemoved > 0) {
-        console.log(`[Campaign] Removed ${duplicatesRemoved} duplicate phone numbers`);
-      }
-      
       // Reusa os leads casados pré-buscados acima.
       const allOrgLeads = matchedOrgLeads;
 
@@ -1003,34 +1003,37 @@ const Disparos = () => {
         };
       });
       
-      // Update total recipients with the deduplicated count
-      if (duplicatesRemoved > 0) {
-        await supabase
-          .from("campaigns")
-          .update({ total_recipients: uniquePhones.length })
-          .eq("id", campaign.id);
-      }
-
-      // Insert in batches of 500 to avoid hitting limits
-      // Insert in batches of 500, with up to 5 batches in PARALLEL to drastically
-      // reduce wait time for large campaigns (5k recipients: 10 batches → 2 waves).
-      const batchSize = 500;
-      const concurrency = 5;
+      // Insert in smaller sequential batches with retry. Parallel inserts were
+      // creating partial campaigns in larger bases when one request failed mid-flight.
+      const batchSize = 250;
+      const concurrency = 1;
       const batches: typeof recipientInserts[] = [];
       for (let i = 0; i < recipientInserts.length; i += batchSize) {
         batches.push(recipientInserts.slice(i, i + batchSize));
       }
+
+      const insertRecipientBatch = async (batch: typeof recipientInserts, batchIndex: number) => {
+        let lastError: unknown = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const { error: recipientError } = await supabase
+            .from("campaign_recipients")
+            .insert(batch);
+          if (!recipientError) return true;
+          lastError = recipientError;
+          console.error(`Error saving campaign recipients batch ${batchIndex + 1}, attempt ${attempt}:`, recipientError);
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        }
+        console.error("Campaign recipients batch failed permanently:", lastError);
+        return false;
+      };
 
       let cursor = 0;
       let failed = false;
       const workers = Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
         while (cursor < batches.length && !failed) {
           const idx = cursor++;
-          const { error: recipientError } = await supabase
-            .from("campaign_recipients")
-            .insert(batches[idx]);
-          if (recipientError) {
-            console.error("Error saving campaign recipients batch:", recipientError);
+          const ok = await insertRecipientBatch(batches[idx], idx);
+          if (!ok) {
             failed = true;
             return;
           }
@@ -1043,6 +1046,21 @@ const Disparos = () => {
         await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaign.id);
         setIsCreating(false);
         return;
+      }
+
+      if (formData.startTime === "now") {
+        const { error: startError } = await supabase
+          .from("campaigns")
+          .update({ status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", campaign.id)
+          .eq("status", "draft");
+
+        if (startError) {
+          toast.error("Erro ao ativar campanha");
+          console.error("Campaign start error:", startError);
+          setIsCreating(false);
+          return;
+        }
       }
 
       console.log(`Successfully saved ${recipientInserts.length} recipients for campaign ${campaign.id}`);
