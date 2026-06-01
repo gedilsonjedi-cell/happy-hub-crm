@@ -12,7 +12,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const PAGE_SIZE = 1000;
-const MAX_CONCURRENCY = 10;
+const MAX_CONCURRENCY = 4;
 
 export interface FetchAllLeadsOptions {
   organizationId: string;
