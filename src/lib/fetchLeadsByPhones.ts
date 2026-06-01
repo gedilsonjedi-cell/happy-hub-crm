@@ -43,10 +43,11 @@ export interface MatchedLead {
   name: string | null;
 }
 
-export async function fetchLeadsByPhones(
+export async function fetchLeadsByPhones<T = MatchedLead>(
   organizationId: string,
   phones: string[],
-): Promise<MatchedLead[]> {
+  columns = "id, phone, name",
+): Promise<T[]> {
   const variantSet = new Set<string>();
   phones.forEach((p) => buildPhoneVariants(p).forEach((v) => variantSet.add(v)));
   const allVariants = [...variantSet];
@@ -59,7 +60,7 @@ export async function fetchLeadsByPhones(
     batches.push(allVariants.slice(i, i + BATCH));
   }
 
-  const results: MatchedLead[] = [];
+  const results: T[] = [];
   let cursor = 0;
 
   async function worker() {
@@ -67,11 +68,11 @@ export async function fetchLeadsByPhones(
       const idx = cursor++;
       const { data, error } = await supabase
         .from("leads")
-        .select("id, phone, name")
+        .select(columns)
         .eq("organization_id", organizationId)
         .in("phone", batches[idx]);
       if (error) throw error;
-      if (data) results.push(...(data as MatchedLead[]));
+      if (data) results.push(...(data as unknown as T[]));
     }
   }
 
@@ -82,8 +83,10 @@ export async function fetchLeadsByPhones(
   // dedup por id
   const seen = new Set<string>();
   return results.filter((l) => {
-    if (seen.has(l.id)) return false;
-    seen.add(l.id);
+    const id = (l as { id?: string }).id;
+    if (!id) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
     return true;
   });
 }

@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from "react";
 import { Upload, FileSpreadsheet, AlertCircle, Check, Plus, X, Tag, Eye, AlertTriangle, Users, Loader2, CheckCircle2, XCircle, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllLeads } from "@/lib/fetchAllLeads";
+import { fetchLeadsByPhones } from "@/lib/fetchLeadsByPhones";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -81,6 +81,24 @@ interface ExistingLead {
   custom_fields: Record<string, string> | null;
 }
 
+interface LeadImportPayload {
+  organization_id: string;
+  user_id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  document: string | null;
+  city: string | null;
+  state: string | null;
+  custom_fields: Record<string, string> | null;
+  tags: string[] | null;
+  status: "new";
+}
+
+type LeadUpdatePayload = Omit<LeadImportPayload, "organization_id" | "user_id" | "phone" | "status"> & {
+  updated_at: string;
+};
+
 // Conflict types
 interface SpreadsheetConflict {
   type: "spreadsheet";
@@ -105,6 +123,8 @@ const PRESET_COLORS = [
   "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
   "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
 ];
+
+const IMPORT_BATCH_SIZE = 500;
 
 export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeadsDialogProps) {
   const { user } = useAuth();
@@ -625,13 +645,13 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       // Now check for database conflicts only
       setCheckingConflicts(true);
       
-      // Check which phones already exist in database using suffix matching
-      // Paginated to bypass Supabase's 1000-row default limit.
-      const existingLeads = await fetchAllLeads<ExistingLead>({
+      // Check only phones from this import. Fetching the entire leads table times out
+      // for large CRMs and blocks imports with hundreds/thousands of contacts.
+      const existingLeads = await fetchLeadsByPhones<ExistingLead>(
         organizationId,
-        columns: "id, phone, name, email, document, city, state, tags, custom_fields",
-        orderBy: null,
-      });
+        leadsWithWhatsApp.map((lead) => lead.phone),
+        "id, phone, name, email, document, city, state, tags, custom_fields",
+      );
       
       const existingMap = new Map<string, ExistingLead>();
       (existingLeads || []).forEach(lead => {
@@ -798,7 +818,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       const databaseConflicts = conflicts as DatabaseConflict[];
       
       // All spreadsheet duplicates were already resolved before validation
-      let leadsToProcess = parsedLeads;
+      const leadsToProcess = parsedLeads;
       
       if (leadsToProcess.length === 0) {
         toast.error("Nenhum lead para importar");
@@ -812,8 +832,8 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       );
       
       // Separate into updates and inserts
-      const leadsToInsert: any[] = [];
-      const leadsToUpdate: { id: string; data: any }[] = [];
+      const leadsToInsert: LeadImportPayload[] = [];
+      const leadsToUpdate: { id: string; data: LeadUpdatePayload }[] = [];
       const processedSuffixes = new Set<string>();
 
       for (const lead of leadsToProcess) {
@@ -893,32 +913,35 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         }
       }
 
-      // Execute inserts
-      if (leadsToInsert.length > 0) {
-        const { error } = await supabase
-          .from("leads")
-          .insert(leadsToInsert);
-
+      // Execute inserts in chunks to avoid oversized requests/timeouts.
+      let insertedCount = 0;
+      for (let i = 0; i < leadsToInsert.length; i += IMPORT_BATCH_SIZE) {
+        const chunk = leadsToInsert.slice(i, i + IMPORT_BATCH_SIZE);
+        const { error } = await supabase.from("leads").insert(chunk);
         if (error) throw error;
+        insertedCount += chunk.length;
       }
 
-      // Execute updates in batches
-      if (leadsToUpdate.length > 0) {
-        for (const { id, data } of leadsToUpdate) {
-          const { error } = await supabase
-            .from("leads")
-            .update(data)
-            .eq("id", id);
+      // Execute updates in small parallel waves instead of one long sequential loop.
+      let updatedCount = 0;
+      for (let i = 0; i < leadsToUpdate.length; i += 25) {
+        const chunk = leadsToUpdate.slice(i, i + 25);
+        const results = await Promise.all(
+          chunk.map(({ id, data }) => supabase.from("leads").update(data).eq("id", id)),
+        );
 
+        results.forEach(({ error }, idx) => {
           if (error) {
-            console.error("Error updating lead:", id, error);
+            console.error("Error updating lead:", chunk[idx].id, error);
+            return;
           }
-        }
+          updatedCount++;
+        });
       }
 
       const tagInfo = selectedTags.length > 0 ? ` com ${selectedTags.length} tag(s)` : "";
-      const insertedMsg = leadsToInsert.length > 0 ? `${leadsToInsert.length} novos` : "";
-      const updatedMsg = leadsToUpdate.length > 0 ? `${leadsToUpdate.length} atualizados` : "";
+      const insertedMsg = insertedCount > 0 ? `${insertedCount} novos` : "";
+      const updatedMsg = updatedCount > 0 ? `${updatedCount} atualizados` : "";
       const resultParts = [insertedMsg, updatedMsg].filter(Boolean).join(", ");
       
       toast.success(`Leads importados${tagInfo}: ${resultParts}`);
@@ -926,9 +949,10 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
       onSuccess?.();
       handleReset();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao importar leads:", error);
-      toast.error("Erro ao importar leads: " + error.message);
+      const message = error instanceof Error ? error.message : "erro desconhecido";
+      toast.error("Erro ao importar leads: " + message);
     } finally {
       setImporting(false);
     }

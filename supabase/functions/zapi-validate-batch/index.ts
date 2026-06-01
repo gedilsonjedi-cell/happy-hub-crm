@@ -17,8 +17,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let phones: string[] = [];
+
   try {
-    const { phones } = await req.json();
+    const body = await req.json();
+    phones = Array.isArray(body?.phones) ? body.phones : [];
 
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
       console.error("Invalid request: phones array is required");
@@ -71,8 +74,13 @@ serve(async (req) => {
         continue;
       }
 
-      const batchResults: ValidationResult[] = await response.json();
-      results.push(...batchResults);
+      const batchResults: ValidationResult[] = await response.json().catch(() => []);
+      if (Array.isArray(batchResults) && batchResults.length > 0) {
+        results.push(...batchResults);
+      } else {
+        console.warn("Z-API returned an empty/invalid validation payload; allowing this batch");
+        results.push(...batch.map((phone) => ({ exists: true, inputPhone: phone, outputPhone: phone })));
+      }
 
       // Add a small delay between batches to avoid rate limiting
       if (i + BATCH_SIZE < cleanedPhones.length) {
@@ -90,7 +98,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : "Failed to validate phones";
     console.error("Error validating phones:", errorMessage);
     return new Response(
-      JSON.stringify({ results: (Array.isArray((await req.clone().json().catch(() => ({}))).phones) ? (await req.clone().json().catch(() => ({ phones: [] }))).phones : []).map((phone: string) => ({ exists: true, inputPhone: phone, outputPhone: phone })), skipped: true, warning: errorMessage }),
+      JSON.stringify({ results: phones.map((phone: string) => ({ exists: true, inputPhone: phone, outputPhone: phone })), skipped: true, warning: errorMessage }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
