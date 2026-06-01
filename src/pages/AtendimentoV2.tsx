@@ -2720,7 +2720,13 @@ const AtendimentoV2 = () => {
     if (!conversationToArchive) return;
     
     const key = getConversationKey(conversationToArchive);
-    updateConversationStatus(key, "archived");
+    try {
+      await updateConversationStatus(key, "archived");
+    } catch (error) {
+      console.error("Erro ao arquivar conversa:", error);
+      toast.error("Não foi possível arquivar a conversa. Tente novamente.");
+      return;
+    }
     
     if (saleCompleted) {
       toast.success("Venda registrada!");
@@ -2738,8 +2744,13 @@ const AtendimentoV2 = () => {
 
   const handleRestore = async (conversation: Conversation) => {
     const key = getConversationKey(conversation);
-    updateConversationStatus(key, "pending");
-    toast.success("Conversa restaurada");
+    try {
+      await updateConversationStatus(key, "pending");
+      toast.success("Conversa restaurada");
+    } catch (error) {
+      console.error("Erro ao restaurar conversa:", error);
+      toast.error("Não foi possível restaurar a conversa. Tente novamente.");
+    }
   };
 
   // Accept conversation handler
