@@ -394,7 +394,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { campaignId, action, recipients: providedRecipients, manualVariables } = await req.json();
+    const { campaignId } = await req.json();
 
     if (!campaignId) {
       return new Response(
@@ -403,65 +403,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    let recipients = providedRecipients;
+    const { count: recipientsCount, error: recipientsCountError } = await supabase
+      .from('campaign_recipients')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId);
 
-    if (!recipients || recipients.length === 0) {
-      const { data: campaign, error: campaignError } = await supabase
-        .from('campaigns')
-        .select('*')
-        .eq('id', campaignId)
-        .single();
-
-      if (campaignError || !campaign) {
-        return new Response(
-          JSON.stringify({ error: 'Campaign not found' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // SEGURANÇA: Sempre buscar destinatários EXCLUSIVAMENTE da tabela
-      // campaign_recipients vinculada ao campaign_id. NUNCA fazer fallback
-      // para a tabela `leads` da organização — isso causava vazamento entre
-      // campanhas (a campanha despachava para leads aleatórios da org que
-      // jamais foram inscritos nela).
-      // Pagina em lotes de 1000 para suportar campanhas grandes.
-      const PAGE = 1000;
-      const allPhones: string[] = [];
-      let offset = 0;
-      while (true) {
-        const { data: batch, error: batchErr } = await supabase
-          .from('campaign_recipients')
-          .select('phone')
-          .eq('campaign_id', campaignId)
-          .eq('status', 'pending')
-          .range(offset, offset + PAGE - 1);
-
-        if (batchErr) {
-          console.error(`[campaign-dispatch] Failed to load recipients:`, batchErr);
-          return new Response(
-            JSON.stringify({ error: 'Falha ao carregar destinatários da campanha' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const rows = batch || [];
-        allPhones.push(...rows.map(r => r.phone));
-        if (rows.length < PAGE) break;
-        offset += PAGE;
-      }
-
-      if (allPhones.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'Nenhum destinatário pendente encontrado para esta campanha.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      recipients = allPhones;
-      console.log(`[campaign-dispatch] Resuming campaign ${campaignId} with ${recipients.length} recipients from campaign_recipients`);
+    if (recipientsCountError) {
+      console.error(`[campaign-dispatch] Failed to count recipients:`, recipientsCountError);
+      return new Response(
+        JSON.stringify({ error: 'Falha ao carregar destinatários da campanha' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`Starting campaign ${campaignId} - ${recipients.length} recipients`);
+    if (!recipientsCount) {
+      return new Response(
+        JSON.stringify({ error: 'Nenhum destinatário encontrado para esta campanha.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Starting campaign ${campaignId} - ${recipientsCount} recipients from campaign_recipients`);
 
     // SAFETY: refuse to start/resume a campaign the user has paused, cancelled or deleted.
     // Only the explicit "Retomar" button (which sets status='running' first) or initial
