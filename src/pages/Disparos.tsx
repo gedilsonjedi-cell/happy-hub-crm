@@ -1117,9 +1117,33 @@ const Disparos = () => {
 
   const confirmDeleteCampaign = async () => {
     if (!deleteCampaignId) return;
-    const { error } = await supabase.from("campaigns").delete().eq("id", deleteCampaignId);
+    const idToDelete = deleteCampaignId;
+
+    // Stop local processor IMMEDIATELY so no batch can restart this campaign
+    stopProcessing(idToDelete);
+
+    // Optimistic UI: remove from list right away so refresh doesn't show it back
+    setAllCampaigns((prev) => prev.filter((c) => c.id !== idToDelete));
+
+    // 1) Mark as cancelled first so any in-flight edge function refuses to write back
+    await supabase
+      .from("campaigns")
+      .update({ status: "cancelled" as Campaign["status"], updated_at: new Date().toISOString() })
+      .eq("id", idToDelete);
+
+    // 2) Clear pending recipients so the watchdog/cron can't find work to do
+    await supabase
+      .from("campaign_recipients")
+      .update({ status: "failed", error_message: "Campanha excluída", last_error_code: "DELETED", next_retry_at: null })
+      .eq("campaign_id", idToDelete)
+      .in("status", ["pending", "processing", "waiting_retry"]);
+
+    // 3) Finally delete
+    const { error } = await supabase.from("campaigns").delete().eq("id", idToDelete);
     if (error) {
       toast.error("Erro ao excluir campanha");
+      // Restore by refetching
+      fetchData();
       return;
     }
     toast.success("Campanha excluída");
@@ -1159,13 +1183,24 @@ const Disparos = () => {
 
   const handlePauseCampaign = async (campaignId: string) => {
     try {
+      // Stop local processor IMMEDIATELY so no batch can flip the status back to running
+      stopProcessing(campaignId);
+
+      // Optimistic UI update so the user sees the new state instantly even if
+      // a stale realtime payload arrives a moment later.
+      setAllCampaigns((prev) =>
+        prev.map((c) => (c.id === campaignId ? { ...c, status: "paused" as Campaign["status"] } : c))
+      );
+
       const { error } = await supabase
         .from("campaigns")
-        .update({ status: "paused" })
+        .update({ status: "paused", updated_at: new Date().toISOString() })
         .eq("id", campaignId);
 
       if (error) {
         toast.error("Erro ao pausar campanha");
+        // Revert
+        fetchData();
         return;
       }
 
@@ -1176,6 +1211,7 @@ const Disparos = () => {
       toast.error("Erro ao pausar campanha");
     }
   };
+
 
   const handleForceSyncCampaign = async (campaignId: string) => {
     try {
