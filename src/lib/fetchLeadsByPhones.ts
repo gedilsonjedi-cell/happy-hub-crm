@@ -43,10 +43,11 @@ export interface MatchedLead {
   name: string | null;
 }
 
-export async function fetchLeadsByPhones(
+export async function fetchLeadsByPhones<T = MatchedLead>(
   organizationId: string,
   phones: string[],
-): Promise<MatchedLead[]> {
+  columns = "id, phone, name",
+): Promise<T[]> {
   const variantSet = new Set<string>();
   phones.forEach((p) => buildPhoneVariants(p).forEach((v) => variantSet.add(v)));
   const allVariants = [...variantSet];
@@ -67,7 +68,7 @@ export async function fetchLeadsByPhones(
       const idx = cursor++;
       const { data, error } = await supabase
         .from("leads")
-        .select("id, phone, name")
+        .select(columns)
         .eq("organization_id", organizationId)
         .in("phone", batches[idx]);
       if (error) throw error;
@@ -85,5 +86,5 @@ export async function fetchLeadsByPhones(
     if (seen.has(l.id)) return false;
     seen.add(l.id);
     return true;
-  });
+  }) as T[];
 }
