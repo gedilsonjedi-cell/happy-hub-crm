@@ -215,21 +215,41 @@ Deno.serve(async (req) => {
       return data?.[0] || { total_sent: 0, total_delivered: 0, total_failed: 0, total_pending: 0, total_waiting_retry: 0, total_processing: 0 };
     }
 
+    async function getRecipientTotal() {
+      const { count, error } = await supabase
+        .from('campaign_recipients')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId);
+
+      if (error) {
+        console.error('[Batch] Error counting campaign recipients:', error);
+      }
+
+      return Number(count) || 0;
+    }
+
     async function persistCampaignState(
       counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
-      status: 'running' | 'completed'
+      status: 'running' | 'completed',
+      totalRecipientsOverride?: number
     ) {
       // CRITICAL: only overwrite status when the campaign is still in a state
       // where the batch is authoritative. If the user paused, cancelled or
       // deleted the campaign meanwhile, NEVER resurrect it back to running.
-      await supabase.from('campaigns').update({
+      const payload: Record<string, unknown> = {
         status,
         sent_count: Number(counts.total_sent) || 0,
         delivered_count: Number(counts.total_delivered) || 0,
         failed_count: Number(counts.total_failed) || 0,
         completed_at: status === 'completed' ? nowIso() : null,
         updated_at: nowIso()
-      }).eq('id', campaignId).in('status', ['running', 'completed']);
+      };
+
+      if (typeof totalRecipientsOverride === 'number' && totalRecipientsOverride > 0) {
+        payload.total_recipients = totalRecipientsOverride;
+      }
+
+      await supabase.from('campaigns').update(payload).eq('id', campaignId).in('status', ['running', 'completed']);
     }
 
     async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
