@@ -197,7 +197,11 @@ Deno.serve(async (req) => {
     // Get channels and templates
     const campaignChannels = campaign.campaign_channels || [];
     if (campaignChannels.length === 0) {
-      await supabase.from('campaigns').update({ status: 'failed' }).eq('id', campaignId);
+      await supabase
+        .from('campaigns')
+        .update({ status: 'failed' })
+        .eq('id', campaignId)
+        .in('status', ['running', 'scheduled', 'draft']);
       return new Response(
         JSON.stringify({ error: 'No channels configured', done: true }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -215,6 +219,9 @@ Deno.serve(async (req) => {
       counts: { total_sent?: number; total_delivered?: number; total_failed?: number; total_waiting_retry?: number },
       status: 'running' | 'completed'
     ) {
+      // CRITICAL: only overwrite status when the campaign is still in a state
+      // where the batch is authoritative. If the user paused, cancelled or
+      // deleted the campaign meanwhile, NEVER resurrect it back to running.
       await supabase.from('campaigns').update({
         status,
         sent_count: Number(counts.total_sent) || 0,
@@ -222,7 +229,7 @@ Deno.serve(async (req) => {
         failed_count: Number(counts.total_failed) || 0,
         completed_at: status === 'completed' ? nowIso() : null,
         updated_at: nowIso()
-      }).eq('id', campaignId);
+      }).eq('id', campaignId).in('status', ['running', 'completed']);
     }
 
     async function failOpenRecipientsAndComplete(reason: string, errorCode: string) {
