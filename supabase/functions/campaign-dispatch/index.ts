@@ -364,14 +364,15 @@ async function processCampaignDispatch(
       }
     }
 
-    // Campaign completed
+    // Campaign completed — but never overwrite a paused/cancelled/deleted campaign
     await supabase.from('campaigns').update({ 
       status: 'completed',
       completed_at: new Date().toISOString(),
       sent_count: sentCount,
       delivered_count: deliveredCount,
       failed_count: failedCount
-    }).eq('id', campaignId);
+    }).eq('id', campaignId).eq('status', 'running');
+
 
     console.log(`[Campaign] ${campaignId} COMPLETED. Sent: ${sentCount}, Delivered: ${deliveredCount}, Failed: ${failedCount}`);
 
