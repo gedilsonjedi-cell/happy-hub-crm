@@ -451,22 +451,43 @@ Deno.serve(async (req) => {
     await supabase.from('campaigns').update({ 
       status: 'running', 
       started_at: new Date().toISOString(),
-      total_recipients: recipients.length 
+      total_recipients: recipientsCount 
     }).eq('id', campaignId).in('status', ['running', 'draft', 'scheduled']);
 
+    const pumpCampaignBatches = async () => {
+      const start = Date.now();
+      while (Date.now() - start < 45_000) {
+        const { data: liveCampaign } = await supabase
+          .from('campaigns')
+          .select('status, min_interval, max_interval')
+          .eq('id', campaignId)
+          .single();
 
-    // Run in background using EdgeRuntime.waitUntil
+        if (!liveCampaign || liveCampaign.status !== 'running') break;
+
+        const isFullMode = liveCampaign.min_interval === 0 && liveCampaign.max_interval === 0;
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-campaign-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+          body: JSON.stringify({ campaignId, batchSize: isFullMode ? 25 : undefined, processRetries: false }),
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.done || (result?.status && result.status !== 'running')) break;
+
+        await sleep(isFullMode ? 250 : Math.max(1000, (liveCampaign.min_interval || 5) * 1000));
+      }
+    };
+
+    // Run a short pump in background; the regular processor/active browser tab continues after that.
     // @ts-ignore
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
       console.log('[Campaign] Using EdgeRuntime.waitUntil');
       // @ts-ignore
-      EdgeRuntime.waitUntil(
-        processCampaignDispatch(supabaseUrl, supabaseServiceKey, campaignId, recipients, manualVariables)
-      );
+      EdgeRuntime.waitUntil(pumpCampaignBatches());
     } else {
       console.log('[Campaign] Running without waitUntil');
-      processCampaignDispatch(supabaseUrl, supabaseServiceKey, campaignId, recipients, manualVariables)
-        .catch(err => console.error('Error:', err));
+      pumpCampaignBatches().catch(err => console.error('Error:', err));
     }
 
     return new Response(
@@ -474,7 +495,7 @@ Deno.serve(async (req) => {
         success: true, 
         message: 'Campaign started',
         campaignId,
-        totalRecipients: recipients.length
+        totalRecipients: recipientsCount
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
