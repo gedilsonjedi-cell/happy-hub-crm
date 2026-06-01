@@ -895,32 +895,35 @@ export function ImportLeadsDialog({ open, onOpenChange, onSuccess }: ImportLeads
         }
       }
 
-      // Execute inserts
-      if (leadsToInsert.length > 0) {
-        const { error } = await supabase
-          .from("leads")
-          .insert(leadsToInsert);
-
+      // Execute inserts in chunks to avoid oversized requests/timeouts.
+      let insertedCount = 0;
+      for (let i = 0; i < leadsToInsert.length; i += IMPORT_BATCH_SIZE) {
+        const chunk = leadsToInsert.slice(i, i + IMPORT_BATCH_SIZE);
+        const { error } = await supabase.from("leads").insert(chunk);
         if (error) throw error;
+        insertedCount += chunk.length;
       }
 
-      // Execute updates in batches
-      if (leadsToUpdate.length > 0) {
-        for (const { id, data } of leadsToUpdate) {
-          const { error } = await supabase
-            .from("leads")
-            .update(data)
-            .eq("id", id);
+      // Execute updates in small parallel waves instead of one long sequential loop.
+      let updatedCount = 0;
+      for (let i = 0; i < leadsToUpdate.length; i += 25) {
+        const chunk = leadsToUpdate.slice(i, i + 25);
+        const results = await Promise.all(
+          chunk.map(({ id, data }) => supabase.from("leads").update(data).eq("id", id)),
+        );
 
+        results.forEach(({ error }, idx) => {
           if (error) {
-            console.error("Error updating lead:", id, error);
+            console.error("Error updating lead:", chunk[idx].id, error);
+            return;
           }
-        }
+          updatedCount++;
+        });
       }
 
       const tagInfo = selectedTags.length > 0 ? ` com ${selectedTags.length} tag(s)` : "";
-      const insertedMsg = leadsToInsert.length > 0 ? `${leadsToInsert.length} novos` : "";
-      const updatedMsg = leadsToUpdate.length > 0 ? `${leadsToUpdate.length} atualizados` : "";
+      const insertedMsg = insertedCount > 0 ? `${insertedCount} novos` : "";
+      const updatedMsg = updatedCount > 0 ? `${updatedCount} atualizados` : "";
       const resultParts = [insertedMsg, updatedMsg].filter(Boolean).join(", ");
       
       toast.success(`Leads importados${tagInfo}: ${resultParts}`);
