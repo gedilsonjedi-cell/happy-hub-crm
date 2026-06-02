@@ -351,7 +351,7 @@ serve(async (req) => {
             existing_role: existingRole,
             same_organization: !!sameOrg,
           }), {
-            status: 409,
+            status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
