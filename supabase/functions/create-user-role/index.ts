@@ -303,6 +303,58 @@ serve(async (req) => {
 
       if (createUserError) {
         console.error("Error creating user:", createUserError);
+        // Detect duplicate email and return a friendly message + diagnostic info
+        const isEmailExists = (createUserError as { code?: string })?.code === "email_exists"
+          || /already been registered|already registered|already exists/i.test(createUserError.message || "");
+        if (isEmailExists) {
+          // Look up the existing user to give the admin context
+          let existingUserId: string | null = null;
+          let existingOrgId: string | null = null;
+          let existingRole: string | null = null;
+          try {
+            const { data: list } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+            const found = list?.users?.find((u) => (u.email || "").toLowerCase() === email.toLowerCase());
+            if (found) {
+              existingUserId = found.id;
+              const { data: prof } = await supabaseAdmin
+                .from("profiles")
+                .select("organization_id")
+                .eq("user_id", found.id)
+                .maybeSingle();
+              existingOrgId = prof?.organization_id ?? null;
+              const { data: roleRow } = await supabaseAdmin
+                .from("user_roles")
+                .select("role")
+                .eq("user_id", found.id)
+                .maybeSingle();
+              existingRole = (roleRow?.role as string) ?? null;
+            }
+          } catch (lookupErr) {
+            console.error("Lookup existing user failed:", lookupErr);
+          }
+
+          const sameOrg = existingOrgId && existingOrgId === organization_id;
+          let friendly = `O e-mail ${email} já está cadastrado no sistema.`;
+          if (sameOrg) {
+            friendly += " Este usuário já pertence à sua organização — edite-o em vez de criar um novo.";
+          } else if (existingOrgId) {
+            friendly += " Ele está vinculado a outra organização. Use um e-mail diferente.";
+          } else if (existingUserId) {
+            friendly += " Existe um cadastro órfão (sem organização). Contate o suporte para liberar este e-mail.";
+          }
+
+          return new Response(JSON.stringify({
+            error: friendly,
+            code: "email_exists",
+            existing_user_id: existingUserId,
+            existing_organization_id: existingOrgId,
+            existing_role: existingRole,
+            same_organization: !!sameOrg,
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         return new Response(JSON.stringify({ error: createUserError.message }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
