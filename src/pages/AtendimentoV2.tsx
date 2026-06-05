@@ -4294,6 +4294,31 @@ const AtendimentoV2 = () => {
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(windowBaseTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
 
+  const isOptimusAdminOrg = effectiveOrganizationId === OPTIMUS_ADMIN_ORG_ID;
+  const [isSimulating, setIsSimulating] = useState(false);
+  const handleSimular = useCallback(async () => {
+    if (!selectedConversation?.phone || !effectiveOrganizationId) return;
+    setIsSimulating(true);
+    const tId = toast.loading("Gerando simulação...");
+    try {
+      const { data, error } = await supabase.functions.invoke("simular-proposta", {
+        body: {
+          phone: selectedConversation.phone,
+          organizationId: effectiveOrganizationId,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Simulação enviada para o cliente!", { id: tId });
+    } catch (err: any) {
+      console.error("[simular] erro:", err);
+      toast.error(err?.message || "Falha ao gerar simulação", { id: tId });
+    } finally {
+      setIsSimulating(false);
+    }
+  }, [selectedConversation?.phone, effectiveOrganizationId]);
+
+
   // Handle paste event for images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (!selectedConversation || isWindowExpired || !isMyConversation) return;
