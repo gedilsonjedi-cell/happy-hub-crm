@@ -100,10 +100,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Envia o payload com TODAS as variantes de nome de campo possíveis,
+    // já que não temos doc do webhook concorrente. O n8n simplesmente
+    // ignora os campos que não usa.
+    const telefoneSem55 = phoneDigits.startsWith("55") ? phoneDigits.slice(2) : phoneDigits;
     const payload = {
       cpf,
+      documento: cpf,
+      document: cpf,
       telefone: phoneDigits,
+      numero: phoneDigits,
+      phone: phoneDigits,
+      celular: phoneDigits,
+      whatsapp: phoneDigits,
+      telefone_sem_ddi: telefoneSem55,
       nome: lead.name || null,
+      name: lead.name || null,
+      cliente: lead.name || null,
     };
 
     console.log("[simular-proposta] enviando webhook:", payload);
