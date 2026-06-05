@@ -199,8 +199,12 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            refreshExternalToken(impersonatedOrgId)
+              .then(() => {
+                try { assignmentsChannel.subscribe(); } catch { /* noop */ }
+              })
+              .catch(() => {});
           }
         });
       assignmentsChannelRef.current = assignmentsChannel;
