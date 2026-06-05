@@ -837,11 +837,20 @@ Deno.serve(async (req) => {
 
     // Get channel credentials
     // For Meta API: access_token = Meta Access Token, app_name = Phone Number ID
-    const { data: channel, error: channelError } = await supabase
+    // IMPORTANT: usar service_role aqui. As colunas sensíveis (access_token, api_token,
+    // meta_app_secret, webhook_verify_token) tiveram SELECT revogado para o role
+    // `authenticated` por motivos de segurança. O client do usuário NÃO consegue ler
+    // o token; precisamos do service role para essa leitura.
+    const channelReader = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const { data: channel, error: channelError } = await channelReader
       .from('channels')
       .select('*')
       .eq('id', channelId)
       .single();
+
 
     if (channelError || !channel) {
       console.error('Channel not found:', channelError);
