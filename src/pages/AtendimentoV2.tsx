@@ -55,8 +55,11 @@ import {
   ZoomIn,
   History,
   Download,
-  Users
+  Users,
+  Calculator
 } from "lucide-react";
+
+const OPTIMUS_ADMIN_ORG_ID = "fe6a8da0-8f0a-4887-8c2c-f7ed6e5cd0b0";
 import { TopNavLayout } from "@/components/layout/TopNavLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -4291,6 +4294,31 @@ const AtendimentoV2 = () => {
   const windowTimeRemaining = selectedConversation ? getWindowTimeRemaining(windowBaseTime) : null;
   const isMyConversation = !selectedConversation?.assignedTo || selectedConversation?.assignedTo === user?.id || isAdmin || isSupervisor || isSuperAdmin;
 
+  const isOptimusAdminOrg = effectiveOrganizationId === OPTIMUS_ADMIN_ORG_ID;
+  const [isSimulating, setIsSimulating] = useState(false);
+  const handleSimular = useCallback(async () => {
+    if (!selectedConversation?.phone || !effectiveOrganizationId) return;
+    setIsSimulating(true);
+    const tId = toast.loading("Gerando simulação...");
+    try {
+      const { data, error } = await supabase.functions.invoke("simular-proposta", {
+        body: {
+          phone: selectedConversation.phone,
+          organizationId: effectiveOrganizationId,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success("Simulação enviada para o cliente!", { id: tId });
+    } catch (err: any) {
+      console.error("[simular] erro:", err);
+      toast.error(err?.message || "Falha ao gerar simulação", { id: tId });
+    } finally {
+      setIsSimulating(false);
+    }
+  }, [selectedConversation?.phone, effectiveOrganizationId]);
+
+
   // Handle paste event for images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (!selectedConversation || isWindowExpired || !isMyConversation) return;
@@ -4890,6 +4918,20 @@ const AtendimentoV2 = () => {
                         <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Transferir</span>
                       </Button>
                     )}
+                    {isOptimusAdminOrg && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSimular}
+                        disabled={isSimulating}
+                        className="gap-1 h-8 px-2 bg-amber-500 hover:bg-amber-600 text-white"
+                        title="Gerar e enviar simulação ao cliente"
+                      >
+                        {isSimulating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Calculator className="w-3 h-3" />}
+                        <span className="hidden sm:inline">Simular</span>
+                      </Button>
+                    )}
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
