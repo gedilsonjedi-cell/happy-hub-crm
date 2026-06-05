@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, cpf_used: cpf, webhook_response: respText.slice(0, 1000) }),
+      JSON.stringify({ ok: true, cpf_used: cpf, results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
