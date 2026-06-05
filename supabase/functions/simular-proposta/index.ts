@@ -119,29 +119,64 @@ Deno.serve(async (req) => {
       cliente: lead.name || null,
     };
 
-    console.log("[simular-proposta] enviando webhook:", payload);
+    // Dispara em paralelo 3 variações para maximizar a chance de o n8n aceitar:
+    // 1) POST JSON (todos os field aliases)
+    // 2) POST application/x-www-form-urlencoded
+    // 3) GET com query string
+    const qs = new URLSearchParams({
+      cpf,
+      telefone: phoneDigits,
+      nome: lead.name || "",
+    }).toString();
 
-    const webhookResp = await fetch(SIMULATION_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const formBody = new URLSearchParams(
+      Object.entries(payload).reduce<Record<string, string>>((acc, [k, v]) => {
+        if (v != null) acc[k] = String(v);
+        return acc;
+      }, {}),
+    ).toString();
 
-    const respText = await webhookResp.text().catch(() => "");
-    console.log("[simular-proposta] webhook status:", webhookResp.status, respText.slice(0, 500));
+    console.log("[simular-proposta] enviando webhook (json+form+get):", payload);
 
-    if (!webhookResp.ok) {
+    const [jsonResp, formResp, getResp] = await Promise.allSettled([
+      fetch(SIMULATION_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      fetch(SIMULATION_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formBody,
+      }),
+      fetch(`${SIMULATION_WEBHOOK_URL}?${qs}`, { method: "GET" }),
+    ]);
+
+    const summarize = async (label: string, r: PromiseSettledResult<Response>) => {
+      if (r.status === "rejected") return { label, error: String(r.reason) };
+      const status = r.value.status;
+      const text = await r.value.text().catch(() => "");
+      console.log(`[simular-proposta] ${label} status:`, status, text.slice(0, 300));
+      return { label, status, body: text.slice(0, 300) };
+    };
+
+    const results = await Promise.all([
+      summarize("json", jsonResp),
+      summarize("form", formResp),
+      summarize("get", getResp),
+    ]);
+
+    const anyOk = results.some((r) => "status" in r && r.status && r.status < 400);
+
+    if (!anyOk) {
       return new Response(
-        JSON.stringify({
-          error: `Webhook retornou ${webhookResp.status}`,
-          response: respText.slice(0, 1000),
-        }),
+        JSON.stringify({ error: "Nenhuma variação do webhook aceitou", results }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
-      JSON.stringify({ ok: true, cpf_used: cpf, webhook_response: respText.slice(0, 1000) }),
+      JSON.stringify({ ok: true, cpf_used: cpf, results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
