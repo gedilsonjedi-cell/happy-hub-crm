@@ -174,8 +174,12 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            refreshExternalToken(impersonatedOrgId)
+              .then(() => {
+                try { messagesChannel.subscribe(); } catch { /* noop */ }
+              })
+              .catch(() => {});
           }
         });
       messagesChannelRef.current = messagesChannel;
@@ -195,8 +199,12 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            refreshExternalToken(impersonatedOrgId)
+              .then(() => {
+                try { assignmentsChannel.subscribe(); } catch { /* noop */ }
+              })
+              .catch(() => {});
           }
         });
       assignmentsChannelRef.current = assignmentsChannel;
@@ -224,8 +232,12 @@ export function useChatRealtime(
           )
           .subscribe((status, err) => {
             console.log(`[useChatRealtime] org-assignments channel status: ${status}`, err ?? "");
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              refreshExternalToken(impersonatedOrgId).catch(() => {});
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              refreshExternalToken(impersonatedOrgId)
+                .then(() => {
+                  try { orgChannel.subscribe(); } catch { /* noop */ }
+                })
+                .catch(() => {});
             }
           });
         orgAssignmentsChannelRef.current = orgChannel;
@@ -234,8 +246,29 @@ export function useChatRealtime(
       console.warn("[useChatRealtime] failed to set up external realtime:", err?.message ?? err);
     });
 
+    // Re-subscribe transparente quando a aba volta ao foco ou a rede volta.
+    // Cobre o caso "JWT de 5min expirou enquanto eu estava em outra aba".
+    const resubscribeAll = () => {
+      refreshExternalToken(impersonatedOrgId)
+        .then(() => {
+          try { messagesChannelRef.current?.subscribe(); } catch { /* noop */ }
+          try { assignmentsChannelRef.current?.subscribe(); } catch { /* noop */ }
+          try { orgAssignmentsChannelRef.current?.subscribe(); } catch { /* noop */ }
+        })
+        .catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") resubscribeAll();
+    };
+    window.addEventListener("focus", resubscribeAll);
+    window.addEventListener("online", resubscribeAll);
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", resubscribeAll);
+      window.removeEventListener("online", resubscribeAll);
+      document.removeEventListener("visibilitychange", onVisibility);
       const client = clientRef.current;
       if (!client) return;
       if (messagesChannelRef.current) {
