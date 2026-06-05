@@ -174,8 +174,12 @@ export function useChatRealtime(
         )
         .subscribe((status, err) => {
           console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            refreshExternalToken(impersonatedOrgId).catch(() => {});
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            refreshExternalToken(impersonatedOrgId)
+              .then(() => {
+                try { messagesChannel.subscribe(); } catch { /* noop */ }
+              })
+              .catch(() => {});
           }
         });
       messagesChannelRef.current = messagesChannel;
