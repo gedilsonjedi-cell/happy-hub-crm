@@ -185,12 +185,14 @@ export function useInfiniteMessages(
     // even if Realtime missed the upsert event.
     staleTime: 0,
     gcTime: 5 * 60_000,
+    // Aggressive refetch policy: always re-pull on mount, on tab focus and on
+    // network reconnect. Prevents the "mensagens somem ao voltar pra aba" bug
+    // where Realtime missed events while the tab was hidden / JWT expired.
     refetchOnMount: "always",
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
     // Silent fallback poll: refetch every 8s on the active conversation so
-    // missed Realtime events still surface without F5. Background refetch
-    // does not show a loading spinner (notifyOnChangeProps default keeps UI calm).
+    // missed Realtime events still surface without F5.
     refetchInterval: 8000,
     refetchIntervalInBackground: false,
     retry: 2,
