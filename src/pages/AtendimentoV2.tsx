@@ -4918,6 +4918,20 @@ const AtendimentoV2 = () => {
                         <UserCheck className="w-3 h-3" /><span className="hidden sm:inline">Transferir</span>
                       </Button>
                     )}
+                    {isOptimusAdminOrg && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSimular}
+                        disabled={isSimulating}
+                        className="gap-1 h-8 px-2 bg-amber-500 hover:bg-amber-600 text-white"
+                        title="Gerar e enviar simulação ao cliente"
+                      >
+                        {isSimulating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Calculator className="w-3 h-3" />}
+                        <span className="hidden sm:inline">Simular</span>
+                      </Button>
+                    )}
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button>
