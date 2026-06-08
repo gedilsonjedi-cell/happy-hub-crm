@@ -210,9 +210,9 @@ const Leads = () => {
           query = query.or(orConditions.join(','));
         }
 
-        // Apply tag filter if selected
+        // Apply tag filter if selected (OR semantics: lead com QUALQUER tag selecionada)
         if (selectedTagFilters.length > 0) {
-          query = query.contains('tags', selectedTagFilters);
+          query = query.overlaps('tags', selectedTagFilters);
         }
 
         let { data, error } = await query
@@ -238,9 +238,9 @@ const Leads = () => {
         .select("*")
         .eq("organization_id", effectiveOrganizationId);
 
-      // Apply tag filter if selected
+      // Apply tag filter if selected (OR semantics: lead com QUALQUER tag selecionada)
       if (selectedTagFilters.length > 0) {
-        query = query.contains('tags', selectedTagFilters);
+        query = query.overlaps('tags', selectedTagFilters);
       }
 
       const { data, error } = await query
