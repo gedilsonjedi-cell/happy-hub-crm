@@ -4002,8 +4002,8 @@ const AtendimentoV2 = () => {
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
-          // Anything already in progress must leave this queue immediately
-          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
+          // Atendentes veem: sem setor (órfãs) OU do seu setor.
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId || sectorIds.includes(conv.sectorId!));
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") {
@@ -4044,7 +4044,7 @@ const AtendimentoV2 = () => {
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
-          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId || sectorIds.includes(conv.sectorId!));
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") {
@@ -4155,7 +4155,7 @@ const AtendimentoV2 = () => {
         });
 
   // Counts - "Novos" = waiting queue only
-  const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId)).length;
+  const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId || sectorIds.includes(c.sectorId!))).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers
     ? visibleConversations.filter(c => (c.assignedTo && c.assignedTo !== user?.id) || isHandledWithoutOwnerConversation(c)).length
