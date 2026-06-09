@@ -4002,8 +4002,8 @@ const AtendimentoV2 = () => {
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
-          // Anything already in progress must leave this queue immediately
-          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
+          // Atendentes veem: sem setor (órfãs) OU do seu setor.
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId || sectorIds.includes(conv.sectorId!));
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") {
