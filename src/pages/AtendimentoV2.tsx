@@ -4155,7 +4155,7 @@ const AtendimentoV2 = () => {
         });
 
   // Counts - "Novos" = waiting queue only
-  const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId)).length;
+  const newCount = visibleConversations.filter(c => isWaitingQueueConversation(c) && (canSeeOthers || !c.sectorId || sectorIds.includes(c.sectorId!))).length;
   const mineCount = visibleConversations.filter(c => c.assignedTo === user?.id).length;
   const othersCount = canSeeOthers
     ? visibleConversations.filter(c => (c.assignedTo && c.assignedTo !== user?.id) || isHandledWithoutOwnerConversation(c)).length
