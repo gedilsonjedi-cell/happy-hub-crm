@@ -4044,7 +4044,7 @@ const AtendimentoV2 = () => {
         }
         else if (filterStatus === "new") {
           // "Novos" = waiting queue only: replied conversations still pending and without owner
-          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId);
+          matchesFilter = isWaitingQueueConversation(conv) && (canSeeOthers || !conv.sectorId || sectorIds.includes(conv.sectorId!));
         }
         else if (filterStatus === "mine") matchesFilter = conv.assignedTo === user?.id && conv.status !== "archived";
         else if (filterStatus === "others") {
