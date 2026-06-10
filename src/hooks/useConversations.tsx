@@ -305,8 +305,41 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
   }, []);
 
+  // Always re-fetch on mount so navigating back into the page (e.g. from
+  // Campaigns/Dashboard) never shows a stale/empty list.
   useEffect(() => {
     fetchConversations();
+  }, [fetchConversations]);
+
+  // Re-fetch when the tab regains focus or the window comes back online.
+  // The external JWT may have expired silently while the user was away;
+  // refreshExternalToken() inside fetchConversations handles that case.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let lastRun = 0;
+    const MIN_GAP_MS = 1500;
+
+    const trigger = () => {
+      const now = Date.now();
+      if (now - lastRun < MIN_GAP_MS) return;
+      lastRun = now;
+      fetchConversations({ silent: true });
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") trigger();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", trigger);
+    window.addEventListener("online", trigger);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", trigger);
+      window.removeEventListener("online", trigger);
+    };
   }, [fetchConversations]);
 
   return {
