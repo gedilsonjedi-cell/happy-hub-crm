@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchConversationSummaryExternal } from "@/lib/conversationsExternal";
 import { getExternalAssignments } from "@/lib/externalAssignments";
+import { refreshExternalToken } from "@/lib/externalSupabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
@@ -62,37 +63,40 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
   );
 
   // ─── Primary fetch using RPC ────────────────────────────────────
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (opts?: { silent?: boolean }) => {
     if (channels.length === 0 || !effectiveOrganizationId) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     const channelIds = channels.map(c => c.id);
 
+    // Try once, then on failure force a JWT refresh and retry, then fall back.
+    const tryFetch = async () => {
+      return await fetchConversationSummaryExternal({
+        channelIds,
+        organizationId: effectiveOrganizationId!,
+        impersonatedOrgId: externalImpersonatedOrgId,
+      });
+    };
+
     try {
-      // Single external RPC call (reads from external Supabase via direct JWT)
       let rows: any[] | null = null;
-      let error: any = null;
       try {
-        rows = await fetchConversationSummaryExternal({
-          channelIds,
-          organizationId: effectiveOrganizationId!,
-          impersonatedOrgId: externalImpersonatedOrgId,
-        });
-      } catch (e) {
-        error = e;
+        rows = await tryFetch();
+      } catch (firstErr) {
+        console.warn("[useConversations] fetch failed, refreshing token and retrying:", firstErr);
+        try {
+          await refreshExternalToken(externalImpersonatedOrgId);
+          rows = await tryFetch();
+        } catch (secondErr) {
+          console.error("[useConversations] retry failed, falling back to legacy:", secondErr);
+          await fetchConversationsLegacy();
+          return;
+        }
       }
 
-      if (error) {
-        console.error("External conversations summary error:", error);
-        // Fallback to legacy fetch if RPC fails
-        await fetchConversationsLegacy();
-        return;
-      }
-
-      // Build profiles map from results for later use
       const profilesMap = new Map<string, string>();
       (rows || []).forEach((r: any) => {
         if (r.assigned_to && r.assigned_to_name) {
@@ -129,7 +133,15 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
         };
       });
 
-      setAllConversations(mapped);
+      // Only replace state when we actually got rows, or when the current state
+      // is already empty. This avoids wiping the visible list if a background
+      // refresh briefly returns empty (e.g. transient RLS/JWT race).
+      setAllConversations((prev) => {
+        if (mapped.length === 0 && prev.length > 0 && opts?.silent) {
+          return prev;
+        }
+        return mapped;
+      });
       setLoading(false);
     } catch (err) {
       console.error("Error in fetchConversations RPC:", err);
@@ -293,8 +305,41 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
     return `${conv.channelId || 'unknown'}_${conv.phone.replace(/\D/g, '')}`;
   }, []);
 
+  // Always re-fetch on mount so navigating back into the page (e.g. from
+  // Campaigns/Dashboard) never shows a stale/empty list.
   useEffect(() => {
     fetchConversations();
+  }, [fetchConversations]);
+
+  // Re-fetch when the tab regains focus or the window comes back online.
+  // The external JWT may have expired silently while the user was away;
+  // refreshExternalToken() inside fetchConversations handles that case.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let lastRun = 0;
+    const MIN_GAP_MS = 1500;
+
+    const trigger = () => {
+      const now = Date.now();
+      if (now - lastRun < MIN_GAP_MS) return;
+      lastRun = now;
+      fetchConversations({ silent: true });
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") trigger();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", trigger);
+    window.addEventListener("online", trigger);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", trigger);
+      window.removeEventListener("online", trigger);
+    };
   }, [fetchConversations]);
 
   return {
