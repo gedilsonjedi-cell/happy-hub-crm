@@ -4972,9 +4972,21 @@ const AtendimentoV2 = () => {
                         <DropdownMenuItem onClick={() => setShowAssignAttendantDialog(true)}><UserCheck className="w-4 h-4 mr-2" />Atribuir atendente</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleExportConversation(selectedConversation)}><Download className="w-4 h-4 mr-2" />Exportar conversa</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleAddToBlacklist(selectedConversation)} className="text-destructive">
-                          <Ban className="w-4 h-4 mr-2" />Bloquear contato
-                        </DropdownMenuItem>
+                        {isPhoneBlocked(selectedConversation.phone) ? (
+                          <DropdownMenuItem
+                            onClick={() => handleRemoveFromBlacklist(selectedConversation)}
+                            className="text-emerald-600 focus:text-emerald-600"
+                          >
+                            <Ban className="w-4 h-4 mr-2" />Desbloquear contato
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => handleAddToBlacklist(selectedConversation)}
+                            className="text-destructive"
+                          >
+                            <Ban className="w-4 h-4 mr-2" />Bloquear contato
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => handleArchive(selectedConversation)} className="text-destructive">
                           <Archive className="w-4 h-4 mr-2" />Arquivar conversa
                         </DropdownMenuItem>
