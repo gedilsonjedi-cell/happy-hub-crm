@@ -1,8 +1,13 @@
 // Detects opt-out/block-request phrases from inbound messages and adds the
 // contact to the organization blacklist automatically.
 //
-// Triggered when a lead writes something like "bloquear contato" so the
-// atendente doesn't need to do it manually. They can still unblock later.
+// Flow when a lead writes e.g. "bloquear contato":
+//   1) Skip if number is already blacklisted for this org.
+//   2) Send a polite goodbye/confirmation message via the same channel
+//      (BEFORE inserting the blacklist row, because *-send refuses to send
+//      to blacklisted numbers).
+//   3) Insert the blacklist row so subsequent dispatches are blocked.
+// Atendente can still unblock later from the chat menu or /lista-negra.
 
 const KEYWORDS = [
   'bloquear contato',
@@ -21,6 +26,11 @@ const KEYWORDS = [
   'pare de me enviar',
   'pare de mandar mensagem',
 ];
+
+const GOODBYE_MESSAGE =
+  'Entendido! Estamos removendo o seu contato da nossa lista de transmissão e você não receberá mais mensagens nossas. 🙏\n\n' +
+  'Pedimos desculpas por qualquer incômodo. Caso futuramente precise dos nossos serviços ou tenha alguma dúvida, ' +
+  'é só nos chamar aqui — estamos à disposição.';
 
 function normalize(text: string): string {
   return text
@@ -41,6 +51,11 @@ export function shouldAutoBlacklist(content: string, messageType?: string): bool
   return KEYWORDS.some((kw) => normalized.includes(kw));
 }
 
+export interface AutoBlacklistChannel {
+  id: string;
+  provider: string; // 'meta' | 'zapi' | 'gupshup'
+}
+
 export async function maybeAutoBlacklist(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -49,6 +64,7 @@ export async function maybeAutoBlacklist(
   content: string,
   messageType?: string,
   contactName?: string | null,
+  channel?: AutoBlacklistChannel | null,
 ): Promise<boolean> {
   try {
     if (!organizationId || !phone) return false;
@@ -57,6 +73,53 @@ export async function maybeAutoBlacklist(
     const digits = phone.replace(/\D/g, '');
     const normalizedPhone = digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
 
+    // 1) Skip if already blacklisted (avoid spamming the goodbye message).
+    const { data: existing } = await supabase
+      .from('blacklist')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('phone', normalizedPhone)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('[auto-blacklist] Already blacklisted, skipping:', normalizedPhone);
+      return false;
+    }
+
+    // 2) Send goodbye message BEFORE blacklisting (send fns refuse to send to
+    //    blacklisted numbers).
+    if (channel?.id && channel?.provider) {
+      const provider = channel.provider.toLowerCase();
+      const fnName = provider === 'meta'
+        ? 'meta-send'
+        : provider === 'zapi'
+        ? 'zapi-send'
+        : provider === 'gupshup'
+        ? 'gupshup-send'
+        : null;
+
+      if (fnName) {
+        try {
+          const { error: sendError } = await supabase.functions.invoke(fnName, {
+            body: {
+              channelId: channel.id,
+              destination: normalizedPhone,
+              message: GOODBYE_MESSAGE,
+              messageType: 'text',
+            },
+          });
+          if (sendError) {
+            console.warn('[auto-blacklist] Goodbye send failed (continuing to block):', sendError.message || sendError);
+          } else {
+            console.log('[auto-blacklist] Goodbye message sent to', normalizedPhone, 'via', fnName);
+          }
+        } catch (sendErr) {
+          console.warn('[auto-blacklist] Goodbye send threw (continuing to block):', sendErr);
+        }
+      }
+    }
+
+    // 3) Insert blacklist row.
     const { error } = await supabase
       .from('blacklist')
       .upsert(

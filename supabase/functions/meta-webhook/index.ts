@@ -941,7 +941,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   const { content, mediaId, mediaMimeType } = extractContent(msg);
 
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist (atendente can unblock).
-  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, contactName);
+  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, contactName, { id: channel.id as string, provider: 'meta' });
 
   // Evaluate business logic synchronously from cache (zero DB calls)
   const holidayStatus = checkHolidaySync(orgConfig);

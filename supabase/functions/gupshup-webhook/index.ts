@@ -711,7 +711,7 @@ async function processInboundMessage(
   }
 
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
-  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName);
+  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName, { id: channelId, provider: 'gupshup' });
 
 
 

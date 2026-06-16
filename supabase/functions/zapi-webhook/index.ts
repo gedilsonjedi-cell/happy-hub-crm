@@ -953,7 +953,7 @@ Deno.serve(async (req) => {
       }
 
       // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
-      await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName);
+      await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName, { id: channel.id, provider: 'zapi' });
 
 
 
