@@ -80,6 +80,7 @@ import {
 import { assignmentsWrite, getExternalAssignments } from "@/lib/externalAssignments";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+import { useBlockedPhones } from "@/hooks/useBlockedPhones";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
@@ -551,6 +552,7 @@ const AtendimentoV2 = () => {
   // do cliente impersonado — caso contrário a RLS do externo bloqueia tudo
   // e a sidebar fica vazia até um Ctrl+Shift+R.
   const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
+  const { isBlocked: isPhoneBlocked, invalidate: invalidateBlockedPhones } = useBlockedPhones(effectiveOrganizationId);
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
@@ -3087,10 +3089,35 @@ const AtendimentoV2 = () => {
         }
       } else {
         toast.success(`${conversation.name || conversation.phone} adicionado à lista negra`);
+        invalidateBlockedPhones();
       }
     } catch (error) {
       console.error("Erro ao adicionar à lista negra:", error);
       toast.error("Erro ao adicionar à lista negra");
+    }
+  };
+
+  // Remove from blacklist (unblock) — matches by org + suffix to handle 9th-digit variants
+  const handleRemoveFromBlacklist = async (conversation: Conversation) => {
+    if (!effectiveOrganizationId) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+    const clean = conversation.phone.replace(/\D/g, "");
+    if (!clean) return;
+    const suffix8 = clean.slice(-8);
+    try {
+      const { error } = await supabase
+        .from("blacklist")
+        .delete()
+        .eq("organization_id", effectiveOrganizationId)
+        .or(`phone.eq.${clean},phone.eq.+${clean},phone.like.%${suffix8}`);
+      if (error) throw error;
+      toast.success(`${conversation.name || conversation.phone} desbloqueado`);
+      invalidateBlockedPhones();
+    } catch (error) {
+      console.error("Erro ao remover da lista negra:", error);
+      toast.error("Erro ao desbloquear contato");
     }
   };
 
@@ -4807,6 +4834,7 @@ const AtendimentoV2 = () => {
                       return next;
                     });
                   }}
+                  isBlocked={isPhoneBlocked}
                 />
               )}
             </div>
@@ -4945,9 +4973,21 @@ const AtendimentoV2 = () => {
                         <DropdownMenuItem onClick={() => setShowAssignAttendantDialog(true)}><UserCheck className="w-4 h-4 mr-2" />Atribuir atendente</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleExportConversation(selectedConversation)}><Download className="w-4 h-4 mr-2" />Exportar conversa</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleAddToBlacklist(selectedConversation)} className="text-destructive">
-                          <Ban className="w-4 h-4 mr-2" />Bloquear contato
-                        </DropdownMenuItem>
+                        {isPhoneBlocked(selectedConversation.phone) ? (
+                          <DropdownMenuItem
+                            onClick={() => handleRemoveFromBlacklist(selectedConversation)}
+                            className="text-emerald-600 focus:text-emerald-600"
+                          >
+                            <Ban className="w-4 h-4 mr-2" />Desbloquear contato
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => handleAddToBlacklist(selectedConversation)}
+                            className="text-destructive"
+                          >
+                            <Ban className="w-4 h-4 mr-2" />Bloquear contato
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => handleArchive(selectedConversation)} className="text-destructive">
                           <Archive className="w-4 h-4 mr-2" />Arquivar conversa
                         </DropdownMenuItem>

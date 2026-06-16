@@ -34,6 +34,7 @@ interface VirtualizedConversationListProps {
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
   unreadMode?: boolean;
+  isBlocked?: (phone: string) => boolean;
 }
 
 const ITEM_HEIGHT = 100;
@@ -54,6 +55,7 @@ interface RowData {
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
   unreadMode?: boolean;
+  isBlocked?: (phone: string) => boolean;
 }
 
 const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
@@ -72,6 +74,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
     bulkSelectedKeys,
     onBulkToggle,
     unreadMode,
+    isBlocked,
   } = data;
 
   // Last item is the "load more" button
@@ -96,6 +99,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
   const isRecentlyUpdated = recentlyUpdatedConversations.has(convKey);
   const sectorInfo = sectors.find((s) => s.id === conv.sectorId);
   const isBulkSelected = bulkSelectedKeys?.has(convKey) ?? false;
+  const blocked = isBlocked ? isBlocked(conv.phone) : false;
 
   return (
     <div style={style} className="px-2 pb-2.5 cursor-pointer" onClick={() => {
@@ -113,6 +117,7 @@ const Row = memo(function Row({ index, style, data }: ListChildComponentProps<Ro
         isBulkSelected={isBulkSelected}
         onBulkToggle={onBulkToggle}
         unreadMode={unreadMode}
+        isBlocked={blocked}
       />
     </div>
   );
@@ -134,6 +139,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
   bulkSelectedKeys,
   onBulkToggle,
   unreadMode,
+  isBlocked,
 }: VirtualizedConversationListProps) {
   const itemCount = conversations.length + (hasMore && onLoadMore ? 1 : 0);
 
@@ -152,6 +158,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     bulkSelectedKeys,
     onBulkToggle,
     unreadMode,
+    isBlocked,
   };
 
   const handleItemsRendered = useCallback(

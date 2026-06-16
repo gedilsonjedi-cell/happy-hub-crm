@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -76,36 +77,26 @@ export default function ListaNegra() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [csvPreview, setCsvPreview] = useState<{ phone: string; name?: string }[]>([]);
 
-  // Get user's organization
-  const { data: profile } = useQuery({
-    queryKey: ["user-profile", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+  // Get effective organization (respects super_admin impersonation)
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const profile = effectiveOrganizationId
+    ? { organization_id: effectiveOrganizationId }
+    : null;
 
   // Get blacklist entries
   const { data: blacklist, isLoading } = useQuery({
-    queryKey: ["blacklist", profile?.organization_id],
+    queryKey: ["blacklist", effectiveOrganizationId],
     queryFn: async () => {
-      if (!profile?.organization_id) return [];
+      if (!effectiveOrganizationId) return [];
       const { data, error } = await supabase
         .from("blacklist")
         .select("*")
-        .eq("organization_id", profile.organization_id)
+        .eq("organization_id", effectiveOrganizationId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as BlacklistEntry[];
     },
-    enabled: !!profile?.organization_id,
+    enabled: !!effectiveOrganizationId,
   });
 
   // Add to blacklist mutation

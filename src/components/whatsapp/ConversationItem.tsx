@@ -33,6 +33,7 @@ interface ConversationItemProps {
   isBulkSelected?: boolean;
   onBulkToggle?: (conv: Conversation) => void;
   unreadMode?: boolean;
+  isBlocked?: boolean;
 }
 
 // Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese).
@@ -87,6 +88,7 @@ export const ConversationItem = memo(function ConversationItem({
   isBulkSelected,
   onBulkToggle,
   unreadMode,
+  isBlocked,
 }: ConversationItemProps) {
   const initials = getInitials(conversation.name);
 
@@ -121,7 +123,8 @@ export const ConversationItem = memo(function ConversationItem({
         !isSelected && !bulkMode && "border border-transparent",
         isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary",
         bulkMode && isBulkSelected && "bg-primary/10 border border-primary/30",
-        bulkMode && !isBulkSelected && "border border-transparent"
+        bulkMode && !isBulkSelected && "border border-transparent",
+        isBlocked && "bg-destructive/20 border border-destructive/50 hover:bg-destructive/25"
       )}
       onClick={handleClick}
     >
@@ -287,6 +290,7 @@ export const ConversationItem = memo(function ConversationItem({
     prev.sectorName === next.sectorName &&
     prev.bulkMode === next.bulkMode &&
     prev.isBulkSelected === next.isBulkSelected &&
-    prev.unreadMode === next.unreadMode
+    prev.unreadMode === next.unreadMode &&
+    prev.isBlocked === next.isBlocked
   );
 });
