@@ -139,6 +139,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
   bulkSelectedKeys,
   onBulkToggle,
   unreadMode,
+  isBlocked,
 }: VirtualizedConversationListProps) {
   const itemCount = conversations.length + (hasMore && onLoadMore ? 1 : 0);
 
@@ -157,6 +158,7 @@ export const VirtualizedConversationList = memo(function VirtualizedConversation
     bulkSelectedKeys,
     onBulkToggle,
     unreadMode,
+    isBlocked,
   };
 
   const handleItemsRendered = useCallback(
