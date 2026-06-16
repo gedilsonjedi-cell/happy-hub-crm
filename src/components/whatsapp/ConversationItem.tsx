@@ -290,6 +290,7 @@ export const ConversationItem = memo(function ConversationItem({
     prev.sectorName === next.sectorName &&
     prev.bulkMode === next.bulkMode &&
     prev.isBulkSelected === next.isBulkSelected &&
-    prev.unreadMode === next.unreadMode
+    prev.unreadMode === next.unreadMode &&
+    prev.isBlocked === next.isBlocked
   );
 });
