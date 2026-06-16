@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
+import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -938,6 +939,9 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
 
   // ── PHASE 2: Parallel async work ─────────────────────────────────
   const { content, mediaId, mediaMimeType } = extractContent(msg);
+
+  // Auto-blacklist: if the lead asks to be blocked, add to blacklist (atendente can unblock).
+  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, contactName);
 
   // Evaluate business logic synchronously from cache (zero DB calls)
   const holidayStatus = checkHolidaySync(orgConfig);

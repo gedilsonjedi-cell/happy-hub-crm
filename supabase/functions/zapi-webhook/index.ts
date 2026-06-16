@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -950,6 +951,11 @@ Deno.serve(async (req) => {
       } else {
         content = '[Mensagem não suportada]';
       }
+
+      // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
+      await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName);
+
+
 
       // Check for duplicate message on external DB
       const { data: existingMessage } = await messageDb
