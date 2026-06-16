@@ -552,6 +552,7 @@ const AtendimentoV2 = () => {
   // do cliente impersonado — caso contrário a RLS do externo bloqueia tudo
   // e a sidebar fica vazia até um Ctrl+Shift+R.
   const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
+  const { isBlocked: isPhoneBlocked, invalidate: invalidateBlockedPhones } = useBlockedPhones(effectiveOrganizationId);
   const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
