@@ -4834,6 +4834,7 @@ const AtendimentoV2 = () => {
                       return next;
                     });
                   }}
+                  isBlocked={isPhoneBlocked}
                 />
               )}
             </div>
