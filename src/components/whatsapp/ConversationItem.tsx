@@ -88,6 +88,7 @@ export const ConversationItem = memo(function ConversationItem({
   isBulkSelected,
   onBulkToggle,
   unreadMode,
+  isBlocked,
 }: ConversationItemProps) {
   const initials = getInitials(conversation.name);
 
