@@ -952,6 +952,11 @@ Deno.serve(async (req) => {
         content = '[Mensagem não suportada]';
       }
 
+      // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
+      await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName);
+
+
+
       // Check for duplicate message on external DB
       const { data: existingMessage } = await messageDb
         .from('whatsapp_messages')
