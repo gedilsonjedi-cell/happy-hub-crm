@@ -123,7 +123,8 @@ export const ConversationItem = memo(function ConversationItem({
         !isSelected && !bulkMode && "border border-transparent",
         isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary",
         bulkMode && isBulkSelected && "bg-primary/10 border border-primary/30",
-        bulkMode && !isBulkSelected && "border border-transparent"
+        bulkMode && !isBulkSelected && "border border-transparent",
+        isBlocked && "bg-destructive/20 border border-destructive/50 hover:bg-destructive/25"
       )}
       onClick={handleClick}
     >
