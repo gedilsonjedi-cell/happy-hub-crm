@@ -3089,10 +3089,35 @@ const AtendimentoV2 = () => {
         }
       } else {
         toast.success(`${conversation.name || conversation.phone} adicionado à lista negra`);
+        invalidateBlockedPhones();
       }
     } catch (error) {
       console.error("Erro ao adicionar à lista negra:", error);
       toast.error("Erro ao adicionar à lista negra");
+    }
+  };
+
+  // Remove from blacklist (unblock) — matches by org + suffix to handle 9th-digit variants
+  const handleRemoveFromBlacklist = async (conversation: Conversation) => {
+    if (!effectiveOrganizationId) {
+      toast.error("Erro ao identificar organização");
+      return;
+    }
+    const clean = conversation.phone.replace(/\D/g, "");
+    if (!clean) return;
+    const suffix8 = clean.slice(-8);
+    try {
+      const { error } = await supabase
+        .from("blacklist")
+        .delete()
+        .eq("organization_id", effectiveOrganizationId)
+        .or(`phone.eq.${clean},phone.eq.+${clean},phone.like.%${suffix8}`);
+      if (error) throw error;
+      toast.success(`${conversation.name || conversation.phone} desbloqueado`);
+      invalidateBlockedPhones();
+    } catch (error) {
+      console.error("Erro ao remover da lista negra:", error);
+      toast.error("Erro ao desbloquear contato");
     }
   };
 
