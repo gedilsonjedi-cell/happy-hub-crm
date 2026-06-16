@@ -710,6 +710,11 @@ async function processInboundMessage(
       content = '[Mensagem não suportada]';
   }
 
+  // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
+  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName);
+
+
+
   // Check for duplicate
   const { data: existingMessage } = await messageDb
     .from('whatsapp_messages')
