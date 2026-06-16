@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
