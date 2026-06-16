@@ -33,6 +33,7 @@ interface ConversationItemProps {
   isBulkSelected?: boolean;
   onBulkToggle?: (conv: Conversation) => void;
   unreadMode?: boolean;
+  isBlocked?: boolean;
 }
 
 // Format the elapsed time waiting for a response in a compact, human-readable way (Portuguese).
