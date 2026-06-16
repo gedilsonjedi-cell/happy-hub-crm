@@ -80,6 +80,7 @@ import {
 import { assignmentsWrite, getExternalAssignments } from "@/lib/externalAssignments";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+import { useBlockedPhones } from "@/hooks/useBlockedPhones";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useUserSectors } from "@/hooks/useUserSectors";
 import { cn } from "@/lib/utils";
