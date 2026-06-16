@@ -55,6 +55,7 @@ interface RowData {
   bulkSelectedKeys?: Set<string>;
   onBulkToggle?: (conv: Conversation) => void;
   unreadMode?: boolean;
+  isBlocked?: (phone: string) => boolean;
 }
 
 const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
