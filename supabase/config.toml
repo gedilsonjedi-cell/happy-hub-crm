@@ -87,6 +87,9 @@ verify_jwt = true
 [functions.admin-delete-user]
 verify_jwt = false
 
+[functions.admin-bulk-password]
+verify_jwt = false
+
 [functions.cleanup-duplicate-leads]
 verify_jwt = false
 

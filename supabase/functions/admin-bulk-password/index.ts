@@ -1,0 +1,28 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { organization_id, password, secret } = await req.json();
+    if (secret !== "lov-bulk-9f3a2c7e-rz-2026") {
+      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { data: users, error } = await admin.from("profiles").select("user_id,email").eq("organization_id", organization_id);
+    if (error) throw error;
+    const results: any[] = [];
+    for (const u of users ?? []) {
+      const { error: e } = await admin.auth.admin.updateUserById(u.user_id, { password });
+      results.push({ email: u.email, ok: !e, error: e?.message });
+    }
+    return new Response(JSON.stringify({ count: results.length, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+});
