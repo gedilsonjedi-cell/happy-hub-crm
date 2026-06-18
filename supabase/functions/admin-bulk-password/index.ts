@@ -14,11 +14,11 @@ serve(async (req) => {
     if (secret !== "lov-bulk-9f3a2c7e-rz-2026") {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const { data: users, error } = await admin.from("profiles").select("id,email").eq("organization_id", organization_id);
+    const { data: users, error } = await admin.from("profiles").select("user_id,email").eq("organization_id", organization_id);
     if (error) throw error;
     const results: any[] = [];
     for (const u of users ?? []) {
-      const { error: e } = await admin.auth.admin.updateUserById(u.id, { password });
+      const { error: e } = await admin.auth.admin.updateUserById(u.user_id, { password });
       results.push({ email: u.email, ok: !e, error: e?.message });
     }
     return new Response(JSON.stringify({ count: results.length, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
