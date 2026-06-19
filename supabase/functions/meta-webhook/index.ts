@@ -672,7 +672,7 @@ async function handleConversationAssignment(
   const caDb = externalSupabase;
   const { data: exactMatch } = await caDb
     .from('conversation_assignments')
-    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
     .eq('channel_id', channelId)
     .eq('conversation_phone', normalizedPhone)
     .maybeSingle();
@@ -684,7 +684,7 @@ async function handleConversationAssignment(
     for (const variant of phoneVariants.slice(1)) {
       const { data: variantMatch } = await caDb
         .from('conversation_assignments')
-        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at')
+        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
         .eq('channel_id', channelId)
         .eq('conversation_phone', variant)
         .maybeSingle();
