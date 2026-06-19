@@ -12,12 +12,13 @@ Deno.serve(async (req) => {
 
   // Active assignments today
   const since = '2026-06-19T00:00:00Z';
+  const targetPhones = ['5511980931521','5511974888239','5511961360132','+5511980931521','+5511974888239','+5511961360132','11980931521','11974888239','11961360132'];
   const { data: assigns, error: e1 } = await ext
     .from('conversation_assignments')
-    .select('id,conversation_phone,channel_id,assigned_to,status,created_at,updated_at')
+    .select('id,conversation_phone,channel_id,assigned_to,status,created_at,updated_at,organization_id')
     .eq('organization_id', orgId)
-    .gte('created_at', since)
-    .limit(1000);
+    .in('conversation_phone', targetPhones)
+    .limit(100);
 
   // Stats for those
   const ids = (assigns ?? []).map((a: any) => a.id);
