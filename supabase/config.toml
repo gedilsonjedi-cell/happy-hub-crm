@@ -124,3 +124,6 @@ verify_jwt = false
 
 [functions.diag-rz-campaign]
 verify_jwt = false
+
+[functions.diag-rz-reactivate]
+verify_jwt = false
