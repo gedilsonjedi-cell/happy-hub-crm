@@ -34,12 +34,11 @@ Deno.serve(async (req) => {
   // Recent inbound messages today for this org
   const { data: msgs, error: e2 } = await ext
     .from('whatsapp_messages')
-    .select('id,phone_number,direction,message_type,content,created_at,channel_id')
+    .select('*')
     .eq('organization_id', orgId)
-    .eq('direction', 'inbound')
     .gte('created_at', since)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(20);
 
   const statusCounts: Record<string, number> = {};
   for (const a of assigns ?? []) {
