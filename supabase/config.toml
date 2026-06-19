@@ -121,3 +121,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.reconcile-unread]
 verify_jwt = false
+
+[functions.diag-rz-campaign]
+verify_jwt = false
