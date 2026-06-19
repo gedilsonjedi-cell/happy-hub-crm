@@ -698,11 +698,21 @@ async function handleConversationAssignment(
 
   if (existing) {
     // Grace period: don't reactivate conversations archived less than 5 minutes ago.
-    // Applies to ALL archived conversations (with or without assigned_to). Antes só
-    // protegia as que tinham atendente — isso fazia arquivar "Novos" voltar imediato
-    // ao chegar a próxima mensagem inbound.
+    // EXCEÇÃO: assignments criados por campanha (assigned_to=null, status=archived e
+    // updated_at == created_at) nunca foram "arquivados por atendente" — são apenas
+    // placeholders do disparo. Resposta do lead (ex.: clique em "CONSULTAR AGORA")
+    // DEVE reativar imediatamente, senão nunca aparecem em "Novos".
+    const isCampaignPlaceholder =
+      existing.status === 'archived' &&
+      !existing.assigned_to &&
+      existing.updated_at &&
+      // updated_at igual (ou ~igual) ao created_at indica que nunca foi tocado
+      // após a criação pela campanha.
+      Math.abs(new Date(existing.updated_at).getTime() - new Date((existing as any).created_at || existing.updated_at).getTime()) < 2000;
+
     const wasRecentlyArchived = existing.status === 'archived' && existing.updated_at &&
-      (Date.now() - new Date(existing.updated_at).getTime()) < 5 * 60 * 1000;
+      (Date.now() - new Date(existing.updated_at).getTime()) < 5 * 60 * 1000 &&
+      !isCampaignPlaceholder;
 
     if (wasRecentlyArchived) {
       console.log(`[handleConversationAssignment] Skipping reactivation for recently archived conversation: ${normalizedPhone} (archived ${Math.round((Date.now() - new Date(existing.updated_at!).getTime()) / 1000)}s ago, assigned_to=${existing.assigned_to})`);
