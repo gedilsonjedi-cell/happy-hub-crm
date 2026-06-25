@@ -434,8 +434,26 @@ Deno.serve(async (req) => {
 
     if (claimError) {
       console.error('[Batch] Error claiming recipients:', claimError);
+      const rawMsg = String(claimError.message || '');
+      // Detecta erros transitórios da infra (Cloudflare 5xx, timeouts, gateway) e responde com retry
+      const isTransient = /520|521|522|523|524|503|502|504|gateway|timeout|fetch failed|network|unknown error/i.test(rawMsg);
+      if (isTransient) {
+        console.warn('[Batch] Transient upstream error while claiming - returning retry signal');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            transient: true,
+            retry: true,
+            status: 'running',
+            done: false,
+            error: 'UPSTREAM_UNAVAILABLE',
+            details: 'Upstream temporariamente indisponível ao reservar destinatários. Nova tentativa será feita automaticamente.'
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(
-        JSON.stringify({ error: 'Failed to claim recipients', details: claimError.message }),
+        JSON.stringify({ error: 'Failed to claim recipients', details: rawMsg }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
