@@ -129,6 +129,11 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   const [loadingTagLeads, setLoadingTagLeads] = useState(false);
 
   const tagNames = availableTags.map(tag => tag.name);
+  const hasMoreTags = !(tagPages.recentDone && tagPages.olderDone);
+  const selectedTagCache = selectedTag ? tagLeadsCache[selectedTag] : undefined;
+  const hasMoreFilteredLeads = filterType === "tag" && selectedTag
+    ? Boolean(selectedTagCache && !(selectedTagCache.recentDone && selectedTagCache.olderDone))
+    : filterType === "all" && hasMoreLeads;
 
   // Quando uma tag é selecionada, busca DIRETO do banco todos os leads que contêm a tag.
   // Isso evita o bug onde a lista em memória (paginada com cap) mostrava contagem menor que a real.
@@ -632,20 +637,32 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
                 <SelectContent className="bg-card border-border">
                   {availableTags.length === 0 ? (
                     <div className="p-3 text-center text-muted-foreground text-sm">
-                      Nenhuma tag encontrada
+                      {loadingTags ? "Carregando tags recentes..." : "Nenhuma tag encontrada"}
                     </div>
                   ) : (
                     availableTags.map(tag => (
-                      <SelectItem key={tag} value={tag}>
+                      <SelectItem key={tag.name} value={tag.name}>
                         <div className="flex items-center gap-2">
                           <Tag className="w-3 h-3" />
-                          {tag}
+                          {tag.name}
                         </div>
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
+
+              {hasMoreTags && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadTags(false)}
+                  disabled={loadingTags}
+                >
+                  {loadingTags ? "Carregando tags..." : "Ver mais tags"}
+                </Button>
+              )}
 
               {selectedTag && (
                 <div className="space-y-2">
@@ -688,7 +705,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
                         <SelectValue placeholder="Selecione a segunda tag" />
                       </SelectTrigger>
                       <SelectContent className="bg-card border-border">
-                        {availableTags.filter(t => t !== selectedTag).map(tag => (
+                        {tagNames.filter(tag => tag !== selectedTag).map(tag => (
                           <SelectItem key={tag} value={tag}>
                             <div className="flex items-center gap-2">
                               <Tag className="w-3 h-3" />
@@ -754,6 +771,10 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
               <div className="p-8 text-center text-muted-foreground">
                 Carregando contatos...
               </div>
+            ) : loadingTagLeads && filteredLeads.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Carregando contatos da tag...
+              </div>
             ) : filteredLeads.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -793,7 +814,26 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
             )}
             {filteredLeads.length > 500 && (
               <div className="p-3 text-center text-xs text-muted-foreground bg-muted/20">
-                Mostrando os primeiros 500 de {filteredLeads.length}. Use a busca ou filtros para refinar — "Selecionar todos" inclui todos os {filteredLeads.length}.
+                Mostrando os primeiros 500 contatos carregados. Use a busca ou carregue mais para ampliar a seleção.
+              </div>
+            )}
+            {hasMoreFilteredLeads && (
+              <div className="p-3 text-center bg-muted/20">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingMoreLeads || loadingTagLeads}
+                  onClick={() => {
+                    if (filterType === "tag" && selectedTag) {
+                      loadTagLeads(selectedTag, false);
+                    } else {
+                      loadMoreLeads();
+                    }
+                  }}
+                >
+                  {loadingMoreLeads || loadingTagLeads ? "Carregando contatos..." : "Ver mais contatos"}
+                </Button>
               </div>
             )}
           </div>
