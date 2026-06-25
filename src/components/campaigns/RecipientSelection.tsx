@@ -425,7 +425,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   };
 
   const loadTagLeads = async (tag: string, reset = false, isCancelled: () => boolean = () => false) => {
-    if (!effectiveOrganizationId || !tag || loadingTagLeads) return;
+    if (!effectiveOrganizationId || !tag) return;
 
     const cutoff = recentCutoffIso();
     const current = reset
