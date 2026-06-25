@@ -687,6 +687,8 @@ Deno.serve(async (req) => {
         return { sent: false, failed: false, retry: true };
       };
 
+      const sendController = new AbortController();
+      const sendTimeout = setTimeout(() => sendController.abort(), 25000);
       try {
         const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
@@ -696,7 +698,9 @@ Deno.serve(async (req) => {
             templateParams: templateParams.length > 0 ? templateParams : undefined,
             campaignId: campaignId
           }),
+          signal: sendController.signal,
         });
+        clearTimeout(sendTimeout);
 
         // Edge-runtime rate limit (429) — recycle without marking failed
         if (response.status === 429) {
