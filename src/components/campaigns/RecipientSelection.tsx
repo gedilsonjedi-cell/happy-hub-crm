@@ -232,8 +232,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   // Notify parent of selection changes
   useEffect(() => {
     if (sourceType === "contacts") {
-      const selectedPhones = leads
-        .filter(lead => selectedLeadIds.includes(lead.id))
+      const pool = new Map<string, Lead>();
+      leads.forEach(l => pool.set(l.id, l));
+      Object.values(tagLeadsCache).forEach(arr => arr.forEach(l => pool.set(l.id, l)));
+      const selectedPhones = selectedLeadIds
+        .map(id => pool.get(id))
+        .filter((l): l is Lead => !!l)
         .map(lead => normalizePhone(lead.phone));
       onSelectionChange({ phones: selectedPhones, source: "contacts" });
     } else if (sourceType === "numbers") {
@@ -241,7 +245,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     } else {
       onSelectionChange({ phones: [], source: null });
     }
-  }, [sourceType, selectedLeadIds, parsedNumbers, leads]);
+  }, [sourceType, selectedLeadIds, parsedNumbers, leads, tagLeadsCache]);
 
   const fetchLeads = async () => {
     if (!effectiveOrganizationId) return;
