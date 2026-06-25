@@ -687,6 +687,8 @@ Deno.serve(async (req) => {
         return { sent: false, failed: false, retry: true };
       };
 
+      const sendController = new AbortController();
+      const sendTimeout = setTimeout(() => sendController.abort(), 25000);
       try {
         const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
@@ -696,7 +698,9 @@ Deno.serve(async (req) => {
             templateParams: templateParams.length > 0 ? templateParams : undefined,
             campaignId: campaignId
           }),
+          signal: sendController.signal,
         });
+        clearTimeout(sendTimeout);
 
         // Edge-runtime rate limit (429) — recycle without marking failed
         if (response.status === 429) {
@@ -754,8 +758,12 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
+        clearTimeout(sendTimeout);
         const errorMessage = String(error);
-        // Network/transport rate-limit (thrown by runtime) — recycle to pending
+        // Timeout (AbortError) or transport rate-limit — recycle to pending without marking failed
+        if ((error as any)?.name === 'AbortError' || /abort|timeout|timed out/i.test(errorMessage)) {
+          return await recycleToPending('Timeout meta-send (25s)');
+        }
         if (isRateLimitError(null, errorMessage)) {
           return await recycleToPending(errorMessage.slice(0, 200));
         }
