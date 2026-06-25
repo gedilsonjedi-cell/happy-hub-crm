@@ -275,13 +275,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       setLeads(data);
       setFilteredLeads(data);
 
-      // Coleta tags efetivamente usadas pelos leads
+      // Tags vêm SEMPRE do catálogo (lead_tags) ordenadas por mais recentes.
+      // Não restringimos pelas tags presentes na lista paginada — isso escondia
+      // tags recém-criadas quando o número total de leads excedia o cap em memória.
       const usedTags = new Set<string>();
-      data.forEach(lead => {
-        lead.tags?.forEach(tag => usedTags.add(tag));
-      });
+      data.forEach(lead => lead.tags?.forEach(tag => usedTags.add(tag)));
 
-      // Busca tags do catálogo ordenadas pela mais recente para priorizar no filtro
       let orderedTagNames: string[] = [];
       try {
         const { data: catalog } = await supabase
@@ -296,19 +295,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
       const ordered: string[] = [];
       const seen = new Set<string>();
-      // Primeiro: tags do catálogo (mais novas primeiro) que estão em uso
       for (const name of orderedTagNames) {
-        if (usedTags.has(name) && !seen.has(name)) {
-          ordered.push(name);
-          seen.add(name);
-        }
+        if (!seen.has(name)) { ordered.push(name); seen.add(name); }
       }
-      // Depois: quaisquer tags usadas que não estavam no catálogo
+      // Inclui tags que existem só nos leads (sem registro no catálogo) ao final
       usedTags.forEach(tag => {
-        if (!seen.has(tag)) {
-          ordered.push(tag);
-          seen.add(tag);
-        }
+        if (!seen.has(tag)) { ordered.push(tag); seen.add(tag); }
       });
       setAvailableTags(ordered);
 
