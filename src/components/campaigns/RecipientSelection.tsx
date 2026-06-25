@@ -222,11 +222,42 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       setLeads(data);
       setFilteredLeads(data);
 
-      const tags = new Set<string>();
+      // Coleta tags efetivamente usadas pelos leads
+      const usedTags = new Set<string>();
       data.forEach(lead => {
-        lead.tags?.forEach(tag => tags.add(tag));
+        lead.tags?.forEach(tag => usedTags.add(tag));
       });
-      setAvailableTags(Array.from(tags));
+
+      // Busca tags do catálogo ordenadas pela mais recente para priorizar no filtro
+      let orderedTagNames: string[] = [];
+      try {
+        const { data: catalog } = await supabase
+          .from("lead_tags")
+          .select("name, created_at")
+          .eq("organization_id", effectiveOrganizationId)
+          .order("created_at", { ascending: false });
+        orderedTagNames = (catalog || []).map(t => t.name);
+      } catch (tagErr) {
+        console.warn("[RecipientSelection] failed to fetch tag catalog order", tagErr);
+      }
+
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      // Primeiro: tags do catálogo (mais novas primeiro) que estão em uso
+      for (const name of orderedTagNames) {
+        if (usedTags.has(name) && !seen.has(name)) {
+          ordered.push(name);
+          seen.add(name);
+        }
+      }
+      // Depois: quaisquer tags usadas que não estavam no catálogo
+      usedTags.forEach(tag => {
+        if (!seen.has(tag)) {
+          ordered.push(tag);
+          seen.add(tag);
+        }
+      });
+      setAvailableTags(ordered);
 
       if (data.length === 0) {
         toast({
