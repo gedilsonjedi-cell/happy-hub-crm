@@ -602,7 +602,22 @@ const Usuarios = () => {
         },
       });
 
-      if (error) throw error;
+      // FunctionsHttpError não inclui o body por padrão — extrair manualmente
+      let serverError: string | null = null;
+      if (error && (error as any).context) {
+        try {
+          const ctx = (error as any).context;
+          if (typeof ctx.json === "function") {
+            const body = await ctx.json();
+            serverError = body?.error || null;
+          } else if (typeof ctx.text === "function") {
+            const txt = await ctx.text();
+            try { serverError = JSON.parse(txt)?.error || txt; } catch { serverError = txt; }
+          }
+        } catch {}
+      }
+
+      if (error) throw new Error(serverError || error.message);
       if (data?.error) throw new Error(data.error);
 
       toast.success("Senha redefinida com sucesso!");
@@ -612,7 +627,12 @@ const Usuarios = () => {
       setConfirmPassword("");
     } catch (error: any) {
       console.error("Error resetting password:", error);
-      toast.error(error.message || "Erro ao redefinir senha");
+      const msg = String(error?.message || "");
+      if (/weak_password|pwned|known to be weak/i.test(msg)) {
+        toast.error("Senha muito fraca ou já apareceu em vazamentos públicos. Use uma combinação mais forte (letras maiúsculas/minúsculas, números e símbolos).");
+      } else {
+        toast.error(msg || "Erro ao redefinir senha");
+      }
     } finally {
       setIsResettingPassword(false);
     }
