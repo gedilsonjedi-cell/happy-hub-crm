@@ -758,8 +758,12 @@ Deno.serve(async (req) => {
           return { sent: !recipient.isRetry, failed: true, retry: false };
         }
       } catch (error) {
+        clearTimeout(sendTimeout);
         const errorMessage = String(error);
-        // Network/transport rate-limit (thrown by runtime) — recycle to pending
+        // Timeout (AbortError) or transport rate-limit — recycle to pending without marking failed
+        if ((error as any)?.name === 'AbortError' || /abort|timeout|timed out/i.test(errorMessage)) {
+          return await recycleToPending('Timeout meta-send (25s)');
+        }
         if (isRateLimitError(null, errorMessage)) {
           return await recycleToPending(errorMessage.slice(0, 200));
         }
