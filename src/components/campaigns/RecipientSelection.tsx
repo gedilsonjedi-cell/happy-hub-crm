@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllLeads } from "@/lib/fetchAllLeads";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "@/hooks/use-toast";
@@ -41,7 +40,50 @@ interface Lead {
   phone: string;
   tags: string[] | null;
   created_at: string;
+  updated_at?: string;
 }
+
+interface TagOption {
+  name: string;
+  created_at: string;
+}
+
+interface TagLeadsCacheEntry {
+  items: Lead[];
+  recentPage: number;
+  olderPage: number;
+  recentDone: boolean;
+  olderDone: boolean;
+}
+
+const LEADS_PAGE_SIZE = 500;
+const TAGS_PAGE_SIZE = 80;
+const RECENT_PRIORITY_DAYS = 4;
+
+const recentCutoffIso = () => {
+  const date = new Date();
+  date.setDate(date.getDate() - RECENT_PRIORITY_DAYS);
+  return date.toISOString();
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    const parts = [record.message, record.details, record.hint, record.code]
+      .filter(Boolean)
+      .map(String);
+    if (parts.length) return parts.join(" • ");
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== "{}") return serialized;
+    } catch {
+      // ignore serialization errors
+    }
+  }
+  return String(error || "Erro desconhecido");
+};
 
 interface RecipientSelectionProps {
   onSelectionChange: (recipients: { phones: string[]; source: RecipientSourceType }) => void;
@@ -58,13 +100,18 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagOption[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>("");
   const [secondTag, setSecondTag] = useState<string>("");
   const [tagMatchMode, setTagMatchMode] = useState<TagMatchMode>("any");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loadingLeads, setLoadingLeads] = useState(false);
+  const [loadingMoreLeads, setLoadingMoreLeads] = useState(false);
+  const [leadsPage, setLeadsPage] = useState(0);
+  const [hasMoreLeads, setHasMoreLeads] = useState(false);
+  const [loadingTags, setLoadingTags] = useState(false);
+  const [tagPages, setTagPages] = useState({ recentPage: 0, olderPage: 0, recentDone: false, olderDone: false });
   
   // For number list
   const [numberList, setNumberList] = useState("");
@@ -78,8 +125,10 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   }, [sourceType, user, effectiveOrganizationId]);
 
   // Cache de leads carregados por tag direto do banco (autoritativo, sem depender da lista paginada em memória)
-  const [tagLeadsCache, setTagLeadsCache] = useState<Record<string, Lead[]>>({});
+  const [tagLeadsCache, setTagLeadsCache] = useState<Record<string, TagLeadsCacheEntry>>({});
   const [loadingTagLeads, setLoadingTagLeads] = useState(false);
+
+  const tagNames = availableTags.map(tag => tag.name);
 
   // Quando uma tag é selecionada, busca DIRETO do banco todos os leads que contêm a tag.
   // Isso evita o bug onde a lista em memória (paginada com cap) mostrava contagem menor que a real.
@@ -89,41 +138,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
     let cancelled = false;
     (async () => {
-      setLoadingTagLeads(true);
-      try {
-        const PAGE = 1000;
-        const all: Lead[] = [];
-        for (let page = 0; page < 200; page++) {
-          const from = page * PAGE;
-          const to = from + PAGE - 1;
-          const { data, error } = await supabase
-            .from("leads")
-            .select("id, name, phone, tags, created_at")
-            .eq("organization_id", effectiveOrganizationId)
-            .contains("tags", [selectedTag])
-            .order("id", { ascending: true })
-            .range(from, to);
-          if (error) throw error;
-          const rows = (data || []) as Lead[];
-          all.push(...rows);
-          if (rows.length < PAGE) break;
-        }
-        if (!cancelled) {
-          setTagLeadsCache(prev => ({ ...prev, [selectedTag]: all }));
-          console.log("[RecipientSelection] tag fetch", { tag: selectedTag, total: all.length });
-        }
-      } catch (err) {
-        console.error("[RecipientSelection] tag fetch failed", err);
-        if (!cancelled) {
-          toast({
-            title: "Erro ao carregar contatos da tag",
-            description: err instanceof Error ? err.message : String(err),
-            variant: "destructive",
-          });
-        }
-      } finally {
-        if (!cancelled) setLoadingTagLeads(false);
-      }
+      await loadTagLeads(selectedTag, true, cancelled);
     })();
 
     return () => { cancelled = true; };
@@ -135,8 +150,8 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     let filtered: Lead[];
 
     if (filterType === "tag" && selectedTag) {
-      // Usa SEMPRE o resultado autoritativo do banco para a tag selecionada
-      base = tagLeadsCache[selectedTag] || [];
+      // Usa o resultado autoritativo do banco para a tag selecionada, carregado em páginas.
+      base = tagLeadsCache[selectedTag]?.items || [];
       filtered = base.filter(lead => {
         const tags = lead.tags || [];
         if (tagMatchMode === "exclusive") return tags.length === 1;
@@ -234,7 +249,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     if (sourceType === "contacts") {
       const pool = new Map<string, Lead>();
       leads.forEach(l => pool.set(l.id, l));
-      Object.values(tagLeadsCache).forEach(arr => arr.forEach(l => pool.set(l.id, l)));
+      Object.values(tagLeadsCache).forEach(entry => entry.items.forEach(l => pool.set(l.id, l)));
       const selectedPhones = selectedLeadIds
         .map(id => pool.get(id))
         .filter((l): l is Lead => !!l)
@@ -251,67 +266,41 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     if (!effectiveOrganizationId) return;
 
     setLoadingLeads(true);
+    setLeadsPage(0);
+    setHasMoreLeads(false);
+    setSelectedLeadIds([]);
+    setTagLeadsCache({});
     console.log("[RecipientSelection] fetchLeads start", { orgId: effectiveOrganizationId });
 
-    const tryFetch = async (withOrder: boolean) => {
-      return await fetchAllLeads<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }>({
-        organizationId: effectiveOrganizationId,
-        columns: "id, name, phone, tags, created_at",
-        orderBy: withOrder ? { column: "created_at", ascending: false } : null,
-        maxRows: 20_000,
-      });
-    };
-
     try {
-      let data: Array<{ id: string; name: string; phone: string; tags: string[] | null; created_at: string }> = [];
-      try {
-        data = await tryFetch(true);
-      } catch (orderedErr) {
-        console.warn("[RecipientSelection] ordered fetch failed, retrying without order", orderedErr);
-        data = await tryFetch(false);
-      }
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, name, phone, tags, created_at, updated_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(0, LEADS_PAGE_SIZE - 1);
 
-      console.log("[RecipientSelection] fetchLeads success", { count: data.length });
-      setLeads(data);
-      setFilteredLeads(data);
+      if (error) throw error;
 
-      // Tags vêm SEMPRE do catálogo (lead_tags) ordenadas por mais recentes.
-      // Não restringimos pelas tags presentes na lista paginada — isso escondia
-      // tags recém-criadas quando o número total de leads excedia o cap em memória.
-      const usedTags = new Set<string>();
-      data.forEach(lead => lead.tags?.forEach(tag => usedTags.add(tag)));
+      const rows = (data || []) as Lead[];
 
-      let orderedTagNames: string[] = [];
-      try {
-        const { data: catalog } = await supabase
-          .from("lead_tags")
-          .select("name, created_at")
-          .eq("organization_id", effectiveOrganizationId)
-          .order("created_at", { ascending: false });
-        orderedTagNames = (catalog || []).map(t => t.name);
-      } catch (tagErr) {
-        console.warn("[RecipientSelection] failed to fetch tag catalog order", tagErr);
-      }
+      console.log("[RecipientSelection] fetchLeads success", { count: rows.length });
+      setLeads(rows);
+      setFilteredLeads(rows);
+      setHasMoreLeads(rows.length === LEADS_PAGE_SIZE);
 
-      const ordered: string[] = [];
-      const seen = new Set<string>();
-      for (const name of orderedTagNames) {
-        if (!seen.has(name)) { ordered.push(name); seen.add(name); }
-      }
-      // Inclui tags que existem só nos leads (sem registro no catálogo) ao final
-      usedTags.forEach(tag => {
-        if (!seen.has(tag)) { ordered.push(tag); seen.add(tag); }
-      });
-      setAvailableTags(ordered);
+      await loadTags(true);
 
-      if (data.length === 0) {
+      if (rows.length === 0) {
         toast({
           title: "Nenhum contato encontrado",
           description: "Esta organização ainda não tem leads cadastrados. Importe contatos antes de criar uma campanha.",
         });
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       console.error("[RecipientSelection] Error fetching leads:", error);
       toast({
         title: "Erro ao carregar contatos",
@@ -320,6 +309,172 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       });
     } finally {
       setLoadingLeads(false);
+    }
+  };
+
+  const loadMoreLeads = async () => {
+    if (!effectiveOrganizationId || loadingMoreLeads || !hasMoreLeads) return;
+
+    setLoadingMoreLeads(true);
+    try {
+      const nextPage = leadsPage + 1;
+      const from = nextPage * LEADS_PAGE_SIZE;
+      const to = from + LEADS_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, name, phone, tags, created_at, updated_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      if (error) throw error;
+
+      const rows = (data || []) as Lead[];
+      setLeads(prev => {
+        const byId = new Map(prev.map(lead => [lead.id, lead]));
+        rows.forEach(lead => byId.set(lead.id, lead));
+        return Array.from(byId.values());
+      });
+      setLeadsPage(nextPage);
+      setHasMoreLeads(rows.length === LEADS_PAGE_SIZE);
+    } catch (error) {
+      console.error("[RecipientSelection] load more leads failed:", error);
+      toast({
+        title: "Erro ao carregar mais contatos",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMoreLeads(false);
+    }
+  };
+
+  const loadTags = async (reset = false) => {
+    if (!effectiveOrganizationId || loadingTags) return;
+
+    const cutoff = recentCutoffIso();
+    const current = reset
+      ? { recentPage: 0, olderPage: 0, recentDone: false, olderDone: false }
+      : tagPages;
+
+    if (current.recentDone && current.olderDone) return;
+
+    setLoadingTags(true);
+    try {
+      const loadRecent = !current.recentDone;
+      const page = loadRecent ? current.recentPage : current.olderPage;
+      const from = page * TAGS_PAGE_SIZE;
+      const to = from + TAGS_PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("lead_tags")
+        .select("name, created_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      query = loadRecent ? query.gte("created_at", cutoff) : query.lt("created_at", cutoff);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rows = ((data || []) as TagOption[]).filter(tag => Boolean(tag.name));
+      const nextPages = {
+        recentPage: current.recentPage + (loadRecent ? 1 : 0),
+        olderPage: current.olderPage + (!loadRecent ? 1 : 0),
+        recentDone: loadRecent ? rows.length < TAGS_PAGE_SIZE : current.recentDone,
+        olderDone: !loadRecent ? rows.length < TAGS_PAGE_SIZE : current.olderDone,
+      };
+
+      setTagPages(nextPages);
+      setAvailableTags(prev => {
+        const base = reset ? [] : prev;
+        const byName = new Map(base.map(tag => [tag.name, tag]));
+        rows.forEach(tag => byName.set(tag.name, tag));
+        return Array.from(byName.values());
+      });
+    } catch (error) {
+      console.error("[RecipientSelection] failed to fetch tags", error);
+      toast({
+        title: "Erro ao carregar tags",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingTags(false);
+    }
+  };
+
+  const loadTagLeads = async (tag: string, reset = false, cancelled = false) => {
+    if (!effectiveOrganizationId || !tag || loadingTagLeads) return;
+
+    const cutoff = recentCutoffIso();
+    const current = reset
+      ? { items: [], recentPage: 0, olderPage: 0, recentDone: false, olderDone: false }
+      : tagLeadsCache[tag] || { items: [], recentPage: 0, olderPage: 0, recentDone: false, olderDone: false };
+
+    if (current.recentDone && current.olderDone) return;
+
+    setLoadingTagLeads(true);
+    try {
+      const loadRecent = !current.recentDone;
+      const page = loadRecent ? current.recentPage : current.olderPage;
+      const from = page * LEADS_PAGE_SIZE;
+      const to = from + LEADS_PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("leads")
+        .select("id, name, phone, tags, created_at, updated_at")
+        .eq("organization_id", effectiveOrganizationId)
+        .contains("tags", [tag])
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      query = loadRecent
+        ? query.or(`created_at.gte.${cutoff},updated_at.gte.${cutoff}`)
+        : query.lt("created_at", cutoff).lt("updated_at", cutoff);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rows = (data || []) as Lead[];
+      if (cancelled) return;
+
+      setTagLeadsCache(prev => {
+        const previous = reset
+          ? { items: [], recentPage: 0, olderPage: 0, recentDone: false, olderDone: false }
+          : prev[tag] || current;
+        const byId = new Map(previous.items.map(lead => [lead.id, lead]));
+        rows.forEach(lead => byId.set(lead.id, lead));
+
+        return {
+          ...prev,
+          [tag]: {
+            items: Array.from(byId.values()),
+            recentPage: previous.recentPage + (loadRecent ? 1 : 0),
+            olderPage: previous.olderPage + (!loadRecent ? 1 : 0),
+            recentDone: loadRecent ? rows.length < LEADS_PAGE_SIZE : previous.recentDone,
+            olderDone: !loadRecent ? rows.length < LEADS_PAGE_SIZE : previous.olderDone,
+          },
+        };
+      });
+
+      console.log("[RecipientSelection] tag page fetch", { tag, loaded: rows.length, segment: loadRecent ? "recent" : "older" });
+    } catch (error) {
+      console.error("[RecipientSelection] tag fetch failed", error);
+      if (!cancelled) {
+        toast({
+          title: "Erro ao carregar contatos da tag",
+          description: getErrorMessage(error),
+          variant: "destructive",
+        });
+      }
+    } finally {
+      if (!cancelled) setLoadingTagLeads(false);
     }
   };
 
