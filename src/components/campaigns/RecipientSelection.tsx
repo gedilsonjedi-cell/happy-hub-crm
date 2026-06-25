@@ -143,7 +143,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
     let cancelled = false;
     (async () => {
-      await loadTagLeads(selectedTag, true, cancelled);
+      await loadTagLeads(selectedTag, true, () => cancelled);
     })();
 
     return () => { cancelled = true; };
@@ -298,6 +298,18 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
       await loadTags(true);
 
+      const fallbackTags = new Map<string, string>();
+      rows.forEach(lead => lead.tags?.forEach(tag => fallbackTags.set(tag, lead.created_at)));
+      if (fallbackTags.size > 0) {
+        setAvailableTags(prev => {
+          const byName = new Map(prev.map(tag => [tag.name, tag]));
+          fallbackTags.forEach((created_at, name) => {
+            if (!byName.has(name)) byName.set(name, { name, created_at });
+          });
+          return Array.from(byName.values());
+        });
+      }
+
       if (rows.length === 0) {
         toast({
           title: "Nenhum contato encontrado",
@@ -412,7 +424,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     }
   };
 
-  const loadTagLeads = async (tag: string, reset = false, cancelled = false) => {
+  const loadTagLeads = async (tag: string, reset = false, isCancelled: () => boolean = () => false) => {
     if (!effectiveOrganizationId || !tag || loadingTagLeads) return;
 
     const cutoff = recentCutoffIso();
@@ -447,7 +459,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       if (error) throw error;
 
       const rows = (data || []) as Lead[];
-      if (cancelled) return;
+      if (isCancelled()) return;
 
       setTagLeadsCache(prev => {
         const previous = reset
@@ -471,7 +483,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       console.log("[RecipientSelection] tag page fetch", { tag, loaded: rows.length, segment: loadRecent ? "recent" : "older" });
     } catch (error) {
       console.error("[RecipientSelection] tag fetch failed", error);
-      if (!cancelled) {
+      if (!isCancelled()) {
         toast({
           title: "Erro ao carregar contatos da tag",
           description: getErrorMessage(error),
@@ -479,7 +491,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
         });
       }
     } finally {
-      if (!cancelled) setLoadingTagLeads(false);
+      if (!isCancelled()) setLoadingTagLeads(false);
     }
   };
 
