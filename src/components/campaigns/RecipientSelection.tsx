@@ -77,23 +77,70 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     }
   }, [sourceType, user, effectiveOrganizationId]);
 
+  // Cache de leads carregados por tag direto do banco (autoritativo, sem depender da lista paginada em memória)
+  const [tagLeadsCache, setTagLeadsCache] = useState<Record<string, Lead[]>>({});
+  const [loadingTagLeads, setLoadingTagLeads] = useState(false);
+
+  // Quando uma tag é selecionada, busca DIRETO do banco todos os leads que contêm a tag.
+  // Isso evita o bug onde a lista em memória (paginada com cap) mostrava contagem menor que a real.
+  useEffect(() => {
+    if (filterType !== "tag" || !selectedTag || !effectiveOrganizationId) return;
+    if (tagLeadsCache[selectedTag]) return;
+
+    let cancelled = false;
+    (async () => {
+      setLoadingTagLeads(true);
+      try {
+        const PAGE = 1000;
+        const all: Lead[] = [];
+        for (let page = 0; page < 200; page++) {
+          const from = page * PAGE;
+          const to = from + PAGE - 1;
+          const { data, error } = await supabase
+            .from("leads")
+            .select("id, name, phone, tags, created_at")
+            .eq("organization_id", effectiveOrganizationId)
+            .contains("tags", [selectedTag])
+            .order("id", { ascending: true })
+            .range(from, to);
+          if (error) throw error;
+          const rows = (data || []) as Lead[];
+          all.push(...rows);
+          if (rows.length < PAGE) break;
+        }
+        if (!cancelled) {
+          setTagLeadsCache(prev => ({ ...prev, [selectedTag]: all }));
+          console.log("[RecipientSelection] tag fetch", { tag: selectedTag, total: all.length });
+        }
+      } catch (err) {
+        console.error("[RecipientSelection] tag fetch failed", err);
+        if (!cancelled) {
+          toast({
+            title: "Erro ao carregar contatos da tag",
+            description: err instanceof Error ? err.message : String(err),
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (!cancelled) setLoadingTagLeads(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [filterType, selectedTag, effectiveOrganizationId]);
+
   // Filter leads based on filter type
   useEffect(() => {
-    let filtered = [...leads];
-    
+    let base: Lead[] = leads;
+    let filtered: Lead[];
+
     if (filterType === "tag" && selectedTag) {
-      filtered = leads.filter(lead => {
+      // Usa SEMPRE o resultado autoritativo do banco para a tag selecionada
+      base = tagLeadsCache[selectedTag] || [];
+      filtered = base.filter(lead => {
         const tags = lead.tags || [];
-        if (!tags.includes(selectedTag)) return false;
-        if (tagMatchMode === "exclusive") {
-          // Apenas com essa tag (e nenhuma outra)
-          return tags.length === 1;
-        }
-        if (tagMatchMode === "both") {
-          // Precisa ter selectedTag E secondTag
-          return secondTag ? tags.includes(secondTag) : true;
-        }
-        // any: tem essa tag (com ou sem outras)
+        if (tagMatchMode === "exclusive") return tags.length === 1;
+        if (tagMatchMode === "both") return secondTag ? tags.includes(secondTag) : true;
         return true;
       });
     } else if (filterType === "upload_date" && selectedDate) {
@@ -101,17 +148,19 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
         const leadDate = new Date(lead.created_at).toISOString().split('T')[0];
         return leadDate === selectedDate;
       });
+    } else {
+      filtered = [...leads];
     }
-    
+
     if (searchTerm) {
-      filtered = filtered.filter(lead => 
+      filtered = filtered.filter(lead =>
         lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         lead.phone.includes(searchTerm)
       );
     }
-    
+
     setFilteredLeads(filtered);
-  }, [leads, filterType, selectedTag, secondTag, tagMatchMode, selectedDate, searchTerm]);
+  }, [leads, tagLeadsCache, filterType, selectedTag, secondTag, tagMatchMode, selectedDate, searchTerm]);
 
   // Parse and normalize numbers when text changes
   useEffect(() => {
@@ -183,8 +232,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
   // Notify parent of selection changes
   useEffect(() => {
     if (sourceType === "contacts") {
-      const selectedPhones = leads
-        .filter(lead => selectedLeadIds.includes(lead.id))
+      const pool = new Map<string, Lead>();
+      leads.forEach(l => pool.set(l.id, l));
+      Object.values(tagLeadsCache).forEach(arr => arr.forEach(l => pool.set(l.id, l)));
+      const selectedPhones = selectedLeadIds
+        .map(id => pool.get(id))
+        .filter((l): l is Lead => !!l)
         .map(lead => normalizePhone(lead.phone));
       onSelectionChange({ phones: selectedPhones, source: "contacts" });
     } else if (sourceType === "numbers") {
@@ -192,7 +245,7 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
     } else {
       onSelectionChange({ phones: [], source: null });
     }
-  }, [sourceType, selectedLeadIds, parsedNumbers, leads]);
+  }, [sourceType, selectedLeadIds, parsedNumbers, leads, tagLeadsCache]);
 
   const fetchLeads = async () => {
     if (!effectiveOrganizationId) return;
@@ -222,13 +275,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
       setLeads(data);
       setFilteredLeads(data);
 
-      // Coleta tags efetivamente usadas pelos leads
+      // Tags vêm SEMPRE do catálogo (lead_tags) ordenadas por mais recentes.
+      // Não restringimos pelas tags presentes na lista paginada — isso escondia
+      // tags recém-criadas quando o número total de leads excedia o cap em memória.
       const usedTags = new Set<string>();
-      data.forEach(lead => {
-        lead.tags?.forEach(tag => usedTags.add(tag));
-      });
+      data.forEach(lead => lead.tags?.forEach(tag => usedTags.add(tag)));
 
-      // Busca tags do catálogo ordenadas pela mais recente para priorizar no filtro
       let orderedTagNames: string[] = [];
       try {
         const { data: catalog } = await supabase
@@ -243,19 +295,12 @@ export function RecipientSelection({ onSelectionChange, sectorId }: RecipientSel
 
       const ordered: string[] = [];
       const seen = new Set<string>();
-      // Primeiro: tags do catálogo (mais novas primeiro) que estão em uso
       for (const name of orderedTagNames) {
-        if (usedTags.has(name) && !seen.has(name)) {
-          ordered.push(name);
-          seen.add(name);
-        }
+        if (!seen.has(name)) { ordered.push(name); seen.add(name); }
       }
-      // Depois: quaisquer tags usadas que não estavam no catálogo
+      // Inclui tags que existem só nos leads (sem registro no catálogo) ao final
       usedTags.forEach(tag => {
-        if (!seen.has(tag)) {
-          ordered.push(tag);
-          seen.add(tag);
-        }
+        if (!seen.has(tag)) { ordered.push(tag); seen.add(tag); }
       });
       setAvailableTags(ordered);
 
