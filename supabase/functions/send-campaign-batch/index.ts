@@ -687,8 +687,10 @@ Deno.serve(async (req) => {
         return { sent: false, failed: false, retry: true };
       };
 
+      // meta-send pode levar até ~60s quando aciona retries de template (135000) ou erros transitórios da Meta.
+      // Timeout curto fazia TODOS os destinatários voltarem para pending em loop infinito, travando a campanha.
       const sendController = new AbortController();
-      const sendTimeout = setTimeout(() => sendController.abort(), 25000);
+      const sendTimeout = setTimeout(() => sendController.abort(), 90000);
       try {
         const response = await fetch(`${metaSendUrl}/functions/v1/meta-send`, {
           method: 'POST',
