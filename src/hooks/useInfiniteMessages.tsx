@@ -12,25 +12,19 @@ import {
 } from "@/lib/phoneThreadKey";
 
 const PAGE_SIZE = 25;
-const MESSAGE_PAGE_TIMEOUT_MS = 12_000;
-
-const EMPTY_MESSAGE_PAGE: MessagePage = {
-  messages: [],
-  nextCursor: null,
-  hasMore: false,
-};
+const MESSAGE_PAGE_TIMEOUT_MS = 20_000;
 
 function withMessageTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((resolve) => {
+  const timeout = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(() => {
-      console.warn("[useInfiniteMessages] Message history timed out; releasing loading state.");
-      resolve(EMPTY_MESSAGE_PAGE as T);
+      reject(new Error("message_page_timeout"));
     }, ms);
   });
 
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId!));
 }
+
 
 export interface MessagePage {
   messages: MessageRow[];
