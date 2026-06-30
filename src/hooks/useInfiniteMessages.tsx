@@ -293,12 +293,15 @@ export function useInfiniteMessages(
   return {
     messages: allMessages,
     isLoading: isInitialLoading,
+    isError: query.isError,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage,
     fetchNextPage: query.fetchNextPage,
+    refetch: query.refetch,
     prependMessage,
     updateMessageStatus,
     invalidate,
     refetchLatestPage,
   };
+
 }
