@@ -12,6 +12,8 @@ import { getPhoneLookupVariants } from "@/lib/phoneThreadKey";
 
 const HISTORY_SCAN_BATCH_SIZE = 150;
 const HISTORY_SCAN_MAX_BATCHES = 8;
+const EXTERNAL_QUERY_TIMEOUT_MS = 5_000;
+const EXTERNAL_PROXY_TIMEOUT_MS = 5_000;
 
 // ── Circuit breaker for direct external reads ─────────────────────
 // If RLS isn't configured on the external DB (or JWT secret mismatch),
@@ -177,10 +179,23 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function invokeExternalProxy<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("external-db-proxy", {
-    body,
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} demorou demais para responder`));
+    }, ms);
   });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId!));
+}
+
+async function invokeExternalProxy<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await withTimeout(
+    supabase.functions.invoke("external-db-proxy", { body }),
+    EXTERNAL_PROXY_TIMEOUT_MS,
+    "Proxy de mensagens"
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -225,9 +240,13 @@ async function fetchDirectionMessages(
       query = query.gte("created_at", lowerBoundCreatedAt);
     }
 
-    const { data, error } = await query
-      .order("created_at", { ascending: false })
-      .limit(HISTORY_SCAN_BATCH_SIZE);
+    const { data, error } = await withTimeout(
+      query
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_SCAN_BATCH_SIZE),
+      EXTERNAL_QUERY_TIMEOUT_MS,
+      `Leitura ${direction} do histórico`
+    );
 
     if (error) {
       console.warn(`[externalDb] Direct ${direction} fetch failed:`, error.message);
@@ -445,14 +464,22 @@ export async function fetchExternalMessagesForLead(params: {
     };
 
     const [inboundResult, outboundResult] = await Promise.all([
-      buildBaseQuery("inbound")
-        .or(inboundOr)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-      buildBaseQuery("outbound")
-        .or(outboundOr)
-        .order("created_at", { ascending: false })
-        .limit(limit),
+      withTimeout(
+        buildBaseQuery("inbound")
+          .or(inboundOr)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        EXTERNAL_QUERY_TIMEOUT_MS,
+        "Histórico inbound do lead"
+      ),
+      withTimeout(
+        buildBaseQuery("outbound")
+          .or(outboundOr)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        EXTERNAL_QUERY_TIMEOUT_MS,
+        "Histórico outbound do lead"
+      ),
     ]);
 
     if (inboundResult.error) throw new Error(inboundResult.error.message);
@@ -465,22 +492,30 @@ export async function fetchExternalMessagesForLead(params: {
     // retry organization-wide by phone so existing history is never shown as empty.
     if (combined.length === 0 && channelIds.length > 0) {
       const [wideInboundResult, wideOutboundResult] = await Promise.all([
-        ext
-          .from("whatsapp_messages")
-          .select(selectFields)
-          .eq("organization_id", params.organizationId)
-          .eq("direction", "inbound")
-          .or(inboundOr)
-          .order("created_at", { ascending: false })
-          .limit(limit),
-        ext
-          .from("whatsapp_messages")
-          .select(selectFields)
-          .eq("organization_id", params.organizationId)
-          .eq("direction", "outbound")
-          .or(outboundOr)
-          .order("created_at", { ascending: false })
-          .limit(limit),
+        withTimeout(
+          ext
+            .from("whatsapp_messages")
+            .select(selectFields)
+            .eq("organization_id", params.organizationId)
+            .eq("direction", "inbound")
+            .or(inboundOr)
+            .order("created_at", { ascending: false })
+            .limit(limit),
+          EXTERNAL_QUERY_TIMEOUT_MS,
+          "Histórico inbound amplo do lead"
+        ),
+        withTimeout(
+          ext
+            .from("whatsapp_messages")
+            .select(selectFields)
+            .eq("organization_id", params.organizationId)
+            .eq("direction", "outbound")
+            .or(outboundOr)
+            .order("created_at", { ascending: false })
+            .limit(limit),
+          EXTERNAL_QUERY_TIMEOUT_MS,
+          "Histórico outbound amplo do lead"
+        ),
       ]);
 
       if (wideInboundResult.error) throw new Error(wideInboundResult.error.message);
@@ -559,13 +594,17 @@ export async function fetchConversationStatsMessages(params: {
     .map((phone) => `conversation_phone.eq.${phone}`)
     .join(",");
 
-  const { data, error } = await supabase
-    .from("conversation_stats")
-    .select("conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name")
-    .filter("channel_id", "eq", String(params.channelId))
-    .or(statsPhoneFilter)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(3);
+  const { data, error } = await withTimeout(
+    supabase
+      .from("conversation_stats")
+      .select("conversation_phone, last_message_content, last_message_at, last_inbound_at, unread_count, sender_name")
+      .filter("channel_id", "eq", String(params.channelId))
+      .or(statsPhoneFilter)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(3),
+    EXTERNAL_QUERY_TIMEOUT_MS,
+    "Resumo interno da conversa"
+  );
 
   if (error) {
     throw new Error(`Conversation stats fallback error: ${error.message}`);
@@ -668,12 +707,16 @@ export async function fetchBulkPreviews(
         channelIdParts.push(`channel_id.eq.${conv.channelId}`);
         const channelIdFilter = channelIdParts.join(",");
 
-        const { data, error } = await ext
-          .from("whatsapp_messages")
-          .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
-          .or(channelIdFilter)
-          .order("created_at", { ascending: false })
-          .limit(5);
+        const { data, error } = await withTimeout(
+          ext
+            .from("whatsapp_messages")
+            .select("content, message_type, direction, created_at, sender_name, sender_phone, metadata")
+            .or(channelIdFilter)
+            .order("created_at", { ascending: false })
+            .limit(5),
+          EXTERNAL_QUERY_TIMEOUT_MS,
+          "Prévia de atendimento"
+        );
 
         if (error) {
           throw new Error(error.message);

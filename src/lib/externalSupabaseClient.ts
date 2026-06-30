@@ -26,6 +26,18 @@ const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // Refresh 60s before expiry
 const REFRESH_BUFFER_MS = 60_000;
 const DEFAULT_SCOPE = "__self__";
+const EXTERNAL_AUTH_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} demorou demais para responder`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId!));
+}
 
 function getScopeKey(impersonatedOrgId?: string | null): string {
   return impersonatedOrgId ?? DEFAULT_SCOPE;
@@ -36,9 +48,10 @@ async function fetchExternalAuth(
 ): Promise<ExternalAuthResponse> {
   const body = impersonatedOrgId ? { impersonatedOrgId } : undefined;
 
-  const { data, error } = await supabase.functions.invoke(
-    "external-auth-token",
-    { body }
+  const { data, error } = await withTimeout(
+    supabase.functions.invoke("external-auth-token", { body }),
+    EXTERNAL_AUTH_TIMEOUT_MS,
+    "Autenticação do banco externo"
   );
 
   if (error) {
