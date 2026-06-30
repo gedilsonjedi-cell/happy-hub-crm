@@ -1,0 +1,1 @@
+UPDATE campaign_recipients SET next_retry_at=NULL, error_message=NULL, last_error_code=NULL WHERE status='pending' AND error_message ILIKE 'Timeout meta-send%';
