@@ -212,8 +212,10 @@ export function useInfiniteMessages(
     // missed Realtime events still surface without F5.
     refetchInterval: 8000,
     refetchIntervalInBackground: false,
-    retry: false,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
+
 
   // All pages combined in chronological order (oldest → newest)
   // Memoized so it doesn't re-run on every parent re-render (typing, etc.)
