@@ -32,6 +32,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   conversationKey,
   messages,
   isLoading,
+  isError,
+  onReload,
   isFetchingNextPage,
   hasNextPage,
   fetchNextPage,
@@ -42,6 +44,7 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
 }: InfiniteMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef<number>(0);
+
   const isLoadingMoreRef = useRef(false);
   const prevScrollHeightRef = useRef<number>(0);
 
