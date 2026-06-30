@@ -1213,8 +1213,50 @@ const AtendimentoV2 = () => {
           setHasMoreConversations(false);
           setConversationOffset(0);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching conversations summary:", error);
+
+        // JWT expired (PGRST303) — refresh internal session + external token, then retry once
+        const isJwtExpired =
+          error?.code === "PGRST303" ||
+          /jwt expired/i.test(error?.message ?? "");
+
+        if (isJwtExpired) {
+          try {
+            await supabase.auth.refreshSession();
+            await refreshExternalToken(externalImpersonatedOrgId);
+            const retryRows = canSeeAllConversations
+              ? await fetchConversationSummaryExternal({
+                  channelIds,
+                  organizationId: effectiveOrganizationId!,
+                  limit: CONVERSATIONS_PAGE_SIZE,
+                  offset: 0,
+                  impersonatedOrgId: externalImpersonatedOrgId,
+                })
+              : ((await fetchAttendantConversationsExternal({
+                  userId: user!.id,
+                  channelIds,
+                  organizationId: effectiveOrganizationId!,
+                  limit: 500,
+                  impersonatedOrgId: externalImpersonatedOrgId,
+                  ...(sectorIds?.length ? ({ sectorIds } as any) : {}),
+                })) as any);
+            if (!cancelled && retryRows?.length) {
+              const mappedData = mapConversationSummaryRows(retryRows as ConversationSummaryRow[]);
+              previewHydrationAttemptsRef.current.clear();
+              leadsMapRef.current = mappedData.leadLookups;
+              setConversationStatuses(mappedData.statuses);
+              setAllConversations(mappedData.conversations);
+              setHasMoreConversations(
+                canSeeAllConversations && retryRows.length >= CONVERSATIONS_PAGE_SIZE
+              );
+              setConversationOffset(retryRows.length);
+              return;
+            }
+          } catch (retryErr) {
+            console.warn("Retry after JWT refresh failed:", retryErr);
+          }
+        }
 
         try {
           const fallbackData = await fetchConversationsFallback(channelIds);
