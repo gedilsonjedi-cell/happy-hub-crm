@@ -6,14 +6,16 @@ import { useUserRole } from "@/hooks/useUserRole";
 const USER_SECTORS_TIMEOUT_MS = 8_000;
 
 function withTimeout<T>(promise: PromiseLike<T>, label: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout>;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error(`${label} demorou demais para responder`));
     }, USER_SECTORS_TIMEOUT_MS);
   });
 
-  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId!));
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 export interface UserSector {
