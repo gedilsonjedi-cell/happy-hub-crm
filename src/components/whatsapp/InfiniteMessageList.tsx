@@ -8,6 +8,8 @@ interface InfiniteMessageListProps {
   conversationKey: string;
   messages: MessageRow[];
   isLoading: boolean;
+  isError?: boolean;
+  onReload?: () => void;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
@@ -21,6 +23,7 @@ interface InfiniteMessageListProps {
   }>;
 }
 
+
 /**
  * InfiniteMessageList — standard DOM rendering with infinite scroll.
  * No virtualization to preserve text selection, copying, and click interactions.
@@ -29,6 +32,8 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   conversationKey,
   messages,
   isLoading,
+  isError,
+  onReload,
   isFetchingNextPage,
   hasNextPage,
   fetchNextPage,
@@ -39,6 +44,7 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
 }: InfiniteMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef<number>(0);
+
   const isLoadingMoreRef = useRef(false);
   const prevScrollHeightRef = useRef<number>(0);
 
@@ -125,6 +131,26 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   }
 
   if (messages.length === 0) {
+    if (isError) {
+      return (
+        <div
+          ref={containerRef}
+          className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Não foi possível carregar o histórico agora.
+          </p>
+          {onReload && (
+            <button
+              onClick={onReload}
+              className="text-sm text-primary underline hover:opacity-80"
+            >
+              Tentar novamente
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <div
         ref={containerRef}
@@ -136,6 +162,7 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
       </div>
     );
   }
+
 
   // Reset date tracking for each render
   datesShown.clear();
