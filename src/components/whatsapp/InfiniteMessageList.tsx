@@ -8,6 +8,8 @@ interface InfiniteMessageListProps {
   conversationKey: string;
   messages: MessageRow[];
   isLoading: boolean;
+  isError?: boolean;
+  onReload?: () => void;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
@@ -20,6 +22,7 @@ interface InfiniteMessageListProps {
     components: { buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }> } | null;
   }>;
 }
+
 
 /**
  * InfiniteMessageList — standard DOM rendering with infinite scroll.
