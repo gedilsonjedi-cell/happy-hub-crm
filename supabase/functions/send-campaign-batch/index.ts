@@ -38,6 +38,26 @@ const PERMANENT_ERRORS = [
   '131026', '131042', '131021', '131047', '132001', '132000', '100', '135000',
 ];
 
+const EXTERNAL_ASSIGNMENT_TIMEOUT_MS = 7_000;
+
+async function runExternalQueryWithTimeout<T>(
+  label: string,
+  queryFactory: (signal: AbortSignal) => PromiseLike<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTERNAL_ASSIGNMENT_TIMEOUT_MS);
+  try {
+    return await queryFactory(controller.signal);
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error(`${label} demorou demais para responder`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function getFirstName(fullName: string | undefined): string {
   if (!fullName) return '';
   return fullName.split(' ')[0];
@@ -718,30 +738,46 @@ Deno.serve(async (req) => {
             channel_id: channel.id
           }).eq('id', recipient.recipientId);
 
-          // Update conversation assignment — NEVER overwrite active conversations (external SSoT)
-          const { data: existing } = await caDb.from('conversation_assignments').select('id, status')
-            .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).single();
-          if (existing) {
-            const updatePayload: Record<string, unknown> = {
-              organization_id: channel.organization_id,
-              campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
-              is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
-              sector_id: campaign.sector_id || null,
-              updated_at: new Date().toISOString()
-            };
-            // Only set archived if not already active (in_progress/pending)
-            if (existing.status !== 'in_progress' && existing.status !== 'pending') {
-              updatePayload.status = 'archived';
+          // Update conversation assignment — NEVER overwrite active conversations (external SSoT).
+          // This must never block campaign progress; history was already sent and recipient is marked sent.
+          if (caDb) {
+            try {
+              const { data: existing } = await runExternalQueryWithTimeout(
+                'Consulta de atribuição externa',
+                (signal) => caDb.from('conversation_assignments').select('id, status')
+                  .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).abortSignal(signal).single()
+              );
+              if (existing) {
+                const updatePayload: Record<string, unknown> = {
+                  organization_id: channel.organization_id,
+                  campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
+                  is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
+                  sector_id: campaign.sector_id || null,
+                  updated_at: new Date().toISOString()
+                };
+                // Only set archived if not already active (in_progress/pending)
+                if (existing.status !== 'in_progress' && existing.status !== 'pending') {
+                  updatePayload.status = 'archived';
+                }
+                await runExternalQueryWithTimeout(
+                  'Atualização de atribuição externa',
+                  (signal) => caDb.from('conversation_assignments').update(updatePayload).eq('id', existing.id).abortSignal(signal)
+                );
+              } else {
+                await runExternalQueryWithTimeout(
+                  'Criação de atribuição externa',
+                  (signal) => caDb.from('conversation_assignments').insert({
+                    organization_id: channel.organization_id,
+                    conversation_phone: formattedPhone, channel_id: channel.id,
+                    campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
+                    is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
+                    status: 'archived', sector_id: campaign.sector_id || null
+                  }).abortSignal(signal)
+                );
+              }
+            } catch (assignmentError) {
+              console.error('[Batch] External assignment update skipped after successful send:', assignmentError);
             }
-            await caDb.from('conversation_assignments').update(updatePayload).eq('id', existing.id);
-          } else {
-            await caDb.from('conversation_assignments').insert({
-              organization_id: channel.organization_id,
-              conversation_phone: formattedPhone, channel_id: channel.id,
-              campaign_chatbot_id: campaign.chatbot_enabled && campaign.chatbot_id ? campaign.chatbot_id : null,
-              is_bot_handling: campaign.chatbot_enabled && !!campaign.chatbot_id,
-              status: 'archived', sector_id: campaign.sector_id || null
-            });
           }
           return { sent: !recipient.isRetry, failed: false, retry: false };
         } else {
