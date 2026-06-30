@@ -3,6 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 
+const USER_SECTORS_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: PromiseLike<T>, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} demorou demais para responder`));
+    }, USER_SECTORS_TIMEOUT_MS);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId!));
+}
+
 export interface UserSector {
   id: string;
   name: string;
@@ -22,8 +35,11 @@ export function useUserSectors() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchUserSectors = async () => {
       if (!user?.id || !organizationId) {
+        if (cancelled) return;
         setSectors([]);
         setSectorIds([]);
         setLoading(false);
@@ -33,11 +49,16 @@ export function useUserSectors() {
       try {
         // Super admins and admins can see all sectors in their organization
         if (role === "super_admin" || role === "admin") {
-          const { data, error } = await supabase
-            .from("sectors")
-            .select("id, name, description")
-            .eq("organization_id", organizationId)
-            .order("name");
+          const { data, error } = await withTimeout(
+            supabase
+              .from("sectors")
+              .select("id, name, description")
+              .eq("organization_id", organizationId)
+              .order("name"),
+            "Departamentos do usuário"
+          );
+
+          if (cancelled) return;
 
           if (error) {
             console.error("Error fetching sectors:", error);
@@ -49,10 +70,15 @@ export function useUserSectors() {
           }
         } else {
           // Attendants and supervisors only see their assigned sectors
-          const { data: userSectorData, error: userSectorError } = await supabase
-            .from("user_sectors")
-            .select("sector_id")
-            .eq("user_id", user.id);
+          const { data: userSectorData, error: userSectorError } = await withTimeout(
+            supabase
+              .from("user_sectors")
+              .select("sector_id")
+              .eq("user_id", user.id),
+            "Vínculos de departamento"
+          );
+
+          if (cancelled) return;
 
           if (userSectorError) {
             console.error("Error fetching user sectors:", userSectorError);
@@ -63,11 +89,16 @@ export function useUserSectors() {
             setSectorIds(userSectorIds);
 
             if (userSectorIds.length > 0) {
-              const { data: sectorsData, error: sectorsError } = await supabase
-                .from("sectors")
-                .select("id, name, description")
-                .in("id", userSectorIds)
-                .order("name");
+              const { data: sectorsData, error: sectorsError } = await withTimeout(
+                supabase
+                  .from("sectors")
+                  .select("id, name, description")
+                  .in("id", userSectorIds)
+                  .order("name"),
+                "Detalhes dos departamentos"
+              );
+
+              if (cancelled) return;
 
               if (sectorsError) {
                 console.error("Error fetching sector details:", sectorsError);
@@ -82,14 +113,19 @@ export function useUserSectors() {
         }
       } catch (err) {
         console.error("Error in useUserSectors:", err);
+        if (cancelled) return;
         setSectors([]);
         setSectorIds([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
+    setLoading(true);
     fetchUserSectors();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, organizationId, role]);
 
   // CRITICAL: Sector-based visibility for conversations
