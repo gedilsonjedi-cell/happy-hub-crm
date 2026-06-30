@@ -12,6 +12,25 @@ import {
 } from "@/lib/phoneThreadKey";
 
 const PAGE_SIZE = 25;
+const MESSAGE_PAGE_TIMEOUT_MS = 12_000;
+
+const EMPTY_MESSAGE_PAGE: MessagePage = {
+  messages: [],
+  nextCursor: null,
+  hasMore: false,
+};
+
+function withMessageTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
+      console.warn("[useInfiniteMessages] Message history timed out; releasing loading state.");
+      resolve(EMPTY_MESSAGE_PAGE as T);
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId!));
+}
 
 export interface MessagePage {
   messages: MessageRow[];
@@ -104,7 +123,7 @@ async function fetchMessagePage(
   channelId: string,
   conversationPhone: string,
   cursor: string | null,
-  effectiveOrganizationId: string | null,
+  impersonatedOrgId: string | null,
   channelPhone?: string | null
 ): Promise<MessagePage> {
   const phoneVariants = getPhoneLookupVariants(conversationPhone);
@@ -114,7 +133,7 @@ async function fetchMessagePage(
     phoneVariants,
     cursor,
     pageSize: PAGE_SIZE,
-    impersonatedOrgId: effectiveOrganizationId,
+    impersonatedOrgId,
     channelPhone: channelPhone || null,
   };
 
@@ -160,7 +179,8 @@ export function useInfiniteMessages(
   channelPhone?: string | null
 ) {
   const queryClient = useQueryClient();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
+  const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   const conversationThreadKey = conversationPhone
     ? getCanonicalPhoneThreadKey(conversationPhone)
     : null;
@@ -170,12 +190,15 @@ export function useInfiniteMessages(
   const query = useInfiniteQuery<MessagePage, Error>({
     queryKey,
     queryFn: ({ pageParam }) =>
-      fetchMessagePage(
-        channelId!,
-        conversationPhone!,
-        pageParam as string | null,
-        effectiveOrganizationId,
-        channelPhone
+      withMessageTimeout(
+        fetchMessagePage(
+          channelId!,
+          conversationPhone!,
+          pageParam as string | null,
+          externalImpersonatedOrgId,
+          channelPhone
+        ),
+        MESSAGE_PAGE_TIMEOUT_MS
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -195,8 +218,7 @@ export function useInfiniteMessages(
     // missed Realtime events still surface without F5.
     refetchInterval: 8000,
     refetchIntervalInBackground: false,
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    retry: false,
   });
 
   // All pages combined in chronological order (oldest → newest)

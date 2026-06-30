@@ -9,6 +9,39 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 
+const EXTERNAL_READ_TIMEOUT_MS = 7_000;
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException && error.name === "AbortError"
+  ) || /abort|timeout|timed out/i.test(getErrorMessage(error));
+}
+
+async function runTimedExternalQuery<T>(
+  label: string,
+  queryFactory: (signal: AbortSignal) => PromiseLike<{ data: T | null; error: unknown }>
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTERNAL_READ_TIMEOUT_MS);
+
+  try {
+    const { data, error } = await queryFactory(controller.signal);
+    if (error) throw error;
+    return data as T;
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(`${label} demorou demais para responder`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface ConversationSummaryExternalParams {
   channelIds: string[];
   organizationId: string;
@@ -112,18 +145,21 @@ export async function fetchConversationSummaryExternal(
   if (!params.channelIds.length || !params.organizationId) return [];
   const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
   const usePaginated = params.limit !== undefined || params.offset !== undefined;
-  const { data, error } = usePaginated
-    ? await ext.rpc("get_conversations_summary_paginated_ext", {
-        p_channel_ids: params.channelIds,
-        p_organization_id: params.organizationId,
-        p_limit: params.limit ?? 100,
-        p_offset: params.offset ?? 0,
-      })
-    : await ext.rpc("get_conversations_summary_ext", {
-        p_channel_ids: params.channelIds,
-        p_organization_id: params.organizationId,
-      });
-  if (error) throw error;
+  const data = await runTimedExternalQuery<ExternalRpcRow[]>(
+    "Resumo de atendimentos",
+    (signal) =>
+      usePaginated
+        ? ext.rpc("get_conversations_summary_paginated_ext", {
+            p_channel_ids: params.channelIds,
+            p_organization_id: params.organizationId,
+            p_limit: params.limit ?? 100,
+            p_offset: params.offset ?? 0,
+          }).abortSignal(signal)
+        : ext.rpc("get_conversations_summary_ext", {
+            p_channel_ids: params.channelIds,
+            p_organization_id: params.organizationId,
+          }).abortSignal(signal)
+  );
   return enrichRows((data ?? []) as ExternalRpcRow[]);
 }
 
@@ -136,14 +172,17 @@ export async function fetchAttendantConversationsExternal(params: {
 }): Promise<EnrichedConversationSummaryRow[]> {
   if (!params.channelIds.length || !params.organizationId) return [];
   const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
-  const { data, error } = await ext.rpc("get_attendant_conversations_ext", {
-    p_user_id: params.userId,
-    p_channel_ids: params.channelIds,
-    p_organization_id: params.organizationId,
-    p_sector_ids: (params as any).sectorIds ?? null,
-    p_limit: params.limit ?? 500,
-  });
-  if (error) throw error;
+  const data = await runTimedExternalQuery<ExternalRpcRow[]>(
+    "Atendimentos do usuário",
+    (signal) =>
+      ext.rpc("get_attendant_conversations_ext", {
+        p_user_id: params.userId,
+        p_channel_ids: params.channelIds,
+        p_organization_id: params.organizationId,
+        p_sector_ids: (params as any).sectorIds ?? null,
+        p_limit: params.limit ?? 500,
+      }).abortSignal(signal)
+  );
   return enrichRows((data ?? []) as ExternalRpcRow[]);
 }
 
@@ -154,11 +193,14 @@ export async function fetchUnreadConversationsExternal(params: {
 }): Promise<EnrichedConversationSummaryRow[]> {
   if (!params.channelIds.length || !params.organizationId) return [];
   const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
-  const { data, error } = await ext.rpc("get_unread_conversations_full_ext", {
-    p_channel_ids: params.channelIds,
-    p_organization_id: params.organizationId,
-  });
-  if (error) throw error;
+  const data = await runTimedExternalQuery<ExternalRpcRow[]>(
+    "Atendimentos não lidos",
+    (signal) =>
+      ext.rpc("get_unread_conversations_full_ext", {
+        p_channel_ids: params.channelIds,
+        p_organization_id: params.organizationId,
+      }).abortSignal(signal)
+  );
   return enrichRows((data ?? []) as ExternalRpcRow[]);
 }
 
@@ -171,13 +213,16 @@ export async function searchConversationsGlobalExternal(params: {
 }): Promise<EnrichedConversationSummaryRow[]> {
   if (!params.channelIds.length || !params.organizationId) return [];
   const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
-  const { data, error } = await ext.rpc("search_conversations_global_ext", {
-    p_channel_ids: params.channelIds,
-    p_organization_id: params.organizationId,
-    p_search_term: params.searchTerm,
-    p_limit: params.limit ?? 50,
-  });
-  if (error) throw error;
+  const data = await runTimedExternalQuery<ExternalRpcRow[]>(
+    "Busca de atendimentos",
+    (signal) =>
+      ext.rpc("search_conversations_global_ext", {
+        p_channel_ids: params.channelIds,
+        p_organization_id: params.organizationId,
+        p_search_term: params.searchTerm,
+        p_limit: params.limit ?? 50,
+      }).abortSignal(signal)
+  );
   // Note: search-by-name won't match leads (since leads aren't on external),
   // but it still matches phone + sender_name. We enrich and re-filter client-side
   // to also catch lead-name matches in the enriched set.
@@ -193,17 +238,27 @@ export async function fetchAssignmentByPhoneExternal(params: {
 }): Promise<{ id: string; assigned_to: string | null; sector_id: string | null; status: string | null; lead_id: string | null } | null> {
   const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
   const norm = params.phone.replace(/\D/g, "");
-  const { data, error } = await ext
-    .from("conversation_assignments")
-    .select("id, assigned_to, sector_id, status, lead_id")
-    .eq("channel_id", params.channelId)
-    .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
-    .maybeSingle();
-  if (error) {
-    console.warn("[conversationsExternal] read assignment failed:", error.message);
+  try {
+    const data = await runTimedExternalQuery<{
+      id: string;
+      assigned_to: string | null;
+      sector_id: string | null;
+      status: string | null;
+      lead_id: string | null;
+    }>("Leitura do atendimento", (signal) =>
+      ext
+        .from("conversation_assignments")
+        .select("id, assigned_to, sector_id, status, lead_id")
+        .eq("channel_id", params.channelId)
+        .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
+        .abortSignal(signal)
+        .maybeSingle()
+    );
+    return (data as any) ?? null;
+  } catch (error) {
+    console.warn("[conversationsExternal] read assignment failed:", getErrorMessage(error));
     return null;
   }
-  return (data as any) ?? null;
 }
 
 /** Bulk read assignments for sync — returns minimal shape per channel set. */
@@ -223,7 +278,9 @@ export async function fetchAssignmentsByChannelsExternal(params: {
   if (params.status === "archived") q = q.eq("status", "archived");
   else if (params.status === "not_archived") q = q.neq("status", "archived");
   if (params.limit) q = q.limit(params.limit);
-  const { data, error } = await q;
-  if (error) throw error;
+  const data = await runTimedExternalQuery<Array<{ id: string; conversation_phone: string; channel_id: string; assigned_to: string | null; status: string | null; sector_id: string | null; lead_id: string | null; updated_at: string }>>(
+    "Fallback de atendimentos",
+    (signal) => q.abortSignal(signal)
+  );
   return (data ?? []) as any;
 }

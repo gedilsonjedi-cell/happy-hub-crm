@@ -60,6 +60,18 @@ import {
 } from "lucide-react";
 
 const OPTIMUS_ADMIN_ORG_ID = "fe6a8da0-8f0a-4887-8c2c-f7ed6e5cd0b0";
+const ATTENDANCE_UI_TIMEOUT_MS = 12_000;
+
+function withAttendanceTimeout<T>(promise: PromiseLike<T>, label: string, ms = ATTENDANCE_UI_TIMEOUT_MS): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} demorou demais para responder`));
+    }, ms);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId!));
+}
 import { TopNavLayout } from "@/components/layout/TopNavLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -867,11 +879,22 @@ const AtendimentoV2 = () => {
       // Include disconnected channels too — we only hide conversations when the
       // channel is REMOVED from the database, not when it's just disconnected.
       // This preserves history for channels that lost auth on Meta/Z-API/etc.
-      const { data, error } = await (supabase as any)
-        .from("channels_public")
-        .select("id, name, phone, provider, connected")
-        .eq("organization_id", effectiveOrganizationId)
-        .in("provider", ["meta", "zapi", "gupshup"]);
+      let data: Channel[] | null = null;
+      let error: { message?: string } | null = null;
+      try {
+        const result = await withAttendanceTimeout<any>(
+          (supabase as any)
+            .from("channels_public")
+            .select("id, name, phone, provider, connected")
+            .eq("organization_id", effectiveOrganizationId)
+            .in("provider", ["meta", "zapi", "gupshup"]),
+          "Carregamento dos canais"
+        );
+        data = result.data;
+        error = result.error;
+      } catch (timeoutError) {
+        error = { message: timeoutError instanceof Error ? timeoutError.message : String(timeoutError) };
+      }
 
       if (error) {
         console.error("Error fetching channels:", error);
@@ -1136,6 +1159,23 @@ const AtendimentoV2 = () => {
   // This keeps the sidebar fast and avoids scanning large message tables on load.
   useEffect(() => {
     let cancelled = false;
+    let releaseLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearReleaseLoadingTimer = () => {
+      if (releaseLoadingTimer) {
+        clearTimeout(releaseLoadingTimer);
+        releaseLoadingTimer = null;
+      }
+    };
+
+    const armReleaseLoadingTimer = () => {
+      clearReleaseLoadingTimer();
+      releaseLoadingTimer = setTimeout(() => {
+        if (cancelled) return;
+        console.warn("[AtendimentoV2] Conversas demoraram demais; liberando estado de carregamento.");
+        setLoading(false);
+      }, ATTENDANCE_UI_TIMEOUT_MS);
+    };
 
     const fetchConversations = async () => {
       if (!channelsLoaded) {
@@ -1156,6 +1196,7 @@ const AtendimentoV2 = () => {
       }
 
       setLoading(true);
+      armReleaseLoadingTimer();
       const channelIds = channels.map(c => c.id);
 
       try {
@@ -1270,6 +1311,7 @@ const AtendimentoV2 = () => {
           console.error("Error fetching conversations fallback:", fallbackError);
         }
       } finally {
+        clearReleaseLoadingTimer();
         if (!cancelled) setLoading(false);
       }
     };
@@ -1277,6 +1319,7 @@ const AtendimentoV2 = () => {
     fetchConversations();
     return () => {
       cancelled = true;
+      clearReleaseLoadingTimer();
     };
   }, [channels, channelsLoaded, effectiveOrganizationId, externalImpersonatedOrgId, fetchConversationsFallback, user?.id, conversationRefetchTrigger, canSeeAllConversations, sectorsLoading, sectorIds]);
 
