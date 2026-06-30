@@ -1483,12 +1483,14 @@ Deno.serve(async (req) => {
       }
       if (externalSupabase) {
         try {
-          await externalSupabase.rpc('upsert_conversation_stats_external', {
-            _organization_id: channel.organization_id || null,
-            _channel_id: channelId, _conversation_phone: cleanDestination,
-            _content: storedContent, _direction: 'outbound', _is_read: null,
-            _sender_name: null, _created_at: new Date().toISOString(),
-          });
+          await runDbQueryWithTimeout('Atualização de estatísticas externas', (signal) =>
+            externalSupabase.rpc('upsert_conversation_stats_external', {
+              _organization_id: channel.organization_id || null,
+              _channel_id: channelId, _conversation_phone: cleanDestination,
+              _content: storedContent, _direction: 'outbound', _is_read: null,
+              _sender_name: null, _created_at: new Date().toISOString(),
+            }).abortSignal(signal)
+          );
         } catch (_e) { /* ignore */ }
       }
       
@@ -1590,12 +1592,14 @@ Deno.serve(async (req) => {
     }
     if (externalSupabase) {
       try {
-        await externalSupabase.rpc('upsert_conversation_stats_external', {
-          _organization_id: channel.organization_id || null,
-          _channel_id: channelId, _conversation_phone: cleanDestination,
-          _content: storedContent, _direction: 'outbound', _is_read: null,
-          _sender_name: null, _created_at: new Date().toISOString(),
-        });
+        await runDbQueryWithTimeout('Atualização de estatísticas externas', (signal) =>
+          externalSupabase.rpc('upsert_conversation_stats_external', {
+            _organization_id: channel.organization_id || null,
+            _channel_id: channelId, _conversation_phone: cleanDestination,
+            _content: storedContent, _direction: 'outbound', _is_read: null,
+            _sender_name: null, _created_at: new Date().toISOString(),
+          }).abortSignal(signal)
+        );
         await markConversationAnswered({
           organizationId: channel.organization_id,
           channelId,
