@@ -764,7 +764,7 @@ Deno.serve(async (req) => {
         const errorMessage = String(error);
         // Timeout (AbortError) or transport rate-limit — recycle to pending without marking failed
         if ((error as any)?.name === 'AbortError' || /abort|timeout|timed out/i.test(errorMessage)) {
-          return await recycleToPending('Timeout meta-send (25s)');
+          return await recycleToPending('Timeout meta-send (90s)');
         }
         if (isRateLimitError(null, errorMessage)) {
           return await recycleToPending(errorMessage.slice(0, 200));
