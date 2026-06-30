@@ -4073,6 +4073,8 @@ export type Database = {
           unread_count: number
         }[]
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       sync_all_failed_recipients: { Args: never; Returns: number }
       sync_failed_recipients_from_messages: {
         Args: never
