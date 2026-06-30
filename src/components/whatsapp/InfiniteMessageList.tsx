@@ -131,6 +131,26 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
   }
 
   if (messages.length === 0) {
+    if (isError) {
+      return (
+        <div
+          ref={containerRef}
+          className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Não foi possível carregar o histórico agora.
+          </p>
+          {onReload && (
+            <button
+              onClick={onReload}
+              className="text-sm text-primary underline hover:opacity-80"
+            >
+              Tentar novamente
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <div
         ref={containerRef}
@@ -142,6 +162,7 @@ const InfiniteMessageList = memo(function InfiniteMessageList({
       </div>
     );
   }
+
 
   // Reset date tracking for each render
   datesShown.clear();
