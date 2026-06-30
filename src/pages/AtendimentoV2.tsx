@@ -5088,9 +5088,12 @@ const AtendimentoV2 = () => {
                 conversationKey={selectedConversationCacheKey}
                 messages={messages}
                 isLoading={infiniteMessages.isLoading}
+                isError={infiniteMessages.isError}
+                onReload={() => infiniteMessages.refetch?.()}
                 isFetchingNextPage={infiniteMessages.isFetchingNextPage}
                 hasNextPage={infiniteMessages.hasNextPage ?? false}
                 fetchNextPage={infiniteMessages.fetchNextPage}
+
                 onMediaPreview={(url, type, fileName) => setMediaPreview({
                   isOpen: true,
                   url,
