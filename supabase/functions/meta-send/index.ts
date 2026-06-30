@@ -43,16 +43,48 @@ const messageDb: any = externalSupabase || localMessageDb;
 const webhookDispatcherUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/webhook-dispatcher`;
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const headerMediaIdCache = new Map<string, string>();
+const EXTERNAL_DB_TIMEOUT_MS = 7_000;
 type MutableTemplatePayload = Record<string, unknown> & {
   template?: { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
 };
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function runDbQueryWithTimeout<T>(
+  label: string,
+  queryFactory: (signal: AbortSignal) => PromiseLike<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTERNAL_DB_TIMEOUT_MS);
+  try {
+    return await queryFactory(controller.signal);
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error(`${label} demorou demais para responder`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function insertMessageRecord(data: Record<string, unknown>) {
-  const result = await messageDb
-    .from('whatsapp_messages')
-    .upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
-    .select('id, message_id')
-    .maybeSingle();
+  let result: { data?: unknown; error?: unknown };
+
+  try {
+    result = await runDbQueryWithTimeout('Gravação do histórico externo', (signal) =>
+      messageDb
+        .from('whatsapp_messages')
+        .upsert(data, { onConflict: 'message_id', ignoreDuplicates: true })
+        .select('id, message_id')
+        .abortSignal(signal)
+        .maybeSingle()
+    );
+  } catch (error) {
+    result = { data: null, error: { message: getErrorMessage(error) } };
+  }
 
   if (result.error) {
     console.error('[Meta-Send] Message write failed:', result.error);
@@ -97,13 +129,17 @@ async function markConversationAnswered(params: {
   const now = new Date().toISOString();
   const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: assignments, error: readError } = await externalSupabase
-    .from('conversation_assignments')
-    .select('id, assigned_to')
-    .eq('organization_id', params.organizationId)
-    .eq('channel_id', params.channelId)
-    .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
-    .limit(1);
+  const { data: assignments, error: readError } = await runDbQueryWithTimeout(
+    'Consulta de atribuição externa',
+    (signal) => externalSupabase
+      .from('conversation_assignments')
+      .select('id, assigned_to')
+      .eq('organization_id', params.organizationId)
+      .eq('channel_id', params.channelId)
+      .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
+      .limit(1)
+      .abortSignal(signal)
+  );
 
   if (readError) {
     console.error('[Meta-Send] Assignment lookup before answer failed:', readError.message);
@@ -114,21 +150,25 @@ async function markConversationAnswered(params: {
   const currentOwner = assignments?.[0]?.assigned_to ?? null;
 
   if (!assignmentId) {
-    const { data: created, error: createError } = await externalSupabase
-      .from('conversation_assignments')
-      .upsert({
-        organization_id: params.organizationId,
-        channel_id: params.channelId,
-        conversation_phone: norm,
-        assigned_to: humanUserId,
-        assigned_at: humanUserId ? now : null,
-        status: humanUserId ? 'in_progress' : 'pending',
-        is_bot_handling: false,
-        bot_paused_until: humanUserId ? botPausedUntil : null,
-        updated_at: now,
-      }, { onConflict: 'channel_id,conversation_phone' })
-      .select('id')
-      .single();
+    const { data: created, error: createError } = await runDbQueryWithTimeout(
+      'Criação de atribuição externa',
+      (signal) => externalSupabase
+        .from('conversation_assignments')
+        .upsert({
+          organization_id: params.organizationId,
+          channel_id: params.channelId,
+          conversation_phone: norm,
+          assigned_to: humanUserId,
+          assigned_at: humanUserId ? now : null,
+          status: humanUserId ? 'in_progress' : 'pending',
+          is_bot_handling: false,
+          bot_paused_until: humanUserId ? botPausedUntil : null,
+          updated_at: now,
+        }, { onConflict: 'channel_id,conversation_phone' })
+        .select('id')
+        .abortSignal(signal)
+        .single()
+    );
 
     if (createError) {
       console.error('[Meta-Send] Assignment upsert before answer failed:', createError.message);
@@ -147,22 +187,30 @@ async function markConversationAnswered(params: {
       updates.assigned_at = now;
     }
 
-    const { error: updateError } = await externalSupabase
-      .from('conversation_assignments')
-      .update(updates)
-      .eq('id', assignmentId)
-      .eq('organization_id', params.organizationId);
+    const { error: updateError } = await runDbQueryWithTimeout(
+      'Atualização de atribuição externa',
+      (signal) => externalSupabase
+        .from('conversation_assignments')
+        .update(updates)
+        .eq('id', assignmentId)
+        .eq('organization_id', params.organizationId)
+        .abortSignal(signal)
+    );
     if (updateError) {
       console.error('[Meta-Send] Assignment update after answer failed:', updateError.message);
     }
   }
 
   if (assignmentId && params.resetUnread !== false) {
-    const { error: resetError } = await externalSupabase
-      .from('conversation_stats')
-      .update({ unread_count: 0, updated_at: now })
-      .eq('assignment_id', assignmentId)
-      .eq('organization_id', params.organizationId);
+    const { error: resetError } = await runDbQueryWithTimeout(
+      'Reset de não lidas externo',
+      (signal) => externalSupabase
+        .from('conversation_stats')
+        .update({ unread_count: 0, updated_at: now })
+        .eq('assignment_id', assignmentId)
+        .eq('organization_id', params.organizationId)
+        .abortSignal(signal)
+    );
     if (resetError) {
       console.error('[Meta-Send] Unread reset after answer failed:', resetError.message);
     }
