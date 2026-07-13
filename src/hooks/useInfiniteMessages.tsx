@@ -132,11 +132,13 @@ async function fetchMessagePage(
   };
 
   let result: { messages: MessageRow[]; nextCursor: string | null; hasMore: boolean } | null = null;
+  let externalError: unknown = null;
 
   // External DB is the single source of truth
   try {
     result = await fetchExternalMessages(externalParams);
   } catch (e) {
+    externalError = e;
     console.error("[fetchMessagePage] External fetch failed:", e);
   }
 
@@ -150,6 +152,12 @@ async function fetchMessagePage(
     } catch (e) {
       console.warn("[fetchMessagePage] Stats fallback failed:", e);
     }
+  }
+
+  // If the external fetch threw AND we couldn't recover via stats, propagate
+  // the error so the UI shows the retry state instead of "Sem histórico".
+  if (!result && externalError) {
+    throw externalError instanceof Error ? externalError : new Error(String(externalError));
   }
 
   return {
