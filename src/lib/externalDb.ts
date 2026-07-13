@@ -12,8 +12,11 @@ import { getPhoneLookupVariants } from "@/lib/phoneThreadKey";
 
 const HISTORY_SCAN_BATCH_SIZE = 150;
 const HISTORY_SCAN_MAX_BATCHES = 8;
-const EXTERNAL_QUERY_TIMEOUT_MS = 5_000;
-const EXTERNAL_PROXY_TIMEOUT_MS = 5_000;
+const EXTERNAL_QUERY_TIMEOUT_MS = 8_000;
+// Proxy is under load (cold-start + long scans on external DB). Giving it a
+// generous window prevents the UI from silently rendering "Sem histórico"
+// when the proxy just needed a couple extra seconds to answer.
+const EXTERNAL_PROXY_TIMEOUT_MS = 20_000;
 
 // ── Circuit breaker for direct external reads ─────────────────────
 // If RLS isn't configured on the external DB (or JWT secret mismatch),
