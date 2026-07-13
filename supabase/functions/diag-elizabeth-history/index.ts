@@ -1,38 +1,34 @@
-import { getExternalDb } from '../_shared/externalDb.ts';
+import postgres from 'https://deno.land/x/postgresjs@v3.4.4/mod.js';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
-  const externalUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
-  const projectRef = externalUrl.replace('https://', '').split('.')[0];
+  const dbUrl = Deno.env.get('EXTERNAL_SUPABASE_DB_URL');
+  if (!dbUrl) {
+    return new Response(JSON.stringify({ error: 'EXTERNAL_SUPABASE_DB_URL missing', envs: Object.keys(Deno.env.toObject()).filter(k => k.startsWith('EXTERNAL')) }), {
+      status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
+    });
+  }
 
-  // Use pg-meta REST endpoint to execute raw SQL
-  const sql = `
-    GRANT SELECT ON public.whatsapp_messages TO authenticated;
-    GRANT SELECT ON public.whatsapp_contacts TO authenticated;
-  `;
-
-  // Use supabase REST via rpc if exists, else use PostgREST admin
-  // Simpler: use pg-rest with service role via /rest/v1/rpc? No — we need raw SQL.
-  // Use the SQL API via a custom function is not available. Instead, hit the
-  // Supabase management API's SQL endpoint — needs access token, not available.
-  // Alternative: use `postgres.js` via deno.
-  const res = await fetch(`${externalUrl}/rest/v1/rpc/exec_sql`, {
-    method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ sql }),
-  });
-
-  return new Response(JSON.stringify({
-    status: res.status,
-    body: await res.text(),
-    projectRef,
-  }, null, 2), { headers: { ...cors, 'Content-Type': 'application/json' } });
+  const sql = postgres(dbUrl, { max: 1, prepare: false });
+  try {
+    const r1 = await sql.unsafe(`GRANT SELECT ON public.whatsapp_messages TO authenticated;`);
+    const r2 = await sql.unsafe(`GRANT SELECT ON public.whatsapp_contacts TO authenticated;`);
+    const r3 = await sql.unsafe(`
+      SELECT grantee, privilege_type FROM information_schema.role_table_grants
+      WHERE table_schema='public' AND table_name IN ('whatsapp_messages','whatsapp_contacts')
+      ORDER BY table_name, grantee;
+    `);
+    return new Response(JSON.stringify({ ok: true, grants: r3 }, null, 2), {
+      headers: { ...cors, 'Content-Type': 'application/json' }
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: String(e) }), {
+      status: 500, headers: { ...cors, 'Content-Type': 'application/json' }
+    });
+  } finally {
+    await sql.end();
+  }
 });
