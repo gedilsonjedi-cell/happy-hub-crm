@@ -22,8 +22,16 @@ function statusBadge(status: string) {
 
 export function CampaignTrafficPanel() {
   const { campaigns, loading } = useCampaignTraffic();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  if (loading) {
+  const totalDelivered = useMemo(
+    () => campaigns.reduce((acc, c) => acc + (c.deliveredCount || 0) + (c.readCount || 0), 0),
+    [campaigns]
+  );
+  const totalSent = useMemo(
+    () => campaigns.reduce((acc, c) => acc + (c.sentCount || 0), 0),
+    [campaigns]
+  );
     return (
       <Card>
         <CardHeader><CardTitle>Tráfego por campanha</CardTitle></CardHeader>
