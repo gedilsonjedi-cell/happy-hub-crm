@@ -149,7 +149,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
       ]
     },
-    ...(["allan.pedro147@gmail.com", "gedilson.junior@gmail.com", "henrique.miranda@henrimath.com.br"].includes(user?.email?.trim().toLowerCase() || "") || isSuperAdmin
+    ...(isAdmin || isSuperAdmin
       ? [{ label: "Relatórios", path: "/relatorios", icon: BarChart3 }]
       : []),
     {
