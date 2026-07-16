@@ -178,7 +178,6 @@ export function CampaignTrafficPanel() {
                       </>
                     )}
                   </div>
-                  </div>
                 </div>
               );
             })}
