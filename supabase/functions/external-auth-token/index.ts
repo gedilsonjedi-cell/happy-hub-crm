@@ -57,48 +57,53 @@ Deno.serve(async (req: Request) => {
 
     const userId = userData.user.id;
 
-    // Get organization_id from profile
-    const { data: profile, error: profileError } = await internalSupabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("user_id", userId)
-      .single();
-
-    if (profileError || !profile?.organization_id) {
-      console.error("[external-auth-token] Profile lookup failed:", profileError?.message ?? "No org", "userId:", userId);
-      return new Response(
-        JSON.stringify({ error: "No organization found" }),
-        { status: 403, headers }
-      );
+    // Parse body early (may contain impersonatedOrgId)
+    let impersonatedOrgId: string | null = null;
+    try {
+      const body = await req.json();
+      if (body?.impersonatedOrgId) impersonatedOrgId = body.impersonatedOrgId;
+    } catch {
+      // no body
     }
 
-    // Check for super_admin impersonation
     const svcClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    let effectiveOrgId = profile.organization_id;
+    // Check super_admin role
+    const { data: roleData } = await svcClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "super_admin")
+      .maybeSingle();
 
-    // Check if request body has impersonated org
-    try {
-      const body = await req.json();
-      if (body?.impersonatedOrgId) {
-        // Verify super_admin role
-        const { data: roleData } = await svcClient
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", userId)
-          .eq("role", "super_admin")
-          .maybeSingle();
+    const isSuperAdmin = !!roleData;
 
-        if (roleData) {
-          effectiveOrgId = body.impersonatedOrgId;
-          console.log("[external-auth-token] Super admin impersonating org:", effectiveOrgId);
-        }
-      }
-    } catch {
-      // No body or parse error — use default org
+    // Get organization_id from profile
+    const { data: profile } = await internalSupabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    let effectiveOrgId = profile?.organization_id ?? null;
+
+    if (isSuperAdmin && impersonatedOrgId) {
+      effectiveOrgId = impersonatedOrgId;
+      console.log("[external-auth-token] Super admin impersonating org:", effectiveOrgId);
+    } else if (isSuperAdmin && !effectiveOrgId) {
+      // Super admin with no impersonation selected — issue token without org
+      // (external RLS will scope to nothing; frontend should only call this
+      // when an org is selected, but avoid hard failure).
+      console.log("[external-auth-token] Super admin without impersonated org — issuing tokenless-org");
+    } else if (!effectiveOrgId) {
+      console.error("[external-auth-token] Profile lookup failed: No org userId:", userId);
+      return new Response(
+        JSON.stringify({ error: "No organization found" }),
+        { status: 403, headers }
+      );
     }
 
     // Get external DB config
