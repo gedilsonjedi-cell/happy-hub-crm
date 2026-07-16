@@ -1,10 +1,14 @@
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { useCampaignTraffic } from "@/hooks/useCampaignTraffic";
 import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+type StatusFilter = "all" | "delivered_only";
 
 function statusBadge(status: string) {
   switch (status) {
