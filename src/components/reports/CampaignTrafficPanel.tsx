@@ -1,10 +1,14 @@
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { useCampaignTraffic } from "@/hooks/useCampaignTraffic";
 import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+type StatusFilter = "all" | "delivered_only";
 
 function statusBadge(status: string) {
   switch (status) {
@@ -18,6 +22,16 @@ function statusBadge(status: string) {
 
 export function CampaignTrafficPanel() {
   const { campaigns, loading } = useCampaignTraffic();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  const totalDelivered = useMemo(
+    () => campaigns.reduce((acc, c) => acc + (c.deliveredCount || 0) + (c.readCount || 0), 0),
+    [campaigns]
+  );
+  const totalSent = useMemo(
+    () => campaigns.reduce((acc, c) => acc + (c.sentCount || 0), 0),
+    [campaigns]
+  );
 
   if (loading) {
     return (
@@ -35,11 +49,49 @@ export function CampaignTrafficPanel() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-3">
-          <CardTitle className="text-lg font-semibold">Tráfego por campanha</CardTitle>
-          <Badge variant="outline" className="text-xs">
-            Últimas 20
-          </Badge>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <CardTitle className="text-lg font-semibold">Tráfego por campanha</CardTitle>
+            <Badge variant="outline" className="text-xs">Últimas 20</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={statusFilter === "all" ? "default" : "outline"}
+              onClick={() => setStatusFilter("all")}
+            >
+              Todos
+            </Button>
+            <Button
+              size="sm"
+              variant={statusFilter === "delivered_only" ? "default" : "outline"}
+              onClick={() => setStatusFilter("delivered_only")}
+            >
+              Somente entregues
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-sm">
+          {statusFilter === "all" ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Send className="w-4 h-4 text-blue-500" />
+                <span className="text-muted-foreground">Enviados:</span>
+                <span className="font-semibold">{totalSent.toLocaleString("pt-BR")}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-muted-foreground">Entregues:</span>
+                <span className="font-semibold">{totalDelivered.toLocaleString("pt-BR")}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-muted-foreground">Total entregues (delivered + read):</span>
+              <span className="font-semibold text-emerald-600">{totalDelivered.toLocaleString("pt-BR")}</span>
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -84,41 +136,47 @@ export function CampaignTrafficPanel() {
 
                   {/* Stats row */}
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Send className="w-3.5 h-3.5 text-blue-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.sentCount}</div>
-                        <div className="text-muted-foreground">Enviados</div>
+                    {statusFilter === "all" && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Send className="w-3.5 h-3.5 text-blue-500" />
+                        <div>
+                          <div className="font-semibold">{campaign.sentCount}</div>
+                          <div className="text-muted-foreground">Enviados</div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-xs">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                       <div>
-                        <div className="font-semibold">{campaign.deliveredCount}</div>
+                        <div className="font-semibold">{campaign.deliveredCount + campaign.readCount}</div>
                         <div className="text-muted-foreground">Entregues</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Eye className="w-3.5 h-3.5 text-purple-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.readCount}</div>
-                        <div className="text-muted-foreground">Lidos ({readRate}%)</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <MousePointerClick className="w-3.5 h-3.5 text-amber-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.interactedCount}</div>
-                        <div className="text-muted-foreground">Cliques</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <XCircle className="w-3.5 h-3.5 text-red-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.failedCount}</div>
-                        <div className="text-muted-foreground">Falhas</div>
-                      </div>
-                    </div>
+                    {statusFilter === "all" && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Eye className="w-3.5 h-3.5 text-purple-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.readCount}</div>
+                            <div className="text-muted-foreground">Lidos ({readRate}%)</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <MousePointerClick className="w-3.5 h-3.5 text-amber-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.interactedCount}</div>
+                            <div className="text-muted-foreground">Cliques</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <XCircle className="w-3.5 h-3.5 text-red-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.failedCount}</div>
+                            <div className="text-muted-foreground">Falhas</div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );
