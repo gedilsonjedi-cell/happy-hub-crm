@@ -49,11 +49,49 @@ export function CampaignTrafficPanel() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-3">
-          <CardTitle className="text-lg font-semibold">Tráfego por campanha</CardTitle>
-          <Badge variant="outline" className="text-xs">
-            Últimas 20
-          </Badge>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <CardTitle className="text-lg font-semibold">Tráfego por campanha</CardTitle>
+            <Badge variant="outline" className="text-xs">Últimas 20</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={statusFilter === "all" ? "default" : "outline"}
+              onClick={() => setStatusFilter("all")}
+            >
+              Todos
+            </Button>
+            <Button
+              size="sm"
+              variant={statusFilter === "delivered_only" ? "default" : "outline"}
+              onClick={() => setStatusFilter("delivered_only")}
+            >
+              Somente entregues
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-sm">
+          {statusFilter === "all" ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Send className="w-4 h-4 text-blue-500" />
+                <span className="text-muted-foreground">Enviados:</span>
+                <span className="font-semibold">{totalSent.toLocaleString("pt-BR")}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-muted-foreground">Entregues:</span>
+                <span className="font-semibold">{totalDelivered.toLocaleString("pt-BR")}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-muted-foreground">Total entregues (delivered + read):</span>
+              <span className="font-semibold text-emerald-600">{totalDelivered.toLocaleString("pt-BR")}</span>
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent>
