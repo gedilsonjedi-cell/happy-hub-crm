@@ -136,41 +136,48 @@ export function CampaignTrafficPanel() {
 
                   {/* Stats row */}
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Send className="w-3.5 h-3.5 text-blue-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.sentCount}</div>
-                        <div className="text-muted-foreground">Enviados</div>
+                    {statusFilter === "all" && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Send className="w-3.5 h-3.5 text-blue-500" />
+                        <div>
+                          <div className="font-semibold">{campaign.sentCount}</div>
+                          <div className="text-muted-foreground">Enviados</div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-xs">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                       <div>
-                        <div className="font-semibold">{campaign.deliveredCount}</div>
+                        <div className="font-semibold">{campaign.deliveredCount + campaign.readCount}</div>
                         <div className="text-muted-foreground">Entregues</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Eye className="w-3.5 h-3.5 text-purple-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.readCount}</div>
-                        <div className="text-muted-foreground">Lidos ({readRate}%)</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <MousePointerClick className="w-3.5 h-3.5 text-amber-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.interactedCount}</div>
-                        <div className="text-muted-foreground">Cliques</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <XCircle className="w-3.5 h-3.5 text-red-500" />
-                      <div>
-                        <div className="font-semibold">{campaign.failedCount}</div>
-                        <div className="text-muted-foreground">Falhas</div>
-                      </div>
-                    </div>
+                    {statusFilter === "all" && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Eye className="w-3.5 h-3.5 text-purple-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.readCount}</div>
+                            <div className="text-muted-foreground">Lidos ({readRate}%)</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <MousePointerClick className="w-3.5 h-3.5 text-amber-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.interactedCount}</div>
+                            <div className="text-muted-foreground">Cliques</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <XCircle className="w-3.5 h-3.5 text-red-500" />
+                          <div>
+                            <div className="font-semibold">{campaign.failedCount}</div>
+                            <div className="text-muted-foreground">Falhas</div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   </div>
                 </div>
               );
