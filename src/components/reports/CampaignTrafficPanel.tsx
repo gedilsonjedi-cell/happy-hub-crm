@@ -32,6 +32,8 @@ export function CampaignTrafficPanel() {
     () => campaigns.reduce((acc, c) => acc + (c.sentCount || 0), 0),
     [campaigns]
   );
+
+  if (loading) {
     return (
       <Card>
         <CardHeader><CardTitle>Tráfego por campanha</CardTitle></CardHeader>
