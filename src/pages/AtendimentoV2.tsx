@@ -3326,19 +3326,42 @@ const AtendimentoV2 = () => {
             assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
           });
 
-          // Auto-assign when sending first message
+          // Auto-assign when sending first message (atomic claim)
           if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
-              payload: {
-                conversation_phone: normalizedPhone,
-                channel_id: conversationChannelId,
-                assigned_to: user.id,
-                status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
-              },
-            });
+            const { data: claimData } = await supabase.functions.invoke(
+              "external-assignments-write",
+              {
+                body: {
+                  action: "claim_assignment",
+                  payload: {
+                    conversation_phone: normalizedPhone,
+                    channel_id: conversationChannelId,
+                    assigned_to: user.id,
+                    status: 'in_progress',
+                    sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+                  },
+                  ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+                },
+              }
+            );
 
-            if (!assignError) {
+            if (claimData?.success === false && claimData?.error === 'already_assigned') {
+              // Another attendant took ownership between our check and send.
+              // Do NOT overwrite — sync local state to reflect real owner.
+              const otherId = claimData.assignment?.assigned_to;
+              if (otherId && otherId !== user.id) {
+                const { data: op } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+                const otherName = op?.display_name || op?.email || 'Outro atendente';
+                setAllConversations(prev => prev.map(c => {
+                  const normalizedCPhone = c.phone.replace(/\D/g, '');
+                  return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                    ? { ...c, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' as const }
+                    : c;
+                }));
+                setSelectedConversation(prev => prev ? { ...prev, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' } : null);
+              }
+            } else if (claimData?.success) {
               setAllConversations(prev => prev.map(c => {
                 const normalizedCPhone = c.phone.replace(/\D/g, '');
                 return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
