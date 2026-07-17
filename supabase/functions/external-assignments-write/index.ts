@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
             success: false,
             error: 'already_assigned',
             assignment: existing,
-          }, 409);
+          }, 200);
         }
 
         // No row — insert fresh, taking ownership.
@@ -184,7 +184,7 @@ Deno.serve(async (req: Request) => {
             .eq('conversation_phone', p.conversation_phone)
             .maybeSingle();
           if (raced && raced.assigned_to && raced.assigned_to !== userId) {
-            return json({ success: false, error: 'already_assigned', assignment: raced }, 409);
+            return json({ success: false, error: 'already_assigned', assignment: raced }, 200);
           }
           return json({ error: insErr.message }, 500);
         }
