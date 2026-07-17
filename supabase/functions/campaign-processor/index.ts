@@ -118,11 +118,17 @@ Deno.serve(async (req) => {
     let totalBatchesSent = 0;
     let iteration = 0;
 
+    // Cache de retries — re-consulta a cada RETRY_REFRESH_ITERATIONS ou quando uma campanha termina
+    const RETRY_REFRESH_ITERATIONS = 5;
+    let lastRetryRefreshIter = -RETRY_REFRESH_ITERATIONS;
+    let cachedRetryIds: string[] = [];
+    let doneSinceLastRefresh = false;
+
     // Main processing loop
     while (Date.now() - startTime < MAX_EXECUTION_MS) {
       iteration++;
 
-      // Refresh campaign list periodically (every iteration to catch status changes)
+      // Refresh campaign list (running) toda iteração — é a fonte de verdade de status
       const { data: runningCampaigns, error: campError } = await supabase
         .from('campaigns')
         .select('id, name, min_interval, max_interval, sent_count, total_recipients, status')
@@ -133,18 +139,26 @@ Deno.serve(async (req) => {
         break;
       }
 
-      // Check for retry-only campaigns
-      const nowIso = new Date().toISOString();
-      const { data: retryRecipients } = await supabase
-        .from('campaign_recipients')
-        .select('campaign_id')
-        .eq('status', 'waiting_retry')
-        .lte('next_retry_at', nowIso)
-        .limit(50);
+      // Retry-only: re-consulta apenas periodicamente ou quando algo terminou
+      const shouldRefreshRetries =
+        iteration - lastRetryRefreshIter >= RETRY_REFRESH_ITERATIONS || doneSinceLastRefresh;
 
-      const retryIds = [...new Set((retryRecipients || []).map((r: any) => r.campaign_id))];
+      if (shouldRefreshRetries) {
+        const nowIso = new Date().toISOString();
+        const { data: retryRecipients } = await supabase
+          .from('campaign_recipients')
+          .select('campaign_id')
+          .eq('status', 'waiting_retry')
+          .lte('next_retry_at', nowIso)
+          .limit(50);
+
+        cachedRetryIds = [...new Set((retryRecipients || []).map((r: any) => r.campaign_id))];
+        lastRetryRefreshIter = iteration;
+        doneSinceLastRefresh = false;
+      }
+
       const runningIds = (runningCampaigns || []).map((c: any) => c.id);
-      const onlyRetryIds = retryIds.filter(id => !runningIds.includes(id));
+      const onlyRetryIds = cachedRetryIds.filter(id => !runningIds.includes(id));
 
       let retriableCampaigns: any[] = [];
       if (onlyRetryIds.length > 0) {
@@ -206,27 +220,36 @@ Deno.serve(async (req) => {
       }
 
       if (readyCampaigns.length === 0) {
-        // Find minimum time until next campaign is ready
-        let minWait = 3000;
+        // Dorme até a menor janela real de envio (não fixo em 3s).
+        // Teto de 15s para ainda captar status novos vindo do frontend em tempo hábil.
+        let minWait = 15_000;
         for (const state of campaignStates.values()) {
           if (state.done) continue;
+          const isFullMode = state.min_interval === 0 && state.max_interval === 0;
           const elapsed = Date.now() - state.lastSentAt;
-          const minInterval = (state.min_interval || 5) * 1000;
+          const minInterval = isFullMode ? 300 : (state.min_interval || 5) * 1000;
           const remaining = minInterval - elapsed;
           if (remaining > 0 && remaining < minWait) {
             minWait = remaining;
           }
         }
-        await new Promise(resolve => setTimeout(resolve, Math.min(minWait, 3000)));
+        // Não ultrapassar o tempo restante da invocação
+        const budgetLeft = MAX_EXECUTION_MS - (Date.now() - startTime);
+        const sleepMs = Math.max(200, Math.min(minWait, budgetLeft - 100));
+        if (sleepMs <= 0) break;
+        await new Promise(resolve => setTimeout(resolve, sleepMs));
         continue;
       }
 
       // Process campaigns in PARALLEL batches (up to MAX_CONCURRENT_CAMPAIGNS)
       const batch = readyCampaigns.slice(0, MAX_CONCURRENT_CAMPAIGNS);
-      
+
+      const doneBefore = [...campaignStates.values()].filter(s => s.done).length;
       await Promise.all(
         batch.map(state => processCampaignBatch(supabase, state, startTime))
       );
+      const doneAfter = [...campaignStates.values()].filter(s => s.done).length;
+      if (doneAfter > doneBefore) doneSinceLastRefresh = true;
 
       // Count total batches
       totalBatchesSent = 0;
