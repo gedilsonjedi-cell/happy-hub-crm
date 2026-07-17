@@ -3726,22 +3726,33 @@ const AtendimentoV2 = () => {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      const { data: assignmentData, error: assignmentError } = await assignmentsWrite("upsert_assignment", {
-        payload: {
-          channel_id: data.channelId,
-          conversation_phone: normalizedPhone,
-          assigned_to: user.id,
-          status: 'in_progress',
-          is_bot_handling: false,
-          bot_paused_until: botPausedUntil,
-        },
-      });
-      
+      const { data: claimData, error: assignmentError } = await supabase.functions.invoke(
+        "external-assignments-write",
+        {
+          body: {
+            action: "claim_assignment",
+            payload: {
+              channel_id: data.channelId,
+              conversation_phone: normalizedPhone,
+              assigned_to: user.id,
+              status: 'in_progress',
+              is_bot_handling: false,
+              bot_paused_until: botPausedUntil,
+            },
+            ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+          },
+        }
+      );
+
       if (assignmentError) {
         console.error('Error persisting conversation assignment:', assignmentError);
         // Continue anyway - at least try to show in UI
+      } else if (claimData?.success === false && claimData?.error === 'already_assigned') {
+        // Conversation already belongs to another attendant — do not overwrite.
+        assignmentId = claimData.assignment?.id || null;
+        toast.error('Esta conversa já está em atendimento por outro colaborador.');
       } else {
-        assignmentId = (assignmentData?.assignment?.id) || null;
+        assignmentId = (claimData?.assignment?.id) || null;
         console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
       }
     }
