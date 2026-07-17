@@ -2932,24 +2932,53 @@ const AtendimentoV2 = () => {
     }
 
     try {
-      const { error } = await assignmentsWrite("upsert_assignment", {
-        payload: {
-          conversation_phone: normalizedPhone,
-          channel_id: conversation.channelId,
-          assigned_to: user.id,
-          status: "active",
-          sector_id: sectorToAssign,
-        },
-      });
+      // Atomic claim: only wins if conversation is still unassigned in the DB.
+      // Prevents two attendants from "co-owning" the same conversation.
+      const { data: claimData, error: invokeError } = await supabase.functions.invoke(
+        "external-assignments-write",
+        {
+          body: {
+            action: "claim_assignment",
+            payload: {
+              conversation_phone: normalizedPhone,
+              channel_id: conversation.channelId,
+              assigned_to: user.id,
+              status: "active",
+              sector_id: sectorToAssign,
+            },
+            ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+          },
+        }
+      );
 
-      if (error) {
-        // Check if it's a RLS error
-        if (error.message?.includes('row-level security')) {
+      if (invokeError) {
+        if (invokeError.message?.includes('row-level security')) {
           const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
           toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
         } else {
-          toast.error("Erro ao aceitar atendimento: " + error.message);
+          toast.error("Erro ao aceitar atendimento: " + invokeError.message);
         }
+        return;
+      }
+
+      // Conflict: another attendant claimed it first.
+      if (claimData && claimData.success === false && claimData.error === 'already_assigned') {
+        const otherId = claimData.assignment?.assigned_to;
+        let otherName = 'outro atendente';
+        if (otherId) {
+          const { data: op } = await supabase
+            .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+          otherName = op?.display_name || op?.email || otherName;
+        }
+        toast.error(`Esta conversa já foi assumida por ${otherName}.`);
+        // Sync local state so the UI stops offering "Aceitar".
+        setAllConversations(prev => prev.map(c => {
+          const key = getConversationKey(c);
+          const convKey = getConversationKey(conversation);
+          return key === convKey
+            ? { ...c, assignedTo: otherId, assignedToName: otherName, status: "in_progress" as const }
+            : c;
+        }));
         return;
       }
 
@@ -2967,7 +2996,6 @@ const AtendimentoV2 = () => {
       setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress", sectorId: sectorToAssign });
     } catch (error: any) {
       console.error("Erro ao aceitar atendimento:", error);
-      // Better error message for RLS violations
       if (error?.message?.includes('row-level security') || error?.code === '42501') {
         const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
         toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
