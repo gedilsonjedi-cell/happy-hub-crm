@@ -108,6 +108,89 @@ Deno.serve(async (req: Request) => {
         return json({ success: true, assignment: data });
       }
 
+      // Atomic claim: acquire ownership ONLY if currently unassigned (or already mine).
+      // Prevents two attendants from "winning" the same conversation on concurrent clicks.
+      case 'claim_assignment': {
+        const p: AssignmentPayload = body.payload || {};
+        if (!p.conversation_phone || !p.channel_id) {
+          return json({ error: 'conversation_phone + channel_id required' }, 400);
+        }
+        if (!p.assigned_to) return json({ error: 'assigned_to required' }, 400);
+        const userId = p.assigned_to;
+        const nowIso = new Date().toISOString();
+
+        // Step 1: try conditional UPDATE — succeeds only if row exists AND
+        // is unassigned OR already belongs to the same user.
+        const updates: Record<string, unknown> = {
+          assigned_to: userId,
+          status: p.status ?? 'active',
+          updated_at: nowIso,
+        };
+        if (p.sector_id !== undefined && p.sector_id !== null) updates.sector_id = p.sector_id;
+        if (p.lead_id !== undefined && p.lead_id !== null) updates.lead_id = p.lead_id;
+
+        const { data: updated, error: updErr } = await ext.from('conversation_assignments')
+          .update(updates)
+          .eq('organization_id', orgId)
+          .eq('channel_id', p.channel_id)
+          .eq('conversation_phone', p.conversation_phone)
+          .or(`assigned_to.is.null,assigned_to.eq.${userId}`)
+          .select();
+        if (updErr) return json({ error: updErr.message }, 500);
+
+        if (updated && updated.length > 0) {
+          return json({ success: true, assignment: updated[0], claimed: true });
+        }
+
+        // Step 2: nothing updated. Either row doesn't exist yet, or another
+        // user already owns it. Check current state to decide.
+        const { data: existing } = await ext.from('conversation_assignments')
+          .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone')
+          .eq('organization_id', orgId)
+          .eq('channel_id', p.channel_id)
+          .eq('conversation_phone', p.conversation_phone)
+          .maybeSingle();
+
+        if (existing) {
+          // Someone else owns it — reject.
+          return json({
+            success: false,
+            error: 'already_assigned',
+            assignment: existing,
+          }, 409);
+        }
+
+        // No row — insert fresh, taking ownership.
+        const insertRow = {
+          organization_id: orgId,
+          channel_id: p.channel_id,
+          conversation_phone: p.conversation_phone,
+          assigned_to: userId,
+          status: p.status ?? 'active',
+          sector_id: p.sector_id ?? null,
+          lead_id: p.lead_id ?? null,
+          is_bot_handling: false,
+          updated_at: nowIso,
+        };
+        const { data: inserted, error: insErr } = await ext.from('conversation_assignments')
+          .insert(insertRow)
+          .select().single();
+        if (insErr) {
+          // Race: someone inserted between our check and insert. Re-read and reject.
+          const { data: raced } = await ext.from('conversation_assignments')
+            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone')
+            .eq('organization_id', orgId)
+            .eq('channel_id', p.channel_id)
+            .eq('conversation_phone', p.conversation_phone)
+            .maybeSingle();
+          if (raced && raced.assigned_to && raced.assigned_to !== userId) {
+            return json({ success: false, error: 'already_assigned', assignment: raced }, 409);
+          }
+          return json({ error: insErr.message }, 500);
+        }
+        return json({ success: true, assignment: inserted, claimed: true });
+      }
+
       case 'update_assignment_status':
       case 'assign_to':
       case 'transfer':
