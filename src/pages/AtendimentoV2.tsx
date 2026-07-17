@@ -3448,18 +3448,39 @@ const AtendimentoV2 = () => {
           } else {
             toast.success("Mídia enviada!");
           }
-          // Auto-assign
+          // Auto-assign (atomic claim — never overwrite another attendant)
           if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
-              payload: {
-                conversation_phone: normalizedPhone,
-                channel_id: conversationChannelId,
-                assigned_to: user.id,
-                status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
-              },
-            });
-            if (!assignError) {
+            const { data: claimData } = await supabase.functions.invoke(
+              "external-assignments-write",
+              {
+                body: {
+                  action: "claim_assignment",
+                  payload: {
+                    conversation_phone: normalizedPhone,
+                    channel_id: conversationChannelId,
+                    assigned_to: user.id,
+                    status: 'in_progress',
+                    sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+                  },
+                  ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+                },
+              }
+            );
+            if (claimData?.success === false && claimData?.error === 'already_assigned') {
+              const otherId = claimData.assignment?.assigned_to;
+              if (otherId && otherId !== user.id) {
+                const { data: op } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+                const otherName = op?.display_name || op?.email || 'Outro atendente';
+                setAllConversations(prev => prev.map(c => {
+                  const normalizedCPhone = c.phone.replace(/\D/g, '');
+                  return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                    ? { ...c, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' as const }
+                    : c;
+                }));
+                setSelectedConversation(prev => prev ? { ...prev, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' } : null);
+              }
+            } else if (claimData?.success) {
               setAllConversations(prev => prev.map(c => {
                 const normalizedCPhone = c.phone.replace(/\D/g, '');
                 return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
