@@ -20,6 +20,7 @@ export async function getExternalAssignments(impersonatedOrgId?: string | null) 
 
 export type AssignmentWriteAction =
   | "upsert_assignment"
+  | "claim_assignment"
   | "update_assignment_status"
   | "assign_to"
   | "transfer"
