@@ -2932,24 +2932,53 @@ const AtendimentoV2 = () => {
     }
 
     try {
-      const { error } = await assignmentsWrite("upsert_assignment", {
-        payload: {
-          conversation_phone: normalizedPhone,
-          channel_id: conversation.channelId,
-          assigned_to: user.id,
-          status: "active",
-          sector_id: sectorToAssign,
-        },
-      });
+      // Atomic claim: only wins if conversation is still unassigned in the DB.
+      // Prevents two attendants from "co-owning" the same conversation.
+      const { data: claimData, error: invokeError } = await supabase.functions.invoke(
+        "external-assignments-write",
+        {
+          body: {
+            action: "claim_assignment",
+            payload: {
+              conversation_phone: normalizedPhone,
+              channel_id: conversation.channelId,
+              assigned_to: user.id,
+              status: "active",
+              sector_id: sectorToAssign,
+            },
+            ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+          },
+        }
+      );
 
-      if (error) {
-        // Check if it's a RLS error
-        if (error.message?.includes('row-level security')) {
+      if (invokeError) {
+        if (invokeError.message?.includes('row-level security')) {
           const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
           toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
         } else {
-          toast.error("Erro ao aceitar atendimento: " + error.message);
+          toast.error("Erro ao aceitar atendimento: " + invokeError.message);
         }
+        return;
+      }
+
+      // Conflict: another attendant claimed it first.
+      if (claimData && claimData.success === false && claimData.error === 'already_assigned') {
+        const otherId = claimData.assignment?.assigned_to;
+        let otherName = 'outro atendente';
+        if (otherId) {
+          const { data: op } = await supabase
+            .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+          otherName = op?.display_name || op?.email || otherName;
+        }
+        toast.error(`Esta conversa já foi assumida por ${otherName}.`);
+        // Sync local state so the UI stops offering "Aceitar".
+        setAllConversations(prev => prev.map(c => {
+          const key = getConversationKey(c);
+          const convKey = getConversationKey(conversation);
+          return key === convKey
+            ? { ...c, assignedTo: otherId, assignedToName: otherName, status: "in_progress" as const }
+            : c;
+        }));
         return;
       }
 
@@ -2967,7 +2996,6 @@ const AtendimentoV2 = () => {
       setSelectedConversation({ ...conversation, assignedTo: user.id, assignedToName: userName, status: "in_progress", sectorId: sectorToAssign });
     } catch (error: any) {
       console.error("Erro ao aceitar atendimento:", error);
-      // Better error message for RLS violations
       if (error?.message?.includes('row-level security') || error?.code === '42501') {
         const sectorName = sectors.find(s => s.id === actualSectorId)?.name || "este departamento";
         toast.error(`Você não tem permissão para atender conversas do departamento "${sectorName}"`);
@@ -3298,19 +3326,42 @@ const AtendimentoV2 = () => {
             assignedToName: ownerAfterSend === user?.id ? 'Você' : selectedConversation.assignedToName,
           });
 
-          // Auto-assign when sending first message
+          // Auto-assign when sending first message (atomic claim)
           if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
-              payload: {
-                conversation_phone: normalizedPhone,
-                channel_id: conversationChannelId,
-                assigned_to: user.id,
-                status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
-              },
-            });
+            const { data: claimData } = await supabase.functions.invoke(
+              "external-assignments-write",
+              {
+                body: {
+                  action: "claim_assignment",
+                  payload: {
+                    conversation_phone: normalizedPhone,
+                    channel_id: conversationChannelId,
+                    assigned_to: user.id,
+                    status: 'in_progress',
+                    sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+                  },
+                  ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+                },
+              }
+            );
 
-            if (!assignError) {
+            if (claimData?.success === false && claimData?.error === 'already_assigned') {
+              // Another attendant took ownership between our check and send.
+              // Do NOT overwrite — sync local state to reflect real owner.
+              const otherId = claimData.assignment?.assigned_to;
+              if (otherId && otherId !== user.id) {
+                const { data: op } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+                const otherName = op?.display_name || op?.email || 'Outro atendente';
+                setAllConversations(prev => prev.map(c => {
+                  const normalizedCPhone = c.phone.replace(/\D/g, '');
+                  return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                    ? { ...c, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' as const }
+                    : c;
+                }));
+                setSelectedConversation(prev => prev ? { ...prev, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' } : null);
+              }
+            } else if (claimData?.success) {
               setAllConversations(prev => prev.map(c => {
                 const normalizedCPhone = c.phone.replace(/\D/g, '');
                 return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
@@ -3397,18 +3448,39 @@ const AtendimentoV2 = () => {
           } else {
             toast.success("Mídia enviada!");
           }
-          // Auto-assign
+          // Auto-assign (atomic claim — never overwrite another attendant)
           if (!currentAssignment?.assigned_to && !selectedConversation.assignedTo && user?.id) {
-            const { error: assignError } = await assignmentsWrite("upsert_assignment", {
-              payload: {
-                conversation_phone: normalizedPhone,
-                channel_id: conversationChannelId,
-                assigned_to: user.id,
-                status: 'in_progress',
-                sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
-              },
-            });
-            if (!assignError) {
+            const { data: claimData } = await supabase.functions.invoke(
+              "external-assignments-write",
+              {
+                body: {
+                  action: "claim_assignment",
+                  payload: {
+                    conversation_phone: normalizedPhone,
+                    channel_id: conversationChannelId,
+                    assigned_to: user.id,
+                    status: 'in_progress',
+                    sector_id: currentAssignment?.sector_id || selectedConversation.sectorId,
+                  },
+                  ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+                },
+              }
+            );
+            if (claimData?.success === false && claimData?.error === 'already_assigned') {
+              const otherId = claimData.assignment?.assigned_to;
+              if (otherId && otherId !== user.id) {
+                const { data: op } = await supabase
+                  .from('profiles').select('display_name, email').eq('user_id', otherId).maybeSingle();
+                const otherName = op?.display_name || op?.email || 'Outro atendente';
+                setAllConversations(prev => prev.map(c => {
+                  const normalizedCPhone = c.phone.replace(/\D/g, '');
+                  return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
+                    ? { ...c, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' as const }
+                    : c;
+                }));
+                setSelectedConversation(prev => prev ? { ...prev, assignedTo: otherId, assignedToName: otherName, status: 'in_progress' } : null);
+              }
+            } else if (claimData?.success) {
               setAllConversations(prev => prev.map(c => {
                 const normalizedCPhone = c.phone.replace(/\D/g, '');
                 return normalizedCPhone === normalizedPhone && c.channelId === conversationChannelId
@@ -3654,22 +3726,33 @@ const AtendimentoV2 = () => {
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
-      const { data: assignmentData, error: assignmentError } = await assignmentsWrite("upsert_assignment", {
-        payload: {
-          channel_id: data.channelId,
-          conversation_phone: normalizedPhone,
-          assigned_to: user.id,
-          status: 'in_progress',
-          is_bot_handling: false,
-          bot_paused_until: botPausedUntil,
-        },
-      });
-      
+      const { data: claimData, error: assignmentError } = await supabase.functions.invoke(
+        "external-assignments-write",
+        {
+          body: {
+            action: "claim_assignment",
+            payload: {
+              channel_id: data.channelId,
+              conversation_phone: normalizedPhone,
+              assigned_to: user.id,
+              status: 'in_progress',
+              is_bot_handling: false,
+              bot_paused_until: botPausedUntil,
+            },
+            ...(externalImpersonatedOrgId ? { impersonatedOrgId: externalImpersonatedOrgId } : {}),
+          },
+        }
+      );
+
       if (assignmentError) {
         console.error('Error persisting conversation assignment:', assignmentError);
         // Continue anyway - at least try to show in UI
+      } else if (claimData?.success === false && claimData?.error === 'already_assigned') {
+        // Conversation already belongs to another attendant — do not overwrite.
+        assignmentId = claimData.assignment?.id || null;
+        toast.error('Esta conversa já está em atendimento por outro colaborador.');
       } else {
-        assignmentId = (assignmentData?.assignment?.id) || null;
+        assignmentId = (claimData?.assignment?.id) || null;
         console.log('Persisted conversation assignment to database:', normalizedPhone, 'ID:', assignmentId);
       }
     }
