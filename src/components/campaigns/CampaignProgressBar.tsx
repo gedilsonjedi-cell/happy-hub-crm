@@ -99,12 +99,10 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       )
       .subscribe();
 
-    // Poll every 30 seconds as fallback (reduced frequency to save egress)
-    const pollInterval = setInterval(fetchRunningCampaigns, 30000);
-
+    // Sem polling: realtime já cobre todas as mudanças relevantes em `campaigns`.
+    // O botão de refresh manual continua disponível para forçar sincronização.
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(pollInterval);
     };
   }, [effectiveOrganizationId, fetchRunningCampaigns, debouncedFetch]);
 
