@@ -140,7 +140,25 @@ export function AttendanceReportPanel() {
       const open = all
         .filter(r => r.status !== "resolved" && r.status !== "archived")
         .map(r => ({ ...r, unread_count: Number(r.unread_count) || 0 }));
-      setRows(open);
+
+      // Deduplicar: mesmo canal + mesmos 8 últimos dígitos do telefone = mesma conversa.
+      // Evita que um único cliente apareça sob dois atendentes diferentes por
+      // divergência de formato (com/sem 9º dígito).
+      const dedupMap = new Map<string, Row>();
+      for (const r of open) {
+        const digits = String(r.conversation_phone || "").replace(/\D/g, "");
+        const key = `${r.channel_id ?? "null"}|${digits.slice(-8)}`;
+        const existing = dedupMap.get(key);
+        if (!existing) { dedupMap.set(key, r); continue; }
+        // Preferir a linha com atendente atribuído; empate → mais recente.
+        const preferNew =
+          (!!r.assigned_to && !existing.assigned_to) ||
+          (!!r.assigned_to === !!existing.assigned_to &&
+            new Date(r.last_message_at || r.updated_at).getTime() >
+            new Date(existing.last_message_at || existing.updated_at).getTime());
+        if (preferNew) dedupMap.set(key, r);
+      }
+      setRows(Array.from(dedupMap.values()));
     } catch (e) {
       console.error("AttendanceReport load error", e);
     } finally {

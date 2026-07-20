@@ -742,11 +742,33 @@ Deno.serve(async (req) => {
           // This must never block campaign progress; history was already sent and recipient is marked sent.
           if (caDb) {
             try {
-              const { data: existing } = await runExternalQueryWithTimeout(
-                'Consulta de atribuição externa',
-                (signal) => caDb.from('conversation_assignments').select('id, status')
-                  .eq('conversation_phone', formattedPhone).eq('channel_id', channel.id).abortSignal(signal).single()
-              );
+              // Buscar por variantes (com e sem 9º dígito) para nunca criar
+              // linha duplicada quando o CRM tem o telefone em outro formato.
+              const lookupVariants = Array.from(new Set([
+                formattedPhone,
+                ...getPhoneLookupKeys(formattedPhone),
+              ].filter(Boolean)));
+              let existing: { id: string; status: string } | null = null;
+              for (const v of lookupVariants) {
+                const { data: hit } = await runExternalQueryWithTimeout(
+                  'Consulta de atribuição externa',
+                  (signal) => caDb.from('conversation_assignments').select('id, status')
+                    .eq('channel_id', channel.id).eq('conversation_phone', v).abortSignal(signal).maybeSingle()
+                );
+                if (hit) { existing = hit; break; }
+              }
+              // Fallback por sufixo (últimos 8 dígitos) para variações não previstas
+              if (!existing) {
+                const suffix8 = formattedPhone.replace(/\D/g, '').slice(-8);
+                if (suffix8) {
+                  const { data: bySuffix } = await runExternalQueryWithTimeout(
+                    'Consulta de atribuição por sufixo',
+                    (signal) => caDb.from('conversation_assignments').select('id, status')
+                      .eq('channel_id', channel.id).ilike('conversation_phone', `%${suffix8}`).abortSignal(signal).limit(1).maybeSingle()
+                  );
+                  if (bySuffix) existing = bySuffix;
+                }
+              }
               if (existing) {
                 const updatePayload: Record<string, unknown> = {
                   organization_id: channel.organization_id,
@@ -755,13 +777,12 @@ Deno.serve(async (req) => {
                   sector_id: campaign.sector_id || null,
                   updated_at: new Date().toISOString()
                 };
-                // Only set archived if not already active (in_progress/pending)
                 if (existing.status !== 'in_progress' && existing.status !== 'pending') {
                   updatePayload.status = 'archived';
                 }
                 await runExternalQueryWithTimeout(
                   'Atualização de atribuição externa',
-                  (signal) => caDb.from('conversation_assignments').update(updatePayload).eq('id', existing.id).abortSignal(signal)
+                  (signal) => caDb.from('conversation_assignments').update(updatePayload).eq('id', existing!.id).abortSignal(signal)
                 );
               } else {
                 await runExternalQueryWithTimeout(

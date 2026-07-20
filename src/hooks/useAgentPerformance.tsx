@@ -32,10 +32,26 @@ export function useAgentPerformance() {
       const channelIds = channels.map((c: any) => c.id);
 
       const ext = await getExternalAssignments();
-      const { data: allAssignments } = await ext
+      const { data: allAssignmentsRaw } = await ext
         .from("conversation_assignments")
-        .select("assigned_to, status")
+        .select("assigned_to, status, channel_id, conversation_phone, updated_at")
         .in("channel_id", channelIds);
+
+      // Deduplicar por (channel_id, sufixo 8 dígitos) — mesma conversa não pode
+      // contar para dois atendentes. Prefere linha com assigned_to; empate → mais recente.
+      const dedup = new Map<string, any>();
+      (allAssignmentsRaw ?? []).forEach((a: any) => {
+        const digits = String(a.conversation_phone || "").replace(/\D/g, "");
+        const key = `${a.channel_id ?? "null"}|${digits.slice(-8)}`;
+        const cur = dedup.get(key);
+        if (!cur) { dedup.set(key, a); return; }
+        const preferNew =
+          (!!a.assigned_to && !cur.assigned_to) ||
+          (!!a.assigned_to === !!cur.assigned_to &&
+            new Date(a.updated_at || 0).getTime() > new Date(cur.updated_at || 0).getTime());
+        if (preferNew) dedup.set(key, a);
+      });
+      const allAssignments = Array.from(dedup.values());
 
       const { data: profiles } = await supabase
         .from("profiles")
