@@ -2390,19 +2390,9 @@ const AtendimentoV2 = () => {
 
           if (soundEnabledRef.current) {
             playNotificationSoundRef.current();
-            toast.info(`Nova mensagem de ${contactName || contactPhone}`, {
-              description: (msg.content || "").substring(0, 50) + ((msg.content?.length || 0) > 50 ? "..." : ""),
-              action: {
-                label: "Ver",
-                onClick: () => {
-                  setAllConversations(innerConvs => {
-                    const targetConv = innerConvs.find(isConversationMatch);
-                    if (targetConv) setSelectedConversation(targetConv);
-                    return innerConvs;
-                  });
-                }
-              }
-            });
+            // Popup de nova mensagem removido — mantemos apenas o som.
+            // A verificação de "assigned to me" acima ainda estava exibindo
+            // toasts de conversas que não eram do atendente em alguns casos.
           }
         }
         return convs; // no mutation
