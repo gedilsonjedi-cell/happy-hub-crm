@@ -73,48 +73,9 @@ export function useWhatsAppNotifications() {
       console.error('Error playing sound:', error);
     }
 
-    // Show a single consolidated toast
-    if (pending.length === 1) {
-      const n = pending[0];
-      toast.message(`💬 ${n.senderName}`, {
-        description: n.messagePreview,
-        duration: 5000,
-        action: {
-          label: 'Ver',
-          onClick: () => { window.location.href = '/atendimento-v2'; },
-        },
-      });
-    } else {
-      // Multiple messages: show summary
-      const uniqueSenders = [...new Set(pending.map(n => n.senderName))];
-      const senderSummary = uniqueSenders.length <= 3
-        ? uniqueSenders.join(', ')
-        : `${uniqueSenders.slice(0, 2).join(', ')} e +${uniqueSenders.length - 2}`;
-      toast.message(`💬 ${pending.length} novas mensagens`, {
-        description: `De: ${senderSummary}`,
-        duration: 5000,
-        action: {
-          label: 'Ver',
-          onClick: () => { window.location.href = '/atendimento-v2'; },
-        },
-      });
-    }
-
-    // Browser notification (single, consolidated)
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        const body = pending.length === 1
-          ? pending[0].messagePreview
-          : `${pending.length} novas mensagens`;
-        new Notification(`Nova mensagem`, {
-          body,
-          icon: '/favicon.ico',
-          tag: 'whatsapp-message',
-        });
-      } catch (error) {
-        console.error('Error showing browser notification:', error);
-      }
-    }
+    // Popup notifications intentionally disabled — sound-only alert.
+    // Motivo: o popup exibia mensagens de conversas que não pertenciam ao
+    // atendente (verificação de atribuição estava furando), causando confusão.
   }, []);
 
   const enqueueNotification = useCallback((notification: PendingNotification) => {
