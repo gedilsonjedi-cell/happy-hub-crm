@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ dryRun, total_scanned: all.length, duplicate_groups: dupeGroups.length, merged: mergedCount, deleted: deletedCount, report }, null, 2),
+    JSON.stringify({ dryRun, total_scanned: all.length, duplicate_groups: dupeGroups.length, processed: groupsToProcess.length, remaining: dupeGroups.length - groupsToProcess.length, merged: mergedCount, deleted: deletedCount, report }, null, 2),
     { headers: { ...cors, 'Content-Type': 'application/json' } }
   );
 });
