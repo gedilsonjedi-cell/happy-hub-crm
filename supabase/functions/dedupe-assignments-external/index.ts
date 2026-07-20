@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const orgId = body.organizationId as string;
   const dryRun = !!body.dryRun;
+  const maxGroups = Number(body.maxGroups) > 0 ? Number(body.maxGroups) : 20;
   if (!orgId) return new Response(JSON.stringify({ error: 'organizationId required' }), { status: 400, headers: cors });
 
   const ext = getExternalDb();
@@ -85,12 +86,13 @@ Deno.serve(async (req) => {
   }
 
   const dupeGroups = Array.from(groups.entries()).filter(([, rows]) => rows.length > 1);
+  const groupsToProcess = dupeGroups.slice(0, maxGroups);
 
   const report: any[] = [];
   let mergedCount = 0;
   let deletedCount = 0;
 
-  for (const [key, rows] of dupeGroups) {
+  for (const [key, rows] of groupsToProcess) {
     const winner = pickWinner(rows);
     const losers = rows.filter(r => r.id !== winner.id);
 
