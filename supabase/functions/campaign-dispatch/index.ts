@@ -257,14 +257,34 @@ async function processCampaignDispatch(
         const metaSendResult = await metaSendResponse.json();
 
         if (metaSendResult.success) {
-          // Always upsert conversation_assignment with sector_id from campaign
+          // Always upsert conversation_assignment with sector_id from campaign.
+          // Buscar por variantes (com/sem 9º dígito) e por sufixo para não
+          // criar duplicata quando o CRM tem o telefone em formato diferente.
           const campaignSectorId = campaign.sector_id || null;
-          const { data: existingAssignment } = await messageDb
-            .from('conversation_assignments')
-            .select('id')
-            .eq('conversation_phone', formattedPhone)
-            .eq('channel_id', channel.id)
-            .maybeSingle();
+          const digits = String(formattedPhone).replace(/\D/g, '');
+          const variantSet = new Set<string>([formattedPhone, digits]);
+          if (digits.startsWith('55') && digits.length >= 12) {
+            const ddd = digits.slice(2, 4);
+            const local = digits.slice(4);
+            if (local.length === 9 && local.startsWith('9')) variantSet.add(`55${ddd}${local.slice(1)}`);
+            else if (local.length === 8) variantSet.add(`55${ddd}9${local}`);
+          }
+          let existingAssignment: { id: string } | null = null;
+          for (const v of variantSet) {
+            const { data: hit } = await messageDb
+              .from('conversation_assignments').select('id')
+              .eq('channel_id', channel.id).eq('conversation_phone', v).maybeSingle();
+            if (hit) { existingAssignment = hit; break; }
+          }
+          if (!existingAssignment) {
+            const suffix8 = digits.slice(-8);
+            if (suffix8) {
+              const { data: bySuffix } = await messageDb
+                .from('conversation_assignments').select('id')
+                .eq('channel_id', channel.id).ilike('conversation_phone', `%${suffix8}`).limit(1).maybeSingle();
+              if (bySuffix) existingAssignment = bySuffix;
+            }
+          }
 
           if (existingAssignment) {
             const updatePayload: Record<string, unknown> = { 
