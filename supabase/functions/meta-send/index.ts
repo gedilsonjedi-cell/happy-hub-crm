@@ -780,7 +780,7 @@ async function uploadMediaToMeta(
 }
 
 function getTemplateHeaderParameter(payload: MutableTemplatePayload): Record<string, unknown> | null {
-  return payload.template?.components?.find((component) => component?.type === 'header')?.parameters?.[0] || null;
+  return payload.template?.components?.find((component: any) => component?.type === 'header')?.parameters?.[0] || null;
 }
 
 function removeTemplateHeaderMediaComponent(payload: MutableTemplatePayload): boolean {
