@@ -1748,6 +1748,15 @@ const AtendimentoV2 = () => {
   }, [markConversationAsRead, getConversationKey, externalImpersonatedOrgId]);
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
+    // Ownership guard: bloqueia abrir uma conversa que já pertence a outro
+    // atendente (exceto admin/super_admin). Isso protege contra clicks vindos
+    // de resultados de busca global ou realtime que ainda não passaram pelo
+    // filtro de lista.
+    if (!canAccessConversation({ sectorId: conversation.sectorId, assignedTo: conversation.assignedTo })) {
+      toast.error("Este atendimento pertence a outro atendente");
+      return;
+    }
+
     const startedAt = performance.now();
     // Cache hit detection: if the messages query for this conversation already
     // has data (populated by the predictive prefetcher), the switch will paint
@@ -1774,7 +1783,8 @@ const AtendimentoV2 = () => {
         recordSwitchLatency(performance.now() - startedAt);
       });
     });
-  }, [channels, queryClient, effectiveOrganizationId, markConversationAsRead]);
+  }, [channels, queryClient, effectiveOrganizationId, markConversationAsRead, canAccessConversation]);
+
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {
