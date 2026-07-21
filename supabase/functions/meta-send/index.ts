@@ -52,6 +52,60 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function normalizePhoneThreadValue(phone: string): string {
+  const normalized = String(phone || '').replace(/\D/g, '');
+  if (!normalized) return '';
+  if (normalized.length <= 11 && !normalized.startsWith('55')) return `55${normalized}`;
+  return normalized;
+}
+
+function getPhoneThreadVariants(phone: string): string[] {
+  const normalized = normalizePhoneThreadValue(phone);
+  if (!normalized) return [];
+
+  const variants = new Set<string>([normalized]);
+  if (normalized.startsWith('55') && normalized.length >= 10) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.add(`55${areaCode}${localNumber.slice(1)}`);
+    } else if (localNumber.length === 8) {
+      variants.add(`55${areaCode}9${localNumber}`);
+    }
+  }
+
+  return Array.from(variants);
+}
+
+function getPhoneLookupVariants(phone: string): string[] {
+  const variants = new Set<string>();
+  for (const variant of getPhoneThreadVariants(phone)) {
+    variants.add(variant);
+    variants.add(`+${variant}`);
+  }
+  return Array.from(variants);
+}
+
+function buildPhoneMatch(phone: string): { normalized: string; filter: string } {
+  const normalized = normalizePhoneThreadValue(phone);
+  const exactFilter = getPhoneLookupVariants(normalized).map((value) => `conversation_phone.eq.${value}`);
+  const suffix8 = normalized.slice(-8);
+  const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+  return { normalized, filter: [...exactFilter, ...fallbackFilter].join(',') };
+}
+
+function pickAssignmentRow(rows: Array<Record<string, any>>, preferredUserId?: string | null) {
+  return [...rows].sort((a, b) => {
+    if (preferredUserId) {
+      if (a.assigned_to === preferredUserId && b.assigned_to !== preferredUserId) return -1;
+      if (b.assigned_to === preferredUserId && a.assigned_to !== preferredUserId) return 1;
+    }
+    if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+    return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+  })[0] || null;
+}
+
 async function runDbQueryWithTimeout<T>(
   label: string,
   queryFactory: (signal: AbortSignal) => PromiseLike<T>,
@@ -124,8 +178,8 @@ async function markConversationAnswered(params: {
   if (!externalSupabase || !params.organizationId || !params.channelId || !params.conversationPhone) return;
   const humanUserId = params.userId && params.userId !== 'service_role' ? params.userId : null;
   if (!humanUserId) return;
-  const norm = params.conversationPhone.replace(/\D/g, '');
-  if (!norm) return;
+  const { normalized, filter } = buildPhoneMatch(params.conversationPhone);
+  if (!normalized || !filter) return;
   const now = new Date().toISOString();
   const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -136,8 +190,8 @@ async function markConversationAnswered(params: {
       .select('id, assigned_to')
       .eq('organization_id', params.organizationId)
       .eq('channel_id', params.channelId)
-      .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
-      .limit(1)
+      .or(filter)
+      .limit(10)
       .abortSignal(signal)
   );
 
@@ -146,8 +200,9 @@ async function markConversationAnswered(params: {
     return;
   }
 
-  let assignmentId = assignments?.[0]?.id ?? null;
-  const currentOwner = assignments?.[0]?.assigned_to ?? null;
+  const selectedAssignment = pickAssignmentRow(assignments || [], humanUserId);
+  let assignmentId = selectedAssignment?.id ?? null;
+  const currentOwner = selectedAssignment?.assigned_to ?? null;
 
   if (!assignmentId) {
     const { data: created, error: createError } = await runDbQueryWithTimeout(
@@ -157,7 +212,7 @@ async function markConversationAnswered(params: {
         .upsert({
           organization_id: params.organizationId,
           channel_id: params.channelId,
-          conversation_phone: norm,
+          conversation_phone: normalized,
           assigned_to: humanUserId,
           assigned_at: humanUserId ? now : null,
           status: humanUserId ? 'in_progress' : 'pending',
@@ -215,6 +270,131 @@ async function markConversationAnswered(params: {
       console.error('[Meta-Send] Unread reset after answer failed:', resetError.message);
     }
   }
+}
+
+async function ensureHumanSenderOwnsConversation(params: {
+  organizationId: string | null | undefined;
+  channelId: string;
+  conversationPhone: string;
+  userId: string | null;
+}): Promise<Response | null> {
+  const humanUserId = params.userId && params.userId !== 'service_role' ? params.userId : null;
+  if (!humanUserId) return null;
+  if (!externalSupabase || !params.organizationId) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Não foi possível validar o dono deste atendimento. Envio bloqueado por segurança.', code: 'OWNERSHIP_UNVERIFIED' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const { normalized, filter } = buildPhoneMatch(params.conversationPhone);
+  if (!normalized || !filter) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Telefone inválido para validar o atendimento.', code: 'INVALID_PHONE' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const now = new Date().toISOString();
+  const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const { data: assignments, error } = await runDbQueryWithTimeout(
+    'Validação de dono do atendimento',
+    (signal) => externalSupabase
+      .from('conversation_assignments')
+      .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+      .eq('organization_id', params.organizationId)
+      .eq('channel_id', params.channelId)
+      .or(filter)
+      .limit(10)
+      .abortSignal(signal)
+  );
+
+  if (error) {
+    console.error('[Meta-Send] Ownership lookup failed:', error.message);
+    return new Response(
+      JSON.stringify({ success: false, error: 'Falha ao validar o dono deste atendimento. Envio bloqueado.', code: 'OWNERSHIP_LOOKUP_FAILED' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const foreignOwner = assignments?.find((row: any) => row.assigned_to && row.assigned_to !== humanUserId);
+  if (foreignOwner) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Este atendimento pertence a outro atendente. Transfira o atendimento antes de enviar mensagem.', code: 'ASSIGNMENT_OWNER_MISMATCH', assignment: foreignOwner }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const ownOrUnassigned = pickAssignmentRow(assignments || [], humanUserId);
+  if (ownOrUnassigned?.id) {
+    const updates: Record<string, unknown> = {
+      status: 'in_progress',
+      is_bot_handling: false,
+      bot_paused_until: botPausedUntil,
+      updated_at: now,
+    };
+    if (!ownOrUnassigned.assigned_to) {
+      updates.assigned_to = humanUserId;
+      updates.assigned_at = now;
+    }
+    const { error: updateError } = await runDbQueryWithTimeout(
+      'Atualização segura de dono do atendimento',
+      (signal) => externalSupabase
+        .from('conversation_assignments')
+        .update(updates)
+        .eq('id', ownOrUnassigned.id)
+        .eq('organization_id', params.organizationId)
+        .or(`assigned_to.is.null,assigned_to.eq.${humanUserId}`)
+        .abortSignal(signal)
+    );
+    if (updateError) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Outro atendente assumiu este atendimento. Recarregue a conversa.', code: 'ASSIGNMENT_RACE_LOST' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    return null;
+  }
+
+  const { error: insertError } = await runDbQueryWithTimeout(
+    'Criação segura de atendimento',
+    (signal) => externalSupabase
+      .from('conversation_assignments')
+      .insert({
+        organization_id: params.organizationId,
+        channel_id: params.channelId,
+        conversation_phone: normalized,
+        assigned_to: humanUserId,
+        assigned_at: now,
+        status: 'in_progress',
+        is_bot_handling: false,
+        bot_paused_until: botPausedUntil,
+        updated_at: now,
+      })
+      .abortSignal(signal)
+  );
+  if (insertError) {
+    const { data: racedRows } = await externalSupabase
+      .from('conversation_assignments')
+      .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+      .eq('organization_id', params.organizationId)
+      .eq('channel_id', params.channelId)
+      .or(filter)
+      .limit(10);
+    const racedOwner = racedRows?.find((row: any) => row.assigned_to && row.assigned_to !== humanUserId);
+    if (racedOwner) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Este atendimento pertence a outro atendente. Transfira o atendimento antes de enviar mensagem.', code: 'ASSIGNMENT_OWNER_MISMATCH', assignment: racedOwner }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response(
+      JSON.stringify({ success: false, error: 'Não foi possível assumir este atendimento antes do envio.', code: 'ASSIGNMENT_CREATE_FAILED' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  return null;
 }
 
 interface IntegrationWebhookPayload {
