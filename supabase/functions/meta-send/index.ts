@@ -45,7 +45,7 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const headerMediaIdCache = new Map<string, string>();
 const EXTERNAL_DB_TIMEOUT_MS = 7_000;
 type MutableTemplatePayload = Record<string, unknown> & {
-  template?: Record<string, unknown> & { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
+  template?: Record<string, unknown> & { components?: Array<Record<string, any>> };
 };
 
 function getErrorMessage(error: unknown): string {
