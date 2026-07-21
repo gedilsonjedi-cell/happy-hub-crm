@@ -372,7 +372,7 @@ Deno.serve(async (req: Request) => {
         const baseVariants = Array.isArray(body.phone_variants) && body.phone_variants.length
           ? body.phone_variants.map((p: unknown) => String(p).replace(/\D/g, '')).filter(Boolean)
           : [norm];
-        const suffixes = Array.from(new Set(baseVariants.map((p: string) => p.slice(-8)).filter(Boolean)));
+        const suffixes = Array.from(new Set<string>(baseVariants.map((p: string) => p.slice(-8)).filter(Boolean)));
 
         const { data, error } = await ext.from('conversation_stats')
           .update({ unread_count: 0, updated_at: new Date().toISOString() })

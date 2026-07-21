@@ -45,7 +45,7 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const headerMediaIdCache = new Map<string, string>();
 const EXTERNAL_DB_TIMEOUT_MS = 7_000;
 type MutableTemplatePayload = Record<string, unknown> & {
-  template?: { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
+  template?: Record<string, unknown> & { components?: Array<{ type?: string; parameters?: Array<Record<string, unknown>> }> };
 };
 
 function getErrorMessage(error: unknown): string {
@@ -183,7 +183,7 @@ async function markConversationAnswered(params: {
   const now = new Date().toISOString();
   const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: assignments, error: readError } = await runDbQueryWithTimeout(
+  const { data: assignments, error: readError } = await runDbQueryWithTimeout<any>(
     'Consulta de atribuição externa',
     (signal) => externalSupabase
       .from('conversation_assignments')
@@ -205,7 +205,7 @@ async function markConversationAnswered(params: {
   const currentOwner = selectedAssignment?.assigned_to ?? null;
 
   if (!assignmentId) {
-    const { data: created, error: createError } = await runDbQueryWithTimeout(
+    const { data: created, error: createError } = await runDbQueryWithTimeout<any>(
       'Criação de atribuição externa',
       (signal) => externalSupabase
         .from('conversation_assignments')
@@ -242,7 +242,7 @@ async function markConversationAnswered(params: {
       updates.assigned_at = now;
     }
 
-    const { error: updateError } = await runDbQueryWithTimeout(
+    const { error: updateError } = await runDbQueryWithTimeout<any>(
       'Atualização de atribuição externa',
       (signal) => externalSupabase
         .from('conversation_assignments')
@@ -257,7 +257,7 @@ async function markConversationAnswered(params: {
   }
 
   if (assignmentId && params.resetUnread !== false) {
-    const { error: resetError } = await runDbQueryWithTimeout(
+    const { error: resetError } = await runDbQueryWithTimeout<any>(
       'Reset de não lidas externo',
       (signal) => externalSupabase
         .from('conversation_stats')
@@ -297,7 +297,7 @@ async function ensureHumanSenderOwnsConversation(params: {
 
   const now = new Date().toISOString();
   const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const { data: assignments, error } = await runDbQueryWithTimeout(
+  const { data: assignments, error } = await runDbQueryWithTimeout<any>(
     'Validação de dono do atendimento',
     (signal) => externalSupabase
       .from('conversation_assignments')
@@ -337,7 +337,7 @@ async function ensureHumanSenderOwnsConversation(params: {
       updates.assigned_to = humanUserId;
       updates.assigned_at = now;
     }
-    const { error: updateError } = await runDbQueryWithTimeout(
+    const { error: updateError } = await runDbQueryWithTimeout<any>(
       'Atualização segura de dono do atendimento',
       (signal) => externalSupabase
         .from('conversation_assignments')
@@ -356,7 +356,7 @@ async function ensureHumanSenderOwnsConversation(params: {
     return null;
   }
 
-  const { error: insertError } = await runDbQueryWithTimeout(
+  const { error: insertError } = await runDbQueryWithTimeout<any>(
     'Criação segura de atendimento',
     (signal) => externalSupabase
       .from('conversation_assignments')

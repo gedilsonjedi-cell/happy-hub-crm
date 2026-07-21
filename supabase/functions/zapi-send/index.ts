@@ -465,7 +465,7 @@ Deno.serve(async (req) => {
             originalError: errorMessage
           }
       };
-      const msgDb = externalSupabase;
+      const msgDb = externalSupabase!;
       await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
       const _statsArgs1 = {
         _organization_id: channel.organization_id || null,
@@ -515,7 +515,7 @@ Deno.serve(async (req) => {
           sent_by_human: userId !== 'service_role'
         }
     };
-    const msgDb2 = externalSupabase;
+    const msgDb2 = externalSupabase!;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
     const _statsArgs2 = {
       _organization_id: channel.organization_id || null,
