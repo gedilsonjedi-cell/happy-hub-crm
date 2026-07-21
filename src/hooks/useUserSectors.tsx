@@ -161,13 +161,30 @@ export function useUserSectors() {
     return sectorIds.includes(sectorId);
   }, [role, sectorIds]);
 
+  // Ownership + sector combined guard.
+  // Regra de negócio: se uma conversa já tem `assignedTo` preenchido com um
+  // usuário DIFERENTE do usuário atual, apenas admin/super_admin podem ver ou
+  // interagir. Conversas sem dono (assignedTo null) permanecem visíveis para
+  // todos os atendentes do setor.
+  const canAccessConversation = useCallback((conv: {
+    sectorId: string | null;
+    assignedTo: string | null | undefined;
+  }): boolean => {
+    if (role === "super_admin" || role === "admin") return true;
+    if (!canSeeSector(conv.sectorId)) return false;
+    if (conv.assignedTo && conv.assignedTo !== user?.id) return false;
+    return true;
+  }, [role, canSeeSector, user?.id]);
+
   return {
     sectors,
     sectorIds,
     loading,
     canSeeSector,
     canInteractWithSector,
+    canAccessConversation,
     // Helper to check if user has full access (admin/super_admin)
     hasFullAccess: role === "super_admin" || role === "admin",
   };
 }
+

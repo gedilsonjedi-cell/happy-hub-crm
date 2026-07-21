@@ -565,7 +565,7 @@ const AtendimentoV2 = () => {
   // e a sidebar fica vazia até um Ctrl+Shift+R.
   const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   const { isBlocked: isPhoneBlocked, invalidate: invalidateBlockedPhones } = useBlockedPhones(effectiveOrganizationId);
-  const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
+  const { canInteractWithSector, canAccessConversation, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
@@ -598,9 +598,11 @@ const AtendimentoV2 = () => {
   // - visibility is organization-wide for active/pending conversations
   // Interaction permissions remain enforced separately via canInteractWithSector.
   const conversations = useMemo(
-    () => sanitizeConversationCollection(allConversations, validChannelIds),
-    [allConversations, validChannelIds]
+    () => sanitizeConversationCollection(allConversations, validChannelIds)
+      .filter(c => canAccessConversation({ sectorId: c.sectorId, assignedTo: c.assignedTo })),
+    [allConversations, validChannelIds, canAccessConversation]
   );
+
   
   // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
   const [attendantSectorsMap, setAttendantSectorsMap] = useState<Map<string, Set<string>>>(new Map());
@@ -1746,6 +1748,15 @@ const AtendimentoV2 = () => {
   }, [markConversationAsRead, getConversationKey, externalImpersonatedOrgId]);
 
   const handleSelectConversation = useCallback((conversation: Conversation) => {
+    // Ownership guard: bloqueia abrir uma conversa que já pertence a outro
+    // atendente (exceto admin/super_admin). Isso protege contra clicks vindos
+    // de resultados de busca global ou realtime que ainda não passaram pelo
+    // filtro de lista.
+    if (!canAccessConversation({ sectorId: conversation.sectorId, assignedTo: conversation.assignedTo })) {
+      toast.error("Este atendimento pertence a outro atendente");
+      return;
+    }
+
     const startedAt = performance.now();
     // Cache hit detection: if the messages query for this conversation already
     // has data (populated by the predictive prefetcher), the switch will paint
@@ -1772,7 +1783,8 @@ const AtendimentoV2 = () => {
         recordSwitchLatency(performance.now() - startedAt);
       });
     });
-  }, [channels, queryClient, effectiveOrganizationId, markConversationAsRead]);
+  }, [channels, queryClient, effectiveOrganizationId, markConversationAsRead, canAccessConversation]);
+
 
   // Update conversation status in DB
   const updateConversationStatus = async (conversationKey: string, newStatus: Conversation["status"]) => {

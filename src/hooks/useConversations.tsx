@@ -34,6 +34,7 @@ interface UseConversationsOptions {
   channels: Channel[];
   sectorIds: string[];
   canSeeSector: (sectorId: string | null) => boolean;
+  canAccessConversation?: (conv: { sectorId: string | null; assignedTo: string | null | undefined }) => boolean;
 }
 
 interface LeadInfo {
@@ -41,7 +42,7 @@ interface LeadInfo {
   tags: string[] | null;
 }
 
-export function useConversations({ channels, sectorIds, canSeeSector }: UseConversationsOptions) {
+export function useConversations({ channels, sectorIds, canSeeSector, canAccessConversation }: UseConversationsOptions) {
   const { user } = useAuth();
   const { effectiveOrganizationId, isImpersonating, impersonatedOrganizationId } = useEffectiveOrganizationId();
   const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
@@ -57,10 +58,17 @@ export function useConversations({ channels, sectorIds, canSeeSector }: UseConve
   
   const profilesMapRef = useRef<Map<string, string>>(new Map());
 
-  const conversations = useMemo(() => 
-    allConversations.filter(c => canSeeSector(c.sectorId)),
-    [allConversations, canSeeSector]
+  const conversations = useMemo(
+    () => allConversations.filter(c => {
+      if (!canSeeSector(c.sectorId)) return false;
+      if (canAccessConversation) {
+        return canAccessConversation({ sectorId: c.sectorId, assignedTo: c.assignedTo });
+      }
+      return true;
+    }),
+    [allConversations, canSeeSector, canAccessConversation]
   );
+
 
   // ─── Primary fetch using RPC ────────────────────────────────────
   const fetchConversations = useCallback(async (opts?: { silent?: boolean }) => {
