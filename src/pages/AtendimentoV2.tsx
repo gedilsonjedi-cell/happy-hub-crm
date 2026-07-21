@@ -565,7 +565,7 @@ const AtendimentoV2 = () => {
   // e a sidebar fica vazia até um Ctrl+Shift+R.
   const externalImpersonatedOrgId = isImpersonating ? impersonatedOrganizationId ?? null : null;
   const { isBlocked: isPhoneBlocked, invalidate: invalidateBlockedPhones } = useBlockedPhones(effectiveOrganizationId);
-  const { canInteractWithSector, sectorIds, loading: sectorsLoading } = useUserSectors();
+  const { canInteractWithSector, canAccessConversation, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
   const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
