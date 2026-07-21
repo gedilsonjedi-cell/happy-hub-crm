@@ -31,6 +31,61 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function normalizePhoneThreadValue(phone: string): string {
+  const normalized = String(phone || '').replace(/\D/g, '');
+  if (!normalized) return '';
+  if (normalized.length <= 11 && !normalized.startsWith('55')) return `55${normalized}`;
+  return normalized;
+}
+
+function getPhoneThreadVariants(phone: string): string[] {
+  const normalized = normalizePhoneThreadValue(phone);
+  if (!normalized) return [];
+
+  const variants = new Set<string>([normalized]);
+  if (normalized.startsWith('55') && normalized.length >= 10) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.add(`55${areaCode}${localNumber.slice(1)}`);
+    } else if (localNumber.length === 8) {
+      variants.add(`55${areaCode}9${localNumber}`);
+    }
+  }
+
+  return Array.from(variants);
+}
+
+function getPhoneLookupVariants(phone: string): string[] {
+  const variants = new Set<string>();
+  for (const variant of getPhoneThreadVariants(phone)) {
+    variants.add(variant);
+    variants.add(`+${variant}`);
+  }
+  return Array.from(variants);
+}
+
+function buildPhoneMatch(phone: string): { normalized: string; filter: string } {
+  const normalized = normalizePhoneThreadValue(phone);
+  const exactFilter = getPhoneLookupVariants(normalized).map((value) => `conversation_phone.eq.${value}`);
+  const suffix8 = normalized.slice(-8);
+  const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+  return { normalized, filter: [...exactFilter, ...fallbackFilter].join(',') };
+}
+
+function pickAssignmentRow(rows: Array<Record<string, any>>, preferredUserId?: string | null) {
+  return [...rows].sort((a, b) => {
+    if (preferredUserId) {
+      if (a.assigned_to === preferredUserId && b.assigned_to !== preferredUserId) return -1;
+      if (b.assigned_to === preferredUserId && a.assigned_to !== preferredUserId) return 1;
+    }
+    if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+    return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+  })[0] || null;
+}
+
 interface AssignmentPayload {
   organization_id?: string;
   channel_id?: string | null;
@@ -72,12 +127,16 @@ Deno.serve(async (req: Request) => {
     const action: string = body.action;
     if (!action) return json({ error: 'Missing action' }, 400);
 
+    const { data: roleRows } = await svc.from('user_roles')
+      .select('role')
+      .eq('user_id', user.id);
+    const callerRoles = new Set((roleRows || []).map((row: { role: string }) => row.role));
+    const canOverrideAssignment = ['super_admin', 'admin', 'supervisor'].some((role) => callerRoles.has(role));
+
     // org resolution
     let orgId: string | null = profile?.organization_id ?? null;
     if (body.impersonatedOrgId) {
-      const { data: roleRow } = await svc.from('user_roles')
-        .select('role').eq('user_id', user.id).eq('role', 'super_admin').maybeSingle();
-      if (roleRow) orgId = body.impersonatedOrgId;
+      if (callerRoles.has('super_admin')) orgId = body.impersonatedOrgId;
     }
     if (!orgId) return json({ error: 'No organization' }, 403);
 
@@ -87,10 +146,14 @@ Deno.serve(async (req: Request) => {
       case 'upsert_assignment': {
         const p: AssignmentPayload = body.payload || {};
         if (!p.conversation_phone) return json({ error: 'conversation_phone required' }, 400);
-        const row = {
+        if (p.assigned_to && p.assigned_to !== user.id && !canOverrideAssignment) {
+          return json({ error: 'Only admins or supervisors can assign another attendant' }, 403);
+        }
+        const { normalized, filter } = buildPhoneMatch(p.conversation_phone);
+        const insertRow = {
           organization_id: orgId,
           channel_id: p.channel_id ?? null,
-          conversation_phone: p.conversation_phone,
+          conversation_phone: normalized,
           assigned_to: p.assigned_to ?? null,
           status: p.status ?? 'pending',
           sector_id: p.sector_id ?? null,
@@ -100,9 +163,44 @@ Deno.serve(async (req: Request) => {
           bot_paused_until: p.bot_paused_until ?? null,
           updated_at: new Date().toISOString(),
         };
-        // Try upsert by (channel_id, conversation_phone)
+
+        if (p.channel_id && filter) {
+          const { data: existingRows, error: lookupError } = await ext.from('conversation_assignments')
+            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+            .eq('organization_id', orgId)
+            .eq('channel_id', p.channel_id)
+            .or(filter)
+            .limit(10);
+          if (lookupError) return json({ error: lookupError.message }, 500);
+
+          if (existingRows?.length) {
+            const ownerConflict = existingRows.find((row: any) => row.assigned_to && p.assigned_to && row.assigned_to !== p.assigned_to);
+            if (ownerConflict && !canOverrideAssignment) {
+              return json({ success: false, error: 'already_assigned', assignment: ownerConflict }, 200);
+            }
+
+            const target = pickAssignmentRow(existingRows, p.assigned_to ?? user.id);
+            const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+            if (p.assigned_to !== undefined) updates.assigned_to = p.assigned_to;
+            if (p.status !== undefined) updates.status = p.status;
+            if (p.sector_id !== undefined) updates.sector_id = p.sector_id;
+            if (p.lead_id !== undefined) updates.lead_id = p.lead_id;
+            if (p.is_bot_handling !== undefined) updates.is_bot_handling = p.is_bot_handling;
+            if (p.campaign_chatbot_id !== undefined) updates.campaign_chatbot_id = p.campaign_chatbot_id;
+            if (p.bot_paused_until !== undefined) updates.bot_paused_until = p.bot_paused_until;
+
+            const { data, error } = await ext.from('conversation_assignments')
+              .update(updates)
+              .eq('id', target.id)
+              .eq('organization_id', orgId)
+              .select().single();
+            if (error) return json({ error: error.message }, 500);
+            return json({ success: true, assignment: data });
+          }
+        }
+
         const { data, error } = await ext.from('conversation_assignments')
-          .upsert(row, { onConflict: 'channel_id,conversation_phone' })
+          .upsert(insertRow, { onConflict: 'channel_id,conversation_phone' })
           .select().single();
         if (error) return json({ error: error.message }, 500);
         return json({ success: true, assignment: data });
@@ -115,12 +213,26 @@ Deno.serve(async (req: Request) => {
         if (!p.conversation_phone || !p.channel_id) {
           return json({ error: 'conversation_phone + channel_id required' }, 400);
         }
-        if (!p.assigned_to) return json({ error: 'assigned_to required' }, 400);
-        const userId = p.assigned_to;
+        const userId = user.id;
         const nowIso = new Date().toISOString();
+        const { normalized, filter } = buildPhoneMatch(p.conversation_phone);
+        if (!normalized || !filter) return json({ error: 'valid conversation_phone required' }, 400);
 
-        // Step 1: try conditional UPDATE — succeeds only if row exists AND
-        // is unassigned OR already belongs to the same user.
+        // Step 1: read every phone variant/suffix first. If any variant already
+        // has a different owner, this conversation is locked to that owner.
+        const { data: existingRows, error: lookupErr } = await ext.from('conversation_assignments')
+          .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+          .eq('organization_id', orgId)
+          .eq('channel_id', p.channel_id)
+          .or(filter)
+          .limit(10);
+        if (lookupErr) return json({ error: lookupErr.message }, 500);
+
+        const existingOwner = existingRows?.find((row: any) => row.assigned_to && row.assigned_to !== userId);
+        if (existingOwner) {
+          return json({ success: false, error: 'already_assigned', assignment: existingOwner }, 200);
+        }
+
         const updates: Record<string, unknown> = {
           assigned_to: userId,
           status: p.status ?? 'active',
@@ -129,42 +241,36 @@ Deno.serve(async (req: Request) => {
         if (p.sector_id !== undefined && p.sector_id !== null) updates.sector_id = p.sector_id;
         if (p.lead_id !== undefined && p.lead_id !== null) updates.lead_id = p.lead_id;
 
-        const { data: updated, error: updErr } = await ext.from('conversation_assignments')
-          .update(updates)
-          .eq('organization_id', orgId)
-          .eq('channel_id', p.channel_id)
-          .eq('conversation_phone', p.conversation_phone)
-          .or(`assigned_to.is.null,assigned_to.eq.${userId}`)
-          .select();
-        if (updErr) return json({ error: updErr.message }, 500);
+        const target = pickAssignmentRow(existingRows || [], userId);
+        if (target) {
+          const { data: updated, error: updErr } = await ext.from('conversation_assignments')
+            .update(updates)
+            .eq('id', target.id)
+            .eq('organization_id', orgId)
+            .or(`assigned_to.is.null,assigned_to.eq.${userId}`)
+            .select();
+          if (updErr) return json({ error: updErr.message }, 500);
 
-        if (updated && updated.length > 0) {
-          return json({ success: true, assignment: updated[0], claimed: true });
+          if (updated && updated.length > 0) {
+            return json({ success: true, assignment: updated[0], claimed: true });
+          }
+
+          const { data: racedRows } = await ext.from('conversation_assignments')
+            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+            .eq('organization_id', orgId)
+            .eq('channel_id', p.channel_id)
+            .or(filter)
+            .limit(10);
+          const racedOwner = racedRows?.find((row: any) => row.assigned_to && row.assigned_to !== userId);
+          if (racedOwner) return json({ success: false, error: 'already_assigned', assignment: racedOwner }, 200);
+          return json({ error: 'Unable to claim assignment' }, 409);
         }
 
-        // Step 2: nothing updated. Either row doesn't exist yet, or another
-        // user already owns it. Check current state to decide.
-        const { data: existing } = await ext.from('conversation_assignments')
-          .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone')
-          .eq('organization_id', orgId)
-          .eq('channel_id', p.channel_id)
-          .eq('conversation_phone', p.conversation_phone)
-          .maybeSingle();
-
-        if (existing) {
-          // Someone else owns it — reject.
-          return json({
-            success: false,
-            error: 'already_assigned',
-            assignment: existing,
-          }, 200);
-        }
-
-        // No row — insert fresh, taking ownership.
+        // No variant exists — insert fresh, taking ownership.
         const insertRow = {
           organization_id: orgId,
           channel_id: p.channel_id,
-          conversation_phone: p.conversation_phone,
+          conversation_phone: normalized,
           assigned_to: userId,
           status: p.status ?? 'active',
           sector_id: p.sector_id ?? null,
@@ -177,15 +283,14 @@ Deno.serve(async (req: Request) => {
           .select().single();
         if (insErr) {
           // Race: someone inserted between our check and insert. Re-read and reject.
-          const { data: raced } = await ext.from('conversation_assignments')
-            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone')
+          const { data: racedRows } = await ext.from('conversation_assignments')
+            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
             .eq('organization_id', orgId)
             .eq('channel_id', p.channel_id)
-            .eq('conversation_phone', p.conversation_phone)
-            .maybeSingle();
-          if (raced && raced.assigned_to && raced.assigned_to !== userId) {
-            return json({ success: false, error: 'already_assigned', assignment: raced }, 200);
-          }
+            .or(filter)
+            .limit(10);
+          const racedOwner = racedRows?.find((row: any) => row.assigned_to && row.assigned_to !== userId);
+          if (racedOwner) return json({ success: false, error: 'already_assigned', assignment: racedOwner }, 200);
           return json({ error: insErr.message }, 500);
         }
         return json({ success: true, assignment: inserted, claimed: true });
@@ -208,26 +313,17 @@ Deno.serve(async (req: Request) => {
         if (body.bot_paused_until !== undefined) updates.bot_paused_until = body.bot_paused_until;
 
         let q = ext.from('conversation_assignments').update(updates).eq('organization_id', orgId);
+        if (body.assigned_to !== undefined && !canOverrideAssignment) {
+          if (body.assigned_to !== null && body.assigned_to !== user.id) {
+            return json({ error: 'Only admins or supervisors can assign another attendant' }, 403);
+          }
+          q = q.or(`assigned_to.is.null,assigned_to.eq.${user.id}`);
+        }
         if (id) {
           q = q.eq('id', id);
         } else if (channelId && phone) {
-          const norm = String(phone).replace(/\D/g, '');
-          const variants = new Set<string>([norm, `+${norm}`]);
-          if (norm.startsWith('55') && norm.length >= 12) {
-            const ddd = norm.slice(2, 4);
-            const local = norm.slice(4);
-            if (local.length === 9 && local.startsWith('9')) {
-              variants.add(`55${ddd}${local.slice(1)}`);
-              variants.add(`+55${ddd}${local.slice(1)}`);
-            } else if (local.length === 8) {
-              variants.add(`55${ddd}9${local}`);
-              variants.add(`+55${ddd}9${local}`);
-            }
-          }
-          const suffix8 = norm.slice(-8);
-          const exactFilter = Array.from(variants).map((p) => `conversation_phone.eq.${p}`);
-          const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
-          q = q.eq('channel_id', channelId).or([...exactFilter, ...fallbackFilter].join(','));
+          const { filter } = buildPhoneMatch(phone);
+          q = q.eq('channel_id', channelId).or(filter);
         } else {
           return json({ error: 'id or (channel_id+phone) required' }, 400);
         }
@@ -240,15 +336,15 @@ Deno.serve(async (req: Request) => {
         const channelId = body.channel_id;
         const phone = body.phone || body.conversation_phone;
         if (!channelId || !phone) return json({ error: 'channel_id+phone required' }, 400);
-        const norm = String(phone).replace(/\D/g, '');
+        const { filter } = buildPhoneMatch(phone);
         const { data, error } = await ext.from('conversation_assignments')
-          .select('id, assigned_to, sector_id, status, lead_id, channel_id, conversation_phone')
+          .select('id, assigned_to, sector_id, status, lead_id, channel_id, conversation_phone, updated_at, created_at')
           .eq('organization_id', orgId)
           .eq('channel_id', channelId)
-          .or(`conversation_phone.eq.${norm},conversation_phone.eq.+${norm}`)
-          .maybeSingle();
+          .or(filter)
+          .limit(10);
         if (error) return json({ error: error.message }, 500);
-        return json({ success: true, assignment: data });
+        return json({ success: true, assignment: pickAssignmentRow(data || [], user.id) });
       }
 
       case 'archive': {
