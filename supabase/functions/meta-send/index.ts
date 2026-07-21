@@ -1147,16 +1147,15 @@ Deno.serve(async (req) => {
       pricePerMessage
     });
 
-    // CRITICAL: ensure assignment BEFORE sending, preserving any existing owner.
-    if (userId && userId !== 'service_role') {
-      await markConversationAnswered({
-        organizationId: channel.organization_id,
-        channelId,
-        conversationPhone: cleanDestination,
-        userId,
-        resetUnread: false,
-      });
-    }
+    // CRITICAL: validate ownership BEFORE sending. A human can only send if the
+    // conversation is unassigned or already belongs to that same user.
+    const ownershipBlock = await ensureHumanSenderOwnsConversation({
+      organizationId: channel.organization_id,
+      channelId,
+      conversationPhone: cleanDestination,
+      userId,
+    });
+    if (ownershipBlock) return ownershipBlock;
 
     let messagePayload: MutableTemplatePayload = {
       messaging_product: 'whatsapp',
