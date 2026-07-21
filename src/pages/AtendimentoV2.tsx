@@ -598,9 +598,11 @@ const AtendimentoV2 = () => {
   // - visibility is organization-wide for active/pending conversations
   // Interaction permissions remain enforced separately via canInteractWithSector.
   const conversations = useMemo(
-    () => sanitizeConversationCollection(allConversations, validChannelIds),
-    [allConversations, validChannelIds]
+    () => sanitizeConversationCollection(allConversations, validChannelIds)
+      .filter(c => canAccessConversation({ sectorId: c.sectorId, assignedTo: c.assignedTo })),
+    [allConversations, validChannelIds, canAccessConversation]
   );
+
   
   // Map of user_id -> set of sector_ids they belong to (for cross-referencing filter)
   const [attendantSectorsMap, setAttendantSectorsMap] = useState<Map<string, Set<string>>>(new Map());
