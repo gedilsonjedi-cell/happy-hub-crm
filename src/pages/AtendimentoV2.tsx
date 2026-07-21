@@ -567,7 +567,10 @@ const AtendimentoV2 = () => {
   const { isBlocked: isPhoneBlocked, invalidate: invalidateBlockedPhones } = useBlockedPhones(effectiveOrganizationId);
   const { canInteractWithSector, canAccessConversation, sectorIds, loading: sectorsLoading } = useUserSectors();
   const { isAdmin: roleIsAdmin, isSupervisor: roleIsSupervisor, isSuperAdmin: roleIsSuperAdmin } = useUserRole();
-  const canSeeAllConversations = roleIsAdmin || roleIsSupervisor || roleIsSuperAdmin;
+  // Somente admin e super_admin têm bypass total. Supervisor é tratado como
+  // atendente: só vê conversas sem dono ou atribuídas a ele mesmo.
+  const canSeeAllConversations = roleIsAdmin || roleIsSuperAdmin;
+  void roleIsSupervisor;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [conversationOffset, setConversationOffset] = useState(0);
