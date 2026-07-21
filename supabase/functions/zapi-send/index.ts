@@ -7,6 +7,67 @@ const corsHeaders = {
 
 const ZAPI_BASE_URL = 'https://api.z-api.io';
 
+function normalizePhoneThreadValue(phone: string): string {
+  const normalized = String(phone || '').replace(/\D/g, '');
+  if (!normalized) return '';
+  if (normalized.length <= 11 && !normalized.startsWith('55')) return `55${normalized}`;
+  return normalized;
+}
+
+function getPhoneThreadVariants(phone: string): string[] {
+  const normalized = normalizePhoneThreadValue(phone);
+  if (!normalized) return [];
+
+  const variants = new Set<string>([normalized]);
+  if (normalized.startsWith('55') && normalized.length >= 10) {
+    const withoutCountry = normalized.slice(2);
+    const areaCode = withoutCountry.slice(0, 2);
+    const localNumber = withoutCountry.slice(2);
+    if (localNumber.length === 9 && localNumber.startsWith('9')) {
+      variants.add(`55${areaCode}${localNumber.slice(1)}`);
+    } else if (localNumber.length === 8) {
+      variants.add(`55${areaCode}9${localNumber}`);
+    }
+  }
+
+  return Array.from(variants);
+}
+
+function getPhoneLookupVariants(phone: string): string[] {
+  const variants = new Set<string>();
+  for (const variant of getPhoneThreadVariants(phone)) {
+    variants.add(variant);
+    variants.add(`+${variant}`);
+  }
+  return Array.from(variants);
+}
+
+function buildPhoneMatch(phone: string): { normalized: string; filter: string } {
+  const normalized = normalizePhoneThreadValue(phone);
+  const exactFilter = getPhoneLookupVariants(normalized).map((value) => `conversation_phone.eq.${value}`);
+  const suffix8 = normalized.slice(-8);
+  const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+  return { normalized, filter: [...exactFilter, ...fallbackFilter].join(',') };
+}
+
+function pickAssignmentRow(rows: Array<Record<string, any>>, preferredUserId?: string | null) {
+  return [...rows].sort((a, b) => {
+    if (preferredUserId) {
+      if (a.assigned_to === preferredUserId && b.assigned_to !== preferredUserId) return -1;
+      if (b.assigned_to === preferredUserId && a.assigned_to !== preferredUserId) return 1;
+    }
+    if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+    return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+  })[0] || null;
+}
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -164,19 +225,93 @@ Deno.serve(async (req) => {
     const zapiToken = channel.access_token;
     const cleanDestination = destination.replace(/\D/g, '');
 
-    const markAnswered = async () => {
-      if (!externalSupabase || !channel.organization_id || !cleanDestination) return;
+    const ensureHumanSenderOwnsConversation = async (): Promise<Response | null> => {
+      const humanUserId = userId && userId !== 'service_role' ? userId : null;
+      if (!humanUserId) return null;
+      if (!externalSupabase || !channel.organization_id) {
+        return json({ success: false, error: 'Não foi possível validar o dono deste atendimento. Envio bloqueado por segurança.', code: 'OWNERSHIP_UNVERIFIED' }, 403);
+      }
+
+      const { normalized, filter } = buildPhoneMatch(cleanDestination);
+      if (!normalized || !filter) return json({ success: false, error: 'Telefone inválido para validar o atendimento.', code: 'INVALID_PHONE' }, 400);
+
       const now = new Date().toISOString();
       const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const { data: assignmentRows } = await externalSupabase
+      const { data: assignmentRows, error } = await externalSupabase
         .from('conversation_assignments')
-        .select('id, assigned_to')
+        .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
         .eq('organization_id', channel.organization_id)
         .eq('channel_id', channelId)
-        .or(`conversation_phone.eq.${cleanDestination},conversation_phone.eq.+${cleanDestination}`)
-        .limit(1);
-      const assignment = assignmentRows?.[0];
+        .or(filter)
+        .limit(10);
+
+      if (error) return json({ success: false, error: 'Falha ao validar o dono deste atendimento. Envio bloqueado.', code: 'OWNERSHIP_LOOKUP_FAILED' }, 403);
+
+      const foreignOwner = assignmentRows?.find((row: any) => row.assigned_to && row.assigned_to !== humanUserId);
+      if (foreignOwner) {
+        return json({ success: false, error: 'Este atendimento pertence a outro atendente. Transfira o atendimento antes de enviar mensagem.', code: 'ASSIGNMENT_OWNER_MISMATCH', assignment: foreignOwner }, 403);
+      }
+
+      const assignment = pickAssignmentRow(assignmentRows || [], humanUserId);
+      if (assignment?.id) {
+        const updates: Record<string, unknown> = { status: 'in_progress', is_bot_handling: false, bot_paused_until: botPausedUntil, updated_at: now };
+        if (!assignment.assigned_to) {
+          updates.assigned_to = humanUserId;
+          updates.assigned_at = now;
+        }
+        const { error: updateError } = await externalSupabase
+          .from('conversation_assignments')
+          .update(updates)
+          .eq('id', assignment.id)
+          .eq('organization_id', channel.organization_id)
+          .or(`assigned_to.is.null,assigned_to.eq.${humanUserId}`);
+        if (updateError) return json({ success: false, error: 'Outro atendente assumiu este atendimento. Recarregue a conversa.', code: 'ASSIGNMENT_RACE_LOST' }, 403);
+        return null;
+      }
+
+      const { error: insertError } = await externalSupabase
+        .from('conversation_assignments')
+        .insert({
+          organization_id: channel.organization_id,
+          channel_id: channelId,
+          conversation_phone: normalized,
+          assigned_to: humanUserId,
+          assigned_at: now,
+          status: 'in_progress',
+          is_bot_handling: false,
+          bot_paused_until: botPausedUntil,
+          updated_at: now,
+        });
+      if (insertError) {
+        const { data: racedRows } = await externalSupabase
+          .from('conversation_assignments')
+          .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+          .eq('organization_id', channel.organization_id)
+          .eq('channel_id', channelId)
+          .or(filter)
+          .limit(10);
+        const racedOwner = racedRows?.find((row: any) => row.assigned_to && row.assigned_to !== humanUserId);
+        if (racedOwner) return json({ success: false, error: 'Este atendimento pertence a outro atendente. Transfira o atendimento antes de enviar mensagem.', code: 'ASSIGNMENT_OWNER_MISMATCH', assignment: racedOwner }, 403);
+        return json({ success: false, error: 'Não foi possível assumir este atendimento antes do envio.', code: 'ASSIGNMENT_CREATE_FAILED' }, 403);
+      }
+      return null;
+    };
+
+    const markAnswered = async () => {
+      if (!externalSupabase || !channel.organization_id || !cleanDestination) return;
       const humanUserId = userId && userId !== 'service_role' ? userId : null;
+      if (!humanUserId) return;
+      const now = new Date().toISOString();
+      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { filter } = buildPhoneMatch(cleanDestination);
+      const { data: assignmentRows } = await externalSupabase
+        .from('conversation_assignments')
+        .select('id, assigned_to, updated_at, created_at')
+        .eq('organization_id', channel.organization_id)
+        .eq('channel_id', channelId)
+        .or(filter)
+        .limit(10);
+      const assignment = pickAssignmentRow(assignmentRows || [], humanUserId);
       if (assignment?.id) {
         const updates: Record<string, unknown> = { status: 'in_progress', is_bot_handling: false, bot_paused_until: botPausedUntil, updated_at: now };
         if (humanUserId && !assignment.assigned_to) {
@@ -187,6 +322,9 @@ Deno.serve(async (req) => {
         await externalSupabase.from('conversation_stats').update({ unread_count: 0, updated_at: now }).eq('assignment_id', assignment.id).eq('organization_id', channel.organization_id);
       }
     };
+
+    const ownershipBlock = await ensureHumanSenderOwnsConversation();
+    if (ownershipBlock) return ownershipBlock;
 
     console.log('Sending WhatsApp message via Z-API:', {
       instanceId,
@@ -330,6 +468,7 @@ Deno.serve(async (req) => {
       const msgDb = externalSupabase;
       await msgDb.from('whatsapp_messages').upsert(failedData, { onConflict: 'message_id', ignoreDuplicates: true });
       const _statsArgs1 = {
+        _organization_id: channel.organization_id || null,
         _channel_id: channelId, _conversation_phone: cleanDestination,
         _content: storedContent, _direction: 'outbound', _is_read: null,
         _sender_name: null, _created_at: new Date().toISOString(),
@@ -378,10 +517,8 @@ Deno.serve(async (req) => {
     };
     const msgDb2 = externalSupabase;
     await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
-    // Update conversation stats manually (use internal UUID for stats)
-    const msgDb2 = externalSupabase;
-    await msgDb2.from('whatsapp_messages').upsert(outboundData, { onConflict: 'message_id', ignoreDuplicates: true });
     const _statsArgs2 = {
+      _organization_id: channel.organization_id || null,
       _channel_id: channelId, _conversation_phone: cleanDestination,
       _content: storedContent, _direction: 'outbound', _is_read: null,
       _sender_name: null, _created_at: new Date().toISOString(),
@@ -391,26 +528,6 @@ Deno.serve(async (req) => {
         .then(() => markAnswered(), () => {});
     }
     
-    // Pause bot for 24 hours ONLY when a human sends a message (not service_role/bot)
-    // This prevents the bot from responding while a human is handling the conversation
-    if (userId !== 'service_role') {
-      const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      
-      const caDb = externalSupabase;
-      await caDb
-        .from('conversation_assignments')
-        .update({ 
-          bot_paused_until: botPausedUntil,
-          is_bot_handling: false,
-          assigned_to: userId,
-          assigned_at: new Date().toISOString()
-        })
-        .eq('channel_id', channelId)
-        .eq('conversation_phone', cleanDestination);
-      
-      console.log('Bot paused for 24 hours for conversation with:', cleanDestination);
-    }
-
     return new Response(
       JSON.stringify({ 
         success: true, 
