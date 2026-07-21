@@ -27,7 +27,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { assignmentsWrite } from "@/lib/externalAssignments";
 import { cn } from "@/lib/utils";
+
 
 interface Template {
   id: string;
