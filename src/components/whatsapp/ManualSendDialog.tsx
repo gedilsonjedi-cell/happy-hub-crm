@@ -237,38 +237,30 @@ export const ManualSendDialog = ({
     try {
       const formattedPhone = buildBrazilDestination(phoneNumber);
 
-      // CRITICAL: Create/update conversation assignment in database BEFORE calling meta-send
-      // This ensures the conversation persists even if the API call fails
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      
-      // Create conversation assignment BEFORE sending - organization isolation is via channel_id
-      if (userId) {
-        const now = new Date().toISOString();
-        const botPausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-        
-        const { error: assignmentError } = await supabase
-          .from('conversation_assignments')
-          .upsert({
-            channel_id: selectedChannel.id,
-            conversation_phone: formattedPhone,
-            assigned_to: userId,
-            assigned_at: now,
-            status: 'in_progress',
-            is_bot_handling: false,
-            bot_paused_until: botPausedUntil,
-            updated_at: now
-          }, {
-            onConflict: 'conversation_phone,channel_id',
-            ignoreDuplicates: false
-          });
-        
-        if (assignmentError) {
-          console.error('Error creating conversation assignment:', assignmentError);
-        } else {
-          console.log('Created conversation assignment BEFORE send:', formattedPhone);
-        }
+      // Ownership-aware claim: goes through the external DB (SSoT) via
+      // external-assignments-write, which validates that the conversation is
+      // either unassigned or already owned by this user. Any attempt to claim
+      // a conversation that belongs to another attendant returns
+      // `already_assigned` and we abort the send.
+      const { data: claimData, error: claimError } = await assignmentsWrite("claim_assignment", {
+        channelId: selectedChannel.id,
+        conversationPhone: formattedPhone,
+      });
+
+      if (claimError) {
+        toast.error(claimError.message || "Não foi possível reservar esta conversa");
+        setSending(false);
+        return;
       }
+
+      if (claimData && typeof claimData === "object" && (claimData as any).status === "already_assigned") {
+        const ownerName = (claimData as any).assigned_to_name || "outro atendente";
+        toast.error(`Este atendimento já pertence a ${ownerName}`);
+        setSending(false);
+        return;
+      }
+
+
 
       const { data, error } = await supabase.functions.invoke('meta-send', {
         body: {
