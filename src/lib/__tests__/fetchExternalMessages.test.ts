@@ -294,6 +294,8 @@ describe("fetchExternalMessages (busy channel regression)", () => {
       pageSize: 25,
     });
 
+    // eslint-disable-next-line no-console
+    console.log("PAGE1", JSON.stringify(page1, null, 2).slice(0, 500));
     expect(page1.messages.length).toBeGreaterThan(0);
     // Every returned message must belong to the target contact.
     for (const msg of page1.messages) {
