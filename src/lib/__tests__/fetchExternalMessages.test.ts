@@ -159,8 +159,6 @@ function makeFakeExternalClient(rows: FakeRow[]) {
           if (filters.ltCreatedAt && !(row.created_at < filters.ltCreatedAt)) return false;
           return filters.orClauses.some((c) => rowMatchesClause(row, c));
         });
-        // eslint-disable-next-line no-console
-        console.log("[fake] direction=", filters.direction, "orClauses=", JSON.stringify(filters.orClauses), "matched=", filtered.length);
         filtered = filtered
           .slice()
           .sort((a, b) => (b.created_at < a.created_at ? -1 : 1))
