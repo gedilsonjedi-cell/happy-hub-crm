@@ -207,6 +207,22 @@ async function invokeExternalProxy<T>(body: Record<string, unknown>): Promise<T>
   return data as T;
 }
 
+/**
+ * fetchDirectionMessages — pagina o histórico do contato JÁ FILTRANDO PELO
+ * TELEFONE direto no banco (mesmo padrão de fetchExternalMessagesForLead).
+ *
+ * Bug corrigido: a versão anterior escaneava mensagens do canal inteiro
+ * (HISTORY_SCAN_BATCH_SIZE * HISTORY_SCAN_MAX_BATCHES = 1200 linhas) e só
+ * depois filtrava por telefone em memória. Em canais com muito tráfego,
+ * conversas antigas nunca eram alcançadas dentro desse limite → o chat
+ * exibia "Sem histórico disponível" mesmo com mensagens no banco.
+ *
+ * Agora a query combina:
+ *   - (channel_id = <id> AND <campo de telefone>.like %sufixo%)  → tráfego atual
+ *   - channel_id = <phoneVariant>                                → linhas legadas
+ * de forma que o índice cobre exatamente as mensagens do contato, sem
+ * depender de quantas outras mensagens o canal recebeu depois.
+ */
 async function fetchDirectionMessages(
   channelId: string,
   direction: "inbound" | "outbound",
@@ -219,58 +235,69 @@ async function fetchDirectionMessages(
 ): Promise<ExternalMessageRow[]> {
   const ext = await getExternalClient(impersonatedOrgId);
 
-  const phoneVariantsForFilter = Array.from(lookup.exact);
-  const channelIdParts = phoneVariantsForFilter.map((phone) => `channel_id.eq.${phone}`);
-  channelIdParts.push(`channel_id.eq.${channelId}`);
-  const channelIdFilter = channelIdParts.join(",");
+  const suffixes = Array.from(lookup.suffixes).sort((a, b) => b.length - a.length);
+  const phoneVariants = Array.from(lookup.exact);
 
-  let scanCursor = cursorFilter;
-  const matched: ExternalMessageRow[] = [];
-  const seen = new Set<string>();
+  const orClauses: string[] = [];
 
-  for (let batch = 0; batch < HISTORY_SCAN_MAX_BATCHES; batch++) {
-    let query = ext
-      .from("whatsapp_messages")
-      .select(SELECT_FIELDS)
-      .or(channelIdFilter)
-      .eq("direction", direction)
-      .lt("created_at", scanCursor);
-
-    // CIRURGIA: limite inferior fecha a janela e força o índice
-    // (channel_id, created_at) a fazer um range scan apertado em vez
-    // de varrer milhares de linhas pra trás.
-    if (lowerBoundCreatedAt) {
-      query = query.gte("created_at", lowerBoundCreatedAt);
+  if (direction === "inbound") {
+    for (const suffix of suffixes) {
+      orClauses.push(`and(channel_id.eq.${channelId},sender_phone.like.%${suffix})`);
     }
-
-    const { data, error } = await withTimeout(
-      query
-        .order("created_at", { ascending: false })
-        .limit(HISTORY_SCAN_BATCH_SIZE),
-      EXTERNAL_QUERY_TIMEOUT_MS,
-      `Leitura ${direction} do histórico`
-    );
-
-    if (error) {
-      console.warn(`[externalDb] Direct ${direction} fetch failed:`, error.message);
-      throw new Error(error.message);
-    }
-
-    const rows = (data ?? []) as ExternalMessageRow[];
-    if (rows.length === 0) break;
-
-    rows.forEach((row) => {
-      if (!seen.has(row.id) && messageMatchesConversation(row, direction, lookup, channelPhoneLookup)) {
-        seen.add(row.id);
-        matched.push(row);
+  } else {
+    for (const suffix of suffixes) {
+      for (const field of OUTBOUND_PHONE_METADATA_FIELDS) {
+        orClauses.push(
+          `and(channel_id.eq.${channelId},metadata->>${field}.like.%${suffix})`
+        );
       }
-    });
+    }
+  }
 
-    if (matched.length >= pageSize || rows.length < HISTORY_SCAN_BATCH_SIZE) break;
+  // Legacy: algumas linhas de campanha/webhook têm channel_id = telefone do
+  // contato em vez do UUID do canal. Mantemos essas variantes no OR para não
+  // perder histórico antigo.
+  for (const phone of phoneVariants) {
+    orClauses.push(`channel_id.eq.${phone}`);
+  }
 
-    const nextCursor = rows[rows.length - 1]?.created_at;
-    if (!nextCursor || nextCursor === scanCursor) break;
-    scanCursor = nextCursor;
+  if (orClauses.length === 0) return [];
+
+  let query = ext
+    .from("whatsapp_messages")
+    .select(SELECT_FIELDS)
+    .eq("direction", direction)
+    .lt("created_at", cursorFilter)
+    .or(orClauses.join(","));
+
+  if (lowerBoundCreatedAt) {
+    query = query.gte("created_at", lowerBoundCreatedAt);
+  }
+
+  const { data, error } = await withTimeout(
+    query
+      .order("created_at", { ascending: false })
+      .limit(Math.max(pageSize * 2, HISTORY_SCAN_BATCH_SIZE)),
+    EXTERNAL_QUERY_TIMEOUT_MS,
+    `Leitura ${direction} do histórico`
+  );
+
+  if (error) {
+    console.warn(`[externalDb] Direct ${direction} fetch failed:`, error.message);
+    throw new Error(error.message);
+  }
+
+  const rows = (data ?? []) as ExternalMessageRow[];
+  const seen = new Set<string>();
+  const matched: ExternalMessageRow[] = [];
+
+  // Checagem extra de segurança (channelPhoneLookup, sufixo estrito) mesmo
+  // com o filtro no banco já preciso.
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    if (!messageMatchesConversation(row, direction, lookup, channelPhoneLookup)) continue;
+    seen.add(row.id);
+    matched.push(row);
   }
 
   return matched;
