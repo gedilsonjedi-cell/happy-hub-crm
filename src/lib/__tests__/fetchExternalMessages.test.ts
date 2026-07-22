@@ -239,7 +239,7 @@ describe("fetchExternalMessages (busy channel regression)", () => {
   });
 
   it("finds the target contact's old history even when 2000+ recent messages from other contacts exist", async () => {
-    const rows: FakeRow[] = [];
+    const rows: FakeRow[] = fakeClientHolder.rows;
 
     // 2000 recent inbound noise messages from OTHER contacts (past 20 days).
     for (let i = 0; i < 2000; i++) {
