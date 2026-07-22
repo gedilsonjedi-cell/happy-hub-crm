@@ -1,0 +1,3 @@
+DELETE FROM public.campaign_channels WHERE campaign_id='4dc8b7f2-04eb-408a-8ffa-dcdc39eceec1' AND channel_id IN ('5419c7ee-a4ba-46b3-864d-41e1199429d5','78517e74-ee17-4a3d-829d-fdfaef176a54');
+
+UPDATE public.campaign_recipients SET channel_id='2feb810e-2876-45ad-a987-b2a07d3739d3' WHERE campaign_id='4dc8b7f2-04eb-408a-8ffa-dcdc39eceec1' AND status='pending' AND (channel_id IN ('5419c7ee-a4ba-46b3-864d-41e1199429d5','78517e74-ee17-4a3d-829d-fdfaef176a54') OR channel_id IS NULL);
