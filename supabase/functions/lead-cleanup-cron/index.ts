@@ -160,7 +160,7 @@ Deno.serve(async (req: Request) => {
     // Consulta em chunks
     async function excludeSuccessful(ids: string[]): Promise<Set<string>> {
       const excluded = new Set<string>();
-      const CHUNK = 500;
+      const CHUNK = 100;
       for (let i = 0; i < ids.length; i += CHUNK) {
         const slice = ids.slice(i, i + CHUNK);
         const { data, error } = await internal
@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
     // Fetch lead phone + organization_id
     async function fetchLeads(ids: string[]) {
       const out = new Map<string, { phone: string; organization_id: string | null }>();
-      const CHUNK = 500;
+      const CHUNK = 100;
       for (let i = 0; i < ids.length; i += CHUNK) {
         const slice = ids.slice(i, i + CHUNK);
         const { data, error } = await internal
