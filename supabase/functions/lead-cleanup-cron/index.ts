@@ -260,7 +260,7 @@ Deno.serve(async (req: Request) => {
         try {
           const [inbound, active] = await Promise.all([
             hasInbound(info.phone),
-            hasActiveAssignment(info.phone),
+            hasActiveAssignment(leadId, info.phone),
           ]);
           if (inbound || active) {
             falsePositives.push(leadId);
