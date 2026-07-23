@@ -36,7 +36,35 @@ export const useAudioRecording = () => {
     return 'audio/webm';
   }, []);
 
+  // Centralized cleanup — ALWAYS releases mic, timer, chunks and resets UI state.
+  // Called from every exit path (success, error, cancel) so a bad recording
+  // NEVER leaves `isRecording` stuck true (which would hide the text composer).
+  const hardReset = useCallback(() => {
+    try {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch (e) { console.warn('[AudioRecording] stop threw during reset:', e); }
+      }
+    } catch {}
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (streamRef.current) {
+      try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
+      streamRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsRecording(false);
+    setRecordingDuration(0);
+  }, []);
+
   const startRecording = useCallback(async () => {
+    // Defensive: if a previous session left anything alive, tear it down first.
+    hardReset();
+
+    let stream: MediaStream | null = null;
     try {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Seu navegador não suporta gravação de áudio. Use Chrome, Edge ou Safari atualizado.');
@@ -45,7 +73,7 @@ export const useAudioRecording = () => {
         throw new Error('MediaRecorder não disponível neste navegador.');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           channelCount: 1,
           sampleRate: 48000,
@@ -83,6 +111,9 @@ export const useAudioRecording = () => {
 
       mediaRecorder.onerror = (event) => {
         console.error('[AudioRecording] MediaRecorder error:', event);
+        // Any runtime error mid-recording: fully release resources so the
+        // composer is not permanently locked behind isRecording=true.
+        hardReset();
       };
       
       mediaRecorder.start(500);
@@ -94,6 +125,13 @@ export const useAudioRecording = () => {
       }, 1000);
       
     } catch (error) {
+      // CRITICAL: release the mic stream if it was already acquired before the
+      // MediaRecorder constructor (or any later step) threw. Without this, the
+      // browser keeps the mic busy and every subsequent attempt fails with
+      // NotReadableError ("Microfone em uso"), which surfaces to the user as
+      // "Erro ao gravar áudio" — the exact symptom reported.
+      hardReset();
+
       console.error("[AudioRecording] Error starting recording:", error);
       const err = error as DOMException;
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
@@ -107,18 +145,37 @@ export const useAudioRecording = () => {
       }
       throw new Error(error instanceof Error ? error.message : 'Não foi possível acessar o microfone');
     }
-  }, [getSupportedMimeType]);
+  }, [getSupportedMimeType, hardReset]);
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {
       const recorder = mediaRecorderRef.current;
       
       if (!recorder || recorder.state === 'inactive') {
+        // Nothing valid to stop — guarantee a clean slate regardless.
+        hardReset();
         resolve(null);
         return;
       }
 
+      // Safety net: if onstop never fires (tab suspended, recorder wedged,
+      // browser bug), unlock the UI after 5s so the composer is not held
+      // hostage by a stuck isRecording=true.
+      let settled = false;
+      const settle = (value: Blob | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const watchdog = setTimeout(() => {
+        console.error('[AudioRecording] onstop watchdog fired — forcing reset');
+        hardReset();
+        settle(null);
+      }, 5000);
+
       recorder.onstop = () => {
+        clearTimeout(watchdog);
+
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
@@ -136,13 +193,15 @@ export const useAudioRecording = () => {
         
         if (chunks.length === 0) {
           console.error('[AudioRecording] No audio chunks recorded');
-          resolve(null);
+          mediaRecorderRef.current = null;
+          settle(null);
           return;
         }
 
         const actualMimeType = recorder?.mimeType || 'audio/ogg';
         const audioBlob = new Blob(chunks, { type: actualMimeType });
         audioChunksRef.current = [];
+        mediaRecorderRef.current = null;
         
         console.log('[AudioRecording] Recording completed:', {
           format: actualMimeType,
@@ -151,35 +210,23 @@ export const useAudioRecording = () => {
           needsServerConversion: !actualMimeType.includes('ogg')
         });
 
-        resolve(audioBlob);
+        settle(audioBlob);
       };
 
-      recorder.stop();
+      try {
+        recorder.stop();
+      } catch (e) {
+        console.error('[AudioRecording] recorder.stop() threw:', e);
+        clearTimeout(watchdog);
+        hardReset();
+        settle(null);
+      }
     });
-  }, []);
+  }, [hardReset]);
 
   const cancelRecording = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-    }
-    
-    audioChunksRef.current = [];
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    
-    setIsRecording(false);
-    setRecordingDuration(0);
-  }, []);
+    hardReset();
+  }, [hardReset]);
 
   return {
     isRecording,
