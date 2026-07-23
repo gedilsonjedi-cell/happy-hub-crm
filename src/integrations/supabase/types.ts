@@ -3703,6 +3703,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      apply_lead_cleanup_batch: {
+        Args: { _batch: Json; _run_id: string }
+        Returns: {
+          deleted_leads: number
+          inserted_logs: number
+        }[]
+      }
       archive_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
