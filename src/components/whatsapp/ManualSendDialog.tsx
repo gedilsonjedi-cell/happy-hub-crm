@@ -277,10 +277,10 @@ export const ManualSendDialog = ({
         if (ownerId) {
           const { data: ownerProfile } = await supabase
             .from("profiles")
-            .select("full_name, email")
-            .eq("id", ownerId)
+            .select("display_name, email")
+            .eq("user_id", ownerId)
             .maybeSingle();
-          ownerName = ownerProfile?.full_name || ownerProfile?.email || ownerName;
+          ownerName = ownerProfile?.display_name || ownerProfile?.email || ownerName;
         }
         toast.error(`Este atendimento já pertence a ${ownerName}`);
         setSending(false);
