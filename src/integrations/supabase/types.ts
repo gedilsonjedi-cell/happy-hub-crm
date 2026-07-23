@@ -2154,6 +2154,42 @@ export type Database = {
           },
         ]
       }
+      lead_cleanup_log: {
+        Row: {
+          criado_em: string
+          distinct_campaigns: number | null
+          id: string
+          last_failure_at: string | null
+          lead_id: string
+          motivo: string
+          organization_id: string | null
+          phone: string
+          run_id: string | null
+        }
+        Insert: {
+          criado_em?: string
+          distinct_campaigns?: number | null
+          id?: string
+          last_failure_at?: string | null
+          lead_id: string
+          motivo: string
+          organization_id?: string | null
+          phone: string
+          run_id?: string | null
+        }
+        Update: {
+          criado_em?: string
+          distinct_campaigns?: number | null
+          id?: string
+          last_failure_at?: string | null
+          lead_id?: string
+          motivo?: string
+          organization_id?: string | null
+          phone?: string
+          run_id?: string | null
+        }
+        Relationships: []
+      }
       lead_custom_field_definitions: {
         Row: {
           created_at: string
