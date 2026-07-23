@@ -3571,18 +3571,35 @@ const AtendimentoV2 = () => {
       await startRecording();
     } catch (error) {
       console.error('Recording error:', error);
-      toast.error("Não foi possível acessar o microfone");
+      // Guarantee no mic stream / timer / isRecording flag is left behind,
+      // otherwise the composer stays locked and the user can't send text.
+      cancelRecording();
+      const msg = error instanceof Error ? error.message : "Não foi possível acessar o microfone";
+      toast.error(msg);
     }
   };
 
   const handleSendVoiceRecording = async () => {
-    const audioBlob = await stopRecording();
+    let audioBlob: Blob | null = null;
+    try {
+      audioBlob = await stopRecording();
+    } catch (error) {
+      console.error('stopRecording threw:', error);
+      cancelRecording();
+      toast.error("Erro ao gravar áudio");
+      return;
+    }
+
     if (!audioBlob) {
+      // Empty/failed recording — force a full reset so isRecording can't stay
+      // stuck true and hide the text composer.
+      cancelRecording();
       toast.error("Erro ao gravar áudio");
       return;
     }
 
     if (!selectedConversation) {
+      cancelRecording();
       toast.error("Selecione uma conversa primeiro");
       return;
     }
@@ -3596,8 +3613,6 @@ const AtendimentoV2 = () => {
 
       if (audioBlob.size === 0) {
         toast.error('Erro: gravação vazia');
-        setIsConvertingAudio(false);
-        setUploadingMedia(false);
         return;
       }
 
@@ -3633,8 +3648,6 @@ const AtendimentoV2 = () => {
       if (convError || !convData?.success) {
         console.error('[AtendimentoV2] Audio conversion error:', convError || convData?.error);
         toast.error(convData?.error || 'Erro ao processar áudio');
-        setIsConvertingAudio(false);
-        setUploadingMedia(false);
         return;
       }
       
@@ -3653,11 +3666,15 @@ const AtendimentoV2 = () => {
       toast.dismiss('audio-conversion');
       const msg = error instanceof Error ? error.message : 'Erro ao enviar áudio';
       toast.error(msg);
+    } finally {
+      // ALWAYS reset — even on unexpected throws — so the composer never stays
+      // hidden behind isConvertingAudio/uploadingMedia flags.
+      setIsConvertingAudio(false);
+      setUploadingMedia(false);
+      cancelRecording();
     }
-
-    setIsConvertingAudio(false);
-    setUploadingMedia(false);
   };
+
 
   const handleCancelVoiceRecording = () => {
     cancelRecording();
