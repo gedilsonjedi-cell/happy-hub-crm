@@ -237,15 +237,33 @@ export const ManualSendDialog = ({
     try {
       const formattedPhone = buildBrazilDestination(phoneNumber);
 
-      // Ownership-aware claim: goes through the external DB (SSoT) via
-      // external-assignments-write, which validates that the conversation is
-      // either unassigned or already owned by this user. Any attempt to claim
-      // a conversation that belongs to another attendant returns
-      // `already_assigned` and we abort the send.
-      const { data: claimData, error: claimError } = await assignmentsWrite("claim_assignment", {
-        channelId: selectedChannel.id,
-        conversationPhone: formattedPhone,
-      });
+      // Resolve current user (needed by the atomic claim on the external DB).
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user?.id) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        setSending(false);
+        return;
+      }
+      const userId = authData.user.id;
+
+      // Ownership-aware claim via external-assignments-write (SSoT). The edge
+      // function expects `{ action, payload: { conversation_phone, channel_id, ... } }`.
+      // Any attempt to claim a conversation that belongs to another attendant
+      // returns `{ success: false, error: "already_assigned", assignment: {...} }`.
+      const { data: claimData, error: claimError } = await supabase.functions.invoke(
+        "external-assignments-write",
+        {
+          body: {
+            action: "claim_assignment",
+            payload: {
+              conversation_phone: formattedPhone,
+              channel_id: selectedChannel.id,
+              assigned_to: userId,
+              status: "in_progress",
+            },
+          },
+        }
+      );
 
       if (claimError) {
         toast.error(claimError.message || "Não foi possível reservar esta conversa");
@@ -253,8 +271,17 @@ export const ManualSendDialog = ({
         return;
       }
 
-      if (claimData && typeof claimData === "object" && (claimData as any).status === "already_assigned") {
-        const ownerName = (claimData as any).assigned_to_name || "outro atendente";
+      if (claimData && typeof claimData === "object" && (claimData as any).error === "already_assigned") {
+        const ownerId = (claimData as any).assignment?.assigned_to;
+        let ownerName = "outro atendente";
+        if (ownerId) {
+          const { data: ownerProfile } = await supabase
+            .from("profiles")
+            .select("full_name, email")
+            .eq("id", ownerId)
+            .maybeSingle();
+          ownerName = ownerProfile?.full_name || ownerProfile?.email || ownerName;
+        }
         toast.error(`Este atendimento já pertence a ${ownerName}`);
         setSending(false);
         return;
