@@ -203,13 +203,13 @@ Deno.serve(async (req: Request) => {
     // 5: assignment ativo?
     // Para performance: usamos sufixo 8 (indexado) para uma query genérica.
     async function hasInbound(phone: string): Promise<boolean> {
-      const suf = suffix8(phone);
-      if (!suf) return false;
+      const variants = phoneVariants(phone);
+      if (variants.length === 0) return false;
       const { data, error } = await external
         .from("whatsapp_messages")
         .select("id")
         .eq("direction", "inbound")
-        .like("sender_phone", `%${suf}`)
+        .in("sender_phone", variants)
         .limit(1);
       if (error) {
         console.error("hasInbound err", error.message);
