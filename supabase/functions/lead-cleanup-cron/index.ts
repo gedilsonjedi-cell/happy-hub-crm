@@ -205,39 +205,38 @@ Deno.serve(async (req: Request) => {
     async function hasInbound(phone: string): Promise<boolean> {
       const suf = suffix8(phone);
       if (!suf) return false;
-      // Query com LIKE em wa_id/from + direction=inbound.
-      // Colunas possíveis: `from_phone` ou embedded no `payload`. Usamos
-      // filtro por sender/from_phone; se não existir esse campo, fallback:
-      // por conservadorismo tentamos duas variantes.
       const { data, error } = await external
         .from("whatsapp_messages")
         .select("id")
         .eq("direction", "inbound")
-        .like("from_phone", `%${suf}`)
+        .like("sender_phone", `%${suf}`)
         .limit(1);
-      if (!error && data && data.length > 0) return true;
-      // fallback: coluna alternativa "phone"
-      const { data: d2, error: e2 } = await external
-        .from("whatsapp_messages")
-        .select("id")
-        .eq("direction", "inbound")
-        .like("phone", `%${suf}`)
-        .limit(1);
-      if (!e2 && d2 && d2.length > 0) return true;
-      return false;
+      if (error) {
+        console.error("hasInbound err", error.message);
+        return false;
+      }
+      return !!(data && data.length > 0);
     }
 
-    async function hasActiveAssignment(phone: string): Promise<boolean> {
-      const variants = phoneVariants(phone);
-      if (variants.length === 0) return false;
-      const { data, error } = await external
+    async function hasActiveAssignment(leadId: string, phone: string): Promise<boolean> {
+      // Primeiro tenta por lead_id (mais confiável)
+      const { data: d1 } = await external
         .from("conversation_assignments")
         .select("id")
-        .in("contact_phone", variants)
+        .eq("lead_id", leadId)
         .in("status", ["in_progress", "active"])
         .limit(1);
-      if (error) return false;
-      return !!(data && data.length > 0);
+      if (d1 && d1.length > 0) return true;
+      // Fallback por telefone (variantes)
+      const variants = phoneVariants(phone);
+      if (variants.length === 0) return false;
+      const { data: d2 } = await external
+        .from("conversation_assignments")
+        .select("id")
+        .in("conversation_phone", variants)
+        .in("status", ["in_progress", "active"])
+        .limit(1);
+      return !!(d2 && d2.length > 0);
     }
 
     // Processa em lotes com concorrência limitada
