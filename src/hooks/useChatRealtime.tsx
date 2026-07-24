@@ -324,6 +324,8 @@ export function useChatRealtime(
           try { messagesChannelRef.current?.subscribe(); } catch { /* noop */ }
           try { assignmentsChannelRef.current?.subscribe(); } catch { /* noop */ }
           try { orgAssignmentsChannelRef.current?.subscribe(); } catch { /* noop */ }
+          try { statsChannelRef.current?.subscribe(); } catch { /* noop */ }
+
         })
         .catch(() => {});
     };
