@@ -355,6 +355,11 @@ export function useChatRealtime(
         client.removeChannel(orgAssignmentsChannelRef.current);
         orgAssignmentsChannelRef.current = null;
       }
+      if (statsChannelRef.current) {
+        client.removeChannel(statsChannelRef.current);
+        statsChannelRef.current = null;
+      }
+
     };
   }, [channelKey, organizationId, impersonatedOrgId, handleAssignmentPayload]);
 }
