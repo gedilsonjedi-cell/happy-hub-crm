@@ -24,7 +24,18 @@ interface RealtimeCallbacks {
     leadId: string | null;
     updatedAt: string;
   }) => void;
+  onStatsChange?: (payload: {
+    assignmentId: string | null;
+    channelId: string | null;
+    conversationPhone: string;
+    unreadCount: number;
+    lastMessageContent: string | null;
+    lastMessageAt: string | null;
+    lastInboundAt: string | null;
+    senderName: string | null;
+  }) => void;
 }
+
 
 /**
  * useChatRealtime — Realtime hook (External SSoT)
