@@ -143,6 +143,11 @@ export function useChatRealtime(
         client.removeChannel(assignmentsChannelRef.current);
         assignmentsChannelRef.current = null;
       }
+      if (statsChannelRef.current) {
+        client.removeChannel(statsChannelRef.current);
+        statsChannelRef.current = null;
+      }
+
 
       // 1. whatsapp_messages on EXTERNAL
       const messagesChannel = client
