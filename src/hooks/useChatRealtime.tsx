@@ -227,6 +227,58 @@ export function useChatRealtime(
         });
       assignmentsChannelRef.current = assignmentsChannel;
 
+      // 2b. conversation_stats on EXTERNAL — SSoT for unread_count.
+      // Without this, badges only update from the initial paginated summary or
+      // from whatsapp_messages realtime (which was intentionally removed from
+      // the publication in migration 2E). Subscribing here guarantees the badge
+      // increments on every subsequent inbound message.
+      const statsChannel = client
+        .channel(`ext-stats-${channelFilter.slice(0, 40)}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "conversation_stats",
+            filter: `channel_id=in.(${channelFilter})`,
+          },
+          (payload) => {
+            const row = (payload.new || payload.old) as {
+              assignment_id?: string | null;
+              channel_id?: string | null;
+              conversation_phone?: string;
+              unread_count?: number | null;
+              last_message_content?: string | null;
+              last_message_at?: string | null;
+              last_inbound_at?: string | null;
+              sender_name?: string | null;
+            };
+            if (!row?.conversation_phone) return;
+            callbacksRef.current.onStatsChange?.({
+              assignmentId: row.assignment_id ?? null,
+              channelId: row.channel_id ?? null,
+              conversationPhone: row.conversation_phone,
+              unreadCount: Number(row.unread_count ?? 0),
+              lastMessageContent: row.last_message_content ?? null,
+              lastMessageAt: row.last_message_at ?? null,
+              lastInboundAt: row.last_inbound_at ?? null,
+              senderName: row.sender_name ?? null,
+            });
+          }
+        )
+        .subscribe((status, err) => {
+          console.log(`[useChatRealtime] stats channel status: ${status}`, err ?? "");
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            refreshExternalToken(impersonatedOrgId)
+              .then(() => {
+                try { statsChannel.subscribe(); } catch { /* noop */ }
+              })
+              .catch(() => {});
+          }
+        });
+      statsChannelRef.current = statsChannel;
+
+
       // 3. conversation_assignments on EXTERNAL — org-wide for campaigns w/o channel
       if (organizationId) {
         if (orgAssignmentsChannelRef.current) {
