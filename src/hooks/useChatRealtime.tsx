@@ -60,6 +60,8 @@ export function useChatRealtime(
   const messagesChannelRef = useRef<RealtimeChannel | null>(null);
   const assignmentsChannelRef = useRef<RealtimeChannel | null>(null);
   const orgAssignmentsChannelRef = useRef<RealtimeChannel | null>(null);
+  const statsChannelRef = useRef<RealtimeChannel | null>(null);
+
   const processedAssignmentIdsRef = useRef<Set<string>>(new Set());
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
