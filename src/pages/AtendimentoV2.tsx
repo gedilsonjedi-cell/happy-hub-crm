@@ -2841,7 +2841,12 @@ const AtendimentoV2 = () => {
     onAssignmentChange: (assignment: Parameters<typeof handleAssignmentChangeRealtime>[0]) => {
       assignmentBatcherRef.current?.push(assignment);
     },
-  }), []);
+    onStatsChange: (stats: Parameters<typeof handleStatsChangeRealtime>[0]) => {
+      // Stats bump is cheap and idempotent — apply immediately (no batching).
+      handleStatsChangeRealtime(stats);
+    },
+  }), [handleStatsChangeRealtime]);
+
 
   useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId, externalImpersonatedOrgId);
 
