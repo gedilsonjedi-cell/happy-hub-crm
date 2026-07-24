@@ -2615,7 +2615,84 @@ const AtendimentoV2 = () => {
     }
   }, [externalImpersonatedOrgId, effectiveOrganizationId, getLeadFromCache, queryClient]);
 
+  // Adopt server-side unread_count / last message from conversation_stats.
+  // This is the SSoT for the badge — subscribing here guarantees the count
+  // increments on every subsequent inbound (whatsapp_messages realtime was
+  // removed from the publication in migration 2E, so we cannot rely on it).
+  const handleStatsChangeRealtime = useCallback((stats: {
+    assignmentId: string | null;
+    channelId: string | null;
+    conversationPhone: string;
+    unreadCount: number;
+    lastMessageContent: string | null;
+    lastMessageAt: string | null;
+    lastInboundAt: string | null;
+    senderName: string | null;
+  }) => {
+    if (!stats?.conversationPhone || !stats.channelId) return;
+    if (!channelIdSet.has(stats.channelId)) return;
+
+    const normalizedPhone = stats.conversationPhone.replace(/\D/g, '');
+    const isMatch = (c: Conversation) =>
+      c.channelId === stats.channelId && phonesMatch(c.phone, normalizedPhone);
+
+    setAllConversations(prev => {
+      const existing = prev.find(isMatch);
+      if (!existing) return prev; // new-conversation path is handled elsewhere
+
+      // If this conversation is currently open and focused, do NOT bump unread —
+      // the attendant is actively reading. markConversationAsRead already fired
+      // reset_unread on the server; ignore stale echoes.
+      const currentSelected = selectedConversationRef.current;
+      const isActive =
+        !!currentSelected &&
+        currentSelected.channelId === stats.channelId &&
+        phonesShareSameThread(currentSelected.phone, normalizedPhone);
+
+      const nextUnread = isActive ? 0 : Math.max(existing.unreadCount, stats.unreadCount);
+      const nextLastMessageTime =
+        stats.lastMessageAt && (!existing.lastMessageTime ||
+          new Date(stats.lastMessageAt).getTime() > new Date(existing.lastMessageTime).getTime())
+          ? stats.lastMessageAt
+          : existing.lastMessageTime;
+      const nextLastInboundTime =
+        stats.lastInboundAt && (!existing.lastInboundTime ||
+          new Date(stats.lastInboundAt).getTime() > new Date(existing.lastInboundTime).getTime())
+          ? stats.lastInboundAt
+          : existing.lastInboundTime;
+      const nextLastMessage = stats.lastMessageContent ?? existing.lastMessage;
+
+      const noChange =
+        nextUnread === existing.unreadCount &&
+        nextLastMessageTime === existing.lastMessageTime &&
+        nextLastInboundTime === existing.lastInboundTime &&
+        nextLastMessage === existing.lastMessage;
+      if (noChange) return prev;
+
+      const updated = prev.map(c =>
+        isMatch(c)
+          ? {
+              ...c,
+              unreadCount: nextUnread,
+              lastMessage: nextLastMessage,
+              lastMessageTime: nextLastMessageTime,
+              lastInboundTime: nextLastInboundTime,
+            }
+          : c
+      );
+
+      // Move to top if last message advanced (inbound bump)
+      if (nextLastMessageTime !== existing.lastMessageTime) {
+        const moved = updated.find(isMatch);
+        const rest = updated.filter(c => !isMatch(c));
+        return moved ? [moved, ...rest] : updated;
+      }
+      return updated;
+    });
+  }, [channelIdSet]);
+
   const handleAssignmentChangeRealtime = useCallback((assignment: {
+
     id: string;
     conversationPhone: string;
     channelId: string | null;
@@ -2764,7 +2841,12 @@ const AtendimentoV2 = () => {
     onAssignmentChange: (assignment: Parameters<typeof handleAssignmentChangeRealtime>[0]) => {
       assignmentBatcherRef.current?.push(assignment);
     },
-  }), []);
+    onStatsChange: (stats: Parameters<typeof handleStatsChangeRealtime>[0]) => {
+      // Stats bump is cheap and idempotent — apply immediately (no batching).
+      handleStatsChangeRealtime(stats);
+    },
+  }), [handleStatsChangeRealtime]);
+
 
   useChatRealtime(channelIds, throttledRealtimeCallbacks, effectiveOrganizationId, externalImpersonatedOrgId);
 
