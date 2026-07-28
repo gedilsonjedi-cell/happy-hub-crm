@@ -804,6 +804,16 @@ async function handleConversationAssignment(
     }
   }
 
+  // Fallback: organization default department (auto distribution enabled)
+  if (!sectorId) {
+    sectorId = await getOrgDefaultSector(organizationId);
+    if (sectorId) {
+      console.log(`[handleConversationAssignment] New conv default sector: ${normalizedPhone} → ${sectorId}`);
+    }
+  }
+
+
+
   let assignedTo: string | null = null;
   let finalStatus = 'pending';
 
