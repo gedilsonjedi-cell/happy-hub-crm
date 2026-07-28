@@ -336,7 +336,48 @@ export default function Departamentos() {
                         )}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={defaultSectorMutation.isPending}
+                                  onClick={() =>
+                                    defaultSectorMutation.mutate(
+                                      defaultSectorId === dept.id
+                                        ? { sectorId: null, enabled: false }
+                                        : { sectorId: dept.id, enabled: true }
+                                    )
+                                  }
+                                >
+                                  <Star
+                                    className={
+                                      defaultSectorId === dept.id
+                                        ? "w-4 h-4 fill-primary text-primary"
+                                        : "w-4 h-4 text-muted-foreground"
+                                    }
+                                  />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {defaultSectorId === dept.id
+                                  ? "Remover como departamento padrão"
+                                  : "Definir como departamento padrão"}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          {defaultSectorId === dept.id && (
+                            <Badge variant={autoDistributeEnabled ? "default" : "secondary"}>
+                              {autoDistributeEnabled ? "Padrão (ativo)" : "Padrão (inativo)"}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1">
+
                           {editingId === dept.id ? (
                             <>
                               <Button
