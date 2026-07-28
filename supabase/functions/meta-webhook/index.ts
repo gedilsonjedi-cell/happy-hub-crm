@@ -658,6 +658,23 @@ async function getNextAvailableAttendantGlobal(
 }
 
 // =============================================
+// DEFAULT SECTOR (per-organization auto distribution)
+// Returns the org's default sector when the feature is enabled, else null.
+// =============================================
+async function getOrgDefaultSector(organizationId: string): Promise<string | null> {
+  return await getCached(`orgdefsector:${organizationId}`, async () => {
+    const { data } = await supabase
+      .from('organizations')
+      .select('auto_distribute_enabled, default_sector_id')
+      .eq('id', organizationId)
+      .maybeSingle();
+    if (data?.auto_distribute_enabled && data?.default_sector_id) return data.default_sector_id as string;
+    return null;
+  });
+}
+
+
+// =============================================
 // CONVERSATION ASSIGNMENT (optimized upsert with round-robin)
 // =============================================
 async function handleConversationAssignment(
