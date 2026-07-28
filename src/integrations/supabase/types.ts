@@ -2536,8 +2536,10 @@ export type Database = {
       }
       organizations: {
         Row: {
+          auto_distribute_enabled: boolean
           created_at: string
           custom_subscription_price: number | null
+          default_sector_id: string | null
           has_paid_first_subscription: boolean
           id: string
           is_active: boolean
@@ -2556,8 +2558,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
@@ -2576,8 +2580,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
@@ -2595,7 +2601,15 @@ export type Database = {
           subscription_status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_default_sector_id_fkey"
+            columns: ["default_sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pending_referrals: {
         Row: {
@@ -4115,6 +4129,14 @@ export type Database = {
           status: string
           unread_count: number
         }[]
+      }
+      set_org_default_sector: {
+        Args: {
+          _enabled: boolean
+          _organization_id: string
+          _sector_id: string
+        }
+        Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
