@@ -254,6 +254,39 @@ export default function Departamentos() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
+              <Star className="w-5 h-5" />
+              Distribuição automática para departamento padrão
+            </CardTitle>
+            <CardDescription>
+              Quando ativada, toda conversa nova que chegar sem departamento definido cai
+              automaticamente no departamento padrão e é distribuída entre os atendentes desse
+              departamento, em vez de ficar na fila geral de "Novos".
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Label>Ativar distribuição automática</Label>
+              <p className="text-sm text-muted-foreground">
+                Departamento padrão:{" "}
+                <span className="font-medium text-foreground">
+                  {departments?.find((d) => d.id === defaultSectorId)?.name || "nenhum selecionado"}
+                </span>
+              </p>
+            </div>
+            <Switch
+              checked={autoDistributeEnabled}
+              disabled={defaultSectorMutation.isPending || (!defaultSectorId && !autoDistributeEnabled)}
+              onCheckedChange={(checked) =>
+                defaultSectorMutation.mutate({ sectorId: defaultSectorId, enabled: checked })
+              }
+            />
+          </CardContent>
+        </Card>
+
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
               <Building2 className="w-5 h-5" />
               Lista de Departamentos
             </CardTitle>
