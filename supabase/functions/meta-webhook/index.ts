@@ -744,12 +744,22 @@ async function handleConversationAssignment(
         ? (assignedTo ? 'in_progress' : 'pending')
         : existing.status;
 
-      if (!assignedTo && existing.sector_id) {
-        const attendant = await getNextAvailableAttendant(organizationId, existing.sector_id);
+      // Default sector (per-org auto distribution): conversation without sector
+      // goes to the organization's default department instead of the "Novos" queue.
+      let effectiveSectorId = existing.sector_id;
+      if (!effectiveSectorId) {
+        effectiveSectorId = await getOrgDefaultSector(organizationId);
+        if (effectiveSectorId) {
+          console.log(`[handleConversationAssignment] Default sector applied to ${normalizedPhone} → ${effectiveSectorId}`);
+        }
+      }
+
+      if (!assignedTo && effectiveSectorId) {
+        const attendant = await getNextAvailableAttendant(organizationId, effectiveSectorId);
         if (attendant) {
           assignedTo = attendant.userId;
           newStatus = 'in_progress';
-          console.log(`[handleConversationAssignment] Round-robin assigned ${normalizedPhone} → ${assignedTo} (sector: ${existing.sector_id})`);
+          console.log(`[handleConversationAssignment] Round-robin assigned ${normalizedPhone} → ${assignedTo} (sector: ${effectiveSectorId})`);
         }
       }
 
@@ -766,10 +776,11 @@ async function handleConversationAssignment(
 
       await caDb
         .from('conversation_assignments')
-        .update({ organization_id: organizationId, status: newStatus, lead_id: leadId, assigned_to: assignedTo, updated_at: new Date().toISOString() })
+        .update({ organization_id: organizationId, status: newStatus, lead_id: leadId, assigned_to: assignedTo, sector_id: effectiveSectorId, updated_at: new Date().toISOString() })
         .eq('id', existing.id);
-      console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${existing.sector_id})`);
-      return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: existing.sector_id, isBotHandling: existing.is_bot_handling || false };
+      console.log(`[handleConversationAssignment] Updated conversation for ${normalizedPhone} → status=${newStatus}, assigned=${assignedTo} (sector: ${effectiveSectorId})`);
+      return { assignmentId: existing.id, assignedTo, status: newStatus, sectorId: effectiveSectorId, isBotHandling: existing.is_bot_handling || false };
+
     }
     // Just bump updated_at to trigger realtime (fire and forget)
     caDb.from('conversation_assignments')
