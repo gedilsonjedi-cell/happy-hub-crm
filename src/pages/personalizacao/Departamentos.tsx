@@ -64,6 +64,42 @@ export default function Departamentos() {
     enabled: !!effectiveOrganizationId,
   });
 
+  const { data: orgConfig } = useQuery({
+    queryKey: ["org-default-sector", effectiveOrganizationId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("organizations")
+        .select("auto_distribute_enabled, default_sector_id")
+        .eq("id", effectiveOrganizationId!)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!effectiveOrganizationId,
+  });
+
+  const defaultSectorId = orgConfig?.default_sector_id ?? null;
+  const autoDistributeEnabled = !!orgConfig?.auto_distribute_enabled;
+
+  const defaultSectorMutation = useMutation({
+    mutationFn: async ({ sectorId, enabled }: { sectorId: string | null; enabled: boolean }) => {
+      const { error } = await supabase.rpc("set_org_default_sector", {
+        _organization_id: effectiveOrganizationId!,
+        _sector_id: sectorId,
+        _enabled: enabled,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-default-sector"] });
+      toast.success("Configuração de departamento padrão atualizada!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Erro ao atualizar departamento padrão");
+    },
+  });
+
+
+
   const addMutation = useMutation({
     mutationFn: async (dept: typeof newDepartment) => {
       // Ensure we have a valid organization ID before inserting
