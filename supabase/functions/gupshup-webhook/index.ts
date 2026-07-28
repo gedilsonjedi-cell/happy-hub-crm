@@ -329,8 +329,17 @@ async function findSectorFromCampaign(organizationId: string, leadId: string): P
     if (campaign?.sector_id) return campaign.sector_id;
   }
 
+  // Fallback: organization default department (auto distribution enabled)
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('auto_distribute_enabled, default_sector_id')
+    .eq('id', organizationId)
+    .maybeSingle();
+  if (org?.auto_distribute_enabled && org?.default_sector_id) return org.default_sector_id as string;
+
   return null;
 }
+
 
 // ===========================================
 // HANDLE CONVERSATION ASSIGNMENT

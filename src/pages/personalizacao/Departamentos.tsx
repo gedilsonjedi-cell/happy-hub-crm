@@ -5,12 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
-import { Building2, Plus, Trash2, Edit2, Save, X } from "lucide-react";
+import { Building2, Plus, Trash2, Edit2, Save, X, Star } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
 
 export default function Departamentos() {
   const { user } = useAuth();
@@ -54,6 +63,42 @@ export default function Departamentos() {
     },
     enabled: !!effectiveOrganizationId,
   });
+
+  const { data: orgConfig } = useQuery({
+    queryKey: ["org-default-sector", effectiveOrganizationId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("organizations")
+        .select("auto_distribute_enabled, default_sector_id")
+        .eq("id", effectiveOrganizationId!)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!effectiveOrganizationId,
+  });
+
+  const defaultSectorId = orgConfig?.default_sector_id ?? null;
+  const autoDistributeEnabled = !!orgConfig?.auto_distribute_enabled;
+
+  const defaultSectorMutation = useMutation({
+    mutationFn: async ({ sectorId, enabled }: { sectorId: string | null; enabled: boolean }) => {
+      const { error } = await supabase.rpc("set_org_default_sector", {
+        _organization_id: effectiveOrganizationId!,
+        _sector_id: sectorId,
+        _enabled: enabled,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-default-sector"] });
+      toast.success("Configuração de departamento padrão atualizada!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Erro ao atualizar departamento padrão");
+    },
+  });
+
+
 
   const addMutation = useMutation({
     mutationFn: async (dept: typeof newDepartment) => {
@@ -209,6 +254,39 @@ export default function Departamentos() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
+              <Star className="w-5 h-5" />
+              Distribuição automática para departamento padrão
+            </CardTitle>
+            <CardDescription>
+              Quando ativada, toda conversa nova que chegar sem departamento definido cai
+              automaticamente no departamento padrão e é distribuída entre os atendentes desse
+              departamento, em vez de ficar na fila geral de "Novos".
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Label>Ativar distribuição automática</Label>
+              <p className="text-sm text-muted-foreground">
+                Departamento padrão:{" "}
+                <span className="font-medium text-foreground">
+                  {departments?.find((d) => d.id === defaultSectorId)?.name || "nenhum selecionado"}
+                </span>
+              </p>
+            </div>
+            <Switch
+              checked={autoDistributeEnabled}
+              disabled={defaultSectorMutation.isPending || (!defaultSectorId && !autoDistributeEnabled)}
+              onCheckedChange={(checked) =>
+                defaultSectorMutation.mutate({ sectorId: defaultSectorId, enabled: checked })
+              }
+            />
+          </CardContent>
+        </Card>
+
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
               <Building2 className="w-5 h-5" />
               Lista de Departamentos
             </CardTitle>
@@ -223,7 +301,9 @@ export default function Departamentos() {
                   <TableRow>
                     <TableHead>Nome</TableHead>
                     <TableHead>Descrição</TableHead>
+                    <TableHead className="w-40">Padrão</TableHead>
                     <TableHead className="w-28">Ações</TableHead>
+
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -256,7 +336,48 @@ export default function Departamentos() {
                         )}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={defaultSectorMutation.isPending}
+                                  onClick={() =>
+                                    defaultSectorMutation.mutate(
+                                      defaultSectorId === dept.id
+                                        ? { sectorId: null, enabled: false }
+                                        : { sectorId: dept.id, enabled: true }
+                                    )
+                                  }
+                                >
+                                  <Star
+                                    className={
+                                      defaultSectorId === dept.id
+                                        ? "w-4 h-4 fill-primary text-primary"
+                                        : "w-4 h-4 text-muted-foreground"
+                                    }
+                                  />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {defaultSectorId === dept.id
+                                  ? "Remover como departamento padrão"
+                                  : "Definir como departamento padrão"}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          {defaultSectorId === dept.id && (
+                            <Badge variant={autoDistributeEnabled ? "default" : "secondary"}>
+                              {autoDistributeEnabled ? "Padrão (ativo)" : "Padrão (inativo)"}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1">
+
                           {editingId === dept.id ? (
                             <>
                               <Button
