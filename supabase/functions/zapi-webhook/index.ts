@@ -461,9 +461,30 @@ async function findSectorFromCampaign(
     }
   }
 
+  // Fallback: organization default department (auto distribution enabled)
+  const defaultSector = await getOrgDefaultSector(organizationId);
+  if (defaultSector) {
+    console.log('Using organization default sector:', defaultSector);
+    return defaultSector;
+  }
+
   console.log('No sector_id found for lead:', leadId);
   return null;
 }
+
+// ===========================================
+// ORG DEFAULT SECTOR (auto distribution per organization)
+// ===========================================
+async function getOrgDefaultSector(organizationId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('organizations')
+    .select('auto_distribute_enabled, default_sector_id')
+    .eq('id', organizationId)
+    .maybeSingle();
+  if (data?.auto_distribute_enabled && data?.default_sector_id) return data.default_sector_id as string;
+  return null;
+}
+
 
 // ===========================================
 // FIND OR CREATE CONVERSATION ASSIGNMENT (ID-centric)
