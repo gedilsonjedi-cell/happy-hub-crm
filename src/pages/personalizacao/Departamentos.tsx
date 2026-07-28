@@ -301,7 +301,9 @@ export default function Departamentos() {
                   <TableRow>
                     <TableHead>Nome</TableHead>
                     <TableHead>Descrição</TableHead>
+                    <TableHead className="w-40">Padrão</TableHead>
                     <TableHead className="w-28">Ações</TableHead>
+
                   </TableRow>
                 </TableHeader>
                 <TableBody>
