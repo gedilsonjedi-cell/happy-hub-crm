@@ -605,8 +605,8 @@ async function getNextAvailableAttendant(
 
   const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
 
-  // Only distribute to attendants explicitly online (is_available=true).
-  const { data: availableAttendants } = await supabase
+  // Prefer attendants explicitly online (is_available=true).
+  const { data: onlineAttendants } = await supabase
     .from('attendant_availability')
     .select('user_id, last_assignment_at')
     .eq('organization_id', organizationId)
@@ -614,7 +614,24 @@ async function getNextAvailableAttendant(
     .in('user_id', userIds)
     .order('last_assignment_at', { ascending: true, nullsFirst: true });
 
-  if (!availableAttendants || availableAttendants.length === 0) return null;
+  let availableAttendants = onlineAttendants;
+
+  // Fallback: no one online in the sector — still distribute inside the sector
+  // (never send the conversation back to the "Novos" queue).
+  if (!availableAttendants || availableAttendants.length === 0) {
+    const { data: anyAttendants } = await supabase
+      .from('attendant_availability')
+      .select('user_id, last_assignment_at')
+      .eq('organization_id', organizationId)
+      .in('user_id', userIds)
+      .order('last_assignment_at', { ascending: true, nullsFirst: true });
+    availableAttendants = anyAttendants;
+  }
+
+  // Last resort: sector members without an availability row yet.
+  if (!availableAttendants || availableAttendants.length === 0) {
+    availableAttendants = userIds.map((id: string) => ({ user_id: id, last_assignment_at: null }));
+  }
 
   const nextAttendant = availableAttendants[0];
 
