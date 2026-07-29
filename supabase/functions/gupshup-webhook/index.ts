@@ -187,7 +187,7 @@ async function getNextAvailableAttendant(
 
   const userIds = sectorUsers.map(u => u.user_id);
 
-  const { data: availableAttendants } = await supabase
+  const { data: onlineAttendants } = await supabase
     .from('attendant_availability')
     .select('user_id, last_assignment_at')
     .eq('organization_id', organizationId)
@@ -195,7 +195,21 @@ async function getNextAvailableAttendant(
     .in('user_id', userIds)
     .order('last_assignment_at', { ascending: true, nullsFirst: true });
 
-  if (!availableAttendants || availableAttendants.length === 0) return null;
+  let availableAttendants: any[] | null = onlineAttendants;
+
+  if (!availableAttendants || availableAttendants.length === 0) {
+    const { data: anyAttendants } = await supabase
+      .from('attendant_availability')
+      .select('user_id, last_assignment_at')
+      .eq('organization_id', organizationId)
+      .in('user_id', userIds)
+      .order('last_assignment_at', { ascending: true, nullsFirst: true });
+    availableAttendants = anyAttendants;
+  }
+
+  if (!availableAttendants || availableAttendants.length === 0) {
+    availableAttendants = userIds.map((id: string) => ({ user_id: id, last_assignment_at: null }));
+  }
 
   const nextAttendant = availableAttendants[0];
   const { data: profile } = await supabase
