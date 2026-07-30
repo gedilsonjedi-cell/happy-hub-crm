@@ -109,7 +109,12 @@ export function Sidebar() {
 
   const filteredDisparosSubmenu = useMemo(() => {
     const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin || userRole.isAdmin || userRole.isSupervisor;
+    return disparosSubmenu.filter((item) => {
       if ((item as any).emailRestricted && !canAccessRelatorios) return false;
+      return true;
+    });
+  }, [userEmail, userRole.isSuperAdmin, userRole.isAdmin, userRole.isSupervisor]);
+
 
   const unreadCount = useUnreadMessagesCount();
 
