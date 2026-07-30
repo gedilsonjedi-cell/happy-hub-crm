@@ -78,15 +78,16 @@ describe("canAccessConversation — ownership + sector isolation", () => {
     expect(can({ sectorId: MY_SECTOR, assignedTo: OTHER })).toBe(false);
   });
 
-  it("4. supervisor: dono = outro usuário → false (sem bypass)", async () => {
+  it("4. supervisor: dono = outro usuário → true (visão geral como admin)", async () => {
     const can = await renderCan("supervisor", [MY_SECTOR]);
-    expect(can({ sectorId: MY_SECTOR, assignedTo: OTHER })).toBe(false);
+    expect(can({ sectorId: MY_SECTOR, assignedTo: OTHER })).toBe(true);
   });
 
   it("5. supervisor: dono = próprio usuário → true", async () => {
     const can = await renderCan("supervisor", [MY_SECTOR]);
     expect(can({ sectorId: MY_SECTOR, assignedTo: ME })).toBe(true);
   });
+
 
   it("6. admin: dono = outro usuário → true (bypass)", async () => {
     const can = await renderCan("admin", [MY_SECTOR]);
