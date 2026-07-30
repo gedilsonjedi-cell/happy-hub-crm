@@ -149,7 +149,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
       ]
     },
-    ...(isAdmin || isSuperAdmin
+    ...(isAdmin || isSupervisor || isSuperAdmin
       ? [{ label: "Relatórios", path: "/relatorios", icon: BarChart3 }]
       : []),
     {
