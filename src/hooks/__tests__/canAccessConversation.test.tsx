@@ -104,8 +104,9 @@ describe("canAccessConversation — ownership + sector isolation", () => {
     expect(can({ sectorId: OTHER_SECTOR, assignedTo: null })).toBe(false);
   });
 
-  it("8b. supervisor: sector alheio, sem dono → false (regra de setor)", async () => {
+  it("8b. supervisor: sector alheio, sem dono → true (visão geral)", async () => {
     const can = await renderCan("supervisor", [MY_SECTOR]);
-    expect(can({ sectorId: OTHER_SECTOR, assignedTo: null })).toBe(false);
+    expect(can({ sectorId: OTHER_SECTOR, assignedTo: null })).toBe(true);
   });
+
 });
