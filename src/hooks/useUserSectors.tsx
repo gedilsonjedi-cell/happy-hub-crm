@@ -50,7 +50,7 @@ export function useUserSectors() {
 
       try {
         // Super admins and admins can see all sectors in their organization
-        if (role === "super_admin" || role === "admin") {
+        if (role === "super_admin" || role === "admin" || role === "supervisor") {
           const { data, error } = await withTimeout(
             supabase
               .from("sectors")
@@ -135,7 +135,7 @@ export function useUserSectors() {
   // - Conversations WITH sector = visible only to attendants in that sector
   const canSeeSector = useCallback((sectorId: string | null): boolean => {
     // Admins can see everything
-    if (role === "super_admin" || role === "admin") return true;
+    if (role === "super_admin" || role === "admin" || role === "supervisor") return true;
     
     // Conversation has NO sector - visible to ALL attendants
     if (!sectorId) {
@@ -150,7 +150,7 @@ export function useUserSectors() {
   // Same logic: no sector = everyone can interact; with sector = only that department
   const canInteractWithSector = useCallback((sectorId: string | null): boolean => {
     // Admins can interact with everything
-    if (role === "super_admin" || role === "admin") return true;
+    if (role === "super_admin" || role === "admin" || role === "supervisor") return true;
     
     // Conversation has NO sector - all attendants can interact
     if (!sectorId) {
@@ -170,7 +170,7 @@ export function useUserSectors() {
     sectorId: string | null;
     assignedTo: string | null | undefined;
   }): boolean => {
-    if (role === "super_admin" || role === "admin") return true;
+    if (role === "super_admin" || role === "admin" || role === "supervisor") return true;
     if (!canSeeSector(conv.sectorId)) return false;
     if (conv.assignedTo && conv.assignedTo !== user?.id) return false;
     return true;
@@ -184,7 +184,7 @@ export function useUserSectors() {
     canInteractWithSector,
     canAccessConversation,
     // Helper to check if user has full access (admin/super_admin)
-    hasFullAccess: role === "super_admin" || role === "admin",
+    hasFullAccess: role === "super_admin" || role === "admin" || role === "supervisor",
   };
 }
 
