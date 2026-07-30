@@ -108,12 +108,14 @@ export function Sidebar() {
   const userEmail = user?.email?.trim().toLowerCase() || "";
 
   const filteredDisparosSubmenu = useMemo(() => {
-    const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin || userRole.isAdmin;
-    return disparosSubmenu.filter(item => {
+    const canAccessRelatorios = RELATORIOS_ALLOWED_EMAILS.includes(userEmail) || userRole.isSuperAdmin || userRole.isAdmin || userRole.isSupervisor;
+    return disparosSubmenu.filter((item) => {
       if ((item as any).emailRestricted && !canAccessRelatorios) return false;
       return true;
     });
-  }, [userEmail, userRole.isSuperAdmin, userRole.isAdmin]);
+  }, [userEmail, userRole.isSuperAdmin, userRole.isAdmin, userRole.isSupervisor]);
+
+
   const unreadCount = useUnreadMessagesCount();
 
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);

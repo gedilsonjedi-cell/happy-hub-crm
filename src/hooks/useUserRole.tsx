@@ -113,7 +113,7 @@ export function useUserRole(userIdOverride?: string | null): UserRoleState {
       canAccessIntegracoes: isSuperAdmin || isAdmin || isSupervisor,
       canAccessLeads: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
       canAccessPipeline: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
-      canAccessUsuarios: isSuperAdmin || isAdmin,
+      canAccessUsuarios: isSuperAdmin || isAdmin || isSupervisor,
       canAccessSetores: isSuperAdmin || isAdmin || isSupervisor || isAtendente,
       canAccessSuperAdmin: isSuperAdmin,
     };

@@ -17,12 +17,12 @@ const ALLOWED_EMAILS = ["allan.pedro147@gmail.com", "gedilson.junior@gmail.com",
 
 export default function Relatorios() {
   const { user, loading: authLoading } = useAuth();
-  const { isSuperAdmin, isAdmin, loading: roleLoading } = useUserRole(user?.id);
+  const { isSuperAdmin, isAdmin, isSupervisor, loading: roleLoading } = useUserRole(user?.id);
   const [activeTab, setActiveTab] = useState("trafego");
 
   const userEmail = user?.email?.trim().toLowerCase() || "";
   const isEmailAllowed = ALLOWED_EMAILS.includes(userEmail);
-  const hasAccess = isEmailAllowed || isSuperAdmin || isAdmin;
+  const hasAccess = isEmailAllowed || isSuperAdmin || isAdmin || isSupervisor;
 
   if (authLoading || (!!user?.id && !isEmailAllowed && roleLoading)) {
     return (
