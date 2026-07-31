@@ -2893,6 +2893,38 @@ const AtendimentoV2 = () => {
     setShowSaleConfirmationDialog(true);
   };
 
+  // Bulk archive (seleção em lote)
+  const handleBulkArchive = async () => {
+    const targets = filteredConversations.filter(c => bulkSelectedKeys.has(getConversationKey(c)));
+    if (targets.length === 0 || bulkArchiving) return;
+
+    setBulkArchiving(true);
+    let ok = 0;
+    let fail = 0;
+    for (const conv of targets) {
+      try {
+        await updateConversationStatus(getConversationKey(conv), "archived");
+        ok++;
+      } catch (error) {
+        console.error("Erro ao arquivar em lote:", error);
+        fail++;
+      }
+    }
+    setBulkArchiving(false);
+
+    if (ok > 0) toast.success(`${ok} conversa${ok > 1 ? "s" : ""} arquivada${ok > 1 ? "s" : ""}`);
+    if (fail > 0) toast.error(`Não foi possível arquivar ${fail} conversa${fail > 1 ? "s" : ""}`);
+
+    setBulkSelectMode(false);
+    setBulkSelectedKeys(new Set());
+
+    if (selectedConversation && targets.some(c => getConversationKey(c) === getConversationKey(selectedConversation))) {
+      setSelectedConversation(null);
+      setSelectedConversationStableKey(null);
+    }
+    setConversationRefetchTrigger(prev => prev + 1);
+  };
+
   const handleConfirmArchive = async (saleCompleted: boolean) => {
     if (!conversationToArchive) return;
     
