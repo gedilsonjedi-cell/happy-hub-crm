@@ -673,6 +673,7 @@ const AtendimentoV2 = () => {
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [bulkSelectedKeys, setBulkSelectedKeys] = useState<Set<string>>(new Set());
   const [showBulkTransferDialog, setShowBulkTransferDialog] = useState(false);
+  const [bulkArchiving, setBulkArchiving] = useState(false);
   const [conversationRefetchTrigger, setConversationRefetchTrigger] = useState(0);
   const lastForegroundRefreshRef = useRef(0);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -2893,6 +2894,38 @@ const AtendimentoV2 = () => {
     setShowSaleConfirmationDialog(true);
   };
 
+  // Bulk archive (seleção em lote)
+  const handleBulkArchive = async () => {
+    const targets = filteredConversations.filter(c => bulkSelectedKeys.has(getConversationKey(c)));
+    if (targets.length === 0 || bulkArchiving) return;
+
+    setBulkArchiving(true);
+    let ok = 0;
+    let fail = 0;
+    for (const conv of targets) {
+      try {
+        await updateConversationStatus(getConversationKey(conv), "archived");
+        ok++;
+      } catch (error) {
+        console.error("Erro ao arquivar em lote:", error);
+        fail++;
+      }
+    }
+    setBulkArchiving(false);
+
+    if (ok > 0) toast.success(`${ok} conversa${ok > 1 ? "s" : ""} arquivada${ok > 1 ? "s" : ""}`);
+    if (fail > 0) toast.error(`Não foi possível arquivar ${fail} conversa${fail > 1 ? "s" : ""}`);
+
+    setBulkSelectMode(false);
+    setBulkSelectedKeys(new Set());
+
+    if (selectedConversation && targets.some(c => getConversationKey(c) === getConversationKey(selectedConversation))) {
+      setSelectedConversation(null);
+      setSelectedConversationStableKey(null);
+    }
+    setConversationRefetchTrigger(prev => prev + 1);
+  };
+
   const handleConfirmArchive = async (saleCompleted: boolean) => {
     if (!conversationToArchive) return;
     
@@ -5056,6 +5089,16 @@ const AtendimentoV2 = () => {
                     >
                       <Users className="w-3 h-3" />
                       Transferir ({bulkSelectedKeys.size})
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      disabled={bulkSelectedKeys.size === 0 || bulkArchiving}
+                      onClick={handleBulkArchive}
+                    >
+                      {bulkArchiving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
+                      Arquivar ({bulkSelectedKeys.size})
                     </Button>
                     <Button
                       variant="ghost"
