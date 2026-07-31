@@ -673,6 +673,7 @@ const AtendimentoV2 = () => {
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [bulkSelectedKeys, setBulkSelectedKeys] = useState<Set<string>>(new Set());
   const [showBulkTransferDialog, setShowBulkTransferDialog] = useState(false);
+  const [bulkArchiving, setBulkArchiving] = useState(false);
   const [conversationRefetchTrigger, setConversationRefetchTrigger] = useState(0);
   const lastForegroundRefreshRef = useRef(0);
   const imageInputRef = useRef<HTMLInputElement>(null);
