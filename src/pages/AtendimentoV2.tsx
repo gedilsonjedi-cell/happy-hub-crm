@@ -5091,6 +5091,16 @@ const AtendimentoV2 = () => {
                       Transferir ({bulkSelectedKeys.size})
                     </Button>
                     <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      disabled={bulkSelectedKeys.size === 0 || bulkArchiving}
+                      onClick={handleBulkArchive}
+                    >
+                      {bulkArchiving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
+                      Arquivar ({bulkSelectedKeys.size})
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs"
