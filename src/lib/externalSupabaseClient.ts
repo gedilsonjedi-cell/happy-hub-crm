@@ -43,10 +43,18 @@ function getScopeKey(impersonatedOrgId?: string | null): string {
   return impersonatedOrgId ?? DEFAULT_SCOPE;
 }
 
+class ExternalAuthUnauthorizedError extends Error {}
+
 async function fetchExternalAuth(
   impersonatedOrgId?: string | null
 ): Promise<ExternalAuthResponse> {
   const body = impersonatedOrgId ? { impersonatedOrgId } : undefined;
+
+  // No local session => the edge function can only answer 401. Stop early.
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData?.session) {
+    throw new ExternalAuthUnauthorizedError("Sessão expirada");
+  }
 
   const { data, error } = await withTimeout(
     supabase.functions.invoke("external-auth-token", { body }),
@@ -55,6 +63,10 @@ async function fetchExternalAuth(
   );
 
   if (error) {
+    const status = (error as { context?: { status?: number } })?.context?.status;
+    if (status === 401 || status === 403) {
+      throw new ExternalAuthUnauthorizedError("Sessão expirada");
+    }
     throw new Error(`Failed to get external auth token: ${error.message}`);
   }
 
@@ -99,7 +111,16 @@ async function refreshTokenInPlace(
     refreshPromises.set(scopeKey, refreshPromise);
   }
 
-  const auth = await refreshPromise;
+  let auth: ExternalAuthResponse;
+  try {
+    auth = await refreshPromise;
+  } catch (err) {
+    if (err instanceof ExternalAuthUnauthorizedError) {
+      // Session is gone: stop the refresh loop and drop cached clients.
+      clearExternalClient();
+    }
+    throw err;
+  }
   authCache.set(scopeKey, auth);
 
   const client = clientCache.get(scopeKey);
