@@ -111,7 +111,16 @@ async function refreshTokenInPlace(
     refreshPromises.set(scopeKey, refreshPromise);
   }
 
-  const auth = await refreshPromise;
+  let auth: ExternalAuthResponse;
+  try {
+    auth = await refreshPromise;
+  } catch (err) {
+    if (err instanceof ExternalAuthUnauthorizedError) {
+      // Session is gone: stop the refresh loop and drop cached clients.
+      clearExternalClient();
+    }
+    throw err;
+  }
   authCache.set(scopeKey, auth);
 
   const client = clientCache.get(scopeKey);
