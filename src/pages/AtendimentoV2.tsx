@@ -2875,7 +2875,7 @@ const AtendimentoV2 = () => {
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
             queryFn: async () => {
-              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25, impersonatedOrgId: effectiveOrganizationId });
+              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25, impersonatedOrgId: externalImpersonatedOrgId });
             },
             initialPageParam: null as string | null,
             staleTime: 0,
