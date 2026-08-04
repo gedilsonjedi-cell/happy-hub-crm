@@ -570,6 +570,10 @@ const AtendimentoV2 = () => {
   // Somente admin e super_admin têm bypass total. Supervisor é tratado como
   // atendente: só vê conversas sem dono ou atribuídas a ele mesmo.
   const canSeeAllConversations = roleIsAdmin || roleIsSuperAdmin;
+  // Super admin sem organização selecionada: todas as queries de conversas e
+  // mensagens ficam desabilitadas (effectiveOrganizationId = null). Em vez de
+  // uma tela vazia sem explicação, mostramos um aviso pedindo a seleção.
+  const needsOrgSelection = roleIsSuperAdmin && !effectiveOrganizationId;
   void roleIsSupervisor;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
