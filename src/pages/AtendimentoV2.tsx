@@ -5119,7 +5119,13 @@ const AtendimentoV2 = () => {
                 </div>
               )}
 
-              {loading ? (
+              {needsOrgSelection ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium text-foreground/80">Nenhuma organização selecionada</p>
+                  <p className="text-sm mt-1">Selecione uma organização no seletor acima para ver as conversas.</p>
+                </div>
+              ) : loading ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Carregando...
                 </div>
