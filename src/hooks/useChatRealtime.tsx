@@ -36,6 +36,21 @@ interface RealtimeCallbacks {
   }) => void;
 }
 
+/**
+ * Stable, collision-free short hash (djb2) for a set of channel IDs.
+ * Replaces the old `slice(0, 40)` truncation, which collapsed different
+ * channel sets that shared the same first UUID into the same channel name.
+ */
+function hashChannelSet(ids: string): string {
+  let h = 5381;
+  for (let i = 0; i < ids.length; i++) {
+    h = ((h << 5) + h + ids.charCodeAt(i)) >>> 0;
+  }
+  return `${h.toString(36)}-${ids.length}`;
+}
+
+
+
 
 /**
  * useChatRealtime — Realtime hook (External SSoT)
@@ -126,6 +141,9 @@ export function useChatRealtime(
     if (!channelKey) return;
 
     let cancelled = false;
+    // Set to true when WE tear channels down (unmount / channel-set change).
+    // Prevents the CLOSED status callback from resurrecting removed channels.
+    let teardown = false;
 
     (async () => {
       const client = await getExternalClient(impersonatedOrgId);
@@ -133,6 +151,25 @@ export function useChatRealtime(
       clientRef.current = client;
 
       const channelFilter = channelIdsRef.current.join(",");
+      const channelHash = hashChannelSet(channelFilter);
+
+      // Reconnect ONLY on real connection failures — never on CLOSED, which is
+      // also emitted by removeChannel() during intentional cleanup.
+      const handleStatus = (
+        label: string,
+        ch: RealtimeChannel
+      ) => (status: string, err?: Error) => {
+        console.log(`[useChatRealtime] ${label} channel status: ${status}`, err ?? "");
+        if (teardown || cancelled) return;
+        if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT") return;
+        refreshExternalToken(impersonatedOrgId)
+          .then(() => {
+            if (teardown || cancelled) return;
+            try { ch.subscribe(); } catch { /* noop */ }
+          })
+          .catch(() => {});
+      };
+
 
       // Cleanup previous
       if (messagesChannelRef.current) {
@@ -151,7 +188,7 @@ export function useChatRealtime(
 
       // 1. whatsapp_messages on EXTERNAL
       const messagesChannel = client
-        .channel(`ext-msgs-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-msgs-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -189,22 +226,13 @@ export function useChatRealtime(
               metadata: msg.metadata,
             });
           }
-        )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { messagesChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        );
+      messagesChannel.subscribe(handleStatus("messages", messagesChannel));
       messagesChannelRef.current = messagesChannel;
 
       // 2. conversation_assignments on EXTERNAL — by channel
       const assignmentsChannel = client
-        .channel(`ext-assign-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-assign-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -214,17 +242,8 @@ export function useChatRealtime(
             filter: `channel_id=in.(${channelFilter})`,
           },
           handleAssignmentPayload
-        )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { assignmentsChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        );
+      assignmentsChannel.subscribe(handleStatus("assignments", assignmentsChannel));
       assignmentsChannelRef.current = assignmentsChannel;
 
       // 2b. conversation_stats on EXTERNAL — SSoT for unread_count.
@@ -233,7 +252,7 @@ export function useChatRealtime(
       // the publication in migration 2E). Subscribing here guarantees the badge
       // increments on every subsequent inbound message.
       const statsChannel = client
-        .channel(`ext-stats-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-stats-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -265,17 +284,8 @@ export function useChatRealtime(
               senderName: row.sender_name ?? null,
             });
           }
-        )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] stats channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { statsChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        );
+      statsChannel.subscribe(handleStatus("stats", statsChannel));
       statsChannelRef.current = statsChannel;
 
 
@@ -299,17 +309,8 @@ export function useChatRealtime(
               if (data?.channel_id) return; // handled by channel-scoped subscription
               handleAssignmentPayload(payload);
             }
-          )
-          .subscribe((status, err) => {
-            console.log(`[useChatRealtime] org-assignments channel status: ${status}`, err ?? "");
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-              refreshExternalToken(impersonatedOrgId)
-                .then(() => {
-                  try { orgChannel.subscribe(); } catch { /* noop */ }
-                })
-                .catch(() => {});
-            }
-          });
+          );
+        orgChannel.subscribe(handleStatus("org-assignments", orgChannel));
         orgAssignmentsChannelRef.current = orgChannel;
       }
     })().catch((err) => {
@@ -338,6 +339,7 @@ export function useChatRealtime(
 
     return () => {
       cancelled = true;
+      teardown = true;
       window.removeEventListener("focus", resubscribeAll);
       window.removeEventListener("online", resubscribeAll);
       document.removeEventListener("visibilitychange", onVisibility);

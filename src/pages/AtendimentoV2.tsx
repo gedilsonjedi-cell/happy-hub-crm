@@ -56,7 +56,8 @@ import {
   History,
   Download,
   Users,
-  Calculator
+  Calculator,
+  Building2
 } from "lucide-react";
 
 const OPTIMUS_ADMIN_ORG_ID = "fe6a8da0-8f0a-4887-8c2c-f7ed6e5cd0b0";
@@ -570,6 +571,10 @@ const AtendimentoV2 = () => {
   // Somente admin e super_admin têm bypass total. Supervisor é tratado como
   // atendente: só vê conversas sem dono ou atribuídas a ele mesmo.
   const canSeeAllConversations = roleIsAdmin || roleIsSuperAdmin;
+  // Super admin sem organização selecionada: todas as queries de conversas e
+  // mensagens ficam desabilitadas (effectiveOrganizationId = null). Em vez de
+  // uma tela vazia sem explicação, mostramos um aviso pedindo a seleção.
+  const needsOrgSelection = roleIsSuperAdmin && !effectiveOrganizationId;
   void roleIsSupervisor;
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
@@ -2875,7 +2880,7 @@ const AtendimentoV2 = () => {
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
             queryFn: async () => {
-              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25, impersonatedOrgId: effectiveOrganizationId });
+              return await fetchExternalMessages({ channelId: conv.channelId!, phoneVariants, cursor: null, pageSize: 25, impersonatedOrgId: externalImpersonatedOrgId });
             },
             initialPageParam: null as string | null,
             staleTime: 0,
@@ -5115,7 +5120,13 @@ const AtendimentoV2 = () => {
                 </div>
               )}
 
-              {loading ? (
+              {needsOrgSelection ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium text-foreground/80">Nenhuma organização selecionada</p>
+                  <p className="text-sm mt-1">Selecione uma organização no seletor acima para ver as conversas.</p>
+                </div>
+              ) : loading ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Carregando...
                 </div>
@@ -5433,6 +5444,16 @@ const AtendimentoV2 = () => {
                 </div>
               </div>
             </>
+          ) : needsOrgSelection ? (
+            <div className="flex-1 flex items-center justify-center bg-muted/10">
+              <div className="text-center text-muted-foreground max-w-sm px-6">
+                <Building2 className="w-20 h-20 mx-auto mb-4 opacity-20 stroke-1" />
+                <p className="text-base font-medium text-foreground/80">Nenhuma organização selecionada</p>
+                <p className="text-sm mt-1 text-muted-foreground/70">
+                  Selecione uma organização no seletor acima para ver as conversas e mensagens.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/10">
               <div className="text-center text-muted-foreground">
