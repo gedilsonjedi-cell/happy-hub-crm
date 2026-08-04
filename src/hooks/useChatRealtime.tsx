@@ -188,7 +188,7 @@ export function useChatRealtime(
 
       // 1. whatsapp_messages on EXTERNAL
       const messagesChannel = client
-        .channel(`ext-msgs-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-msgs-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -227,21 +227,12 @@ export function useChatRealtime(
             });
           }
         )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] messages channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { messagesChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        .subscribe(handleStatus("messages", messagesChannel));
       messagesChannelRef.current = messagesChannel;
 
       // 2. conversation_assignments on EXTERNAL — by channel
       const assignmentsChannel = client
-        .channel(`ext-assign-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-assign-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -252,16 +243,7 @@ export function useChatRealtime(
           },
           handleAssignmentPayload
         )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] assignments channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { assignmentsChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        .subscribe(handleStatus("assignments", assignmentsChannel));
       assignmentsChannelRef.current = assignmentsChannel;
 
       // 2b. conversation_stats on EXTERNAL — SSoT for unread_count.
@@ -270,7 +252,7 @@ export function useChatRealtime(
       // the publication in migration 2E). Subscribing here guarantees the badge
       // increments on every subsequent inbound message.
       const statsChannel = client
-        .channel(`ext-stats-${channelFilter.slice(0, 40)}`)
+        .channel(`ext-stats-${channelHash}`)
         .on(
           "postgres_changes",
           {
@@ -303,16 +285,7 @@ export function useChatRealtime(
             });
           }
         )
-        .subscribe((status, err) => {
-          console.log(`[useChatRealtime] stats channel status: ${status}`, err ?? "");
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            refreshExternalToken(impersonatedOrgId)
-              .then(() => {
-                try { statsChannel.subscribe(); } catch { /* noop */ }
-              })
-              .catch(() => {});
-          }
-        });
+        .subscribe(handleStatus("stats", statsChannel));
       statsChannelRef.current = statsChannel;
 
 
@@ -337,16 +310,7 @@ export function useChatRealtime(
               handleAssignmentPayload(payload);
             }
           )
-          .subscribe((status, err) => {
-            console.log(`[useChatRealtime] org-assignments channel status: ${status}`, err ?? "");
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-              refreshExternalToken(impersonatedOrgId)
-                .then(() => {
-                  try { orgChannel.subscribe(); } catch { /* noop */ }
-                })
-                .catch(() => {});
-            }
-          });
+          .subscribe(handleStatus("org-assignments", orgChannel));
         orgAssignmentsChannelRef.current = orgChannel;
       }
     })().catch((err) => {
@@ -375,6 +339,7 @@ export function useChatRealtime(
 
     return () => {
       cancelled = true;
+      teardown = true;
       window.removeEventListener("focus", resubscribeAll);
       window.removeEventListener("online", resubscribeAll);
       document.removeEventListener("visibilitychange", onVisibility);
