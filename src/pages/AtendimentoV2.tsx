@@ -5444,6 +5444,16 @@ const AtendimentoV2 = () => {
                 </div>
               </div>
             </>
+          ) : needsOrgSelection ? (
+            <div className="flex-1 flex items-center justify-center bg-muted/10">
+              <div className="text-center text-muted-foreground max-w-sm px-6">
+                <Building2 className="w-20 h-20 mx-auto mb-4 opacity-20 stroke-1" />
+                <p className="text-base font-medium text-foreground/80">Nenhuma organização selecionada</p>
+                <p className="text-sm mt-1 text-muted-foreground/70">
+                  Selecione uma organização no seletor acima para ver as conversas e mensagens.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/10">
               <div className="text-center text-muted-foreground">
