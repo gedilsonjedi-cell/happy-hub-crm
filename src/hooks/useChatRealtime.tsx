@@ -226,8 +226,8 @@ export function useChatRealtime(
               metadata: msg.metadata,
             });
           }
-        )
-        .subscribe(handleStatus("messages", messagesChannel));
+        );
+      messagesChannel.subscribe(handleStatus("messages", messagesChannel));
       messagesChannelRef.current = messagesChannel;
 
       // 2. conversation_assignments on EXTERNAL — by channel
@@ -242,8 +242,8 @@ export function useChatRealtime(
             filter: `channel_id=in.(${channelFilter})`,
           },
           handleAssignmentPayload
-        )
-        .subscribe(handleStatus("assignments", assignmentsChannel));
+        );
+      assignmentsChannel.subscribe(handleStatus("assignments", assignmentsChannel));
       assignmentsChannelRef.current = assignmentsChannel;
 
       // 2b. conversation_stats on EXTERNAL — SSoT for unread_count.
@@ -284,8 +284,8 @@ export function useChatRealtime(
               senderName: row.sender_name ?? null,
             });
           }
-        )
-        .subscribe(handleStatus("stats", statsChannel));
+        );
+      statsChannel.subscribe(handleStatus("stats", statsChannel));
       statsChannelRef.current = statsChannel;
 
 
@@ -309,8 +309,8 @@ export function useChatRealtime(
               if (data?.channel_id) return; // handled by channel-scoped subscription
               handleAssignmentPayload(payload);
             }
-          )
-          .subscribe(handleStatus("org-assignments", orgChannel));
+          );
+        orgChannel.subscribe(handleStatus("org-assignments", orgChannel));
         orgAssignmentsChannelRef.current = orgChannel;
       }
     })().catch((err) => {
