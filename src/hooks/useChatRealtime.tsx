@@ -141,6 +141,9 @@ export function useChatRealtime(
     if (!channelKey) return;
 
     let cancelled = false;
+    // Set to true when WE tear channels down (unmount / channel-set change).
+    // Prevents the CLOSED status callback from resurrecting removed channels.
+    let teardown = false;
 
     (async () => {
       const client = await getExternalClient(impersonatedOrgId);
@@ -148,6 +151,25 @@ export function useChatRealtime(
       clientRef.current = client;
 
       const channelFilter = channelIdsRef.current.join(",");
+      const channelHash = hashChannelSet(channelFilter);
+
+      // Reconnect ONLY on real connection failures — never on CLOSED, which is
+      // also emitted by removeChannel() during intentional cleanup.
+      const handleStatus = (
+        label: string,
+        ch: RealtimeChannel
+      ) => (status: string, err?: Error) => {
+        console.log(`[useChatRealtime] ${label} channel status: ${status}`, err ?? "");
+        if (teardown || cancelled) return;
+        if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT") return;
+        refreshExternalToken(impersonatedOrgId)
+          .then(() => {
+            if (teardown || cancelled) return;
+            try { ch.subscribe(); } catch { /* noop */ }
+          })
+          .catch(() => {});
+      };
+
 
       // Cleanup previous
       if (messagesChannelRef.current) {
