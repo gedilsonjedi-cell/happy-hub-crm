@@ -56,7 +56,8 @@ import {
   History,
   Download,
   Users,
-  Calculator
+  Calculator,
+  Building2
 } from "lucide-react";
 
 const OPTIMUS_ADMIN_ORG_ID = "fe6a8da0-8f0a-4887-8c2c-f7ed6e5cd0b0";
