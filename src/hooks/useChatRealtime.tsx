@@ -36,6 +36,21 @@ interface RealtimeCallbacks {
   }) => void;
 }
 
+/**
+ * Stable, collision-free short hash (djb2) for a set of channel IDs.
+ * Replaces the old `slice(0, 40)` truncation, which collapsed different
+ * channel sets that shared the same first UUID into the same channel name.
+ */
+function hashChannelSet(ids: string): string {
+  let h = 5381;
+  for (let i = 0; i < ids.length; i++) {
+    h = ((h << 5) + h + ids.charCodeAt(i)) >>> 0;
+  }
+  return `${h.toString(36)}-${ids.length}`;
+}
+
+
+
 
 /**
  * useChatRealtime — Realtime hook (External SSoT)
