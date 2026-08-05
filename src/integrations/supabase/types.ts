@@ -2035,6 +2035,150 @@ export type Database = {
           },
         ]
       }
+      inbound_webhook_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          lead_created: boolean
+          name: string | null
+          organization_id: string
+          payload: Json | null
+          phone: string | null
+          template_sent: boolean
+          webhook_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean
+          name?: string | null
+          organization_id: string
+          payload?: Json | null
+          phone?: string | null
+          template_sent?: boolean
+          webhook_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean
+          name?: string | null
+          organization_id?: string
+          payload?: Json | null
+          phone?: string | null
+          template_sent?: boolean
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_webhook_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhook_logs_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbound_webhooks: {
+        Row: {
+          auto_dispatch: boolean
+          channel_id: string | null
+          create_lead: boolean
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          sector_id: string | null
+          tags: string[]
+          template_id: string | null
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          auto_dispatch?: boolean
+          channel_id?: string | null
+          create_lead?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          sector_id?: string | null
+          tags?: string[]
+          template_id?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_dispatch?: boolean
+          channel_id?: string | null
+          create_lead?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          sector_id?: string | null
+          tags?: string[]
+          template_id?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_webhooks_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_documents: {
         Row: {
           agent_id: string | null
