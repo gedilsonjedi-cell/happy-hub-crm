@@ -39,6 +39,7 @@ import {
   Phone
 } from "lucide-react";
 import { URAConfigPanel } from "@/components/integrations/URAConfigPanel";
+import { InboundWebhookPanel } from "@/components/integrations/InboundWebhookPanel";
 
 interface WebhookData {
   id: string;
@@ -264,10 +265,14 @@ const Integracoes = () => {
         </div>
 
         <Tabs defaultValue="webhooks" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
             <TabsTrigger value="webhooks" className="gap-2">
               <Webhook className="h-4 w-4" />
               Webhooks
+            </TabsTrigger>
+            <TabsTrigger value="inbound" className="gap-2">
+              <ArrowRight className="h-4 w-4" />
+              Formulários
             </TabsTrigger>
             <TabsTrigger value="ura" className="gap-2">
               <Phone className="h-4 w-4" />
@@ -487,6 +492,10 @@ const Integracoes = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="inbound" className="space-y-4">
+            <InboundWebhookPanel />
           </TabsContent>
 
           <TabsContent value="ura" className="space-y-4">
