@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
-import { classifyLeadIntent, DECLINE_MESSAGE } from "../_shared/leadIntent.ts";
+import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact } from "../_shared/leadIntent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1195,9 +1195,15 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
 
   // Lead declined the offer → polite closing message, no welcome, no chatbot.
   if (leadIntent === 'negative') {
-    sendDirect(normalizedPhone, DECLINE_MESSAGE).catch(console.error);
-    markWelcomeSent(organizationId, normalizedPhone).catch(() => {});
-    return;
+    // SOMENTE no primeiro contato do lead. Se já houver histórico, nunca enviar.
+    const firstContact = await isFirstInboundContact(messageDb, normalizedPhone, messageId);
+    if (!firstContact) {
+      console.log('[decline] Ignorado: lead já possui histórico de conversa:', normalizedPhone);
+    } else {
+      sendDirect(normalizedPhone, DECLINE_MESSAGE).catch(console.error);
+      markWelcomeSent(organizationId, normalizedPhone).catch(() => {});
+      return;
+    }
   }
 
   // Welcome message (not blocked, not sent before) — only for positive/neutral replies
