@@ -4280,6 +4280,14 @@ export type Database = {
           unread_count: number
         }[]
       }
+      set_org_auto_reply_flags: {
+        Args: {
+          p_auto_blacklist_enabled: boolean
+          p_decline_message_enabled: boolean
+          p_organization_id: string
+        }
+        Returns: undefined
+      }
       set_org_default_sector: {
         Args: {
           _enabled: boolean
