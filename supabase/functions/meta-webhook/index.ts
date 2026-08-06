@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
+import { classifyLeadIntent, DECLINE_MESSAGE } from "../_shared/leadIntent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
