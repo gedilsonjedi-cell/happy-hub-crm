@@ -2680,9 +2680,11 @@ export type Database = {
       }
       organizations: {
         Row: {
+          auto_blacklist_enabled: boolean
           auto_distribute_enabled: boolean
           created_at: string
           custom_subscription_price: number | null
+          decline_message_enabled: boolean
           default_sector_id: string | null
           has_paid_first_subscription: boolean
           id: string
@@ -2702,9 +2704,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_blacklist_enabled?: boolean
           auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          decline_message_enabled?: boolean
           default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
@@ -2724,9 +2728,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_blacklist_enabled?: boolean
           auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          decline_message_enabled?: boolean
           default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
