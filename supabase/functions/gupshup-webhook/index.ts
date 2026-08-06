@@ -736,6 +736,13 @@ async function processInboundMessage(
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
   await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName, { id: channelId, provider: 'gupshup' });
 
+  // Lead declined the offer → polite closing message.
+  if (classifyLeadIntent(content, messageType) === 'negative') {
+    supabase.functions.invoke('gupshup-send', {
+      body: { channelId, destination: normalizedPhone, message: DECLINE_MESSAGE, messageType: 'text' },
+    }).then(() => {}, (e: unknown) => console.warn('[decline] gupshup send failed', e));
+  }
+
 
 
   // Check for duplicate
