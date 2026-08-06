@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
-import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact } from "../_shared/leadIntent.ts";
+import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact, getOrgAutoReplyFlags } from "../_shared/leadIntent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -735,10 +735,13 @@ async function processInboundMessage(
   }
 
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
-  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName, { id: channelId, provider: 'gupshup' });
+  const autoReplyFlags = await getOrgAutoReplyFlags(supabase, organizationId);
+  if (autoReplyFlags.autoBlacklistEnabled) {
+    await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, senderName, { id: channelId, provider: 'gupshup' });
+  }
 
   // Lead declined the offer → polite closing message.
-  if (classifyLeadIntent(content, messageType) === 'negative' && await isFirstInboundContact(messageDb, normalizedPhone, messageId)) {
+  if (autoReplyFlags.declineMessageEnabled && classifyLeadIntent(content, messageType) === 'negative' && await isFirstInboundContact(messageDb, normalizedPhone, messageId)) {
     supabase.functions.invoke('gupshup-send', {
       body: { channelId, destination: normalizedPhone, message: DECLINE_MESSAGE, messageType: 'text' },
     }).then(() => {}, (e: unknown) => console.warn('[decline] gupshup send failed', e));
