@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+
 import { toast } from "sonner";
 import { Clock, Save, PartyPopper, Moon, ShieldBan, ThumbsDown } from "lucide-react";
 
@@ -45,19 +47,13 @@ interface WelcomeMessageConfig {
 export default function Horarios() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
 
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .single();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+  // Organização efetiva (respeita impersonação de super admin)
+  const profile = effectiveOrganizationId
+    ? { organization_id: effectiveOrganizationId }
+    : null;
+
 
   const { data: businessHours, isLoading: loadingHours } = useQuery({
     queryKey: ["business-hours", profile?.organization_id],
@@ -142,32 +138,44 @@ export default function Horarios() {
     }
   }, [orgFlags]);
 
-  // Sync form state when data loads
+  // Sync form state when data loads (reseta ao trocar de organização)
   useEffect(() => {
-    if (businessHours && businessHours.length > 0) {
-      setFormHours(businessHours);
-    }
-  }, [businessHours]);
+    if (loadingHours) return;
+    setFormHours(businessHours && businessHours.length > 0 ? businessHours : defaultHours);
+  }, [businessHours, loadingHours]);
 
   useEffect(() => {
-    if (awayConfig) {
-      setFormAway({
-        id: awayConfig.id,
-        is_enabled: awayConfig.is_enabled ?? true,
-        message: awayConfig.message ?? "",
-      });
-    }
-  }, [awayConfig]);
+    if (loadingAway) return;
+    setFormAway(
+      awayConfig
+        ? {
+            id: awayConfig.id,
+            is_enabled: awayConfig.is_enabled ?? true,
+            message: awayConfig.message ?? "",
+          }
+        : {
+            is_enabled: true,
+            message: "Olá! No momento estamos fora do horário de atendimento. Retornaremos em breve.",
+          }
+    );
+  }, [awayConfig, loadingAway]);
 
   useEffect(() => {
-    if (welcomeConfig) {
-      setFormWelcome({
-        id: welcomeConfig.id,
-        is_enabled: welcomeConfig.is_enabled ?? true,
-        message: welcomeConfig.message ?? "",
-      });
-    }
-  }, [welcomeConfig]);
+    if (loadingWelcome) return;
+    setFormWelcome(
+      welcomeConfig
+        ? {
+            id: welcomeConfig.id,
+            is_enabled: welcomeConfig.is_enabled ?? true,
+            message: welcomeConfig.message ?? "",
+          }
+        : {
+            is_enabled: false,
+            message: "Olá! Seja bem-vindo(a)! Como posso ajudá-lo(a) hoje?",
+          }
+    );
+  }, [welcomeConfig, loadingWelcome]);
+
 
   const saveMutation = useMutation({
     mutationFn: async ({ 
