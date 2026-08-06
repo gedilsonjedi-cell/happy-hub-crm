@@ -9,46 +9,15 @@
 //   3) Insert the blacklist row so subsequent dispatches are blocked.
 // Atendente can still unblock later from the chat menu or /lista-negra.
 
-const KEYWORDS = [
-  'bloquear contato',
-  'bloquear meu contato',
-  'bloquear esse contato',
-  'bloqueia meu contato',
-  'bloqueie meu contato',
-  'bloquear numero',
-  'bloquear meu numero',
-  'bloqueia meu numero',
-  'bloqueie meu numero',
-  'me bloqueia',
-  'me bloqueie',
-  'nao quero mais receber',
-  'nao quero receber mais',
-  'pare de me enviar',
-  'pare de mandar mensagem',
-];
+import { classifyLeadIntent } from './leadIntent.ts';
 
 const GOODBYE_MESSAGE =
   'Entendido! Estamos removendo o seu contato da nossa lista de transmissão e você não receberá mais mensagens nossas. 🙏\n\n' +
   'Pedimos desculpas por qualquer incômodo. Caso futuramente precise dos nossos serviços ou tenha alguma dúvida, ' +
   'é só nos chamar aqui — estamos à disposição.';
 
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function shouldAutoBlacklist(content: string, messageType?: string): boolean {
-  if (!content) return false;
-  if (messageType && !['text', 'button', 'interactive'].includes(messageType)) return false;
-  if (content.startsWith('[')) return false; // synthetic placeholders like [Imagem]
-  const normalized = normalize(content);
-  if (normalized.length > 200) return false; // ignore long messages to avoid false positives
-  return KEYWORDS.some((kw) => normalized.includes(kw));
+  return classifyLeadIntent(content, messageType) === 'block';
 }
 
 export interface AutoBlacklistChannel {
@@ -56,6 +25,11 @@ export interface AutoBlacklistChannel {
   provider: string; // 'meta' | 'zapi' | 'gupshup'
 }
 
+/**
+ * @param sendText optional direct sender (preferred). When provided it is used
+ * instead of `supabase.functions.invoke`, which frequently fails inside
+ * webhooks (auth/timeout) and was silently dropping the goodbye message.
+ */
 export async function maybeAutoBlacklist(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -65,6 +39,7 @@ export async function maybeAutoBlacklist(
   messageType?: string,
   contactName?: string | null,
   channel?: AutoBlacklistChannel | null,
+  sendText?: (to: string, body: string) => Promise<boolean>,
 ): Promise<boolean> {
   try {
     if (!organizationId || !phone) return false;
@@ -72,23 +47,34 @@ export async function maybeAutoBlacklist(
 
     const digits = phone.replace(/\D/g, '');
     const normalizedPhone = digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+    const plainPhone = normalizedPhone.replace(/\D/g, '');
 
     // 1) Skip if already blacklisted (avoid spamming the goodbye message).
     const { data: existing } = await supabase
       .from('blacklist')
       .select('id')
       .eq('organization_id', organizationId)
-      .eq('phone', normalizedPhone)
-      .maybeSingle();
+      .in('phone', [normalizedPhone, plainPhone])
+      .limit(1);
 
-    if (existing) {
+    if (existing?.length) {
       console.log('[auto-blacklist] Already blacklisted, skipping:', normalizedPhone);
-      return false;
+      return true;
     }
 
     // 2) Send goodbye message BEFORE blacklisting (send fns refuse to send to
     //    blacklisted numbers).
-    if (channel?.id && channel?.provider) {
+    let goodbyeSent = false;
+    if (sendText) {
+      try {
+        goodbyeSent = await sendText(plainPhone, GOODBYE_MESSAGE);
+        console.log('[auto-blacklist] Goodbye direct send result:', goodbyeSent);
+      } catch (e) {
+        console.warn('[auto-blacklist] Direct goodbye send threw:', e);
+      }
+    }
+
+    if (!goodbyeSent && channel?.id && channel?.provider) {
       const provider = channel.provider.toLowerCase();
       const fnName = provider === 'meta'
         ? 'meta-send'
@@ -111,6 +97,7 @@ export async function maybeAutoBlacklist(
           if (sendError) {
             console.warn('[auto-blacklist] Goodbye send failed (continuing to block):', sendError.message || sendError);
           } else {
+            goodbyeSent = true;
             console.log('[auto-blacklist] Goodbye message sent to', normalizedPhone, 'via', fnName);
           }
         } catch (sendErr) {
@@ -134,7 +121,7 @@ export async function maybeAutoBlacklist(
 
     if (error) {
       console.warn('[auto-blacklist] Failed to insert:', error.message);
-      return false;
+      return true; // intent was block — never send welcome after it
     }
     console.log('[auto-blacklist] Phone auto-blocked by lead request:', normalizedPhone);
     return true;
