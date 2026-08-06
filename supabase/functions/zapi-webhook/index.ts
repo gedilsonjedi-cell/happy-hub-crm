@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
-import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact } from "../_shared/leadIntent.ts";
+import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact, getOrgAutoReplyFlags } from "../_shared/leadIntent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -987,10 +987,13 @@ Deno.serve(async (req) => {
       }
 
       // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
-      await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName, { id: channel.id, provider: 'zapi' });
+      const autoReplyFlags = await getOrgAutoReplyFlags(supabase, channel.organization_id);
+      if (autoReplyFlags.autoBlacklistEnabled) {
+        await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName, { id: channel.id, provider: 'zapi' });
+      }
 
       // Lead declined the offer → polite closing message (no welcome/chatbot follow-up).
-      if (classifyLeadIntent(content, messageType) === 'negative' && await isFirstInboundContact(messageDb, normalizedPhone, messageId)) {
+      if (autoReplyFlags.declineMessageEnabled && classifyLeadIntent(content, messageType) === 'negative' && await isFirstInboundContact(messageDb, normalizedPhone, messageId)) {
         supabase.functions.invoke('zapi-send', {
           body: { channelId: channel.id, destination: normalizedPhone, message: DECLINE_MESSAGE, messageType: 'text' },
         }).then(() => {}, (e: unknown) => console.warn('[decline] zapi send failed', e));

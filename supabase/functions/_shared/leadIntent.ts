@@ -117,3 +117,33 @@ export async function isFirstInboundContact(
     return false;
   }
 }
+
+// ── Flags por organização (Horários → Bloqueios / Mensagens negativas) ──
+const orgFlagsCache = new Map<string, { v: { autoBlacklistEnabled: boolean; declineMessageEnabled: boolean }; exp: number }>();
+
+export async function getOrgAutoReplyFlags(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  organizationId: string,
+): Promise<{ autoBlacklistEnabled: boolean; declineMessageEnabled: boolean }> {
+  const now = Date.now();
+  const cached = orgFlagsCache.get(organizationId);
+  if (cached && cached.exp > now) return cached.v;
+
+  let v = { autoBlacklistEnabled: true, declineMessageEnabled: true };
+  try {
+    const { data } = await db
+      .from('organizations')
+      .select('auto_blacklist_enabled, decline_message_enabled')
+      .eq('id', organizationId)
+      .maybeSingle();
+    v = {
+      autoBlacklistEnabled: data?.auto_blacklist_enabled !== false,
+      declineMessageEnabled: data?.decline_message_enabled !== false,
+    };
+  } catch (e) {
+    console.warn('[leadIntent] getOrgAutoReplyFlags failed, assuming enabled:', e);
+  }
+  orgFlagsCache.set(organizationId, { v, exp: now + 30_000 });
+  return v;
+}

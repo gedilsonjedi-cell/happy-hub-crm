@@ -391,15 +391,18 @@ async function getOrganizationConfig(organizationId: string): Promise<{
   awayMessage: string | null;
   welcomeMessage: string | null;
   welcomeEnabled: boolean;
+  autoBlacklistEnabled: boolean;
+  declineMessageEnabled: boolean;
   chatbotConfigs: Map<string, unknown>;
 }> {
   return getCached(`org_config:${organizationId}`, async () => {
     // Fetch all org config in parallel — ONE round trip per org per 30s
-    const [bhRes, holidaysRes, awayRes, welcomeRes] = await Promise.all([
+    const [bhRes, holidaysRes, awayRes, welcomeRes, orgRes] = await Promise.all([
       supabase.from('business_hours').select('day_of_week, is_active, start_time, end_time').eq('organization_id', organizationId),
       supabase.from('holidays').select('date, is_recurring').eq('organization_id', organizationId),
       supabase.from('away_message_config').select('message, is_enabled').eq('organization_id', organizationId).maybeSingle(),
       supabase.from('welcome_message_config').select('message, is_enabled').eq('organization_id', organizationId).maybeSingle(),
+      supabase.from('organizations').select('auto_blacklist_enabled, decline_message_enabled').eq('id', organizationId).maybeSingle(),
     ]);
 
     const businessHours: Record<number, { is_active: boolean; start_time: string; end_time: string }> = {};
@@ -413,6 +416,8 @@ async function getOrganizationConfig(organizationId: string): Promise<{
       awayMessage: awayRes.data?.is_enabled ? awayRes.data.message : null,
       welcomeMessage: welcomeRes.data?.message || null,
       welcomeEnabled: welcomeRes.data?.is_enabled || false,
+      autoBlacklistEnabled: orgRes.data?.auto_blacklist_enabled !== false,
+      declineMessageEnabled: orgRes.data?.decline_message_enabled !== false,
       chatbotConfigs: new Map(),
     };
   });
@@ -1036,7 +1041,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   };
 
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist (atendente can unblock).
-  const wasBlocked = leadIntent === 'block'
+  const wasBlocked = leadIntent === 'block' && orgConfig.autoBlacklistEnabled
     ? await maybeAutoBlacklist(
         supabase, organizationId, normalizedPhone, content, messageType, contactName,
         { id: channel.id as string, provider: 'meta' }, sendDirect,
@@ -1194,7 +1199,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   }
 
   // Lead declined the offer → polite closing message, no welcome, no chatbot.
-  if (leadIntent === 'negative') {
+  if (leadIntent === 'negative' && orgConfig.declineMessageEnabled) {
     // SOMENTE no primeiro contato do lead. Se já houver histórico, nunca enviar.
     const firstContact = await isFirstInboundContact(messageDb, normalizedPhone, messageId);
     if (!firstContact) {
