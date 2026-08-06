@@ -988,6 +988,13 @@ Deno.serve(async (req) => {
       // Auto-blacklist: if the lead asks to be blocked, add to blacklist.
       await maybeAutoBlacklist(supabase, channel.organization_id, normalizedPhone, content, messageType, senderName, { id: channel.id, provider: 'zapi' });
 
+      // Lead declined the offer → polite closing message (no welcome/chatbot follow-up).
+      if (classifyLeadIntent(content, messageType) === 'negative') {
+        supabase.functions.invoke('zapi-send', {
+          body: { channelId: channel.id, destination: normalizedPhone, message: DECLINE_MESSAGE, messageType: 'text' },
+        }).then(() => {}, (e: unknown) => console.warn('[decline] zapi send failed', e));
+      }
+
 
 
       // Check for duplicate message on external DB
