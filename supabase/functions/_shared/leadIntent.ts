@@ -77,3 +77,43 @@ export function classifyLeadIntent(content: string, messageType?: string): LeadI
   if (NEGATIVE_KEYWORDS.some((kw) => normalized.includes(kw))) return 'negative';
   return 'other';
 }
+
+/**
+ * A mensagem de recusa (DECLINE_MESSAGE) só pode ser enviada quando a mensagem
+ * negativa for o PRIMEIRO contato do lead. Se já existir qualquer mensagem
+ * anterior dessa conversa (inbound ou outbound de atendente), NÃO enviar.
+ *
+ * Retorna true apenas quando não há histórico prévio de conversa.
+ */
+export async function isFirstInboundContact(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  phone: string,
+  currentMessageId?: string | null,
+): Promise<boolean> {
+  try {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (!digits) return false;
+    const suffix = digits.slice(-8);
+
+    const { data, error } = await db
+      .from('whatsapp_messages')
+      .select('message_id, direction')
+      .like('sender_phone', `%${suffix}`)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.warn('[leadIntent] isFirstInboundContact query failed, blocking decline:', error.message);
+      return false; // em caso de dúvida, NÃO enviar
+    }
+
+    const previous = (data || []).filter(
+      (m: { message_id?: string }) => !currentMessageId || m.message_id !== currentMessageId,
+    );
+    return previous.length === 0;
+  } catch (e) {
+    console.warn('[leadIntent] isFirstInboundContact threw, blocking decline:', e);
+    return false;
+  }
+}
