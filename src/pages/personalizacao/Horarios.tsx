@@ -229,15 +229,14 @@ export default function Horarios() {
         });
       if (welcomeError) throw welcomeError;
 
-      // Save organization auto-reply flags
-      const { error: flagsError } = await supabase
-        .from("organizations")
-        .update({
-          auto_blacklist_enabled: flags.auto_blacklist_enabled,
-          decline_message_enabled: flags.decline_message_enabled,
-        })
-        .eq("id", profile!.organization_id);
+      // Save organization auto-reply flags (RPC seguro: admin/supervisor da org ou super admin)
+      const { error: flagsError } = await supabase.rpc("set_org_auto_reply_flags", {
+        p_organization_id: profile!.organization_id,
+        p_auto_blacklist_enabled: flags.auto_blacklist_enabled,
+        p_decline_message_enabled: flags.decline_message_enabled,
+      });
       if (flagsError) throw flagsError;
+
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["business-hours"] });
