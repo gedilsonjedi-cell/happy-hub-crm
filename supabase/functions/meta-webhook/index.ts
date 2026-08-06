@@ -1006,8 +1006,42 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   // ── PHASE 2: Parallel async work ─────────────────────────────────
   const { content, mediaId, mediaMimeType } = extractContent(msg);
 
+  // Intent classification: block > negative > other.
+  const leadIntent = classifyLeadIntent(content, messageType);
+
+  // Direct sender bound to this channel (avoids fragile functions.invoke hops)
+  const sendDirect = async (to: string, body: string): Promise<boolean> => {
+    if (!channel.access_token || !channel.app_name) return false;
+    const ok = await sendWhatsAppMessage(
+      channel.app_name as string,
+      channel.access_token as string,
+      to,
+      body,
+    );
+    if (ok) {
+      await dualWriteMessage({
+        channel_id: channel.id as string,
+        message_id: `auto_${to}_${Date.now()}`,
+        sender_phone: channel.phone,
+        sender_name: 'Sistema',
+        message_type: 'text',
+        content: body,
+        direction: 'outbound',
+        status: 'sent',
+        organization_id: organizationId,
+        metadata: { provider: 'meta', auto_reply: true, destination: to },
+      }, false, channel.id as string).catch(() => {});
+    }
+    return ok;
+  };
+
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist (atendente can unblock).
-  await maybeAutoBlacklist(supabase, organizationId, normalizedPhone, content, messageType, contactName, { id: channel.id as string, provider: 'meta' });
+  const wasBlocked = leadIntent === 'block'
+    ? await maybeAutoBlacklist(
+        supabase, organizationId, normalizedPhone, content, messageType, contactName,
+        { id: channel.id as string, provider: 'meta' }, sendDirect,
+      )
+    : false;
 
   // Evaluate business logic synchronously from cache (zero DB calls)
   const holidayStatus = checkHolidaySync(orgConfig);
