@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Clock, Save, PartyPopper, Moon } from "lucide-react";
+import { Clock, Save, PartyPopper, Moon, ShieldBan, ThumbsDown } from "lucide-react";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Domingo" },
@@ -98,6 +98,19 @@ export default function Horarios() {
     enabled: !!profile?.organization_id,
   });
 
+  const { data: orgFlags, isLoading: loadingOrgFlags } = useQuery({
+    queryKey: ["org-auto-reply-flags", profile?.organization_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("organizations")
+        .select("auto_blacklist_enabled, decline_message_enabled")
+        .eq("id", profile!.organization_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!profile?.organization_id,
+  });
+
   const defaultHours = DAYS_OF_WEEK.map((day) => ({
     day_of_week: day.value,
     start_time: "09:00",
@@ -114,6 +127,20 @@ export default function Horarios() {
     is_enabled: false,
     message: "Olá! Seja bem-vindo(a)! Como posso ajudá-lo(a) hoje?",
   });
+
+  const [formFlags, setFormFlags] = useState({
+    auto_blacklist_enabled: true,
+    decline_message_enabled: true,
+  });
+
+  useEffect(() => {
+    if (orgFlags) {
+      setFormFlags({
+        auto_blacklist_enabled: orgFlags.auto_blacklist_enabled !== false,
+        decline_message_enabled: orgFlags.decline_message_enabled !== false,
+      });
+    }
+  }, [orgFlags]);
 
   // Sync form state when data loads
   useEffect(() => {
@@ -146,11 +173,13 @@ export default function Horarios() {
     mutationFn: async ({ 
       hours, 
       away, 
-      welcome 
+      welcome,
+      flags,
     }: { 
       hours: BusinessHour[]; 
       away: AwayMessageConfig; 
       welcome: WelcomeMessageConfig;
+      flags: { auto_blacklist_enabled: boolean; decline_message_enabled: boolean };
     }) => {
       // Save business hours
       for (const hour of hours) {
@@ -191,11 +220,22 @@ export default function Horarios() {
           onConflict: "organization_id",
         });
       if (welcomeError) throw welcomeError;
+
+      // Save organization auto-reply flags
+      const { error: flagsError } = await supabase
+        .from("organizations")
+        .update({
+          auto_blacklist_enabled: flags.auto_blacklist_enabled,
+          decline_message_enabled: flags.decline_message_enabled,
+        })
+        .eq("id", profile!.organization_id);
+      if (flagsError) throw flagsError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["business-hours"] });
       queryClient.invalidateQueries({ queryKey: ["away-message-config"] });
       queryClient.invalidateQueries({ queryKey: ["welcome-message-config"] });
+      queryClient.invalidateQueries({ queryKey: ["org-auto-reply-flags"] });
       toast.success("Configurações salvas com sucesso!");
     },
     onError: () => {
@@ -212,10 +252,10 @@ export default function Horarios() {
   };
 
   const handleSave = () => {
-    saveMutation.mutate({ hours: formHours, away: formAway, welcome: formWelcome });
+    saveMutation.mutate({ hours: formHours, away: formAway, welcome: formWelcome, flags: formFlags });
   };
 
-  if (loadingHours || loadingAway || loadingWelcome) {
+  if (loadingHours || loadingAway || loadingWelcome || loadingOrgFlags) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
@@ -362,6 +402,62 @@ export default function Horarios() {
               />
               <p className="text-xs text-muted-foreground">
                 Enviada quando a mensagem chegar fora dos horários configurados.
+              </p>
+            </CardContent>
+          </Card>
+          {/* Auto Blacklist Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldBan className="w-5 h-5" />
+                Bloqueios
+              </CardTitle>
+              <CardDescription>
+                Bloqueio automático quando o cliente pede para não receber mais mensagens
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formFlags.auto_blacklist_enabled}
+                  onCheckedChange={(checked) =>
+                    setFormFlags((prev) => ({ ...prev, auto_blacklist_enabled: checked }))
+                  }
+                />
+                <Label>Ativar bloqueio automático</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Quando ativo, mensagens como "bloquear contato" ou "não quero mais receber"
+                adicionam o número à lista negra e enviam uma mensagem de despedida.
+                Desativado, nada é bloqueado nem respondido automaticamente.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Decline Message Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ThumbsDown className="w-5 h-5" />
+                Mensagens Negativas
+              </CardTitle>
+              <CardDescription>
+                Resposta automática quando o cliente recusa a oferta
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formFlags.decline_message_enabled}
+                  onCheckedChange={(checked) =>
+                    setFormFlags((prev) => ({ ...prev, decline_message_enabled: checked }))
+                  }
+                />
+                <Label>Enviar resposta para mensagens negativas</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Enviada apenas quando a recusa for a primeira mensagem do contato.
+                Durante a conversa, nunca é enviada.
               </p>
             </CardContent>
           </Card>
