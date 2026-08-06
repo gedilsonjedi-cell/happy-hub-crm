@@ -45,19 +45,13 @@ interface WelcomeMessageConfig {
 export default function Horarios() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { effectiveOrganizationId } = useEffectiveOrganizationId();
 
-  const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", user!.id)
-        .single();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+  // Organização efetiva (respeita impersonação de super admin)
+  const profile = effectiveOrganizationId
+    ? { organization_id: effectiveOrganizationId }
+    : null;
+
 
   const { data: businessHours, isLoading: loadingHours } = useQuery({
     queryKey: ["business-hours", profile?.organization_id],
