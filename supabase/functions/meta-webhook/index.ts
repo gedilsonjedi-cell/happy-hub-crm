@@ -1187,7 +1187,20 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     return; // Don't invoke chatbot when away
   }
 
-  // Welcome message (not blocked, not sent before)
+  // Lead asked to be blocked → goodbye already sent by auto-blacklist. Stop here.
+  if (wasBlocked) {
+    markWelcomeSent(organizationId, normalizedPhone).catch(() => {});
+    return;
+  }
+
+  // Lead declined the offer → polite closing message, no welcome, no chatbot.
+  if (leadIntent === 'negative') {
+    sendDirect(normalizedPhone, DECLINE_MESSAGE).catch(console.error);
+    markWelcomeSent(organizationId, normalizedPhone).catch(() => {});
+    return;
+  }
+
+  // Welcome message (not blocked, not sent before) — only for positive/neutral replies
   if (businessStatus.isOpen && orgConfig.welcomeEnabled && orgConfig.welcomeMessage && !welcomeAlreadySent && channel.access_token) {
     sendWhatsAppMessage(
       channel.app_name as string,
@@ -1212,6 +1225,8 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
             metadata: { provider: 'meta', welcome_message: true, destination: normalizedPhone },
           }, false, channel.id as string),
         ]).catch(console.error);
+      } else {
+        console.warn('[welcome] Send failed for', normalizedPhone);
       }
     }).catch(console.error);
   }
