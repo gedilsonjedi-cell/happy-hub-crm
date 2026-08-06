@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
+
 import { toast } from "sonner";
 import { Clock, Save, PartyPopper, Moon, ShieldBan, ThumbsDown } from "lucide-react";
 
