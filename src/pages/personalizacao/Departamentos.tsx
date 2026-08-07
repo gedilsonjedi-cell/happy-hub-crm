@@ -62,6 +62,8 @@ export default function Departamentos() {
       return data || [];
     },
     enabled: !!effectiveOrganizationId,
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 
   const { data: orgConfig } = useQuery({
@@ -75,7 +77,10 @@ export default function Departamentos() {
       return data;
     },
     enabled: !!effectiveOrganizationId,
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
   });
+
 
   const defaultSectorId = orgConfig?.default_sector_id ?? null;
   const autoDistributeEnabled = !!orgConfig?.auto_distribute_enabled;
