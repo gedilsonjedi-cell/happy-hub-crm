@@ -192,7 +192,10 @@ export default function Departamentos() {
     updateMutation.mutate({ id, data: editForm });
   };
 
-  if (isLoading || orgLoading) {
+  // Só mostra o spinner de tela cheia no primeiro carregamento (sem dados em
+  // cache). Refetches em background mantêm a tela montada — sem flicker.
+  if (!departments && (isLoading || orgLoading)) {
+
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
