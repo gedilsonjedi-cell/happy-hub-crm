@@ -1587,6 +1587,8 @@ Deno.serve(async (req) => {
         135000: '(#135000) Erro genérico do Meta. SOLUÇÃO: Recrie o template no Meta Business ou reconecte o número.',
         131049: '(#131049) Limite de MARKETING atingido para este contato. A Meta limita mensagens de marketing POR USUÁRIO. Use templates UTILITY ou aguarde o contato responder.',
         131026: '(#131026) Número sem WhatsApp ou bloqueado. Verifique se o número está correto e tem WhatsApp ativo.',
+        131062: '(#131062) Destinatário BSUID não suportado por este template (one-tap/zero-tap/copy-code). NÃO é "sem WhatsApp" — envie pelo telefone ou use um template de código em texto.',
+
         131031: '(#131031) Conta com restrições. O WhatsApp restringiu o envio de mensagens desta conta.',
         131047: '(#131047) Janela de 24h expirada. O contato não responde há mais de 24h — envie um TEMPLATE aprovado (HSM) para reabrir a conversa.',
         131053: '(#131053) Mídia inválida ou não suportada pelo WhatsApp.',

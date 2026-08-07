@@ -2418,6 +2418,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          bsuid: string | null
           city: string | null
           created_at: string
           custom_fields: Json | null
@@ -2427,7 +2428,7 @@ export type Database = {
           name: string
           notes: string | null
           organization_id: string | null
-          phone: string
+          phone: string | null
           stage_id: string | null
           state: string | null
           status: string
@@ -2436,6 +2437,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bsuid?: string | null
           city?: string | null
           created_at?: string
           custom_fields?: Json | null
@@ -2445,7 +2447,7 @@ export type Database = {
           name: string
           notes?: string | null
           organization_id?: string | null
-          phone: string
+          phone?: string | null
           stage_id?: string | null
           state?: string | null
           status?: string
@@ -2454,6 +2456,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          bsuid?: string | null
           city?: string | null
           created_at?: string
           custom_fields?: Json | null
@@ -2463,7 +2466,7 @@ export type Database = {
           name?: string
           notes?: string | null
           organization_id?: string | null
-          phone?: string
+          phone?: string | null
           stage_id?: string | null
           state?: string | null
           status?: string
