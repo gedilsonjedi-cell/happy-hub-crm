@@ -1211,6 +1211,16 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     }
   }
 
+  // Resposta negativa/pedido de bloqueio NUNCA recebe boas-vindas,
+  // mesmo que a mensagem de negativa esteja desativada ou já haja histórico.
+  if (leadIntent !== 'other') {
+    markWelcomeSent(organizationId, normalizedPhone).catch(() => {});
+    if (chatbotConfig) {
+      invokeChatbot(channel, chatbotConfig as Record<string, unknown>, normalizedPhone, contactName, content, messageId);
+    }
+    return;
+  }
+
   // Welcome message (not blocked, not sent before) — only for positive/neutral replies
   if (businessStatus.isOpen && orgConfig.welcomeEnabled && orgConfig.welcomeMessage && !welcomeAlreadySent && channel.access_token) {
     sendWhatsAppMessage(
