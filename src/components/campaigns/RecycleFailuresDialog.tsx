@@ -127,13 +127,15 @@ export function RecycleFailuresDialog({
       while (true) {
         const { data: batch, error: batchError } = await supabase
           .from("campaign_recipients")
-          .select("phone, name, status, delivered_at")
+          .select("phone, name, status, delivered_at, last_error_code")
           .eq("campaign_id", campaign.id)
           .or("status.eq.failed,and(status.eq.sent,delivered_at.is.null)")
           .range(from, from + PAGE - 1);
         if (batchError) throw batchError;
         const rows = batch || [];
-        allFailed.push(...rows);
+        // Exclui apenas "sem WhatsApp" (erro Meta 131026). Todos os demais
+        // erros (API, timeout, rate limit, etc.) continuam sendo reciclados.
+        allFailed.push(...rows.filter((r: any) => r.last_error_code !== "131026"));
         if (rows.length < PAGE) break;
         from += PAGE;
       }
