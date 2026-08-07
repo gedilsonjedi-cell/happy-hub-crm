@@ -120,11 +120,16 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
         "Falha ao carregar dados da fonte externa. Tentaremos novamente automaticamente — verifique sua conexão se persistir."
       );
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, [effectiveOrganizationId, isImpersonating, daysBack, selectedButton]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return { loading, data, availableButtons, warning, refetch: fetchData };
+  // refetch "ao vivo" silencioso: mantém o gráfico na tela durante a atualização
+  const refetch = useCallback(() => fetchData(true), [fetchData]);
+
+  return { loading, data, availableButtons, warning, refetch };
+
 }
