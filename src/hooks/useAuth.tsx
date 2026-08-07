@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { clearExternalClient } from "@/lib/externalSupabaseClient";
+import { clearExternalClient, resetExternalAuthState } from "@/lib/externalSupabaseClient";
 import { toast } from "sonner";
 
 export const useAuth = () => {
