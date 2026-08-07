@@ -161,5 +161,5 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
   const refetch = useCallback(() => fetchData(true), [fetchData]);
 
 
-  return { loading, data, availableButtons, warning, refetch: fetchData };
+  return { loading, data, availableButtons, warning, refetch };
 }
