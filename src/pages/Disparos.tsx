@@ -387,7 +387,9 @@ const Disparos = () => {
     });
     setAiAgents(agentsData || []);
     setSectors(sectorsData || []);
+    hasLoadedRef.current = true;
     setLoading(false);
+
   }, [effectiveOrganizationId]);
 
   useEffect(() => {
