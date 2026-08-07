@@ -4296,6 +4296,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_profile_organization: {
+        Args: { _organization_id: string; _user_id: string }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sync_all_failed_recipients: { Args: never; Returns: number }
