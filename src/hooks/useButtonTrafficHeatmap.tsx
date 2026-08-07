@@ -61,9 +61,11 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
   const [availableButtons, setAvailableButtons] = useState<string[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const hasLoadedRef = useRef(false);
+  const fetchData = useCallback(async (silent = false) => {
     if (!effectiveOrganizationId) return;
-    setLoading(true);
+    if (!silent || !hasLoadedRef.current) setLoading(true);
+
     try {
       const all = await fetchInboundWithRetry(
         isImpersonating ? effectiveOrganizationId : null,
