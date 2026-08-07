@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { extractButtonLabel, type HeatmapData, type HeatmapCell } from "./useConversationHeatmap";
@@ -61,9 +61,11 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
   const [availableButtons, setAvailableButtons] = useState<string[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const hasLoadedRef = useRef(false);
+  const fetchData = useCallback(async (silent = false) => {
     if (!effectiveOrganizationId) return;
-    setLoading(true);
+    if (!silent || !hasLoadedRef.current) setLoading(true);
+
     try {
       const all = await fetchInboundWithRetry(
         isImpersonating ? effectiveOrganizationId : null,
@@ -118,11 +120,16 @@ export function useButtonTrafficHeatmap(daysBack = 7, selectedButton?: string) {
         "Falha ao carregar dados da fonte externa. Tentaremos novamente automaticamente — verifique sua conexão se persistir."
       );
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, [effectiveOrganizationId, isImpersonating, daysBack, selectedButton]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return { loading, data, availableButtons, warning, refetch: fetchData };
+  // refetch "ao vivo" silencioso: mantém o gráfico na tela durante a atualização
+  const refetch = useCallback(() => fetchData(true), [fetchData]);
+
+  return { loading, data, availableButtons, warning, refetch };
+
 }

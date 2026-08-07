@@ -231,10 +231,14 @@ const Disparos = () => {
     maxInterval: "90"
   });
 
-  // Memoized fetchData callback
-  const fetchData = useCallback(async () => {
+  // Memoized fetchData callback.
+  // `silent` = refresh em background (polling / realtime): NÃO reaciona o
+  // skeleton de carregamento, evitando o flicker da tela inteira.
+  const hasLoadedRef = useRef(false);
+  const fetchData = useCallback(async (silent = false) => {
     if (!effectiveOrganizationId) return;
-    setLoading(true);
+    if (!silent || !hasLoadedRef.current) setLoading(true);
+
 
     // Fetch channels - exclude Z-API channels (they can't be used for mass dispatches)
     const { data: channelsData } = await supabase
@@ -383,7 +387,9 @@ const Disparos = () => {
     });
     setAiAgents(agentsData || []);
     setSectors(sectorsData || []);
+    hasLoadedRef.current = true;
     setLoading(false);
+
   }, [effectiveOrganizationId]);
 
   useEffect(() => {
@@ -476,7 +482,8 @@ const Disparos = () => {
     if (refetchTimerRef.current) return;
     refetchTimerRef.current = setTimeout(() => {
       refetchTimerRef.current = null;
-      fetchData();
+      fetchData(true);
+
     }, 8000);
   }, [fetchData]);
 
@@ -522,7 +529,8 @@ const Disparos = () => {
   useEffect(() => {
     if (!hasRunningCampaigns) return;
     const pollInterval = setInterval(() => {
-      fetchData();
+      fetchData(true);
+
     }, 15000);
     return () => clearInterval(pollInterval);
   }, [hasRunningCampaigns, fetchData]);
