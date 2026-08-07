@@ -78,10 +78,12 @@ async function fetchExternalAuth(
   if (error) {
     const status = (error as { context?: { status?: number } })?.context?.status;
     if (status === 401 || status === 403) {
+      sessionDead = true;
       throw new ExternalAuthUnauthorizedError("Sessão expirada");
     }
     throw new Error(`Failed to get external auth token: ${error.message}`);
   }
+
 
   return data as ExternalAuthResponse;
 }
