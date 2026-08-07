@@ -482,7 +482,8 @@ const Disparos = () => {
     if (refetchTimerRef.current) return;
     refetchTimerRef.current = setTimeout(() => {
       refetchTimerRef.current = null;
-      fetchData();
+      fetchData(true);
+
     }, 8000);
   }, [fetchData]);
 
