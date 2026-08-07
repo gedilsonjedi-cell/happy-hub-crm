@@ -53,7 +53,14 @@ const META_ERROR_CODES: Record<string, ErrorInfo> = {
     description: "A Meta sinalizou 'Business eligibility payment issue' — a forma de pagamento da conta do WhatsApp Business está com problema (cartão recusado, fatura em aberto ou método inválido).",
     suggestion: "AÇÃO URGENTE: Acesse Meta Business Suite > Configurações > Pagamentos da conta do WhatsApp e regularize o método de pagamento / pague faturas em aberto. Sem isso, NENHUMA mensagem de template será entregue por essa WABA."
   },
+  "131062": {
+    title: "Destinatário BSUID não suportado",
+    description: "O contato foi identificado apenas pelo BSUID (identificador da Meta, sem telefone) e este tipo de template não aceita esse destinatário. Afeta apenas templates de autenticação one-tap, zero-tap e copy-code. NÃO significa que o número está sem WhatsApp (isso é o erro 131026).",
+    suggestion: "SOLUÇÕES: 1) Envie usando o número de telefone do contato, 2) Para autenticação, use um template com código em texto simples ao invés de one-tap/zero-tap/copy-code, 3) Solicite o telefone ao contato pelo botão de compartilhar contato da Meta.",
+    link: "https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids"
+  },
   "131045": {
+
     title: "Template pausado",
     description: "O template foi pausado devido a baixa qualidade.",
     suggestion: "Verifique a qualidade do template no Meta Business Manager."

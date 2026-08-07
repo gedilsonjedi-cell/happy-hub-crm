@@ -559,27 +559,80 @@ async function downloadAndStoreMedia(
 }
 
 // =============================================
+// BSUID (Business-Scoped User ID) HELPERS
+// =============================================
+/** Extract the BSUID from an inbound Meta message payload (new field, may be absent). */
+function extractBsuid(msg: Record<string, unknown>): string | null {
+  const v = (msg.from_user_id ?? msg.user_id) as string | undefined;
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/** Find an existing lead by BSUID (used when the webhook omits the phone number). */
+async function findLeadByBsuid(
+  organizationId: string, bsuid: string
+): Promise<{ id: string; phone: string | null; name: string | null } | null> {
+  const { data } = await supabase
+    .from('leads')
+    .select('id, phone, name')
+    .eq('organization_id', organizationId)
+    .eq('bsuid', bsuid)
+    .maybeSingle();
+  return data ?? null;
+}
+
+// =============================================
 // FIND OR CREATE LEAD (parallel exact+suffix)
 // =============================================
 async function findOrCreateLead(
-  organizationId: string, userId: string, phone: string, name: string | null
+  organizationId: string, userId: string, phone: string, name: string | null, bsuid: string | null = null
 ): Promise<{ leadId: string; isNew: boolean }> {
+  // ── BSUID-only contact (Meta username adopted, phone absent) ──
+  if (!phone || !phone.replace(/\D/g, '')) {
+    if (!bsuid) return { leadId: '', isNew: false };
+    const existing = await findLeadByBsuid(organizationId, bsuid);
+    if (existing) return { leadId: existing.id, isNew: false };
+
+    const { data: created, error: createErr } = await supabase
+      .from('leads')
+      .insert({
+        organization_id: organizationId, user_id: userId, phone: null, bsuid,
+        name: name || 'Contato sem telefone (BSUID)', status: 'new',
+      })
+      .select('id')
+      .single();
+
+    if (createErr || !created) {
+      const fallback = await findLeadByBsuid(organizationId, bsuid);
+      return { leadId: fallback?.id || '', isNew: false };
+    }
+    return { leadId: created.id, isNew: true };
+  }
+
   const normalized = normalizePhone(phone);
   const suffix8 = normalized.slice(-8);
 
-  // Parallel: exact + suffix in one round-trip
-  const [exactRes, suffixRes] = await Promise.all([
+  // Parallel: exact + suffix + bsuid in one round-trip
+  const [exactRes, suffixRes, bsuidRes] = await Promise.all([
     supabase.from('leads').select('id').eq('organization_id', organizationId).eq('phone', normalized).limit(1),
     supabase.from('leads').select('id').eq('organization_id', organizationId).ilike('phone', `%${suffix8}`).limit(1),
+    bsuid
+      ? supabase.from('leads').select('id').eq('organization_id', organizationId).eq('bsuid', bsuid).limit(1)
+      : Promise.resolve({ data: null }),
   ]);
 
-  if (exactRes.data?.length) return { leadId: exactRes.data[0].id, isNew: false };
-  if (suffixRes.data?.length) return { leadId: suffixRes.data[0].id, isNew: false };
+  const found = exactRes.data?.[0]?.id || suffixRes.data?.[0]?.id || (bsuidRes as { data: { id: string }[] | null }).data?.[0]?.id;
+  if (found) {
+    // Keep BSUID / phone in sync on the known lead (best effort)
+    if (bsuid) {
+      supabase.from('leads').update({ bsuid, phone: normalized }).eq('id', found).then(() => {}, () => {});
+    }
+    return { leadId: found, isNew: false };
+  }
 
   const leadName = name || `LeadWhats-${normalized.slice(-4)}`;
   const { data: newLead, error } = await supabase
     .from('leads')
-    .insert({ organization_id: organizationId, user_id: userId, phone: normalized, name: leadName, status: 'new' })
+    .insert({ organization_id: organizationId, user_id: userId, phone: normalized, name: leadName, status: 'new', bsuid })
     .select('id')
     .single();
 
@@ -592,6 +645,34 @@ async function findOrCreateLead(
 
   return { leadId: newLead.id, isNew: true };
 }
+
+/**
+ * Meta `system` webhook: `user_changed_user_id` — the end user changed phone number
+ * but keeps the same BSUID. Update the existing lead's phone instead of creating a new one.
+ */
+async function processSystemUserChange(msg: Record<string, unknown>, channel: Record<string, unknown>) {
+  const organizationId = channel.organization_id as string;
+  const system = (msg.system || {}) as Record<string, unknown>;
+  const bsuid = extractBsuid(msg) || (system.user_id as string) || null;
+  const newPhoneRaw = (system.wa_id as string) || (system.new_wa_id as string) || (msg.from as string) || '';
+  if (!bsuid) {
+    console.warn('[system:user_changed_user_id] no BSUID in payload, skipping');
+    return;
+  }
+  const lead = await findLeadByBsuid(organizationId, bsuid);
+  if (!lead) {
+    console.log('[system:user_changed_user_id] no lead for BSUID', bsuid, '- nothing to migrate');
+    return;
+  }
+  const newPhone = newPhoneRaw ? normalizePhone(newPhoneRaw) : null;
+  if (!newPhone) {
+    console.warn('[system:user_changed_user_id] no new phone in payload for BSUID', bsuid);
+    return;
+  }
+  await supabase.from('leads').update({ phone: newPhone, updated_at: new Date().toISOString() }).eq('id', lead.id);
+  console.log(`[system:user_changed_user_id] lead ${lead.id} phone updated ${lead.phone} -> ${newPhone}`);
+}
+
 
 // =============================================
 // ROUND-ROBIN ATTENDANT ASSIGNMENT
@@ -948,16 +1029,38 @@ function extractContent(msg: Record<string, unknown>): { content: string; mediaI
 // =============================================
 async function processMessage(msg: Record<string, unknown>, channel: Record<string, unknown>, contactName: string | null) {
   const messageId = msg.id as string;
-  const senderPhone = msg.from as string;
+  const organizationId = channel.organization_id as string;
+  const bsuid = extractBsuid(msg);
+
+  // ── Meta BSUID: `from` may be ABSENT when the user adopted a username ──
+  // Resolve the phone from a previously known lead with the same BSUID.
+  let senderPhone = (msg.from as string) || '';
+  let bsuidOnlyLead: { id: string; phone: string | null; name: string | null } | null = null;
+  if (!senderPhone.replace(/\D/g, '') && bsuid) {
+    bsuidOnlyLead = await findLeadByBsuid(organizationId, bsuid);
+    if (bsuidOnlyLead?.phone) {
+      senderPhone = bsuidOnlyLead.phone;
+      console.log('[processMessage] BSUID matched known lead, using phone', senderPhone);
+    } else {
+      console.log('[processMessage] Inbound with BSUID only (no phone):', bsuid);
+    }
+  }
+  const hasPhone = !!senderPhone.replace(/\D/g, '');
+  if (!hasPhone && !bsuid) {
+    console.warn('[processMessage] Message without phone and without BSUID, skipping:', messageId);
+    return;
+  }
+
   const timestamp = msg.timestamp;
   const messageType = msg.type as string;
-  const normalizedPhone = normalizePhone(senderPhone);
-  const organizationId = channel.organization_id as string;
+  // Conversation key: phone when known, otherwise the BSUID (stable identifier).
+  const normalizedPhone = hasPhone ? normalizePhone(senderPhone) : (bsuid as string);
 
-  if (await isPhoneBlacklisted(organizationId, normalizedPhone)) {
+  if (hasPhone && await isPhoneBlacklisted(organizationId, normalizedPhone)) {
     console.log('[processMessage] Ignoring inbound from blacklisted phone:', normalizedPhone);
     return;
   }
+
 
   // ── Extract Facebook/Instagram referral data (ads/click-to-WhatsApp) ──
   const referral = msg.referral as Record<string, unknown> | undefined;
@@ -1017,6 +1120,8 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   // Direct sender bound to this channel (avoids fragile functions.invoke hops)
   const sendDirect = async (to: string, body: string): Promise<boolean> => {
     if (!channel.access_token || !channel.app_name) return false;
+    // Never attempt to send to a BSUID — Meta's Messages API requires a phone number.
+    if (!to || !to.replace(/\D/g, '')) return false;
     const ok = await sendWhatsAppMessage(
       channel.app_name as string,
       channel.access_token as string,
@@ -1041,12 +1146,14 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   };
 
   // Auto-blacklist: if the lead asks to be blocked, add to blacklist (atendente can unblock).
-  const wasBlocked = leadIntent === 'block' && orgConfig.autoBlacklistEnabled
+  // Requires a phone (blacklist is phone-based) — BSUID-only contacts are skipped.
+  const wasBlocked = leadIntent === 'block' && orgConfig.autoBlacklistEnabled && hasPhone
     ? await maybeAutoBlacklist(
         supabase, organizationId, normalizedPhone, content, messageType, contactName,
         { id: channel.id as string, provider: 'meta' }, sendDirect,
       )
     : false;
+
 
   // Evaluate business logic synchronously from cache (zero DB calls)
   const holidayStatus = checkHolidaySync(orgConfig);
@@ -1071,10 +1178,13 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
 
     // Task B: Lead upsert + conversation assignment (sequential internally)
     (async () => {
-      const { leadId } = await findOrCreateLead(organizationId, channel.user_id as string, senderPhone, contactName);
+      const { leadId } = bsuidOnlyLead && !hasPhone
+        ? { leadId: bsuidOnlyLead.id }
+        : await findOrCreateLead(organizationId, channel.user_id as string, senderPhone, contactName, bsuid);
       const assignment = await handleConversationAssignment(channel.id as string, leadId, normalizedPhone, organizationId, !!referralData);
       return { leadId, assignment };
     })(),
+
 
     // Task C: Check if welcome was already sent (only if needed)
     orgConfig.welcomeEnabled && !isBlocked
@@ -1100,7 +1210,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     status: 'received',
     is_read: false,
     metadata: { 
-      timestamp, provider: 'meta', original_phone: senderPhone, lead_id: leadData?.leadId || null,
+      timestamp, provider: 'meta', original_phone: senderPhone || null, bsuid: bsuid || null, lead_id: leadData?.leadId || null,
       channel_phone: channel.phone || null,
       context_message_id: echoedMessageId,
       ...(mediaId ? { media_id: mediaId, media_mime_type: mediaMimeType } : {}),
@@ -1166,7 +1276,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   }
 
   // ── PHASE 4: Post-processing actions (fire and forget where possible) ─
-  if (awayMessageToSend && channel.access_token) {
+  if (awayMessageToSend && channel.access_token && hasPhone) {
     // Send away message (await for reliability, then store record)
     sendWhatsAppMessage(
       channel.app_name as string,
@@ -1199,7 +1309,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   }
 
   // Lead declined the offer → polite closing message, no welcome, no chatbot.
-  if (leadIntent === 'negative' && orgConfig.declineMessageEnabled) {
+  if (leadIntent === 'negative' && orgConfig.declineMessageEnabled && hasPhone) {
     // SOMENTE no primeiro contato do lead. Se já houver histórico, nunca enviar.
     const firstContact = await isFirstInboundContact(messageDb, normalizedPhone, messageId);
     if (!firstContact) {
@@ -1222,7 +1332,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   }
 
   // Welcome message (not blocked, not sent before) — only for positive/neutral replies
-  if (businessStatus.isOpen && orgConfig.welcomeEnabled && orgConfig.welcomeMessage && !welcomeAlreadySent && channel.access_token) {
+  if (businessStatus.isOpen && orgConfig.welcomeEnabled && orgConfig.welcomeMessage && !welcomeAlreadySent && channel.access_token && hasPhone) {
     sendWhatsAppMessage(
       channel.app_name as string,
       channel.access_token as string,
@@ -1674,17 +1784,31 @@ Deno.serve(async (req) => {
           if (!channel) {
             console.warn('Channel not found for phone_number_id:', metadata.phone_number_id, '- skipping inbound messages but status updates still processed');
           } else {
+            // Contact names are indexed by wa_id (phone) AND by user_id (BSUID),
+            // since Meta may omit wa_id when the user adopted a username.
             const contactsMap = new Map<string, string>();
             if (value.contacts) {
               for (const c of value.contacts) {
-                if (c.wa_id && c.profile?.name) contactsMap.set(c.wa_id, c.profile.name);
+                const name = c.profile?.name;
+                if (!name) continue;
+                if (c.wa_id) contactsMap.set(c.wa_id, name);
+                if (c.user_id) contactsMap.set(c.user_id, name);
               }
             }
-            messagePromise = Promise.all(value.messages.map((msg: Record<string, unknown>) =>
-              processMessage(msg, channel as Record<string, unknown>, contactsMap.get(msg.from as string) || null)
-            ));
+            messagePromise = Promise.all(value.messages.map((msg: Record<string, unknown>) => {
+              const name = contactsMap.get(msg.from as string)
+                || contactsMap.get(extractBsuid(msg) || '')
+                || null;
+              // Meta `system` events: phone number change keeps the same BSUID.
+              const sys = msg.system as Record<string, unknown> | undefined;
+              if (msg.type === 'system' && sys?.type === 'user_changed_user_id') {
+                return processSystemUserChange(msg, channel as Record<string, unknown>);
+              }
+              return processMessage(msg, channel as Record<string, unknown>, name);
+            }));
           }
         }
+
 
         await Promise.all([statusPromise, messagePromise]);
       } catch (e) {
