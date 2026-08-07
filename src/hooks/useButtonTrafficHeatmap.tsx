@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { extractButtonLabel, type HeatmapData, type HeatmapCell } from "./useConversationHeatmap";

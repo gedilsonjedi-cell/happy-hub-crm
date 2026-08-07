@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { getExternalClient } from "@/lib/externalSupabaseClient";
 import { buildDays, toLocalDateHour, spCutoffIso } from "@/lib/heatmapTz";
