@@ -45,16 +45,29 @@ function getScopeKey(impersonatedOrgId?: string | null): string {
 
 class ExternalAuthUnauthorizedError extends Error {}
 
+// Once the local session is gone, stop hammering the edge function (401 loop).
+let sessionDead = false;
+
+export function resetExternalAuthState(): void {
+  sessionDead = false;
+}
+
 async function fetchExternalAuth(
   impersonatedOrgId?: string | null
 ): Promise<ExternalAuthResponse> {
   const body = impersonatedOrgId ? { impersonatedOrgId } : undefined;
 
+  if (sessionDead) {
+    throw new ExternalAuthUnauthorizedError("Sessão expirada");
+  }
+
   // No local session => the edge function can only answer 401. Stop early.
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData?.session) {
+    sessionDead = true;
     throw new ExternalAuthUnauthorizedError("Sessão expirada");
   }
+
 
   const { data, error } = await withTimeout(
     supabase.functions.invoke("external-auth-token", { body }),
