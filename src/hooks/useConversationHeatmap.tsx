@@ -150,11 +150,16 @@ export function useConversationHeatmap(daysBack = 7, buttonFilter?: string) {
         "Falha ao carregar dados da fonte externa. Tentaremos novamente automaticamente — verifique sua conexão se persistir."
       );
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, [effectiveOrganizationId, isImpersonating, daysBack, buttonFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // refetch (auto-refresh "ao vivo") é silencioso: não reaciona o spinner
+  const refetch = useCallback(() => fetchData(true), [fetchData]);
+
 
   return { loading, data, availableButtons, warning, refetch: fetchData };
 }
