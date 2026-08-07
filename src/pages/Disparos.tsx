@@ -529,7 +529,8 @@ const Disparos = () => {
   useEffect(() => {
     if (!hasRunningCampaigns) return;
     const pollInterval = setInterval(() => {
-      fetchData();
+      fetchData(true);
+
     }, 15000);
     return () => clearInterval(pollInterval);
   }, [hasRunningCampaigns, fetchData]);
