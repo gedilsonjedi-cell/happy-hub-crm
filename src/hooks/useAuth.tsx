@@ -34,6 +34,9 @@ export const useAuth = () => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        if (session) resetExternalAuthState();
+
         
         if (event === "SIGNED_OUT") {
           window.location.href = "/auth";
