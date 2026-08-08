@@ -348,10 +348,9 @@ async function ensureHumanSenderOwnsConversation(params: {
         .abortSignal(signal)
     );
     if (updateError) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Outro atendente assumiu este atendimento. Recarregue a conversa.', code: 'ASSIGNMENT_RACE_LOST' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      // Infra/DB failure while bookkeeping the assignment. Ownership was already
+      // verified above (no foreign owner), so this must NOT block the send.
+      console.error('[Meta-Send] Assignment update failed (send continues):', updateError.message);
     }
     return null;
   }
@@ -374,6 +373,7 @@ async function ensureHumanSenderOwnsConversation(params: {
       .abortSignal(signal)
   );
   if (insertError) {
+    console.error('[Meta-Send] Assignment insert failed:', insertError.message);
     const { data: racedRows } = await externalSupabase
       .from('conversation_assignments')
       .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
@@ -388,14 +388,15 @@ async function ensureHumanSenderOwnsConversation(params: {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
-    return new Response(
-      JSON.stringify({ success: false, error: 'Não foi possível assumir este atendimento antes do envio.', code: 'ASSIGNMENT_CREATE_FAILED' }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
+    // No foreign owner: the conversation is free. The failure is bookkeeping only,
+    // so we let the message go out instead of blocking the attendant.
+    console.warn('[Meta-Send] Proceeding with send despite assignment insert failure.');
+    return null;
   }
 
   return null;
 }
+
 
 interface IntegrationWebhookPayload {
   organization_id: string;

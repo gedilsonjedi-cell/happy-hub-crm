@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
           .eq('id', assignment.id)
           .eq('organization_id', channel.organization_id)
           .or(`assigned_to.is.null,assigned_to.eq.${humanUserId}`);
-        if (updateError) return json({ success: false, error: 'Outro atendente assumiu este atendimento. Recarregue a conversa.', code: 'ASSIGNMENT_RACE_LOST' }, 403);
+        if (updateError) console.error('[Zapi-Send] Assignment update failed (send continues):', updateError.message);
         return null;
       }
 
@@ -292,7 +292,8 @@ Deno.serve(async (req) => {
           .limit(10);
         const racedOwner = racedRows?.find((row: any) => row.assigned_to && row.assigned_to !== humanUserId);
         if (racedOwner) return json({ success: false, error: 'Este atendimento pertence a outro atendente. Transfira o atendimento antes de enviar mensagem.', code: 'ASSIGNMENT_OWNER_MISMATCH', assignment: racedOwner }, 403);
-        return json({ success: false, error: 'Não foi possível assumir este atendimento antes do envio.', code: 'ASSIGNMENT_CREATE_FAILED' }, 403);
+        console.warn('[Zapi-Send] Proceeding with send despite assignment insert failure:', insertError.message);
+        return null;
       }
       return null;
     };
