@@ -96,11 +96,20 @@ serve(async (req) => {
     }
 
     // 1) Resolver organização (case-insensitive, match exato de nome)
-    const { data: orgs, error: orgErr } = await admin
+    let { data: orgs, error: orgErr } = await admin
       .from("organizations")
       .select("id, name")
       .ilike("name", orgName);
     if (orgErr) throw orgErr;
+    // Fallback: match por conteúdo quando não há nome exato (ex.: "Zentum" -> "Zentum Soluçoes")
+    if (!orgs || orgs.length === 0) {
+      const res = await admin
+        .from("organizations")
+        .select("id, name")
+        .ilike("name", `%${orgName}%`);
+      if (res.error) throw res.error;
+      orgs = res.data;
+    }
     if (!orgs || orgs.length === 0) {
       return new Response(JSON.stringify({ error: `Organização "${orgName}" não encontrada` }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
