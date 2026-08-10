@@ -1074,7 +1074,8 @@ export default function SuperAdmin() {
             <PerformanceMetricsPanel />
           </TabsContent>
 
-          <TabsContent value="diagnostics">
+          <TabsContent value="diagnostics" className="space-y-4">
+            <LeadsSemInteracaoExport />
             <UnreadDivergencePanel />
           </TabsContent>
         </Tabs>
