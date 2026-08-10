@@ -86,42 +86,61 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     let orgName = url.searchParams.get("org") || "Zentum";
+    let orgId = url.searchParams.get("organization_id") || "";
     let mode = url.searchParams.get("mode") || "csv";
     if (req.method === "POST") {
       try {
         const body = await req.json();
         if (body?.org) orgName = String(body.org);
+        if (body?.organization_id) orgId = String(body.organization_id);
         if (body?.mode) mode = String(body.mode);
       } catch (_) { /* sem body */ }
     }
 
-    // 1) Resolver organização (case-insensitive, match exato de nome)
-    let { data: orgs, error: orgErr } = await admin
-      .from("organizations")
-      .select("id, name")
-      .ilike("name", orgName);
-    if (orgErr) throw orgErr;
-    // Fallback: match por conteúdo quando não há nome exato (ex.: "Zentum" -> "Zentum Soluçoes")
-    if (!orgs || orgs.length === 0) {
-      const res = await admin
+    // 1) Resolver organização: por ID (preferencial) ou por nome (fallback)
+    let org: { id: string; name: string };
+    if (orgId) {
+      const { data, error } = await admin
         .from("organizations")
         .select("id, name")
-        .ilike("name", `%${orgName}%`);
-      if (res.error) throw res.error;
-      orgs = res.data;
+        .eq("id", orgId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        return new Response(JSON.stringify({ error: `Organização "${orgId}" não encontrada` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      org = data;
+    } else {
+      let { data: orgs, error: orgErr } = await admin
+        .from("organizations")
+        .select("id, name")
+        .ilike("name", orgName);
+      if (orgErr) throw orgErr;
+      // Fallback: match por conteúdo quando não há nome exato (ex.: "Zentum" -> "Zentum Soluçoes")
+      if (!orgs || orgs.length === 0) {
+        const res = await admin
+          .from("organizations")
+          .select("id, name")
+          .ilike("name", `%${orgName}%`);
+        if (res.error) throw res.error;
+        orgs = res.data;
+      }
+      if (!orgs || orgs.length === 0) {
+        return new Response(JSON.stringify({ error: `Organização "${orgName}" não encontrada` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (orgs.length > 1) {
+        return new Response(
+          JSON.stringify({ error: `Mais de uma organização com o nome "${orgName}"`, matches: orgs }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      org = orgs[0];
     }
-    if (!orgs || orgs.length === 0) {
-      return new Response(JSON.stringify({ error: `Organização "${orgName}" não encontrada` }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (orgs.length > 1) {
-      return new Response(
-        JSON.stringify({ error: `Mais de uma organização com o nome "${orgName}"`, matches: orgs }),
-        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    const org = orgs[0];
+
 
     // 2) Todos os leads da org (banco interno), paginado
     type Lead = { id: string; name: string | null; phone: string | null; created_at: string };
