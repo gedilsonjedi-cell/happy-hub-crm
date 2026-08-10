@@ -14,6 +14,8 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { LeadsSemInteracaoExport } from "@/components/admin/LeadsSemInteracaoExport";
+
 
 interface Destination {
   phone: string;
