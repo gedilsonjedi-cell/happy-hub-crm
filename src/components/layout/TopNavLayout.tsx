@@ -147,6 +147,9 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Templates", path: "/templates", icon: FileText },
         { label: "Links", path: "/links", icon: Link2 },
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
+        ...(isSuperAdmin
+          ? [{ label: "Leads sem interação", path: "/apps/leads-sem-interacao", icon: UserX }]
+          : []),
       ]
     },
     ...(isAdmin || isSupervisor || isSuperAdmin
