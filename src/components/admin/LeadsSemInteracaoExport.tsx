@@ -1,20 +1,43 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 
 const FUNCTIONS_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/export-leads-sem-interacao`;
 
 export function LeadsSemInteracaoExport() {
-  const [org, setOrg] = useState("Zentum");
+  const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
+  const [orgName, setOrgName] = useState<string>("");
   const [loading, setLoading] = useState<"csv" | "count" | null>(null);
   const [totals, setTotals] = useState<Record<string, unknown> | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    if (!effectiveOrganizationId) {
+      setOrgName("");
+      return;
+    }
+    supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", effectiveOrganizationId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setOrgName(data?.name || "");
+      });
+    return () => {
+      active = false;
+    };
+  }, [effectiveOrganizationId]);
+
   const call = async (mode: "csv" | "count") => {
+    if (!effectiveOrganizationId) {
+      toast.error("Nenhuma organização ativa. Selecione um cliente primeiro.");
+      return;
+    }
     setLoading(mode);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -26,7 +49,7 @@ export function LeadsSemInteracaoExport() {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ org, mode }),
+        body: JSON.stringify({ organization_id: effectiveOrganizationId, mode }),
       });
 
       if (!res.ok) {
@@ -74,16 +97,25 @@ export function LeadsSemInteracaoExport() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2 max-w-sm">
-          <Label htmlFor="org-name">Organização</Label>
-          <Input id="org-name" value={org} onChange={(e) => setOrg(e.target.value)} />
+        <div className="text-sm">
+          <span className="text-muted-foreground">Organização atual: </span>
+          <span className="font-medium">
+            {orgName || (effectiveOrganizationId ? "Carregando..." : "Nenhuma organização selecionada")}
+          </span>
+          {isImpersonating && (
+            <span className="text-muted-foreground"> (impersonando)</span>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => call("csv")} disabled={loading !== null}>
+          <Button onClick={() => call("csv")} disabled={loading !== null || !effectiveOrganizationId}>
             {loading === "csv" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Baixar CSV
           </Button>
-          <Button variant="outline" onClick={() => call("count")} disabled={loading !== null}>
+          <Button
+            variant="outline"
+            onClick={() => call("count")}
+            disabled={loading !== null || !effectiveOrganizationId}
+          >
             {loading === "count" && <Loader2 className="h-4 w-4 animate-spin" />}
             Só contar
           </Button>
