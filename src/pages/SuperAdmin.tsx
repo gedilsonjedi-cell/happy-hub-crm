@@ -1076,7 +1076,7 @@ export default function SuperAdmin() {
           </TabsContent>
 
           <TabsContent value="diagnostics" className="space-y-4">
-            <LeadsSemInteracaoExport />
+            
             <UnreadDivergencePanel />
           </TabsContent>
         </Tabs>
