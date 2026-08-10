@@ -35,6 +35,7 @@ import {
   Zap,
   Gift,
   Blocks,
+  UserX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ const disparosSubmenu = [
 
 const appsSubmenu = [
   { icon: Link2, label: "Links", path: "/links", permission: null },
+  { icon: UserX, label: "Leads sem interação", path: "/apps/leads-sem-interacao", permission: null, superAdminOnly: true },
 ];
 
 const personalizacaoSubmenu = [
@@ -121,7 +123,11 @@ export function Sidebar() {
   const isCrmActive = crmSubmenu.some(item => location.pathname === item.path);
   const isDisparosActive = filteredDisparosSubmenu.some(item => location.pathname === item.path);
   const isPersonalizacaoActive = personalizacaoSubmenu.some(item => location.pathname === item.path) || location.pathname === "/usuarios";
-  const isAppsActive = appsSubmenu.some(item => location.pathname === item.path);
+  const filteredAppsSubmenu = useMemo(
+    () => appsSubmenu.filter((item) => !(item as any).superAdminOnly || userRole.isSuperAdmin),
+    [userRole.isSuperAdmin]
+  );
+  const isAppsActive = filteredAppsSubmenu.some(item => location.pathname === item.path);
 
   // Close mobile menu on route change (always close to prevent stuck overlay)
   useEffect(() => {
@@ -326,7 +332,7 @@ export function Sidebar() {
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
 
             {/* Apps submenu */}
-            {renderSubmenu(appsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
+            {renderSubmenu(filteredAppsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
 
             {/* Bottom menu items */}
             {bottomMenuItems.map((item) => renderMenuItem(item))}

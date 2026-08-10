@@ -26,7 +26,8 @@ import {
   Sun,
   Moon,
   MessageCircle,
-  Link2
+  Link2,
+  UserX
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -147,6 +148,9 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         { label: "Templates", path: "/templates", icon: FileText },
         { label: "Links", path: "/links", icon: Link2 },
         { label: "Chatbot IA", path: "/chatbot", icon: Bot },
+        ...(isSuperAdmin
+          ? [{ label: "Leads sem interação", path: "/apps/leads-sem-interacao", icon: UserX }]
+          : []),
       ]
     },
     ...(isAdmin || isSupervisor || isSuperAdmin
