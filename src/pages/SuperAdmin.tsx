@@ -75,6 +75,7 @@ import { PaymentHistoryPanel } from "@/components/admin/PaymentHistoryPanel";
 import { RlsRegressionPanel } from "@/components/admin/RlsRegressionPanel";
 import { PerformanceMetricsPanel } from "@/components/admin/PerformanceMetricsPanel";
 import { UnreadDivergencePanel } from "@/components/admin/UnreadDivergencePanel";
+import { LeadsSemInteracaoExport } from "@/components/admin/LeadsSemInteracaoExport";
 
 interface SubscriptionPricing {
   base_price: number;
@@ -1074,7 +1075,8 @@ export default function SuperAdmin() {
             <PerformanceMetricsPanel />
           </TabsContent>
 
-          <TabsContent value="diagnostics">
+          <TabsContent value="diagnostics" className="space-y-4">
+            <LeadsSemInteracaoExport />
             <UnreadDivergencePanel />
           </TabsContent>
         </Tabs>
