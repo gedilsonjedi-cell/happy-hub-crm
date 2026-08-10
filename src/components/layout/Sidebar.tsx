@@ -332,7 +332,7 @@ export function Sidebar() {
             {renderSubmenu(personalizacaoSubmenu, personalizacaoOpen, setPersonalizacaoOpen, "Personalização", Settings, isPersonalizacaoActive)}
 
             {/* Apps submenu */}
-            {renderSubmenu(appsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
+            {renderSubmenu(filteredAppsSubmenu, appsOpen, setAppsOpen, "Apps", Blocks, isAppsActive)}
 
             {/* Bottom menu items */}
             {bottomMenuItems.map((item) => renderMenuItem(item))}

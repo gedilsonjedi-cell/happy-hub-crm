@@ -51,6 +51,7 @@ import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 import AtendimentoV2 from "./pages/AtendimentoV2";
 import Links from "./pages/Links";
+import LeadsSemInteracao from "./pages/LeadsSemInteracao";
 import RedirectPage from "./pages/RedirectPage";
 
 const queryClient = new QueryClient({
@@ -186,6 +187,7 @@ const App = () => (
           <Route path="/personalizacao/respostas-rapidas" element={<ProtectedRoute><RespostasRapidas /></ProtectedRoute>} />
           <Route path="/integracoes" element={<ProtectedRoute><Integracoes /></ProtectedRoute>} />
           <Route path="/links" element={<ProtectedRoute><Links /></ProtectedRoute>} />
+          <Route path="/apps/leads-sem-interacao" element={<ProtectedRoute><LeadsSemInteracao /></ProtectedRoute>} />
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
