@@ -93,11 +93,17 @@ export function useSendMessage(
         // a string genérica "Erro de conexão" que confunde o atendente.
         let serverMessage: string | null = null;
         try {
-          const ctx = (error as { context?: { response?: Response } }).context;
-          const resp = ctx?.response;
+          const rawCtx = (error as { context?: unknown }).context as
+            | (Response & { response?: Response })
+            | undefined;
+          // Dependendo da versão do supabase-js, `context` é a própria Response
+          // ou um objeto { response }. Suportar os dois formatos.
+          const resp: Response | undefined =
+            rawCtx && typeof (rawCtx as Response).clone === "function"
+              ? (rawCtx as Response)
+              : rawCtx?.response;
           if (resp) {
-            const cloned = resp.clone();
-            const parsed = await cloned.json().catch(() => null) as { error?: string } | null;
+            const parsed = await resp.clone().json().catch(() => null) as { error?: string } | null;
             if (parsed?.error && typeof parsed.error === "string") {
               serverMessage = parsed.error;
             } else {
@@ -108,6 +114,7 @@ export function useSendMessage(
         } catch {
           // ignore — fall back to generic message below
         }
+
         throw new Error(
           serverMessage
             || (error as Error).message
