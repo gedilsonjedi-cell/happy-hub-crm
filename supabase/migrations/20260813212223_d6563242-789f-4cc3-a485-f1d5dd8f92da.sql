@@ -1,0 +1,1 @@
+UPDATE public.campaigns SET status = 'running', started_at = NOW(), updated_at = NOW() WHERE id = 'a62d752a-12ec-40c7-bdde-818e3288915c' AND status = 'draft';
