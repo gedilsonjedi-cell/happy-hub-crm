@@ -93,7 +93,7 @@ export function RecycleFailuresDialog({
     if (open && campaign) {
       fetchData();
     }
-  }, [open, campaign]);
+  }, [open, campaign?.id]);
 
   // When selected channels or template change, reset variables
   useEffect(() => {
