@@ -77,7 +77,7 @@ const disparosSubmenu = [
 
 const appsSubmenu = [
   { icon: Link2, label: "Links", path: "/links", permission: null },
-  { icon: UserX, label: "Leads sem interação", path: "/apps/leads-sem-interacao", permission: null, superAdminOnly: true },
+  { icon: UserX, label: "Exportar Leads", path: "/apps/leads-sem-interacao", permission: null, superAdminOnly: true },
 ];
 
 const personalizacaoSubmenu = [
