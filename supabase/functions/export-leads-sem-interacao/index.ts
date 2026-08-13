@@ -1,5 +1,7 @@
-// Exporta leads "sem interação" (nunca clicaram nos botões-alvo de campanha) em CSV.
-// Somente super_admin. Escopo estrito à organização informada (default: Zentum).
+// Exporta leads de uma organização em CSV.
+// Modos: "sem interação" (nunca clicaram nos botões-alvo) ou "base toda".
+// Filtro de período por data de criação do lead ou por última interação (inbound no DB externo).
+// Somente super_admin. Escopo estrito à organização informada.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -14,6 +16,7 @@ interface RawMsg {
   message_type: string | null;
   content: string | null;
   metadata: any;
+  created_at?: string | null;
 }
 
 // Cópia fiel de extractButtonLabel() de src/hooks/useConversationHeatmap.tsx
@@ -88,14 +91,37 @@ serve(async (req) => {
     let orgName = url.searchParams.get("org") || "Zentum";
     let orgId = url.searchParams.get("organization_id") || "";
     let mode = url.searchParams.get("mode") || "csv";
+    let exportType = url.searchParams.get("export_type") || "sem_interacao"; // sem_interacao | base_toda
+    let dateField = url.searchParams.get("date_field") || "created"; // created | last_interaction
+    let dateFrom = url.searchParams.get("date_from") || "";
+    let dateTo = url.searchParams.get("date_to") || "";
     if (req.method === "POST") {
       try {
         const body = await req.json();
         if (body?.org) orgName = String(body.org);
         if (body?.organization_id) orgId = String(body.organization_id);
         if (body?.mode) mode = String(body.mode);
+        if (body?.export_type) exportType = String(body.export_type);
+        if (body?.date_field) dateField = String(body.date_field);
+        if (body?.date_from) dateFrom = String(body.date_from);
+        if (body?.date_to) dateTo = String(body.date_to);
       } catch (_) { /* sem body */ }
     }
+    if (exportType !== "base_toda") exportType = "sem_interacao";
+    if (dateField !== "last_interaction") dateField = "created";
+
+    // Datas (YYYY-MM-DD -> limites do dia em UTC)
+    const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00.000Z`).getTime() : null;
+    const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999Z`).getTime() : null;
+    const inRange = (iso?: string | null) => {
+      if (fromTs === null && toTs === null) return true;
+      if (!iso) return false;
+      const t = new Date(iso).getTime();
+      if (Number.isNaN(t)) return false;
+      if (fromTs !== null && t < fromTs) return false;
+      if (toTs !== null && t > toTs) return false;
+      return true;
+    };
 
     // 1) Resolver organização: por ID (preferencial) ou por nome (fallback)
     let org: { id: string; name: string };
@@ -147,10 +173,15 @@ serve(async (req) => {
     const leads: Lead[] = [];
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await admin
+      let q = admin
         .from("leads")
         .select("id, name, phone, created_at")
-        .eq("organization_id", org.id)
+        .eq("organization_id", org.id);
+      if (dateField === "created") {
+        if (dateFrom) q = q.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+        if (dateTo) q = q.lte("created_at", `${dateTo}T23:59:59.999Z`);
+      }
+      const { data, error } = await q
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw error;
@@ -160,46 +191,67 @@ serve(async (req) => {
       if (from > 500_000) break;
     }
 
-    // 3) Mensagens inbound da org no banco EXTERNO, paginado
-    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-    const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-    if (!extUrl || !extKey) throw new Error("EXTERNAL_SUPABASE_URL/SERVICE_ROLE_KEY ausentes");
-    const ext = createClient(extUrl, extKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
+    // 3) Mensagens inbound da org no banco EXTERNO, paginado.
+    // Necessário para: (a) identificar respondentes de botão (export_type=sem_interacao)
+    // e (b) calcular a última interação por telefone (date_field=last_interaction).
+    const needInbound = exportType === "sem_interacao" || dateField === "last_interaction";
     const responders = new Set<string>();
+    const lastInteraction = new Map<string, string>();
     let inboundCount = 0;
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await ext
-        .from("whatsapp_messages")
-        .select("sender_phone, message_type, content, metadata")
-        .eq("organization_id", org.id)
-        .eq("direction", "inbound")
-        .order("created_at", { ascending: false })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      const batch = (data || []) as RawMsg[];
-      inboundCount += batch.length;
-      for (const m of batch) {
-        const label = extractButtonLabel(m);
-        if (!label) continue;
-        if (!TARGET_BUTTONS.has(normalizeLabel(label))) continue;
-        const key = phoneKey(m.sender_phone);
-        if (key) responders.add(key);
+
+    if (needInbound) {
+      const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+      const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+      if (!extUrl || !extKey) throw new Error("EXTERNAL_SUPABASE_URL/SERVICE_ROLE_KEY ausentes");
+      const ext = createClient(extUrl, extKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await ext
+          .from("whatsapp_messages")
+          .select("sender_phone, message_type, content, metadata, created_at")
+          .eq("organization_id", org.id)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = (data || []) as RawMsg[];
+        inboundCount += batch.length;
+        for (const m of batch) {
+          const key = phoneKey(m.sender_phone);
+          if (key && m.created_at) {
+            const prev = lastInteraction.get(key);
+            if (!prev || m.created_at > prev) lastInteraction.set(key, m.created_at);
+          }
+          if (exportType === "sem_interacao") {
+            const label = extractButtonLabel(m);
+            if (!label) continue;
+            if (!TARGET_BUTTONS.has(normalizeLabel(label))) continue;
+            if (key) responders.add(key);
+          }
+        }
+        if (batch.length < PAGE) break;
+        if (from > 2_000_000) break;
       }
-      if (batch.length < PAGE) break;
-      if (from > 2_000_000) break;
     }
 
     const exported = leads.filter((l) => {
       const key = phoneKey(l.phone);
-      return !key || !responders.has(key);
+      if (exportType === "sem_interacao" && key && responders.has(key)) return false;
+      if (dateField === "last_interaction") {
+        if (!inRange(key ? lastInteraction.get(key) : null)) return false;
+      }
+      return true;
     });
 
     const totals = {
       organization: org.name,
       organization_id: org.id,
+      export_type: exportType,
+      date_field: dateField,
+      date_from: dateFrom || null,
+      date_to: dateTo || null,
       total_leads: leads.length,
       total_inbound_mensagens: inboundCount,
       total_respondentes: responders.size,
@@ -216,17 +268,24 @@ serve(async (req) => {
     const slug = org.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     const csv = [
-      "nome,telefone,criado_em,lead_id",
+      "nome,telefone,criado_em,ultima_interacao,lead_id",
       ...exported.map((l) =>
-        [csvCell(l.name), csvCell(l.phone), csvCell(l.created_at), csvCell(l.id)].join(",")
+        [
+          csvCell(l.name),
+          csvCell(l.phone),
+          csvCell(l.created_at),
+          csvCell(lastInteraction.get(phoneKey(l.phone)) || ""),
+          csvCell(l.id),
+        ].join(",")
       ),
     ].join("\n");
 
+    const fileTag = exportType === "base_toda" ? "base_toda" : "sem_interacao";
     return new Response("\uFEFF" + csv, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="leads_sem_interacao_${slug}_${today}.csv"`,
+        "Content-Disposition": `attachment; filename="leads_${fileTag}_${slug}_${today}.csv"`,
         "x-total-leads": String(totals.total_leads),
         "x-total-respondentes": String(totals.total_respondentes),
         "x-total-exportados": String(totals.total_exportados),
