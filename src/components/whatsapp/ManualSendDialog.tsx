@@ -74,6 +74,7 @@ export const ManualSendDialog = ({
   onPhoneUsed,
   onTemplateSent
 }: ManualSendDialogProps) => {
+  const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
