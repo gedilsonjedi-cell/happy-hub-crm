@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { assignmentsWrite } from "@/lib/externalAssignments";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 
 
@@ -73,6 +74,7 @@ export const ManualSendDialog = ({
   onPhoneUsed,
   onTemplateSent
 }: ManualSendDialogProps) => {
+  const { effectiveOrganizationId, isImpersonating } = useEffectiveOrganizationId();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
@@ -159,22 +161,34 @@ export const ManualSendDialog = ({
   };
 
   const getFunctionErrorMessage = async (error: unknown) => {
-    const maybeContext = (error as { context?: Response; message?: string } | null)?.context;
-    if (maybeContext) {
+    const rawCtx = (error as { context?: unknown } | null)?.context as
+      | (Response & { response?: Response })
+      | undefined;
+    // Depending on the supabase-js version, `context` is either the Response
+    // itself or an object shaped like `{ response }`.
+    const resp: Response | undefined =
+      rawCtx && typeof (rawCtx as Response).clone === "function"
+        ? (rawCtx as Response)
+        : rawCtx?.response;
+
+    if (resp) {
       try {
-        const body = await maybeContext.clone().json();
-        return body?.error || body?.message || body?.details?.message || (error as { message?: string })?.message;
+        const body = await resp.clone().json();
+        const msg = body?.error || body?.message || body?.details?.message;
+        if (msg) return typeof msg === "string" ? msg : JSON.stringify(msg);
       } catch {
-        try {
-          const text = await maybeContext.clone().text();
-          if (text) return text;
-        } catch {
-          // ignore parse errors and use fallback below
-        }
+        // fall through to text below
+      }
+      try {
+        const text = await resp.clone().text();
+        if (text) return text.slice(0, 300);
+      } catch {
+        // ignore parse errors and use fallback below
       }
     }
     return (error as { message?: string } | null)?.message || "Erro ao enviar template";
   };
+
 
   const hasUnsupportedTemplateContent = (value: string) => {
     return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
@@ -255,6 +269,12 @@ export const ManualSendDialog = ({
         {
           body: {
             action: "claim_assignment",
+            // Super admins have no organization_id on their profile; when they are
+            // impersonating an organization the edge function needs it explicitly,
+            // otherwise it answers 403 "No organization" and the send never happens.
+            ...(isImpersonating && effectiveOrganizationId
+              ? { impersonatedOrgId: effectiveOrganizationId }
+              : {}),
             payload: {
               conversation_phone: formattedPhone,
               channel_id: selectedChannel.id,
@@ -266,10 +286,12 @@ export const ManualSendDialog = ({
       );
 
       if (claimError) {
-        toast.error(claimError.message || "Não foi possível reservar esta conversa");
+        const claimMessage = await getFunctionErrorMessage(claimError);
+        toast.error(claimMessage || "Não foi possível reservar esta conversa");
         setSending(false);
         return;
       }
+
 
       if (claimData && typeof claimData === "object" && (claimData as any).error === "already_assigned") {
         const ownerId = (claimData as any).assignment?.assigned_to;
