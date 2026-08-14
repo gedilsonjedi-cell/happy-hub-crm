@@ -267,6 +267,12 @@ export const ManualSendDialog = ({
         {
           body: {
             action: "claim_assignment",
+            // Super admins have no organization_id on their profile; when they are
+            // impersonating an organization the edge function needs it explicitly,
+            // otherwise it answers 403 "No organization" and the send never happens.
+            ...(isImpersonating && effectiveOrganizationId
+              ? { impersonatedOrgId: effectiveOrganizationId }
+              : {}),
             payload: {
               conversation_phone: formattedPhone,
               channel_id: selectedChannel.id,
@@ -278,10 +284,12 @@ export const ManualSendDialog = ({
       );
 
       if (claimError) {
-        toast.error(claimError.message || "Não foi possível reservar esta conversa");
+        const claimMessage = await getFunctionErrorMessage(claimError);
+        toast.error(claimMessage || "Não foi possível reservar esta conversa");
         setSending(false);
         return;
       }
+
 
       if (claimData && typeof claimData === "object" && (claimData as any).error === "already_assigned") {
         const ownerId = (claimData as any).assignment?.assigned_to;
