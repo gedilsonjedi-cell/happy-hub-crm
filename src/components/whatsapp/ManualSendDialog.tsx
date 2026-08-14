@@ -159,22 +159,34 @@ export const ManualSendDialog = ({
   };
 
   const getFunctionErrorMessage = async (error: unknown) => {
-    const maybeContext = (error as { context?: Response; message?: string } | null)?.context;
-    if (maybeContext) {
+    const rawCtx = (error as { context?: unknown } | null)?.context as
+      | (Response & { response?: Response })
+      | undefined;
+    // Depending on the supabase-js version, `context` is either the Response
+    // itself or an object shaped like `{ response }`.
+    const resp: Response | undefined =
+      rawCtx && typeof (rawCtx as Response).clone === "function"
+        ? (rawCtx as Response)
+        : rawCtx?.response;
+
+    if (resp) {
       try {
-        const body = await maybeContext.clone().json();
-        return body?.error || body?.message || body?.details?.message || (error as { message?: string })?.message;
+        const body = await resp.clone().json();
+        const msg = body?.error || body?.message || body?.details?.message;
+        if (msg) return typeof msg === "string" ? msg : JSON.stringify(msg);
       } catch {
-        try {
-          const text = await maybeContext.clone().text();
-          if (text) return text;
-        } catch {
-          // ignore parse errors and use fallback below
-        }
+        // fall through to text below
+      }
+      try {
+        const text = await resp.clone().text();
+        if (text) return text.slice(0, 300);
+      } catch {
+        // ignore parse errors and use fallback below
       }
     }
     return (error as { message?: string } | null)?.message || "Erro ao enviar template";
   };
+
 
   const hasUnsupportedTemplateContent = (value: string) => {
     return /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|www\.whatsapp\.com)\S*/i.test(value)
