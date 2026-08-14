@@ -1668,15 +1668,22 @@ const AtendimentoV2 = () => {
   const markConversationAsRead = useCallback((conversation: { channelId: string | null; phone: string }) => {
     const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
 
-    setAllConversations(prev => prev.map(c => (
-      getConversationKey(c) === conversationKey ? { ...c, unreadCount: 0 } : c
-    )));
+    setAllConversations(prev => {
+      let changed = false;
+      const next = prev.map(c => {
+        if (getConversationKey(c) !== conversationKey || c.unreadCount === 0) return c;
+        changed = true;
+        return { ...c, unreadCount: 0 };
+      });
+      return changed ? next : prev;
+    });
 
     setSelectedConversation(prev => {
-      if (!prev) return prev;
+      if (!prev || prev.unreadCount === 0) return prev;
       const isSameConversation = prev.channelId === conversation.channelId && phonesMatch(prev.phone, conversation.phone);
       return isSameConversation ? { ...prev, unreadCount: 0 } : prev;
     });
+
 
     if (!conversation.channelId) return;
 
@@ -1725,11 +1732,15 @@ const AtendimentoV2 = () => {
     // lastMessageTime <= lastInboundTime, and the conversation stays visible
     // in those tabs even after the agent replied.
     const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
+    // Single timestamp per call — the list copy and the selected copy must stay
+    // byte-identical, otherwise they keep "fighting" each other on re-render.
+    const respondedAt = Date.now();
     const applyRespondedState = (c: Conversation): Conversation => {
       const inboundT = c.lastInboundTime ? new Date(c.lastInboundTime).getTime() : 0;
       const lastT = c.lastMessageTime ? new Date(c.lastMessageTime).getTime() : 0;
       const baseT = Math.max(inboundT, lastT) + 1; // strictly > lastInboundTime
-      const bumped = new Date(Math.max(baseT, Date.now())).toISOString();
+      const bumped = new Date(Math.max(baseT, respondedAt)).toISOString();
+
 
       return {
         ...c,
@@ -2731,16 +2742,32 @@ const AtendimentoV2 = () => {
       else if (assignment.status === "in_progress") mappedStatus = "in_progress";
 
       const convKey = `${assignment.channelId}_${normalizePhoneNumber(normalizedPhone)}`;
+      // Only rebuild state when something actually changed — otherwise every
+      // realtime echo (very frequent right after sending) produces new object
+      // identities and re-renders the entire conversation list.
+      const assignmentFieldsChanged = (c: Conversation) =>
+        c.id !== assignment.id ||
+        c.assignedTo !== assignment.assignedTo ||
+        c.assignedToName !== assignedToName ||
+        c.sectorId !== (assignment.sectorId || c.sectorId) ||
+        c.status !== mappedStatus;
+
       if (locallyCreatedConversationsRef.current.has(convKey)) {
-        setAllConversations(prev => prev.map(c => {
-          const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
-          if (cKey === convKey) {
-            return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
-          }
-          return c;
-        }));
+        setAllConversations(prev => {
+          let changed = false;
+          const next = prev.map(c => {
+            const cKey = `${c.channelId}_${normalizePhoneNumber(c.phone)}`;
+            if (cKey === convKey && assignmentFieldsChanged(c)) {
+              changed = true;
+              return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus };
+            }
+            return c;
+          });
+          return changed ? next : prev;
+        });
         return;
       }
+
 
       // Pre-fetch lead name if not in cache
       const cachedLeadMatch = getLeadFromCache(normalizedPhone);
@@ -2775,14 +2802,17 @@ const AtendimentoV2 = () => {
         }
 
         if (existing) {
-          return prev.map(c => {
+          let changed = false;
+          const next = prev.map(c => {
             const isMatch = c.id === assignment.id ||
               (normalizePhoneNumber(c.phone) === normalizePhoneNumber(normalizedPhone) && (c.channelId === assignment.channelId || !assignment.channelId));
-            if (isMatch) {
-              return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus, name: prefetchedLeadName || c.name };
-            }
-            return c;
+            if (!isMatch) return c;
+            const nextName = prefetchedLeadName || c.name;
+            if (!assignmentFieldsChanged(c) && nextName === c.name) return c;
+            changed = true;
+            return { ...c, id: assignment.id, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || c.sectorId, status: mappedStatus, name: nextName };
           });
+          return changed ? next : prev;
         } else if (assignment.channelId) {
           const displayPhone = '+' + normalizePhoneNumber(normalizedPhone);
           const newConv: Conversation = {
@@ -2801,9 +2831,11 @@ const AtendimentoV2 = () => {
         if (!prev) return null;
         const prevNormalized = prev.phone.replace(/\D/g, '');
         if (prevNormalized === normalizedPhone && prev.channelId === assignment.channelId) {
+          if (!assignmentFieldsChanged(prev)) return prev;
           return { ...prev, assignedTo: assignment.assignedTo, assignedToName, sectorId: assignment.sectorId || prev.sectorId, status: mappedStatus };
         }
         return prev;
+
       });
     };
 
