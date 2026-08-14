@@ -1651,7 +1651,8 @@ const AtendimentoV2 = () => {
   useEffect(() => {
     if (!selectedConversationStableKey) return;
 
-    const currentKey = selectedConversation ? getConversationKey(selectedConversation) : null;
+    const current = selectedConversationRef.current;
+    const currentKey = current ? getConversationKey(current) : null;
     if (currentKey === selectedConversationStableKey) return;
 
     const recovered = [...conversations, ...globalSearchResults].find(
@@ -1663,7 +1664,11 @@ const AtendimentoV2 = () => {
       const matchingChannel = channels.find((channel) => channel.id === recovered.channelId) || null;
       setSelectedChannel(matchingChannel);
     }
-  }, [allConversations, globalSearchResults, channels, selectedConversation, selectedConversationStableKey]);
+    // NOTE: `selectedConversation` is intentionally read via ref and kept out of
+    // the deps — including it made every object-identity change (each realtime
+    // echo after a send) re-run this effect and re-set the selection.
+  }, [allConversations, globalSearchResults, channels, selectedConversationStableKey]);
+
 
   const markConversationAsRead = useCallback((conversation: { channelId: string | null; phone: string }) => {
     const conversationKey = getConversationThreadKey(conversation.channelId, conversation.phone);
