@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { assignmentsWrite } from "@/lib/externalAssignments";
+import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 
 
