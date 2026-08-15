@@ -11,6 +11,8 @@ import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import { useForceReload } from "@/hooks/useForceReload";
 import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
 import { WhatsappPhoneGate } from "@/components/auth/WhatsappPhoneGate";
+import { OtpGate } from "@/components/auth/OtpGate";
+import { useDailyLogin } from "@/hooks/useDailyLogin";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
