@@ -786,6 +786,7 @@ const Templates = () => {
 
   return (
     <MainLayout>
+      <OtpSettingsPanel />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6 animate-fade-in">
         <div>
