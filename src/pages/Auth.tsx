@@ -11,6 +11,7 @@ import { z } from "zod";
 import { motion } from "framer-motion";
 import optimusLogo from "@/assets/optimus-logo.png";
 import { SplashScreen } from "@/components/splash/SplashScreen";
+import { recordLoginDate } from "@/lib/brasiliaDate";
 
 const authSchema = z.object({
   email: z.string().email("Email inválido").max(255),
