@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS whatsapp_phone text;
+COMMENT ON COLUMN public.profiles.whatsapp_phone IS 'WhatsApp do usuário do sistema (E.164, apenas dígitos com DDI). Não confundir com telefone de lead ou canal.';
