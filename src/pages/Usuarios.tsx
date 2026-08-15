@@ -154,6 +154,7 @@ const Usuarios = () => {
   const [newUserEmails, setNewUserEmails] = useState<string[]>([]);
   const [newUserEmailInput, setNewUserEmailInput] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserWhatsapp, setNewUserWhatsapp] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [createProgress, setCreateProgress] = useState({ current: 0, total: 0 });
