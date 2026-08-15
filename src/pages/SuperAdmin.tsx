@@ -427,7 +427,6 @@ export default function SuperAdmin() {
     setAdminName("");
     setAdminEmail("");
     setAdminPhone("");
-    setAdminPhone("");
     setAdminPassword("");
     setNewOrgPlanType("mensal");
     setNewOrgCustomPrice("");
