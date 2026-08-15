@@ -278,7 +278,17 @@ serve(async (req) => {
 
     // Handle creating user with role (full flow)
     if (action === "create_user_with_role") {
-      const { email, password, display_name, organization_id, role } = body;
+      const { email, password, display_name, organization_id, role, whatsapp_phone } = body;
+
+      // WhatsApp do usuário (E.164 apenas dígitos, DDI 55 + DDD + celular de 9 dígitos)
+      const normalizedWhatsapp = String(whatsapp_phone || "").replace(/\D/g, "");
+      const isValidWhatsapp = /^55[1-9][1-9]9[6-9]\d{7}$/.test(normalizedWhatsapp);
+      if (!isValidWhatsapp) {
+        return new Response(JSON.stringify({ error: "WhatsApp do usuário inválido. Use DDI 55 + DDD + celular com 9 dígitos." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       if (!email || !password || !organization_id || !role) {
         return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -377,6 +387,7 @@ serve(async (req) => {
         .update({
           organization_id,
           display_name: display_name || null,
+          whatsapp_phone: normalizedWhatsapp,
         })
         .eq("user_id", authData.user.id);
 

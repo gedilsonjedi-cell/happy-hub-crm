@@ -24,6 +24,7 @@ import {
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -154,6 +155,7 @@ const Usuarios = () => {
   const [newUserEmails, setNewUserEmails] = useState<string[]>([]);
   const [newUserEmailInput, setNewUserEmailInput] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserWhatsapp, setNewUserWhatsapp] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("atendente");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [createProgress, setCreateProgress] = useState({ current: 0, total: 0 });
@@ -464,6 +466,11 @@ const Usuarios = () => {
       toast.error("Senha deve ter pelo menos 6 caracteres");
       return;
     }
+    const whatsappValidation = validateWhatsappPhone(newUserWhatsapp);
+    if (!whatsappValidation.isValid) {
+      toast.error(whatsappValidation.error || "WhatsApp inválido");
+      return;
+    }
     
     // Double-check limit (in case data changed)
     if (!isSuperAdmin && maxUsers !== null && maxUsers !== undefined) {
@@ -493,6 +500,7 @@ const Usuarios = () => {
             email: email,
             password: newUserPassword.trim(),
             display_name: email.split("@")[0],
+            whatsapp_phone: whatsappValidation.e164,
             organization_id: organizationId,
             role: newUserRole,
           },
@@ -537,6 +545,7 @@ const Usuarios = () => {
     setNewUserEmails([]);
     setNewUserEmailInput("");
     setNewUserPassword("");
+    setNewUserWhatsapp("");
     setNewUserRole("atendente");
     setIsNewUserDialogOpen(false);
     setCreateProgress({ current: 0, total: 0 });
@@ -1235,6 +1244,25 @@ const Usuarios = () => {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="new-user-whatsapp">WhatsApp {newUserEmails.length > 1 && "(para todos)"}</Label>
+                <Input
+                  id="new-user-whatsapp"
+                  inputMode="tel"
+                  placeholder="+55 (14) 98156-4414"
+                  value={newUserWhatsapp}
+                  onChange={(e) => setNewUserWhatsapp(e.target.value)}
+                  onBlur={() => {
+                    const v = validateWhatsappPhone(newUserWhatsapp);
+                    if (v.isValid) setNewUserWhatsapp(v.formatted);
+                  }}
+                  className="bg-muted/30 border-border"
+                  disabled={isCreatingUser}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obrigatório. Celular com DDD (será usado para validar o acesso do usuário).
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="new-user-role">Tipo de Usuário {newUserEmails.length > 1 && "(para todos)"}</Label>
                 <Select value={newUserRole} onValueChange={(value: AppRole) => setNewUserRole(value)} disabled={isCreatingUser}>
                   <SelectTrigger className="bg-muted/30 border-border">
@@ -1271,13 +1299,14 @@ const Usuarios = () => {
                   setNewUserEmails([]);
                   setNewUserEmailInput("");
                   setNewUserPassword("");
+                  setNewUserWhatsapp("");
                   setNewUserRole("atendente");
                 }}
                 disabled={isCreatingUser}
               >
                 Cancelar
               </Button>
-              <Button onClick={handleCreateUser} disabled={isCreatingUser || newUserEmails.length === 0}>
+              <Button onClick={handleCreateUser} disabled={isCreatingUser || newUserEmails.length === 0 || !newUserWhatsapp.trim()}>
                 {isCreatingUser ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -10,6 +10,7 @@ import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
 import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import { useForceReload } from "@/hooks/useForceReload";
 import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
+import { WhatsappPhoneGate } from "@/components/auth/WhatsappPhoneGate";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
@@ -111,14 +112,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
-          <SubscriptionGuard>
-            {children}
-          </SubscriptionGuard>
+          <WhatsappPhoneGate>
+            <SubscriptionGuard>
+              {children}
+            </SubscriptionGuard>
+          </WhatsappPhoneGate>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
   );
 };
+
 
 // Home route that shows landing for non-authenticated users and redirects to atendimento for authenticated
 const HomeRoute = () => {
