@@ -72,8 +72,10 @@ const queryClient = new QueryClient({
 const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
   usePixPaymentNotifications();
   useForceReload();
+  useDailyLogin(true);
   return <>{children}</>;
 };
+
 
 // Component to check subscription and BLOCK screen if expired
 const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
