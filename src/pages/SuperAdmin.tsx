@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -314,6 +315,12 @@ export default function SuperAdmin() {
       return;
     }
 
+    const adminWhatsapp = validateWhatsappPhone(adminPhone);
+    if (!adminWhatsapp.isValid) {
+      toast.error(adminWhatsapp.error || "WhatsApp do administrador inválido");
+      return;
+    }
+
     // Validate password
     if (!adminPassword.trim() || adminPassword.length < 6) {
       toast.error("A senha deve ter no mínimo 6 caracteres");
@@ -381,6 +388,7 @@ export default function SuperAdmin() {
             email: adminEmail.trim(),
             password: userPassword,
             display_name: adminName.trim(),
+            whatsapp_phone: adminWhatsapp.e164,
             organization_id: orgData.id,
             role: "admin",
           }),
@@ -418,6 +426,7 @@ export default function SuperAdmin() {
     setNewOrgExpiryDate(addMonths(new Date(), 1));
     setAdminName("");
     setAdminEmail("");
+    setAdminPhone("");
     setAdminPhone("");
     setAdminPassword("");
     setNewOrgPlanType("mensal");
@@ -1336,11 +1345,15 @@ export default function SuperAdmin() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Telefone</Label>
+                    <Label>WhatsApp *</Label>
                     <Input
                       value={adminPhone}
                       onChange={(e) => setAdminPhone(e.target.value)}
-                      placeholder="(11) 99999-9999"
+                      onBlur={() => {
+                        const v = validateWhatsappPhone(adminPhone);
+                        if (v.isValid) setAdminPhone(v.formatted);
+                      }}
+                      placeholder="+55 (11) 99999-9999"
                     />
                   </div>
                 </div>
