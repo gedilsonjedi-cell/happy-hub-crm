@@ -72,6 +72,9 @@ const Auth = () => {
         return;
       }
 
+      // Registra a data (Brasília) deste login — usada para forçar login diário
+      recordLoginDate();
+
       // Show splash screen before navigating (don't setLoading false here)
       setShowSplash(true);
     } catch (error) {
