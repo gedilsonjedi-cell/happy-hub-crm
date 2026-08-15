@@ -57,6 +57,7 @@ import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
+import { OtpSettingsPanel } from "@/components/admin/OtpSettingsPanel";
 
 interface MessageTemplate {
   id: string;
