@@ -111,14 +111,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
-          <SubscriptionGuard>
-            {children}
-          </SubscriptionGuard>
+          <WhatsappPhoneGate>
+            <SubscriptionGuard>
+              {children}
+            </SubscriptionGuard>
+          </WhatsappPhoneGate>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
   );
 };
+
 
 // Home route that shows landing for non-authenticated users and redirects to atendimento for authenticated
 const HomeRoute = () => {
