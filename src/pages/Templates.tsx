@@ -57,6 +57,7 @@ import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
+import { OtpSettingsPanel } from "@/components/admin/OtpSettingsPanel";
 
 interface MessageTemplate {
   id: string;
@@ -786,6 +787,7 @@ const Templates = () => {
 
   return (
     <MainLayout>
+      <OtpSettingsPanel />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6 animate-fade-in">
         <div>

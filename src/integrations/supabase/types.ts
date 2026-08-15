@@ -2764,6 +2764,84 @@ export type Database = {
           },
         ]
       }
+      otp_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      otp_settings: {
+        Row: {
+          created_at: string
+          id: boolean
+          otp_channel_id: string | null
+          otp_login_enabled: boolean
+          otp_template_language: string
+          otp_template_name: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          otp_channel_id?: string | null
+          otp_login_enabled?: boolean
+          otp_template_language?: string
+          otp_template_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          otp_channel_id?: string | null
+          otp_login_enabled?: boolean
+          otp_template_language?: string
+          otp_template_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "otp_settings_otp_channel_id_fkey"
+            columns: ["otp_channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "otp_settings_otp_channel_id_fkey"
+            columns: ["otp_channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pending_referrals: {
         Row: {
           created_at: string
@@ -2938,6 +3016,7 @@ export type Database = {
           id: string
           is_active: boolean
           organization_id: string | null
+          otp_last_verified_date: string | null
           updated_at: string
           user_id: string
           whatsapp_phone: string | null
@@ -2949,6 +3028,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           organization_id?: string | null
+          otp_last_verified_date?: string | null
           updated_at?: string
           user_id: string
           whatsapp_phone?: string | null
@@ -2960,6 +3040,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           organization_id?: string | null
+          otp_last_verified_date?: string | null
           updated_at?: string
           user_id?: string
           whatsapp_phone?: string | null

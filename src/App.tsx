@@ -11,6 +11,8 @@ import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import { useForceReload } from "@/hooks/useForceReload";
 import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
 import { WhatsappPhoneGate } from "@/components/auth/WhatsappPhoneGate";
+import { OtpGate } from "@/components/auth/OtpGate";
+import { useDailyLogin } from "@/hooks/useDailyLogin";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
 import Conexoes from "./pages/Conexoes";
@@ -70,8 +72,10 @@ const queryClient = new QueryClient({
 const GlobalNotifications = ({ children }: { children: React.ReactNode }) => {
   usePixPaymentNotifications();
   useForceReload();
+  useDailyLogin(true);
   return <>{children}</>;
 };
+
 
 // Component to check subscription and BLOCK screen if expired
 const SubscriptionGuard = ({ children }: { children: React.ReactNode }) => {
@@ -113,9 +117,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
           <WhatsappPhoneGate>
-            <SubscriptionGuard>
-              {children}
-            </SubscriptionGuard>
+            <OtpGate>
+              <SubscriptionGuard>
+                {children}
+              </SubscriptionGuard>
+            </OtpGate>
           </WhatsappPhoneGate>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
