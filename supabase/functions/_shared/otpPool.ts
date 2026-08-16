@@ -72,6 +72,7 @@ export async function getOtpPool(db: SupabaseClient): Promise<OtpPoolEntry[]> {
       channelId: channel.id,
       accessToken,
       phoneNumberId: channel.app_name,
+      wabaId: channel.waba_id ?? null,
     });
   }
   return pool;
