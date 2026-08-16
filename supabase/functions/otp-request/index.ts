@@ -1,8 +1,10 @@
 import { brasiliaToday, corsHeaders, getCaller, hashCode, isOtpAdminEmail, json, serviceClient } from "../_shared/otpAuth.ts";
+import { getOtpPool } from "../_shared/otpPool.ts";
 
 const META_API_BASE = "https://graph.facebook.com/v22.0";
 const CODE_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SECONDS = 60;
+const LANGUAGE_FALLBACKS = ["pt_BR", "pt", "en_US"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -15,15 +17,12 @@ Deno.serve(async (req) => {
 
     const { data: settings } = await db
       .from("otp_settings")
-      .select("otp_login_enabled, otp_channel_id, otp_template_name, otp_template_language")
+      .select("otp_login_enabled")
       .eq("id", true)
       .maybeSingle();
 
     if (!settings?.otp_login_enabled) return json({ error: "OTP está desligado." }, 400);
     if (isOtpAdminEmail(caller.email)) return json({ success: true, skipped: true });
-    if (!settings.otp_channel_id || !settings.otp_template_name) {
-      return json({ error: "OTP não está configurado (canal/template)." }, 400);
-    }
 
     const { data: profile } = await db
       .from("profiles").select("whatsapp_phone").eq("user_id", caller.id).maybeSingle();
@@ -41,26 +40,29 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Pool de templates de OTP (rodízio: menos usado recentemente primeiro)
+    const pool = await getOtpPool(db);
+    if (pool.length === 0) {
+      return json({ error: "Nenhum template de OTP ativo configurado." }, 400);
+    }
+
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const code_hash = await hashCode(code, caller.id);
     const expires_at = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
 
-    // Credenciais do canal (colunas sensíveis exigem service role)
-    const { data: channel, error: channelError } = await db
-      .from("channels").select("access_token, app_name").eq("id", settings.otp_channel_id).single();
-    if (channelError || !channel?.access_token || !channel?.app_name) {
-      return json({ error: "Canal de OTP sem credenciais válidas." }, 500);
-    }
-
     // Template de AUTENTICAÇÃO da Meta: código no corpo E no botão de copiar código.
-    const buildPayload = (buttonComponent: Record<string, unknown> | null) => ({
+    const buildPayload = (
+      templateName: string,
+      language: string,
+      buttonComponent: Record<string, unknown> | null,
+    ) => ({
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: phone,
       type: "template",
       template: {
-        name: settings.otp_template_name,
-        language: { code: settings.otp_template_language || "pt_BR" },
+        name: templateName,
+        language: { code: language },
         components: [
           { type: "body", parameters: [{ type: "text", text: code }] },
           ...(buttonComponent ? [buttonComponent] : []),
@@ -68,31 +70,53 @@ Deno.serve(async (req) => {
       },
     });
 
-    const attempts = [
-      buildPayload({ type: "button", sub_type: "copy_code", index: "0", parameters: [{ type: "coupon_code", coupon_code: code }] }),
-      buildPayload({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] }),
-      buildPayload(null),
+    const buttonVariants: Array<Record<string, unknown> | null> = [
+      { type: "button", sub_type: "copy_code", index: "0", parameters: [{ type: "coupon_code", coupon_code: code }] },
+      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
+      null,
     ];
 
-    let sent = false;
+    let sentWith: { templateId: string; templateName: string; channelId: string } | null = null;
     let lastError = "Falha ao enviar o código.";
-    for (const payload of attempts) {
-      const res = await fetch(`${META_API_BASE}/${channel.app_name}/messages`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${channel.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await res.json().catch(() => ({}));
-      if (res.ok && result?.messages?.length) { sent = true; break; }
-      lastError = result?.error?.message || `Erro ${res.status} ao enviar o código.`;
-      console.error("[otp-request] envio falhou:", JSON.stringify(result?.error || result));
+
+    for (const entry of pool) {
+      for (const language of LANGUAGE_FALLBACKS) {
+        for (const button of buttonVariants) {
+          const res = await fetch(`${META_API_BASE}/${entry.phoneNumberId}/messages`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${entry.accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(buildPayload(entry.templateName, language, button)),
+          });
+          const result = await res.json().catch(() => ({}));
+          if (res.ok && result?.messages?.length) {
+            sentWith = { templateId: entry.templateId, templateName: entry.templateName, channelId: entry.channelId };
+            break;
+          }
+          lastError = result?.error?.message || `Erro ${res.status} ao enviar o código.`;
+          console.error(`[otp-request] falha template=${entry.templateName} lang=${language}:`, JSON.stringify(result?.error || result));
+        }
+        if (sentWith) break;
+      }
+      if (sentWith) break;
+      // Marca tentativa para não insistir sempre no mesmo template quebrado
+      await db.from("message_templates").update({ otp_last_used_at: new Date().toISOString() }).eq("id", entry.templateId);
     }
 
-    if (!sent) return json({ error: lastError }, 502);
+    if (!sentWith) return json({ error: lastError }, 502);
+
+    await db.from("message_templates")
+      .update({ otp_last_used_at: new Date().toISOString() })
+      .eq("id", sentWith.templateId);
 
     await db.from("otp_codes").insert({ user_id: caller.id, code_hash, expires_at });
 
-    return json({ success: true, expiresAt: expires_at, cooldown: RESEND_COOLDOWN_SECONDS, today: brasiliaToday() });
+    return json({
+      success: true,
+      expiresAt: expires_at,
+      cooldown: RESEND_COOLDOWN_SECONDS,
+      today: brasiliaToday(),
+      template: sentWith.templateName,
+    });
   } catch (error) {
     console.error("[otp-request] exceção:", error);
     return json({ error: error instanceof Error ? error.message : "Erro inesperado" }, 500);
