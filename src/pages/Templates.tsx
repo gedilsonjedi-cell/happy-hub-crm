@@ -58,6 +58,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 import { OtpSettingsPanel } from "@/components/admin/OtpSettingsPanel";
+import { isOtpAdminEmail } from "@/lib/otpAdmin";
 
 interface MessageTemplate {
   id: string;
@@ -70,6 +71,7 @@ interface MessageTemplate {
   created_at: string;
   components?: any;
   header_media_url?: string | null;
+  otp_active?: boolean;
 }
 
 interface Channel {
