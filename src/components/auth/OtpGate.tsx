@@ -35,7 +35,14 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.functions.invoke("otp-request", { body: {} });
     setSending(false);
 
-    const payloadError = (data as { error?: string } | null)?.error;
+    // Em respostas não-2xx o supabase-js devolve `data: null`; o motivo real vem no corpo da resposta.
+    let payloadError = (data as { error?: string } | null)?.error;
+    const context = (error as { context?: Response } | null)?.context;
+    if (!payloadError && context && typeof context.json === "function") {
+      const body = await context.clone().json().catch(() => null);
+      payloadError = (body as { error?: string } | null)?.error;
+    }
+
     if (error || payloadError) {
       const message = payloadError || "Não foi possível enviar o código pelo WhatsApp.";
       setSendError(message);
