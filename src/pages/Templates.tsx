@@ -938,6 +938,19 @@ const Templates = () => {
                             Serviço
                           </Badge>
                         )}
+                        {canManageOtpTemplates && template.dispatch_type === "service" && (
+                          <div
+                            className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Switch
+                              checked={!!template.otp_active}
+                              disabled={otpTogglingId === template.id}
+                              onCheckedChange={(checked) => void handleToggleOtpActive(template, checked)}
+                            />
+                            <span className="text-xs text-muted-foreground">Usar para OTP (envio de código)</span>
+                          </div>
+                        )}
                         {headerMediaFormat && (() => {
                           const mediaLabel = headerMediaFormat === 'IMAGE' ? 'imagem' : headerMediaFormat === 'VIDEO' ? 'vídeo' : 'arquivo';
                           const MediaIcon = headerMediaFormat === 'VIDEO' ? Video : headerMediaFormat === 'DOCUMENT' ? FileText : ImageIcon;
