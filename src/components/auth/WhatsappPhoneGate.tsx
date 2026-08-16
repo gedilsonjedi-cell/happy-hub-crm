@@ -69,6 +69,8 @@ export function WhatsappPhoneGate({ children }: { children: React.ReactNode }) {
     }
     toast.success("WhatsApp cadastrado com sucesso!");
     setNeedsPhone(false);
+    // Avisa o OtpGate para reavaliar e disparar o código automaticamente.
+    window.dispatchEvent(new CustomEvent("whatsapp-phone-saved"));
   }, [value, user]);
 
   if (!user || !checked || !needsPhone) return <>{children}</>;
