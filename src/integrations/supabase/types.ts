@@ -2546,6 +2546,8 @@ export type Database = {
           id: string
           name: string
           organization_id: string | null
+          otp_active: boolean
+          otp_last_used_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -2561,6 +2563,8 @@ export type Database = {
           id?: string
           name: string
           organization_id?: string | null
+          otp_active?: boolean
+          otp_last_used_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -2576,6 +2580,8 @@ export type Database = {
           id?: string
           name?: string
           organization_id?: string | null
+          otp_active?: boolean
+          otp_last_used_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
