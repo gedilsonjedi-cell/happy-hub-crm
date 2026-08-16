@@ -28,8 +28,21 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
   const [cooldown, setCooldown] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const requestedRef = useRef(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const requestCode = useCallback(async () => {
+  // Quando o WhatsappPhoneGate grava o número, o OtpGate recomeça do zero.
+  useEffect(() => {
+    const onPhoneSaved = () => {
+      requestedRef.current = false;
+      setChecked(false);
+      setNeedsOtp(false);
+      setReloadKey((k) => k + 1);
+    };
+    window.addEventListener("whatsapp-phone-saved", onPhoneSaved);
+    return () => window.removeEventListener("whatsapp-phone-saved", onPhoneSaved);
+  }, []);
+
+  const requestCode = useCallback(async (): Promise<boolean> => {
     setSending(true);
     setSendError(null);
     const { data, error } = await supabase.functions.invoke("otp-request", { body: {} });
@@ -46,10 +59,11 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
     if (error || payloadError) {
       const message = payloadError || "Não foi possível enviar o código pelo WhatsApp.";
       setSendError(message);
-      return;
+      return false;
     }
     setCooldown(RESEND_COOLDOWN);
     toast.success("Código enviado para o seu WhatsApp.");
+    return true;
   }, []);
 
   useEffect(() => {
@@ -64,9 +78,16 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
 
       const [{ data: settings }, { data: profile }] = await Promise.all([
         supabase.from("otp_settings").select("otp_login_enabled").eq("id", true).maybeSingle(),
-        supabase.from("profiles").select("otp_last_verified_date").eq("user_id", user.id).maybeSingle(),
+        supabase.from("profiles").select("otp_last_verified_date, whatsapp_phone").eq("user_id", user.id).maybeSingle(),
       ]);
       if (cancelled) return;
+
+      // Sem número cadastrado o WhatsappPhoneGate ainda está bloqueando: não avaliar nem disparar.
+      if (!profile?.whatsapp_phone) {
+        setNeedsOtp(false);
+        setChecked(false);
+        return;
+      }
 
       if (!settings?.otp_login_enabled) {
         setNeedsOtp(false);
@@ -80,15 +101,18 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
     })();
 
     return () => { cancelled = true; };
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, reloadKey]);
 
   // Dispara o código automaticamente quando o gate abre
   useEffect(() => {
-    if (needsOtp && !requestedRef.current) {
-      requestedRef.current = true;
-      void requestCode();
-    }
-  }, [needsOtp, requestCode]);
+    if (!needsOtp || !checked || requestedRef.current) return;
+    requestedRef.current = true;
+    void requestCode().then((ok) => {
+      // Falha transitória: permite novo auto-disparo numa próxima avaliação
+      if (!ok) requestedRef.current = false;
+    });
+  }, [needsOtp, checked, requestCode]);
+
 
   useEffect(() => {
     if (cooldown <= 0) return;
