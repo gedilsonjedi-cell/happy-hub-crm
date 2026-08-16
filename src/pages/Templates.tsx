@@ -247,6 +247,7 @@ const Templates = () => {
       variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined,
       components: (t as any).components ?? null,
       header_media_url: (t as any).header_media_url ?? null,
+      otp_active: (t as any).otp_active ?? false,
     })));
     setLoading(false);
   };
@@ -525,6 +526,23 @@ const Templates = () => {
     setEditDialogOpen(false);
     fetchTemplates();
     fetchChannels();
+  };
+
+  // Liga/desliga o template no pool de envio do OTP (validado no servidor)
+  const handleToggleOtpActive = async (template: MessageTemplate, nextValue: boolean) => {
+    setOtpTogglingId(template.id);
+    const { data, error } = await supabase.functions.invoke("otp-template-toggle", {
+      body: { template_id: template.id, otp_active: nextValue },
+    });
+    setOtpTogglingId(null);
+
+    const payloadError = (data as { error?: string } | null)?.error;
+    if (error || payloadError) {
+      toast.error(payloadError || "Não foi possível alterar o uso deste template no OTP.");
+      return;
+    }
+    setTemplates((prev) => prev.map((t) => (t.id === template.id ? { ...t, otp_active: nextValue } : t)));
+    toast.success(nextValue ? "Template ativado para OTP." : "Template desativado do OTP.");
   };
 
   const openApprovalDialog = (template: MessageTemplate) => {
