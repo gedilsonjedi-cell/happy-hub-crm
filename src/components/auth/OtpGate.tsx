@@ -11,6 +11,10 @@ import { brasiliaToday } from "@/lib/brasiliaDate";
 import { OTP_ADMIN_EMAIL, isOtpAdminEmail } from "@/lib/otpAdmin";
 
 const RESEND_COOLDOWN = 60;
+const AUTO_NO_PHONE_RETRY_LIMIT = 2;
+const AUTO_NO_PHONE_RETRY_DELAY_MS = 900;
+
+type CodeRequestResult = { ok: boolean; reason?: string };
 
 /**
  * Gate de OTP no login (fase 2).
@@ -28,12 +32,17 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
   const [cooldown, setCooldown] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const requestedRef = useRef(false);
+  const savedPhoneRef = useRef<string | null>(null);
+  const autoRetryCountRef = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
 
   // Quando o WhatsappPhoneGate grava o número, o OtpGate recomeça do zero.
   useEffect(() => {
-    const onPhoneSaved = () => {
+    const onPhoneSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ whatsappPhone?: string }>).detail;
+      savedPhoneRef.current = detail?.whatsappPhone || null;
       requestedRef.current = false;
+      autoRetryCountRef.current = 0;
       setChecked(false);
       setNeedsOtp(false);
       setReloadKey((k) => k + 1);
@@ -42,7 +51,7 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("whatsapp-phone-saved", onPhoneSaved);
   }, []);
 
-  const requestCode = useCallback(async (): Promise<boolean> => {
+  const requestCode = useCallback(async (): Promise<CodeRequestResult> => {
     setSending(true);
     setSendError(null);
     const { data, error } = await supabase.functions.invoke("otp-request", { body: {} });
@@ -50,20 +59,22 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
 
     // Em respostas não-2xx o supabase-js devolve `data: null`; o motivo real vem no corpo da resposta.
     let payloadError = (data as { error?: string } | null)?.error;
+    let payloadReason = (data as { reason?: string } | null)?.reason;
     const context = (error as { context?: Response } | null)?.context;
     if (!payloadError && context && typeof context.json === "function") {
       const body = await context.clone().json().catch(() => null);
       payloadError = (body as { error?: string } | null)?.error;
+      payloadReason = (body as { reason?: string } | null)?.reason;
     }
 
     if (error || payloadError) {
       const message = payloadError || "Não foi possível enviar o código pelo WhatsApp.";
       setSendError(message);
-      return false;
+      return { ok: false, reason: payloadReason };
     }
     setCooldown(RESEND_COOLDOWN);
     toast.success("Código enviado para o seu WhatsApp.");
-    return true;
+    return { ok: true };
   }, []);
 
   useEffect(() => {
@@ -83,11 +94,15 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
 
       // Sem número cadastrado o WhatsappPhoneGate ainda está bloqueando: não avaliar nem disparar.
-      if (!profile?.whatsapp_phone) {
+      const knownPhone = profile?.whatsapp_phone || savedPhoneRef.current;
+      if (!knownPhone) {
         setNeedsOtp(false);
         setChecked(false);
         return;
       }
+
+      // O valor confirmado pelo UPDATE só é necessário até a leitura do perfil convergir.
+      if (profile?.whatsapp_phone) savedPhoneRef.current = null;
 
       if (!settings?.otp_login_enabled) {
         setNeedsOtp(false);
@@ -107,9 +122,15 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!needsOtp || !checked || requestedRef.current) return;
     requestedRef.current = true;
-    void requestCode().then((ok) => {
-      // Falha transitória: permite novo auto-disparo numa próxima avaliação
-      if (!ok) requestedRef.current = false;
+    void requestCode().then((result) => {
+      if (result.ok) return;
+      requestedRef.current = false;
+
+      // Última proteção contra propagação tardia: reavalia automaticamente, com limite estável.
+      if (result.reason === "no_phone" && autoRetryCountRef.current < AUTO_NO_PHONE_RETRY_LIMIT) {
+        autoRetryCountRef.current += 1;
+        window.setTimeout(() => setReloadKey((key) => key + 1), AUTO_NO_PHONE_RETRY_DELAY_MS);
+      }
     });
   }, [needsOtp, checked, requestCode]);
 

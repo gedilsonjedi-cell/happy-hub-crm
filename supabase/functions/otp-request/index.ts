@@ -5,6 +5,7 @@ const META_API_BASE = "https://graph.facebook.com/v22.0";
 const CODE_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SECONDS = 60;
 const LANGUAGE_FALLBACKS = ["pt_BR", "pt", "en_US"];
+const PROFILE_READ_RETRY_DELAYS_MS = [0, 250, 600];
 
 type TemplateDef = { language: string; buttonType: "url" | "copy_code" | null };
 
@@ -58,11 +59,25 @@ Deno.serve(async (req) => {
     }
     if (isOtpAdminEmail(caller.email)) return json({ success: true, skipped: true });
 
-    const { data: profile } = await db
-      .from("profiles").select("whatsapp_phone").eq("user_id", caller.id).maybeSingle();
-    const phone = String(profile?.whatsapp_phone || "").replace(/\D/g, "");
+    let phone = "";
+    for (let attempt = 0; attempt < PROFILE_READ_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delay = PROFILE_READ_RETRY_DELAYS_MS[attempt];
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+
+      const { data: profile, error: profileError } = await db
+        .from("profiles").select("whatsapp_phone").eq("user_id", caller.id).maybeSingle();
+      if (profileError) {
+        console.warn(`[otp-request] leitura do perfil falhou tentativa=${attempt + 1}:`, profileError.message);
+      }
+      phone = String(profile?.whatsapp_phone || "").replace(/\D/g, "");
+      if (phone) {
+        if (attempt > 0) console.info(`[otp-request] whatsapp_phone propagado na tentativa=${attempt + 1}`);
+        break;
+      }
+      console.warn(`[otp-request] whatsapp_phone vazio tentativa=${attempt + 1}/${PROFILE_READ_RETRY_DELAYS_MS.length}`);
+    }
     if (!phone) {
-      console.warn("[otp-request] recusado: perfil sem whatsapp_phone", caller.id);
+      console.warn("[otp-request] recusado: perfil sem whatsapp_phone após retries", caller.id);
       return json({ error: "Seu WhatsApp não está cadastrado no perfil.", reason: "no_phone" }, 400);
     }
 
