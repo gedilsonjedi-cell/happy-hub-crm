@@ -52,13 +52,19 @@ Deno.serve(async (req) => {
       .eq("id", true)
       .maybeSingle();
 
-    if (!settings?.otp_login_enabled) return json({ error: "OTP está desligado." }, 400);
+    if (!settings?.otp_login_enabled) {
+      console.warn("[otp-request] recusado: kill-switch desligado");
+      return json({ error: "OTP está desligado.", reason: "disabled" }, 400);
+    }
     if (isOtpAdminEmail(caller.email)) return json({ success: true, skipped: true });
 
     const { data: profile } = await db
       .from("profiles").select("whatsapp_phone").eq("user_id", caller.id).maybeSingle();
     const phone = String(profile?.whatsapp_phone || "").replace(/\D/g, "");
-    if (!phone) return json({ error: "Seu WhatsApp não está cadastrado no perfil." }, 400);
+    if (!phone) {
+      console.warn("[otp-request] recusado: perfil sem whatsapp_phone", caller.id);
+      return json({ error: "Seu WhatsApp não está cadastrado no perfil.", reason: "no_phone" }, 400);
+    }
 
     // Cooldown de reenvio
     const { data: last } = await db
@@ -67,14 +73,17 @@ Deno.serve(async (req) => {
     if (last?.created_at) {
       const elapsed = (Date.now() - new Date(last.created_at).getTime()) / 1000;
       if (elapsed < RESEND_COOLDOWN_SECONDS) {
-        return json({ error: "Aguarde para reenviar.", retryAfter: Math.ceil(RESEND_COOLDOWN_SECONDS - elapsed) }, 429);
+        const retryAfter = Math.ceil(RESEND_COOLDOWN_SECONDS - elapsed);
+        console.warn("[otp-request] recusado: cooldown", retryAfter);
+        return json({ error: `Aguarde ${retryAfter}s para reenviar.`, reason: "cooldown", retryAfter }, 429);
       }
     }
 
     // Pool de templates de OTP (rodízio: menos usado recentemente primeiro)
     const pool = await getOtpPool(db);
+    console.log("[otp-request] pool:", pool.map((p) => `${p.templateName}@${p.phoneNumberId}`).join(", ") || "vazio");
     if (pool.length === 0) {
-      return json({ error: "Nenhum template de OTP ativo configurado." }, 400);
+      return json({ error: "Nenhum template de OTP ativo configurado.", reason: "empty_pool" }, 400);
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -101,18 +110,31 @@ Deno.serve(async (req) => {
       },
     });
 
-    const buttonVariants: Array<Record<string, unknown> | null> = [
-      { type: "button", sub_type: "copy_code", index: "0", parameters: [{ type: "coupon_code", coupon_code: code }] },
-      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
-      null,
-    ];
+    const urlButton = { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] };
+    const copyCodeButton = {
+      type: "button", sub_type: "copy_code", index: "0",
+      parameters: [{ type: "coupon_code", coupon_code: code }],
+    };
 
     let sentWith: { templateId: string; templateName: string; channelId: string } | null = null;
     let lastError = "Falha ao enviar o código.";
 
     for (const entry of pool) {
-      for (const language of LANGUAGE_FALLBACKS) {
-        for (const button of buttonVariants) {
+      // Idioma e tipo de botão vêm da definição REAL do template na Meta (evita chute).
+      const def = await fetchTemplateDefinition(entry.wabaId, entry.templateName, entry.accessToken);
+      console.log(`[otp-request] template=${entry.templateName} def=${JSON.stringify(def)}`);
+
+      const languages = def?.language
+        ? [def.language, ...LANGUAGE_FALLBACKS.filter((l) => l !== def.language)]
+        : LANGUAGE_FALLBACKS;
+      const buttons: Array<Record<string, unknown> | null> =
+        def?.buttonType === "url" ? [urlButton, copyCodeButton, null]
+        : def?.buttonType === "copy_code" ? [copyCodeButton, urlButton, null]
+        : def ? [null, urlButton, copyCodeButton]
+        : [urlButton, copyCodeButton, null];
+
+      for (const language of languages) {
+        for (const button of buttons) {
           const res = await fetch(`${META_API_BASE}/${entry.phoneNumberId}/messages`, {
             method: "POST",
             headers: { Authorization: `Bearer ${entry.accessToken}`, "Content-Type": "application/json" },
@@ -124,7 +146,7 @@ Deno.serve(async (req) => {
             break;
           }
           lastError = result?.error?.message || `Erro ${res.status} ao enviar o código.`;
-          console.error(`[otp-request] falha template=${entry.templateName} lang=${language}:`, JSON.stringify(result?.error || result));
+          console.error(`[otp-request] falha template=${entry.templateName} lang=${language} status=${res.status}:`, JSON.stringify(result?.error || result));
         }
         if (sentWith) break;
       }
@@ -133,7 +155,7 @@ Deno.serve(async (req) => {
       await db.from("message_templates").update({ otp_last_used_at: new Date().toISOString() }).eq("id", entry.templateId);
     }
 
-    if (!sentWith) return json({ error: lastError }, 502);
+    if (!sentWith) return json({ error: lastError, reason: "meta_error" }, 502);
 
     await db.from("message_templates")
       .update({ otp_last_used_at: new Date().toISOString() })
