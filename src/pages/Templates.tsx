@@ -134,6 +134,8 @@ const Templates = () => {
   const { selectedOrganization, isImpersonating } = useSuperAdmin();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [otpTogglingId, setOtpTogglingId] = useState<string | null>(null);
+  const canManageOtpTemplates = isOtpAdminEmail(user?.email);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
