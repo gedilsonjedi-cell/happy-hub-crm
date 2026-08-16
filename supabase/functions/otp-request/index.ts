@@ -6,6 +6,37 @@ const CODE_TTL_MINUTES = 10;
 const RESEND_COOLDOWN_SECONDS = 60;
 const LANGUAGE_FALLBACKS = ["pt_BR", "pt", "en_US"];
 
+type TemplateDef = { language: string; buttonType: "url" | "copy_code" | null };
+
+/** Lê a definição real do template na Meta (idioma + tipo de botão OTP). */
+async function fetchTemplateDefinition(
+  wabaId: string | null,
+  templateName: string,
+  accessToken: string,
+): Promise<TemplateDef | null> {
+  if (!wabaId) return null;
+  try {
+    const res = await fetch(
+      `${META_API_BASE}/${wabaId}/message_templates?name=${encodeURIComponent(templateName)}&access_token=${accessToken}`,
+    );
+    const body = await res.json().catch(() => ({}));
+    const tpl = (body?.data || []).find((t: any) => t?.name === templateName && t?.status === "APPROVED")
+      || (body?.data || [])[0];
+    if (!tpl) return null;
+    const buttons = (tpl.components || []).find((c: any) => c.type === "BUTTONS")?.buttons || [];
+    const first = buttons[0];
+    const buttonType = !first
+      ? null
+      : String(first.type).toUpperCase() === "URL"
+        ? "url"
+        : "copy_code";
+    return { language: tpl.language || "pt_BR", buttonType };
+  } catch (error) {
+    console.error("[otp-request] falha ao ler definição do template:", error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
