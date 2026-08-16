@@ -6,6 +6,7 @@ export type OtpPoolEntry = {
   channelId: string;
   accessToken: string;
   phoneNumberId: string;
+  wabaId: string | null;
 };
 
 /**
