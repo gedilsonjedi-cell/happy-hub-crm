@@ -290,6 +290,24 @@ serve(async (req) => {
         });
       }
 
+      // Duplicidade: o WhatsApp não pode estar vinculado a outro usuário
+      const { data: dupProfiles, error: dupError } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id")
+        .eq("whatsapp_phone", normalizedWhatsapp)
+        .limit(1);
+      if (dupError) {
+        console.error("Error checking duplicate whatsapp:", dupError);
+      } else if (dupProfiles && dupProfiles.length > 0) {
+        return new Response(JSON.stringify({
+          error: "Este número de WhatsApp já está cadastrado em outra conta. Use outro número.",
+          code: "whatsapp_exists",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       if (!email || !password || !organization_id || !role) {
         return new Response(JSON.stringify({ error: "Missing required fields" }), {
           status: 400,
