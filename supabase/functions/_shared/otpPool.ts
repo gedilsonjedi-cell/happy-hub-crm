@@ -24,18 +24,36 @@ export async function getOtpPool(db: SupabaseClient): Promise<OtpPoolEntry[]> {
   const list = (templates as Array<{ id: string; name: string }> | null) || [];
   if (list.length === 0) return [];
 
-  const { data: links } = await db
+  const { data: links, error: linksError } = await db
     .from("channel_templates")
     .select("template_id, channel_id")
     .in("template_id", list.map((t) => t.id));
 
+  if (linksError) {
+    console.error("[getOtpPool] erro ao ler channel_templates:", linksError.message);
+    return [];
+  }
+
   const channelIds = Array.from(new Set(((links as any[]) || []).map((l) => l.channel_id)));
   if (channelIds.length === 0) return [];
 
-  const { data: channels } = await db
+  // `channels` não tem coluna `is_active` (o flag de conexão é `connected`).
+  const { data: channels, error: channelsError } = await db
     .from("channels")
-    .select("id, access_token, app_name, is_active")
+    .select("id, access_token, app_name, connected")
     .in("id", channelIds);
+
+  if (channelsError) {
+    console.error("[getOtpPool] erro ao ler channels:", channelsError.message);
+    return [];
+  }
+
+  // Fallback do token: channel_secrets é a fonte segura quando o token está revogado na tabela channels.
+  const { data: secrets } = await db
+    .from("channel_secrets")
+    .select("channel_id, access_token")
+    .in("channel_id", channelIds);
+  const secretByChannel = new Map(((secrets as any[]) || []).map((s) => [s.channel_id, s.access_token]));
 
   const channelById = new Map(((channels as any[]) || []).map((c) => [c.id, c]));
 
@@ -44,12 +62,14 @@ export async function getOtpPool(db: SupabaseClient): Promise<OtpPoolEntry[]> {
     const link = ((links as any[]) || []).find((l) => l.template_id === template.id);
     if (!link) continue;
     const channel = channelById.get(link.channel_id);
-    if (!channel?.access_token || !channel?.app_name) continue;
+    if (!channel) continue;
+    const accessToken = channel.access_token || secretByChannel.get(channel.id);
+    if (!accessToken || !channel.app_name) continue;
     pool.push({
       templateId: template.id,
       templateName: template.name,
       channelId: channel.id,
-      accessToken: channel.access_token,
+      accessToken,
       phoneNumberId: channel.app_name,
     });
   }
