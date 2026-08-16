@@ -57,29 +57,36 @@ export function WhatsappPhoneGate({ children }: { children: React.ReactNode }) {
     }
     setError(null);
     setSaving(true);
-    const { data: savedProfile, error: updateError } = await supabase
-      .from("profiles")
-      .update({ whatsapp_phone: result.e164 })
-      .eq("user_id", user.id)
-      .select("whatsapp_phone")
-      .maybeSingle();
+    const { data, error: fnError } = await supabase.functions.invoke("profile-set-whatsapp", {
+      body: { whatsapp_phone: result.e164 },
+    });
     setSaving(false);
 
-    if (updateError || savedProfile?.whatsapp_phone !== result.e164) {
-      toast.error("Não foi possível salvar o número. Tente novamente.");
-      console.error(
-        "[WhatsappPhoneGate] número não confirmado após salvar:",
-        updateError?.message || "nenhuma linha atualizada",
-      );
+    // Em respostas não-2xx o supabase-js devolve data: null; o motivo real vem no corpo.
+    let payload = data as { success?: boolean; error?: string; reason?: string; whatsapp_phone?: string } | null;
+    if (!payload?.success) {
+      const context = (fnError as { context?: Response } | null)?.context;
+      if (context && typeof context.clone === "function") {
+        payload = await context.clone().json().catch(() => null);
+      }
+    }
+
+    if (!payload?.success) {
+      const message = payload?.error || "Não foi possível salvar o número. Tente novamente.";
+      setError(message);
+      toast.error(message);
+      console.error("[WhatsappPhoneGate] falha ao salvar número:", payload?.reason || fnError?.message);
       return;
     }
+
     toast.success("WhatsApp cadastrado com sucesso!");
     setNeedsPhone(false);
     // Avisa o OtpGate para reavaliar e disparar o código automaticamente.
     window.dispatchEvent(new CustomEvent("whatsapp-phone-saved", {
-      detail: { whatsappPhone: savedProfile.whatsapp_phone },
+      detail: { whatsappPhone: payload.whatsapp_phone || result.e164 },
     }));
   }, [value, user]);
+
 
   if (!user || !checked || !needsPhone) return <>{children}</>;
 
