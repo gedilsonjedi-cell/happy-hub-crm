@@ -58,6 +58,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { cn } from "@/lib/utils";
 import { OtpSettingsPanel } from "@/components/admin/OtpSettingsPanel";
+import { isOtpAdminEmail } from "@/lib/otpAdmin";
 
 interface MessageTemplate {
   id: string;
@@ -70,6 +71,7 @@ interface MessageTemplate {
   created_at: string;
   components?: any;
   header_media_url?: string | null;
+  otp_active?: boolean;
 }
 
 interface Channel {
@@ -132,6 +134,8 @@ const Templates = () => {
   const { selectedOrganization, isImpersonating } = useSuperAdmin();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [otpTogglingId, setOtpTogglingId] = useState<string | null>(null);
+  const canManageOtpTemplates = isOtpAdminEmail(user?.email);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelTemplates, setChannelTemplates] = useState<Record<string, string[]>>({});
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
@@ -245,6 +249,7 @@ const Templates = () => {
       variable_mappings: (t.variable_mappings as Record<string, string> | null) || undefined,
       components: (t as any).components ?? null,
       header_media_url: (t as any).header_media_url ?? null,
+      otp_active: (t as any).otp_active ?? false,
     })));
     setLoading(false);
   };
@@ -523,6 +528,23 @@ const Templates = () => {
     setEditDialogOpen(false);
     fetchTemplates();
     fetchChannels();
+  };
+
+  // Liga/desliga o template no pool de envio do OTP (validado no servidor)
+  const handleToggleOtpActive = async (template: MessageTemplate, nextValue: boolean) => {
+    setOtpTogglingId(template.id);
+    const { data, error } = await supabase.functions.invoke("otp-template-toggle", {
+      body: { template_id: template.id, otp_active: nextValue },
+    });
+    setOtpTogglingId(null);
+
+    const payloadError = (data as { error?: string } | null)?.error;
+    if (error || payloadError) {
+      toast.error(payloadError || "Não foi possível alterar o uso deste template no OTP.");
+      return;
+    }
+    setTemplates((prev) => prev.map((t) => (t.id === template.id ? { ...t, otp_active: nextValue } : t)));
+    toast.success(nextValue ? "Template ativado para OTP." : "Template desativado do OTP.");
   };
 
   const openApprovalDialog = (template: MessageTemplate) => {
@@ -915,6 +937,19 @@ const Templates = () => {
                           <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-400/30">
                             Serviço
                           </Badge>
+                        )}
+                        {canManageOtpTemplates && template.dispatch_type === "service" && (
+                          <div
+                            className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Switch
+                              checked={!!template.otp_active}
+                              disabled={otpTogglingId === template.id}
+                              onCheckedChange={(checked) => void handleToggleOtpActive(template, checked)}
+                            />
+                            <span className="text-xs text-muted-foreground">Usar para OTP (envio de código)</span>
+                          </div>
                         )}
                         {headerMediaFormat && (() => {
                           const mediaLabel = headerMediaFormat === 'IMAGE' ? 'imagem' : headerMediaFormat === 'VIDEO' ? 'vídeo' : 'arquivo';
