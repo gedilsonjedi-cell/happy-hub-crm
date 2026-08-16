@@ -28,11 +28,14 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
   const [cooldown, setCooldown] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const requestedRef = useRef(false);
+  const savedPhoneRef = useRef<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   // Quando o WhatsappPhoneGate grava o número, o OtpGate recomeça do zero.
   useEffect(() => {
-    const onPhoneSaved = () => {
+    const onPhoneSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ whatsappPhone?: string }>).detail;
+      savedPhoneRef.current = detail?.whatsappPhone || null;
       requestedRef.current = false;
       setChecked(false);
       setNeedsOtp(false);
@@ -83,11 +86,15 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
 
       // Sem número cadastrado o WhatsappPhoneGate ainda está bloqueando: não avaliar nem disparar.
-      if (!profile?.whatsapp_phone) {
+      const knownPhone = profile?.whatsapp_phone || savedPhoneRef.current;
+      if (!knownPhone) {
         setNeedsOtp(false);
         setChecked(false);
         return;
       }
+
+      // O valor confirmado pelo UPDATE só é necessário até a leitura do perfil convergir.
+      if (profile?.whatsapp_phone) savedPhoneRef.current = null;
 
       if (!settings?.otp_login_enabled) {
         setNeedsOtp(false);

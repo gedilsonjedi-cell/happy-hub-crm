@@ -49,6 +49,7 @@ export function WhatsappPhoneGate({ children }: { children: React.ReactNode }) {
   }, [user?.id]);
 
   const handleSave = useCallback(async () => {
+    if (!user?.id) return;
     const result = validateWhatsappPhone(value);
     if (!result.isValid) {
       setError(result.error);
@@ -56,21 +57,28 @@ export function WhatsappPhoneGate({ children }: { children: React.ReactNode }) {
     }
     setError(null);
     setSaving(true);
-    const { error: updateError } = await supabase
+    const { data: savedProfile, error: updateError } = await supabase
       .from("profiles")
       .update({ whatsapp_phone: result.e164 })
-      .eq("user_id", user!.id);
+      .eq("user_id", user.id)
+      .select("whatsapp_phone")
+      .maybeSingle();
     setSaving(false);
 
-    if (updateError) {
+    if (updateError || savedProfile?.whatsapp_phone !== result.e164) {
       toast.error("Não foi possível salvar o número. Tente novamente.");
-      console.error("[WhatsappPhoneGate] erro ao salvar:", updateError.message);
+      console.error(
+        "[WhatsappPhoneGate] número não confirmado após salvar:",
+        updateError?.message || "nenhuma linha atualizada",
+      );
       return;
     }
     toast.success("WhatsApp cadastrado com sucesso!");
     setNeedsPhone(false);
     // Avisa o OtpGate para reavaliar e disparar o código automaticamente.
-    window.dispatchEvent(new CustomEvent("whatsapp-phone-saved"));
+    window.dispatchEvent(new CustomEvent("whatsapp-phone-saved", {
+      detail: { whatsappPhone: savedProfile.whatsapp_phone },
+    }));
   }, [value, user]);
 
   if (!user || !checked || !needsPhone) return <>{children}</>;
