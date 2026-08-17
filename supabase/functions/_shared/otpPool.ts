@@ -4,6 +4,7 @@ export type OtpPoolEntry = {
   templateId: string;
   templateName: string;
   channelId: string;
+  channelName: string;
   accessToken: string;
   phoneNumberId: string;
   wabaId: string | null;
