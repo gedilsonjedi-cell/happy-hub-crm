@@ -87,12 +87,30 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const [{ data: settings }, { data: profile }] = await Promise.all([
+      const [settingsRes, profileRes, poolRes] = await Promise.all([
         supabase.from("otp_settings").select("otp_login_enabled").eq("id", true).maybeSingle(),
         supabase.from("profiles").select("otp_last_verified_date, whatsapp_phone").eq("user_id", user.id).maybeSingle(),
+        supabase.from("message_templates").select("id").eq("otp_active", true).limit(1),
       ]);
       if (cancelled) return;
 
+      // FAIL-OPEN: qualquer erro de leitura (RLS, rede, timeout) = OTP desligado.
+      if (settingsRes.error || settingsRes.data?.otp_login_enabled !== true) {
+        if (settingsRes.error) console.warn("[OtpGate] falha ao ler otp_settings, liberando acesso:", settingsRes.error.message);
+        setNeedsOtp(false);
+        setChecked(true);
+        return;
+      }
+
+      // Sem template ativo no pool não há como enviar código: libera.
+      if (poolRes.error || !poolRes.data?.length) {
+        console.warn("[OtpGate] pool de templates OTP vazio/indisponível, liberando acesso.");
+        setNeedsOtp(false);
+        setChecked(true);
+        return;
+      }
+
+      const profile = profileRes.data;
       // Sem número cadastrado o WhatsappPhoneGate ainda está bloqueando: não avaliar nem disparar.
       const knownPhone = profile?.whatsapp_phone || savedPhoneRef.current;
       if (!knownPhone) {
@@ -103,12 +121,6 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
 
       // O valor confirmado pelo UPDATE só é necessário até a leitura do perfil convergir.
       if (profile?.whatsapp_phone) savedPhoneRef.current = null;
-
-      if (!settings?.otp_login_enabled) {
-        setNeedsOtp(false);
-        setChecked(true);
-        return;
-      }
 
       const verifiedToday = profile?.otp_last_verified_date === brasiliaToday();
       setNeedsOtp(!verifiedToday);
@@ -130,9 +142,16 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
       if (result.reason === "no_phone" && autoRetryCountRef.current < AUTO_NO_PHONE_RETRY_LIMIT) {
         autoRetryCountRef.current += 1;
         window.setTimeout(() => setReloadKey((key) => key + 1), AUTO_NO_PHONE_RETRY_DELAY_MS);
+        return;
       }
+
+      // FAIL-OPEN: OTP indisponível (Meta bloqueada, pool vazio, kill-switch off no servidor)
+      // não pode prender o usuário numa tela sem saída.
+      console.warn("[OtpGate] envio de OTP indisponível, liberando acesso:", result.reason);
+      setNeedsOtp(false);
     });
   }, [needsOtp, checked, requestCode]);
+
 
 
   useEffect(() => {
