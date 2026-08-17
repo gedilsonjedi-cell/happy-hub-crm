@@ -164,17 +164,33 @@ Deno.serve(async (req) => {
             sentWith = { templateId: entry.templateId, templateName: entry.templateName, channelId: entry.channelId };
             break;
           }
-          lastError = result?.error?.message || `Erro ${res.status} ao enviar o código.`;
-          console.error(`[otp-request] falha template=${entry.templateName} lang=${language} status=${res.status}:`, JSON.stringify(result?.error || result));
+          const metaError = result?.error || {};
+          const code = Number(metaError.code ?? 0);
+          const subcode = Number(metaError.error_subcode ?? 0);
+          const detail = `${entry.templateName}@${entry.channelName}: (#${code || res.status}${subcode ? `/${subcode}` : ""}) ${metaError.message || `Erro ${res.status}`}`;
+          console.error(`[otp-request] falha ${detail} lang=${language}`, JSON.stringify(metaError || result));
+          if (FATAL_META_CODES.has(code)) {
+            // Conta/BM/token bloqueados: registra uma vez e pula para a próxima BM do rodízio.
+            failures.push(detail);
+            fatalForEntry = true;
+            break;
+          }
+          if (!failures.includes(detail)) failures.push(detail);
         }
-        if (sentWith) break;
+        if (sentWith || fatalForEntry) break;
       }
       if (sentWith) break;
       // Marca tentativa para não insistir sempre no mesmo template quebrado
       await db.from("message_templates").update({ otp_last_used_at: new Date().toISOString() }).eq("id", entry.templateId);
     }
 
-    if (!sentWith) return json({ error: lastError, reason: "meta_error" }, 502);
+    if (!sentWith) {
+      const message = failures.length
+        ? `Nenhuma BM conseguiu enviar o código. ${failures.join(" | ")}`
+        : "Falha ao enviar o código.";
+      console.error("[otp-request] pool esgotado:", message);
+      return json({ error: message, reason: "meta_error", failures }, 502);
+    }
 
     await db.from("message_templates")
       .update({ otp_last_used_at: new Date().toISOString() })
