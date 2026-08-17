@@ -117,13 +117,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
-          <WhatsappPhoneGate>
-            <OtpGate>
-              <SubscriptionGuard>
-                {children}
-              </SubscriptionGuard>
-            </OtpGate>
-          </WhatsappPhoneGate>
+          <SubscriptionGuard>
+            {children}
+          </SubscriptionGuard>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
