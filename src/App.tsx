@@ -10,8 +10,9 @@ import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
 import { usePixPaymentNotifications } from "@/hooks/usePixPaymentNotifications";
 import { useForceReload } from "@/hooks/useForceReload";
 import { SubscriptionBlockScreen } from "@/components/subscription/SubscriptionBlockScreen";
-import { WhatsappPhoneGate } from "@/components/auth/WhatsappPhoneGate";
-import { OtpGate } from "@/components/auth/OtpGate";
+// Gates de 2FA desativados (emergência): componentes mantidos no código, fora da árvore.
+// import { WhatsappPhoneGate } from "@/components/auth/WhatsappPhoneGate";
+// import { OtpGate } from "@/components/auth/OtpGate";
 import { useDailyLogin } from "@/hooks/useDailyLogin";
 import { useSubscription } from "@/hooks/useSubscription";
 import Index from "./pages/Index";
@@ -116,13 +117,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     <SuperAdminProvider>
       <WhatsAppNotificationProvider>
         <GlobalNotifications>
-          <WhatsappPhoneGate>
-            <OtpGate>
-              <SubscriptionGuard>
-                {children}
-              </SubscriptionGuard>
-            </OtpGate>
-          </WhatsappPhoneGate>
+          <SubscriptionGuard>
+            {children}
+          </SubscriptionGuard>
         </GlobalNotifications>
       </WhatsAppNotificationProvider>
     </SuperAdminProvider>
