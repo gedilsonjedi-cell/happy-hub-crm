@@ -42,7 +42,7 @@ export async function getOtpPool(db: SupabaseClient): Promise<OtpPoolEntry[]> {
   // `channels` não tem coluna `is_active` (o flag de conexão é `connected`).
   const { data: channels, error: channelsError } = await db
     .from("channels")
-    .select("id, access_token, app_name, waba_id, connected")
+    .select("id, name, access_token, app_name, waba_id, connected")
     .in("id", channelIds);
 
   if (channelsError) {
@@ -71,6 +71,7 @@ export async function getOtpPool(db: SupabaseClient): Promise<OtpPoolEntry[]> {
       templateId: template.id,
       templateName: template.name,
       channelId: channel.id,
+      channelName: channel.name || "canal",
       accessToken,
       phoneNumberId: channel.app_name,
       wabaId: channel.waba_id ?? null,
