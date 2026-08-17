@@ -132,9 +132,13 @@ Deno.serve(async (req) => {
     };
 
     let sentWith: { templateId: string; templateName: string; channelId: string } | null = null;
-    let lastError = "Falha ao enviar o código.";
+    const failures: string[] = [];
+
+    // Erros de conta/token/BM: não adianta variar idioma ou botão — pule para a próxima BM.
+    const FATAL_META_CODES = new Set([10, 190, 200, 368, 131031, 133010, 141014]);
 
     for (const entry of pool) {
+      let fatalForEntry = false;
       // Idioma e tipo de botão vêm da definição REAL do template na Meta (evita chute).
       const def = await fetchTemplateDefinition(entry.wabaId, entry.templateName, entry.accessToken);
       console.log(`[otp-request] template=${entry.templateName} def=${JSON.stringify(def)}`);
