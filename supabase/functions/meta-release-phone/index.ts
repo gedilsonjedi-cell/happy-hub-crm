@@ -39,9 +39,12 @@ Deno.serve(async (req) => {
       if (!role) return json({ error: "Forbidden – super_admin required" }, 403);
     }
 
-    const { channelIds } = await req.json();
+    const { channelIds, pin, mode } = await req.json();
     if (!Array.isArray(channelIds) || channelIds.length === 0) {
       return json({ error: "channelIds obrigatório" }, 400);
+    }
+    if (mode === "set_pin" && !/^\d{6}$/.test(String(pin || ""))) {
+      return json({ error: "pin de 6 dígitos obrigatório" }, 400);
     }
 
     const results: unknown[] = [];
@@ -58,7 +61,23 @@ Deno.serve(async (req) => {
 
       const step: Record<string, unknown> = { channelId, phone: ch.phone, pnId };
 
-      if (token && pnId) {
+      if (token && pnId && mode === "set_pin") {
+        // Two-step verification: trava o número — sem o PIN ninguém registra em outro lugar.
+        const res = await fetch(`${GRAPH}/${pnId}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: String(pin) }),
+        });
+        step.setPin = await res.json().catch(() => ({}));
+
+        // Registro com o novo PIN garante que o número fica sob nosso controle.
+        const reg = await fetch(`${GRAPH}/${pnId}/register`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", pin: String(pin) }),
+        });
+        step.register = await reg.json().catch(() => ({}));
+      } else if (token && pnId) {
         const dereg = await fetch(`${GRAPH}/${pnId}/deregister`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -73,6 +92,7 @@ Deno.serve(async (req) => {
       } else {
         step.skippedMeta = "sem token ou phone_number_id";
       }
+
 
       await svc.from("channels").update({ connected: false }).eq("id", channelId);
       step.crm = "canal marcado como desconectado (pendente)";
