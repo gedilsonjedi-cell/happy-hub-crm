@@ -370,6 +370,21 @@ export default function PrivacyPolicy() {
                   className="h-5 w-auto object-contain"
                 />
               </Link>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground text-center sm:text-right">
+                <Link
+                  to="/termos-de-uso"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Termos de Uso
+                </Link>
+                <span className="hidden sm:inline">·</span>
+                <Link
+                  to="/auth"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Entrar
+                </Link>
+              </div>
               <p className="text-xs text-muted-foreground text-center sm:text-right">
                 © {new Date().getFullYear()} Optimus CRM. Todos os direitos reservados.
               </p>
