@@ -379,6 +379,13 @@ export default function PrivacyPolicy() {
                 </Link>
                 <span className="hidden sm:inline">·</span>
                 <Link
+                  to="/exclusao-de-dados"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Exclusão de Dados
+                </Link>
+                <span className="hidden sm:inline">·</span>
+                <Link
                   to="/auth"
                   className="hover:text-foreground transition-colors"
                 >
