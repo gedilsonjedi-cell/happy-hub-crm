@@ -166,6 +166,7 @@ const App = () => (
           <Route path="/indique-ganhe/:code" element={<ReferralRedirect />} />
           <Route path="/r/:slug" element={<RedirectPage />} />
           <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
+          <Route path="/termos-de-uso" element={<TermsOfUse />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
