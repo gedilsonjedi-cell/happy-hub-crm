@@ -48,6 +48,7 @@ import LandingPage from "./pages/LandingPage";
 import Cadastro from "./pages/Cadastro";
 import ReferralRedirect from "./pages/ReferralRedirect";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import FollowUp from "./pages/FollowUp";
 import WhatsAppOficial from "./pages/WhatsAppOficial";
 import Blog from "./pages/Blog";
