@@ -48,6 +48,7 @@ import LandingPage from "./pages/LandingPage";
 import Cadastro from "./pages/Cadastro";
 import ReferralRedirect from "./pages/ReferralRedirect";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import FollowUp from "./pages/FollowUp";
 import WhatsAppOficial from "./pages/WhatsAppOficial";
 import Blog from "./pages/Blog";
@@ -164,6 +165,7 @@ const App = () => (
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/indique-ganhe/:code" element={<ReferralRedirect />} />
           <Route path="/r/:slug" element={<RedirectPage />} />
+          <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
           <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
