@@ -367,6 +367,12 @@ export default function TermsOfUse() {
                   Política de Privacidade
                 </Link>
                 <Link
+                  to="/exclusao-de-dados"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Exclusão de Dados
+                </Link>
+                <Link
                   to="/auth"
                   className="hover:text-foreground transition-colors"
                 >
