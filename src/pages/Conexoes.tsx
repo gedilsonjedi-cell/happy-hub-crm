@@ -96,27 +96,44 @@ interface MetaPhoneNumber {
 
 const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
 
-// URL de cadastro incorporado (Embedded Signup) hospedado pela Meta.
-// Fluxo que o cliente usa para conectar a conta de WhatsApp/Facebook dele.
-// App ID e Config ID da app da Meta; redirect volta para o site do Optimus.
-const EMBEDDED_SIGNUP_URL = "https://business.facebook.com/messaging/whatsapp/onboard/?app_id=1095955566297881&config_id=1589173589526641&extras=%7B%22version%22%3A%22v4%22%2C%22sessionInfoVersion%22%3A%223%22%2C%22featureType%22%3A%22whatsapp_business_app_onboarding%22%7D&redirect_uri=https%3A%2F%2Foptimuscrm.com.br";
+// Cadastro Incorporado (Embedded Signup) via SDK JavaScript do Facebook.
+// O SDK é carregado globalmente no index.html (FB.init com appId/version v26.0).
+const FB_CONFIG_ID = "1589173589526641";
 
-// Abre o cadastro incorporado da Meta em um popup centralizado.
-// Se o popup for bloqueado, faz fallback abrindo em nova aba e avisa o usuário.
+// Dispara o fluxo oficial de Embedded Signup do WhatsApp via FB.login.
 const openFacebookEmbeddedSignup = () => {
-  const width = 700;
-  const height = 800;
-  const left = window.screenX + (window.outerWidth - width) / 2;
-  const top = window.screenY + (window.outerHeight - height) / 2;
-  const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
-  const win = window.open(EMBEDDED_SIGNUP_URL, "wa_embedded_signup", features);
-  if (!win) {
-    // Popup bloqueado pelo navegador: abrir em nova aba
-    window.open(EMBEDDED_SIGNUP_URL, "_blank", "noopener,noreferrer");
-    toast.warning("O popup foi bloqueado pelo navegador. Abrimos o cadastro em uma nova aba.");
+  const FB = (window as any).FB;
+  if (!FB || typeof FB.login !== "function") {
+    toast.warning("O SDK do Facebook ainda está carregando. Aguarde alguns segundos e tente novamente.");
+    return;
   }
-  return win;
+
+  FB.login(
+    (response: any) => {
+      // response.authResponse.code = código de autorização retornado pela Meta
+      console.log("WA Embedded Signup response:", response);
+      const code = response?.authResponse?.code;
+      if (code) {
+        toast.success("Autorização concluída pela Meta. Código recebido (veja o console).");
+      } else {
+        toast.error(
+          `Cadastro não concluído${response?.status ? ` (status: ${response.status})` : ""}. Veja o console para detalhes.`
+        );
+      }
+    },
+    {
+      config_id: FB_CONFIG_ID,
+      response_type: "code",
+      override_default_response_type: true,
+      extras: {
+        version: "v4",
+        sessionInfoVersion: "3",
+        featureType: "whatsapp_business_app_onboarding",
+      },
+    }
+  );
 };
+
 
 // Generate a random verify token
 const generateVerifyToken = () => {
