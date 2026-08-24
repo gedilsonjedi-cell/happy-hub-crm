@@ -272,6 +272,34 @@ const Conexoes = () => {
     }
   }, [isSuperAdmin, isImpersonating, effectiveOrganizationId]);
 
+  // Captura eventos postMessage do fluxo Embedded Signup da Meta
+  useEffect(() => {
+    const handleEmbeddedSignupMessage = (event: MessageEvent) => {
+      if (!event.origin?.endsWith("facebook.com")) return;
+      let payload: any = event.data;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          return;
+        }
+      }
+      if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
+      console.log("WA_EMBEDDED_SIGNUP message:", payload);
+      if (payload.event === "FINISH") {
+        toast.success("Cadastro incorporado finalizado na Meta. Payload registrado no console.");
+      } else if (payload.event === "CANCEL") {
+        toast.warning("Cadastro incorporado cancelado pelo usuário.");
+      } else if (payload.event === "ERROR") {
+        toast.error("A Meta retornou um erro no cadastro incorporado. Veja o console.");
+      }
+    };
+
+    window.addEventListener("message", handleEmbeddedSignupMessage);
+    return () => window.removeEventListener("message", handleEmbeddedSignupMessage);
+  }, []);
+
+
   useEffect(() => {
     if (user) {
       fetchChannels();
