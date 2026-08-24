@@ -248,6 +248,20 @@
 
   <body>
     <div id="root"></div>
+
+    <!-- Facebook JavaScript SDK (WhatsApp Embedded Signup) -->
+    <script>
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId            : '1095955566297881',
+          autoLogAppEvents : true,
+          xfbml            : true,
+          version          : 'v26.0'
+        });
+      };
+    </script>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
