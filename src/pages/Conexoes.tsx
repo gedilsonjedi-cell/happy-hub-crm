@@ -96,6 +96,28 @@ interface MetaPhoneNumber {
 
 const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
 
+// URL de cadastro incorporado (Embedded Signup) hospedado pela Meta.
+// Fluxo que o cliente usa para conectar a conta de WhatsApp/Facebook dele.
+// App ID e Config ID da app da Meta; redirect volta para o site do Optimus.
+const EMBEDDED_SIGNUP_URL = "https://business.facebook.com/messaging/whatsapp/onboard/?app_id=1095955566297881&config_id=1589173589526641&extras=%7B%22version%22%3A%22v4%22%2C%22sessionInfoVersion%22%3A%223%22%2C%22featureType%22%3A%22whatsapp_business_app_onboarding%22%7D&redirect_uri=https%3A%2F%2Foptimuscrm.com.br";
+
+// Abre o cadastro incorporado da Meta em um popup centralizado.
+// Se o popup for bloqueado, faz fallback abrindo em nova aba e avisa o usuário.
+const openFacebookEmbeddedSignup = () => {
+  const width = 700;
+  const height = 800;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+  const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
+  const win = window.open(EMBEDDED_SIGNUP_URL, "wa_embedded_signup", features);
+  if (!win) {
+    // Popup bloqueado pelo navegador: abrir em nova aba
+    window.open(EMBEDDED_SIGNUP_URL, "_blank", "noopener,noreferrer");
+    toast.warning("O popup foi bloqueado pelo navegador. Abrimos o cadastro em uma nova aba.");
+  }
+  return win;
+};
+
 // Generate a random verify token
 const generateVerifyToken = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -1447,6 +1469,38 @@ const Conexoes = () => {
               Sincronizar com Meta
             </Button>
           )}
+        </div>
+      </div>
+
+{/* Embedded Signup via Facebook Info Card */}
+      <div className="bg-card rounded-lg border border-blue-500/40 p-6 animate-slide-up mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-lg bg-[#1877F2]/10 flex items-center justify-center border border-[#1877F2]/30 shrink-0">
+            <svg className="w-6 h-6 text-[#1877F2]" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-semibold text-foreground">Cadastro Incorporado (Embedded Signup)</h3>
+              <Badge variant="outline" className="bg-[#1877F2]/10 text-[#1877F2] border-[#1877F2]/30 text-xs">
+                Facebook
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Conecte sua conta do WhatsApp Business através do Facebook. O cadastro é feito
+              diretamente no fluxo oficial da Meta, em uma janela popup.
+            </p>
+          </div>
+          <Button
+            className="bg-[#1877F2] hover:bg-[#166FE5] text-white gap-2 shrink-0"
+            onClick={openFacebookEmbeddedSignup}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+            Conectar com o Facebook
+          </Button>
         </div>
       </div>
 
