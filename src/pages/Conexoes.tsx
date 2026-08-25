@@ -865,100 +865,8 @@ const Conexoes = () => {
         return;
       }
       
-      // If not connected, proceed with registration with force flag
-      console.log(`Registering phone ${channel.app_name} with forceReregister=true...`);
-      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
-        body: {
-          phoneNumberId: channel.app_name,
-          accessToken: channel.access_token,
-          forceReregister: true, // Always force to ensure connection
-        },
-      });
-
-      if (error) {
-        console.error('Error registering phone:', error);
-        toast.error("Erro ao registrar número: " + (error.message || "Erro desconhecido"));
-        return;
-      }
-
-      console.log('Register response:', data);
-
-      if (data.error) {
-        toast.error(data.error);
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 10000 });
-        }
-        return;
-      }
-
-      // Update local status
-      if (data.status) {
-        setChannelStatuses(prev => ({ ...prev, [channel.id]: data.status }));
-        setMetaPhoneStatuses(prev => ({
-          ...prev,
-          [channel.id]: {
-            isConnected: data.status.status === 'CONNECTED',
-            code: data.status.status || 'UNKNOWN',
-            message: data.message || 'Status atualizado',
-            qualityRating: data.status.quality_rating,
-          }
-        }));
-      }
-
-      // Handle PENDING status specifically
-      if (data.pending) {
-        toast.warning("Número ainda está pendente de verificação", { duration: 5000 });
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 12000 });
-        }
-        return;
-      }
-
-      if (data.registered || data.success) {
-        toast.success(data.message || "Número registrado com sucesso na Cloud API!");
-        
-        // Auto-subscribe to webhook after registration
-        try {
-          console.log(`Subscribing WABA ${channel.waba_id} to webhook after registration...`);
-          const { data: subscribeData, error: subscribeError } = await supabase.functions.invoke('meta-subscribe-webhook', {
-            body: {
-              wabaId: channel.waba_id,
-              phoneNumberId: channel.app_name,
-              accessToken: channel.access_token,
-            },
-          });
-
-          if (subscribeError) {
-            console.error('Error subscribing to webhook:', subscribeError);
-            toast.warning("Número registrado, mas falha na inscrição do webhook");
-          } else if (subscribeData?.success) {
-            console.log(`Phone ${channel.app_name} subscribed to webhook successfully`);
-            toast.success("Webhook inscrito com sucesso!");
-          } else {
-            console.warn(`Webhook subscription response:`, subscribeData);
-          }
-        } catch (subErr) {
-          console.error('Exception subscribing to webhook:', subErr);
-        }
-        
-        // Update channel as connected
-        await supabase
-          .from("channels")
-          .update({ connected: true })
-          .eq("id", channel.id);
-        
-        // Update local state
-        setChannels(prev => 
-          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
-        );
-        
-        await fetchChannels();
-      } else {
-        toast.warning(data.message || "Número pode precisar de verificação adicional no Meta");
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 10000 });
-        }
-      }
+      toast.warning("A Meta ainda não confirmou a conexão. Informe o PIN correto para registrar sem remover o número.");
+      setPinChannel(channel);
     } catch (err) {
       console.error('Register error:', err);
       toast.error("Erro ao registrar número");
@@ -967,101 +875,14 @@ const Conexoes = () => {
     }
   };
 
-  // Force re-register for stuck PENDING numbers
+  // PENDING numbers must never be deregistered automatically. Ask for the real PIN.
   const handleForceReregister = async (channel: Channel) => {
     if (!channel.app_name || !channel.access_token) {
       toast.error("Canal não possui Phone Number ID ou Access Token");
       return;
     }
 
-    setIsRegistering(channel.id);
-
-    try {
-      toast.info("Forçando re-registro do número...", { duration: 3000 });
-      
-      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
-        body: {
-          phoneNumberId: channel.app_name,
-          accessToken: channel.access_token,
-          forceReregister: true,
-        },
-      });
-
-      if (error) {
-        toast.error("Erro ao re-registrar: " + (error.message || "Erro desconhecido"));
-        return;
-      }
-
-      console.log('Force re-register response:', data);
-
-      if (data.status?.status === 'CONNECTED' || data.success) {
-        toast.success("Número conectado com sucesso!");
-        
-        await supabase
-          .from("channels")
-          .update({ connected: true })
-          .eq("id", channel.id);
-        
-        setChannels(prev => 
-          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
-        );
-        
-        setMetaPhoneStatuses(prev => ({
-          ...prev,
-          [channel.id]: {
-            isConnected: true,
-            code: 'CONNECTED',
-            message: 'Conectado',
-          }
-        }));
-        
-        await fetchChannels();
-      } else if (data.blocked || data.code === 131031) {
-        toast.error(data.error || "Conta bloqueada pela Meta", { duration: 10000 });
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 15000 });
-        }
-        if (data.status) {
-          setMetaPhoneStatuses(prev => ({
-            ...prev,
-            [channel.id]: {
-              code: data.status.status || 'PENDING',
-              isConnected: false,
-              isPending: data.status.status === 'PENDING',
-              message: data.error || data.status.status || 'Conta bloqueada pela Meta',
-              qualityRating: data.status.quality_rating,
-              nameStatus: data.status.name_status,
-              displayName: data.status.verified_name,
-              displayPhoneNumber: data.status.display_phone_number,
-              accountMode: data.status.account_mode,
-              codeVerificationStatus: data.status.code_verification_status,
-              rawStatus: data.status.status,
-            }
-          }));
-        }
-      } else if (data.pending) {
-        toast.warning("Número ainda pendente após re-registro");
-        if (data.actions) {
-          data.actions.forEach((action: string) => toast.info(action, { duration: 8000 }));
-        }
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 10000 });
-        }
-      } else if (data.error) {
-        toast.error(data.error);
-        if (data.suggestion) {
-          toast.info(data.suggestion, { duration: 8000 });
-        }
-      }
-      
-      // Refresh status
-      await checkMetaPhoneStatus(channel, true);
-    } catch (err) {
-      console.error('Force re-register error:', err);
-      toast.error("Erro ao re-registrar número");
-    } finally {
-      setIsRegistering(null);
-    }
+    setPinChannel(channel);
   };
 
   const handleFetchPhones = async () => {
@@ -1923,8 +1744,8 @@ const Conexoes = () => {
                           : "text-red-400"
                       )}>
                         {metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
-                          ? "⚠️ Número pendente no Meta. Clique para forçar a ativação."
-                          : "⚠️ Número desconectado. Clique para forçar a ativação."}
+                          ? "⚠️ Número pendente no Meta. Valide com o PIN correto; o sistema não removerá o número."
+                          : "⚠️ Número desconectado. Valide com o PIN correto para registrar com segurança."}
                       </p>
                     </div>
                     <Button 
@@ -1937,12 +1758,12 @@ const Conexoes = () => {
                       {isRegistering === channel.id ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Forçando Ativação...
+                          Abrindo validação...
                         </>
                       ) : (
                         <>
                           <Zap className="w-3 h-3" />
-                          Forçar Ativação
+                          Validar PIN com segurança
                         </>
                       )}
                     </Button>
@@ -2075,7 +1896,7 @@ const Conexoes = () => {
                               ⚠️ Número pendente no Meta
                             </p>
                             <p className="text-xs text-amber-400/80 mb-2">
-                              Este número precisa ser re-registrado. Clique em "Forçar Re-registro" abaixo.
+                              Este número precisa concluir o registro com o PIN correto. Não remova nem repita tentativas automáticas.
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Se continuar pendente, acesse o <a
@@ -2104,7 +1925,7 @@ const Conexoes = () => {
                         </p>
                       </div>
                     )}
-                    {/* Force re-register button for PENDING numbers */}
+                    {/* Safe PIN validation for PENDING numbers */}
                     {metaPhoneStatuses[channel.id]?.code === 'PENDING' && (
                       <Button 
                         variant="default" 
@@ -2116,12 +1937,12 @@ const Conexoes = () => {
                         {isRegistering === channel.id ? (
                           <>
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Re-registrando...
+                            Abrindo validação...
                           </>
                         ) : (
                           <>
                             <RefreshCw className="w-3 h-3" />
-                            Forçar Re-registro
+                            Validar PIN com segurança
                           </>
                         )}
                       </Button>
