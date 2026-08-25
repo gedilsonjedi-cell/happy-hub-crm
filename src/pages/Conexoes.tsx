@@ -270,6 +270,71 @@ const Conexoes = () => {
     }
   }, [isSuperAdmin, isImpersonating, effectiveOrganizationId]);
 
+  // ===== Embedded Signup: orquestração code + evento FINISH =====
+  const embeddedCodeRef = useRef<string | null>(null);
+  const embeddedSignupRef = useRef<{ phoneNumberId?: string; wabaId?: string }>({});
+  const embeddedExchangingRef = useRef(false);
+
+  const runEmbeddedSignupExchange = useCallback(async () => {
+    const code = embeddedCodeRef.current;
+    const { phoneNumberId, wabaId } = embeddedSignupRef.current;
+    if (!code || !phoneNumberId) return;
+    if (embeddedExchangingRef.current) return;
+
+    const orgId = selectedOrgId || effectiveOrganizationId;
+    if (!orgId) {
+      toast.error("Selecione uma organização antes de conectar o número.");
+      return;
+    }
+
+    embeddedExchangingRef.current = true;
+    const toastId = toast.loading("Conectando número...");
+    try {
+      const { data, error } = await supabase.functions.invoke("meta-embedded-signup-exchange", {
+        body: {
+          code,
+          phone_number_id: phoneNumberId,
+          waba_id: wabaId ?? null,
+          organization_id: orgId,
+        },
+      });
+
+      if (error) {
+        console.error("[EmbeddedSignup] erro na edge function:", error, data);
+        toast.error(
+          (data as any)?.error || `Falha ao conectar o número: ${error.message}`,
+          { id: toastId, duration: 12000 }
+        );
+        return;
+      }
+
+      if (!(data as any)?.success) {
+        console.error("[EmbeddedSignup] resposta sem sucesso:", data);
+        toast.error((data as any)?.error || "A Meta não confirmou a conexão do número.", {
+          id: toastId,
+          duration: 12000,
+        });
+        return;
+      }
+
+      embeddedCodeRef.current = null;
+      embeddedSignupRef.current = {};
+      toast.success("Número conectado! Apareceu na lista de Conexões.", { id: toastId });
+      await fetchChannels();
+    } catch (e: any) {
+      console.error("[EmbeddedSignup] exceção:", e);
+      toast.error(`Erro inesperado ao conectar: ${e?.message ?? String(e)}`, { id: toastId });
+    } finally {
+      embeddedExchangingRef.current = false;
+    }
+  }, [selectedOrgId, effectiveOrganizationId]);
+
+  const handleEmbeddedSignupCode = useCallback((code: string) => {
+    embeddedCodeRef.current = code;
+    toast.success("Autorização concluída pela Meta.");
+    void runEmbeddedSignupExchange();
+  }, [runEmbeddedSignupExchange]);
+
   // Captura eventos postMessage do fluxo Embedded Signup da Meta
   useEffect(() => {
     const handleEmbeddedSignupMessage = (event: MessageEvent) => {
@@ -284,8 +349,22 @@ const Conexoes = () => {
       }
       if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
       console.log("WA_EMBEDDED_SIGNUP message:", payload);
-      if (payload.event === "FINISH") {
-        toast.success("Cadastro incorporado finalizado na Meta. Payload registrado no console.");
+      if (payload.event === "FINISH" || payload.event === "FINISH_ONLY_WABA") {
+        const d = payload.data ?? {};
+        const phoneNumberId = d.phone_number_id ?? d.phoneNumberId ?? d.phone_number?.id;
+        const wabaId = d.waba_id ?? d.wabaId ?? d.business_id;
+        if (!phoneNumberId) {
+          console.warn(
+            "[EmbeddedSignup] evento FINISH sem phone_number_id. Payload completo:",
+            JSON.stringify(payload)
+          );
+          toast.warning(
+            "Cadastro finalizado na Meta, mas o número não veio no evento. Atualize a lista ou cadastre manualmente."
+          );
+          return;
+        }
+        embeddedSignupRef.current = { phoneNumberId: String(phoneNumberId), wabaId: wabaId ? String(wabaId) : undefined };
+        void runEmbeddedSignupExchange();
       } else if (payload.event === "CANCEL") {
         toast.warning("Cadastro incorporado cancelado pelo usuário.");
       } else if (payload.event === "ERROR") {
@@ -295,7 +374,8 @@ const Conexoes = () => {
 
     window.addEventListener("message", handleEmbeddedSignupMessage);
     return () => window.removeEventListener("message", handleEmbeddedSignupMessage);
-  }, []);
+  }, [runEmbeddedSignupExchange]);
+
 
 
   useEffect(() => {
@@ -1406,7 +1486,7 @@ const Conexoes = () => {
           </div>
           <Button
             className="bg-[#1877F2] hover:bg-[#166FE5] text-white gap-2 shrink-0"
-            onClick={openFacebookEmbeddedSignup}
+            onClick={() => openFacebookEmbeddedSignup(handleEmbeddedSignupCode)}
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
