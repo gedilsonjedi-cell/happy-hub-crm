@@ -23,10 +23,8 @@ import {
   Bot,
   Zap,
   Workflow,
-  ArrowRightLeft,
-  ShieldCheck
+  ArrowRightLeft
 } from "lucide-react";
-import { ValidatePinDialog } from "@/components/connections/ValidatePinDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -220,7 +218,6 @@ const Conexoes = () => {
   
   // Register phone state
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
-  const [pinChannel, setPinChannel] = useState<Channel | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
   const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
@@ -865,8 +862,61 @@ const Conexoes = () => {
         return;
       }
       
-      toast.warning("A Meta ainda não confirmou a conexão. Informe o PIN correto para registrar sem remover o número.");
-      setPinChannel(channel);
+      toast.info("Forçando conexão na Cloud API...", { duration: 3000 });
+
+      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+          forceReregister: true,
+        },
+      });
+
+      if (error) {
+        toast.error("Falha ao forçar conexão: " + error.message);
+        return;
+      }
+
+      if (data?.success || data?.registered || data?.status?.status === 'CONNECTED') {
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+
+        setChannels(prev =>
+          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
+        );
+
+        toast.success(data?.message || "Número conectado com sucesso!");
+        await fetchChannels();
+        return;
+      }
+
+      if (data?.blocked || data?.code === 131031) {
+        toast.error("Meta classificou este número como bloqueado/restrito (#131031).", { duration: 10000 });
+        if (data?.suggestion) toast.info(data.suggestion, { duration: 15000 });
+        return;
+      }
+
+      if (data?.requiresPin) {
+        toast.error(data.error || "A Meta recusou o registro sem PIN.", { duration: 10000 });
+        if (data.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      if (data?.pending) {
+        toast.warning(data?.message || "Número segue pendente após tentativa de conexão.");
+        if (data?.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error, { duration: 10000 });
+        if (data.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      toast.warning(data?.message || "A Meta não confirmou a conexão.");
     } catch (err) {
       console.error('Register error:', err);
       toast.error("Erro ao registrar número");
@@ -875,14 +925,9 @@ const Conexoes = () => {
     }
   };
 
-  // PENDING numbers must never be deregistered automatically. Ask for the real PIN.
+  // Force connection without opening the PIN validation dialog.
   const handleForceReregister = async (channel: Channel) => {
-    if (!channel.app_name || !channel.access_token) {
-      toast.error("Canal não possui Phone Number ID ou Access Token");
-      return;
-    }
-
-    setPinChannel(channel);
+    await handleRegisterPhone(channel);
   };
 
   const handleFetchPhones = async () => {
