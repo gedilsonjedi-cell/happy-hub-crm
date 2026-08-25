@@ -12,7 +12,6 @@ const json = (body: unknown, status = 200) =>
   });
 
 const META_APP_ID = "1095955566297881";
-const REDIRECT_URI = "https://optimuscrm.com.br";
 const GRAPH = "https://graph.facebook.com/v20.0";
 
 Deno.serve(async (req) => {
