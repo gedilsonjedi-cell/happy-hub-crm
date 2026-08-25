@@ -12,7 +12,6 @@ const json = (body: unknown, status = 200) =>
   });
 
 const META_APP_ID = "1095955566297881";
-const REDIRECT_URI = "https://optimuscrm.com.br";
 const GRAPH = "https://graph.facebook.com/v20.0";
 
 Deno.serve(async (req) => {
@@ -61,10 +60,10 @@ Deno.serve(async (req) => {
     }
 
     // 1) Troca o code por access token
+    // Código vem do Embedded Signup SDK JS: não enviar redirect_uri.
     const exchangeUrl =
       `${GRAPH}/oauth/access_token?client_id=${META_APP_ID}` +
       `&client_secret=${encodeURIComponent(appSecret)}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
       `&code=${encodeURIComponent(code)}`;
 
     const exRes = await fetch(exchangeUrl);
