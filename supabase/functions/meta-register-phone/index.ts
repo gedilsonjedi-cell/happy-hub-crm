@@ -12,9 +12,9 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumberId, accessToken, pin } = await req.json();
+    const { phoneNumberId, accessToken, pin, forceReregister } = await req.json();
 
-    console.log(`[meta-register-phone] Safely registering phone: ${phoneNumberId}`);
+    console.log(`[meta-register-phone] Force registering phone without deregister: ${phoneNumberId}`);
 
     if (!phoneNumberId || !accessToken) {
       return new Response(
@@ -78,30 +78,20 @@ serve(async (req) => {
       );
     }
 
-    // A PIN must come from the customer/Embedded Signup. A guessed default PIN can lock
-    // a number and repeated deregister/register attempts can worsen Meta restrictions.
-    if (!/^\d{6}$/.test(String(pin || ''))) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          requiresPin: true,
-          error: 'Informe o PIN de 6 dígitos definido para este número na Meta.',
-          suggestion: 'Não fazemos mais re-registro automático nem usamos PIN padrão. Informe o PIN correto para registrar com segurança.',
-          status: initialStatus,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Step 2: Register the phone number
     const registerUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/register`;
-    
-    const registerPayload = {
-      messaging_product: 'whatsapp',
-      pin: String(pin)
-    };
 
-    console.log(`[meta-register-phone] Calling register API for ${phoneNumberId}`);
+    const normalizedPin = String(pin || '').trim();
+    const registerPayload: Record<string, string> = {
+      messaging_product: 'whatsapp',
+    };
+    if (/^\d{6}$/.test(normalizedPin)) {
+      registerPayload.pin = normalizedPin;
+    }
+
+    console.log(
+      `[meta-register-phone] Calling register API for ${phoneNumberId} ${registerPayload.pin ? 'with PIN' : 'without PIN'}${forceReregister ? ' (forced)' : ''}`
+    );
     
     const registerResponse = await fetch(registerUrl, {
       method: 'POST',
@@ -131,7 +121,7 @@ serve(async (req) => {
         registerError = {
           code: errorCode,
           message: 'Conta bloqueada pela Meta (Business Account locked).',
-          suggestion: 'O PIN já consta como verificado, mas a Meta bloqueou a conta/número para registro. Acesse o WhatsApp Manager, conclua a verificação da empresa e a aprovação do nome comercial, procure avisos de restrição e solicite revisão. Forçar re-registro não resolve até a Meta liberar.',
+          suggestion: 'Classificação: bloqueio/restrição da Meta no telefone ou Business Account. Confirme Business Verification, permissões do usuário, aprovação do nome comercial e avisos de restrição no WhatsApp Manager. Se persistir, solicite revisão à Meta.',
           details: registerData.error,
           blocked: true
         };
@@ -141,7 +131,7 @@ serve(async (req) => {
           code: errorCode,
           message: 'PIN de verificação inválido.',
           requiresPin: true,
-          suggestion: 'Insira o PIN de 6 dígitos que foi definido na verificação de dois fatores do número no Meta Business Suite.'
+          suggestion: 'A Meta recusou a tentativa sem PIN ou com PIN inválido. Para números com verificação em duas etapas ativa, a própria Meta exige o PIN correto.'
         };
       }
       else if (errorCode === 133005) {
@@ -150,7 +140,7 @@ serve(async (req) => {
           code: errorCode,
           message: 'PIN de verificação de dois fatores incorreto.',
           requiresPin: true,
-          suggestion: 'O número possui verificação de dois fatores ativa. Acesse business.facebook.com > WhatsApp Manager > Configurações do telefone para obter ou redefinir o PIN de 6 dígitos.'
+          suggestion: 'A Meta informa que a verificação de dois fatores está ativa para este número. Sem o PIN correto, a Cloud API não conclui o registro.'
         };
       }
       else if (errorCode === 131000) {
@@ -253,13 +243,13 @@ serve(async (req) => {
           pending: true,
           status: finalStatus,
           message: finalStatus.status === 'DISCONNECTED' 
-            ? 'Número está desconectado na Meta. Isso requer verificação de dois fatores (PIN).'
+            ? 'Número está desconectado na Meta. A tentativa de conexão foi enviada, mas a Meta não confirmou.'
             : 'Número continua pendente. Isso geralmente significa que o número precisa de verificação no Meta.',
-          suggestion: 'O número precisa de verificação de dois fatores (2FA). Acesse: business.facebook.com > WhatsApp Manager > Configurações do telefone > Insira o PIN de 6 dígitos correto ao reconectar.',
+          suggestion: 'Classifique este número como pendente/restrito no Meta. Verifique Business Verification, nome comercial, permissões da WABA e avisos de restrição antes de repetir tentativas.',
           actions: [
-            'Obtenha o PIN de 6 dígitos da verificação de dois fatores no Meta Business Suite',
-            'Insira o PIN correto no campo "PIN de verificação" ao clicar em "Forçar Reconexão"',
-            'Se migrou de outro provedor, aguarde até 24h'
+            'Confirme se o número aparece dentro da WABA correta no WhatsApp Manager',
+            'Conclua Business Verification e aprovação do nome comercial',
+            'Se migrou de outro provedor, aguarde até 24h e evite remover/adicionar repetidamente'
           ]
         }),
         { 

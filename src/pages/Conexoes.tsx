@@ -1904,7 +1904,7 @@ const Conexoes = () => {
                               <p className="text-xs text-red-300/90">
                                 A migração foi concluída tecnicamente, mas a Meta colocou o número em análise
                                 {st?.displayName ? ` (nome "${st.displayName}" em PENDING_REVIEW)` : ''}.
-                                <strong> O botão "Forçar Re-registro" não funciona enquanto a Meta não liberar</strong> (erro #131031).
+                                <strong> Se a Meta retornar #131031, o bloqueio é da própria Meta</strong> e a liberação depende de revisão/aprovação.
                               </p>
                               <div className="text-xs text-muted-foreground space-y-1">
                                 <p className="font-medium text-foreground/80">O que fazer no Meta Business Suite:</p>
@@ -1973,7 +1973,7 @@ const Conexoes = () => {
                         {isRegistering === channel.id ? (
                           <>
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Abrindo validação...
+                            Forçando...
                           </>
                         ) : (
                           <>
