@@ -130,3 +130,7 @@ verify_jwt = false
 
 [functions.lead-webhook]
 verify_jwt = false
+
+[functions.meta-embedded-signup-exchange]
+verify_jwt = true
+
