@@ -1666,15 +1666,6 @@ const Conexoes = () => {
                           Migrar WABA
                         </DropdownMenuItem>
                       )}
-                      {channel.provider === 'meta' && (
-                        <DropdownMenuItem
-                          className="gap-2 cursor-pointer"
-                          onClick={() => setPinChannel(channel)}
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          Validar PIN
-                        </DropdownMenuItem>
-                      )}
                       <DropdownMenuItem
                         className="gap-2 cursor-pointer"
                         onClick={() => {
@@ -1789,8 +1780,8 @@ const Conexoes = () => {
                           : "text-red-400"
                       )}>
                         {metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
-                          ? "⚠️ Número pendente no Meta. Valide com o PIN correto; o sistema não removerá o número."
-                          : "⚠️ Número desconectado. Valide com o PIN correto para registrar com segurança."}
+                          ? "⚠️ Número pendente no Meta. O sistema vai tentar forçar a conexão sem remover o número."
+                          : "⚠️ Número desconectado. O sistema vai tentar registrar novamente sem remover o número."}
                       </p>
                     </div>
                     <Button 
@@ -1803,12 +1794,12 @@ const Conexoes = () => {
                       {isRegistering === channel.id ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Abrindo validação...
+                          Forçando...
                         </>
                       ) : (
                         <>
                           <Zap className="w-3 h-3" />
-                          Validar PIN com segurança
+                          Forçar conexão
                         </>
                       )}
                     </Button>
@@ -1940,8 +1931,8 @@ const Conexoes = () => {
                             <p className="text-xs text-amber-400 font-medium mb-1">
                               ⚠️ Número pendente no Meta
                             </p>
-                            <p className="text-xs text-amber-400/80 mb-2">
-                              Este número precisa concluir o registro com o PIN correto. Não remova nem repita tentativas automáticas.
+                              <p className="text-xs text-amber-400/80 mb-2">
+                               Este número está pendente no Meta. A ação abaixo tentará registrar sem PIN e sem remover o número.
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Se continuar pendente, acesse o <a
@@ -1970,7 +1961,7 @@ const Conexoes = () => {
                         </p>
                       </div>
                     )}
-                    {/* Safe PIN validation for PENDING numbers */}
+                    {/* Force connection for PENDING numbers */}
                     {metaPhoneStatuses[channel.id]?.code === 'PENDING' && (
                       <Button 
                         variant="default" 
@@ -1987,7 +1978,7 @@ const Conexoes = () => {
                         ) : (
                           <>
                             <RefreshCw className="w-3 h-3" />
-                            Validar PIN com segurança
+                            Forçar conexão
                           </>
                         )}
                       </Button>
@@ -2019,15 +2010,6 @@ const Conexoes = () => {
                         )}
                       </Button>
                     )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full gap-2 text-xs"
-                      onClick={() => setPinChannel(channel)}
-                    >
-                      <ShieldCheck className="w-3 h-3" />
-                      Validar PIN
-                    </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -3192,15 +3174,6 @@ const Conexoes = () => {
         open={!!showMigrateWabaDialog}
         onOpenChange={(open) => !open && setShowMigrateWabaDialog(null)}
         onSuccess={fetchChannels}
-      />
-      <ValidatePinDialog
-        open={!!pinChannel}
-        onOpenChange={(open) => !open && setPinChannel(null)}
-        channel={pinChannel}
-        onValidated={async () => {
-          await fetchChannels();
-          if (pinChannel) await checkMetaPhoneStatus(pinChannel, true);
-        }}
       />
     </MainLayout>
   );
