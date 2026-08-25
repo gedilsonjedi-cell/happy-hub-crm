@@ -99,7 +99,7 @@ const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/
 const FB_CONFIG_ID = "1589173589526641";
 
 // Dispara o fluxo oficial de Embedded Signup do WhatsApp via FB.login.
-const openFacebookEmbeddedSignup = () => {
+const openFacebookEmbeddedSignup = (onCode?: (code: string) => void) => {
   const FB = (window as any).FB;
   if (!FB || typeof FB.login !== "function") {
     toast.warning("O SDK do Facebook ainda está carregando. Aguarde alguns segundos e tente novamente.");
@@ -112,7 +112,7 @@ const openFacebookEmbeddedSignup = () => {
       console.log("WA Embedded Signup response:", response);
       const code = response?.authResponse?.code;
       if (code) {
-        toast.success("Autorização concluída pela Meta. Código recebido (veja o console).");
+        onCode?.(code);
       } else {
         toast.error(
           `Cadastro não concluído${response?.status ? ` (status: ${response.status})` : ""}. Veja o console para detalhes.`
@@ -131,6 +131,7 @@ const openFacebookEmbeddedSignup = () => {
     }
   );
 };
+
 
 
 // Generate a random verify token
