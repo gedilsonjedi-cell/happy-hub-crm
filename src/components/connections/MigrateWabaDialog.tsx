@@ -186,21 +186,8 @@ export function MigrateWabaDialog({ channel, open, onOpenChange, onSuccess }: Mi
         throw new Error(`Erro ao atualizar canal: ${updateError.message}`);
       }
 
-      // Step 2: Register phone with Meta Cloud API
-      const { error: registerError } = await supabase.functions.invoke("meta-register-phone", {
-        body: {
-          phoneNumberId: matchingPhone.id,
-          accessToken: newAccessToken.trim(),
-        },
-      });
-
-      if (registerError) {
-        console.error("Registration error:", registerError);
-        // Don't fail completely - the channel is already updated
-        toast.warning("Canal atualizado, mas registro no Meta pode precisar ser feito manualmente");
-      }
-
-      // Step 3: Subscribe to webhook
+      // Step 2: Subscribe to webhook at WABA level. Registration requires the real PIN
+      // and is intentionally not attempted during migration.
       const { error: webhookError } = await supabase.functions.invoke("meta-subscribe-webhook", {
         body: {
           wabaId: newWabaId.trim(),
@@ -214,13 +201,7 @@ export function MigrateWabaDialog({ channel, open, onOpenChange, onSuccess }: Mi
         toast.warning("Canal atualizado, mas webhook pode precisar ser reconfigurado");
       }
 
-      // Step 4: Mark as connected
-      await supabase
-        .from("channels")
-        .update({ connected: true })
-        .eq("id", channel.id);
-
-      toast.success("WABA migrado com sucesso! Histórico de conversas preservado.");
+      toast.success("WABA atualizado e histórico preservado. Valide o PIN para concluir a conexão.");
       handleClose();
       onSuccess();
     } catch (error: any) {

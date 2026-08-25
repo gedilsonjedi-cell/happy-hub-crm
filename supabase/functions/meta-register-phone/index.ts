@@ -12,9 +12,9 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumberId, accessToken, pin, forceReregister } = await req.json();
+    const { phoneNumberId, accessToken, pin } = await req.json();
 
-    console.log(`[meta-register-phone] Registering phone: ${phoneNumberId}, forceReregister: ${forceReregister}`);
+    console.log(`[meta-register-phone] Safely registering phone: ${phoneNumberId}`);
 
     if (!phoneNumberId || !accessToken) {
       return new Response(
@@ -60,8 +60,8 @@ serve(async (req) => {
       );
     }
 
-    // If status is CONNECTED and not forcing, we're good
-    if (initialStatus.status === 'CONNECTED' && !forceReregister) {
+    // Registration is idempotent for an already connected number. Never deregister it here.
+    if (initialStatus.status === 'CONNECTED') {
       console.log(`[meta-register-phone] Phone already CONNECTED!`);
       return new Response(
         JSON.stringify({ 
@@ -78,26 +78,19 @@ serve(async (req) => {
       );
     }
 
-    // If forceReregister or status is PENDING/DISCONNECTED, try to DEREGISTER first
-    if (forceReregister || initialStatus.status === 'PENDING' || initialStatus.status === 'DISCONNECTED') {
-      console.log(`[meta-register-phone] Attempting DEREGISTER first for stuck PENDING number...`);
-      
-      const deregisterUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/deregister`;
-      
-      const deregisterResponse = await fetch(deregisterUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({})
-      });
-
-      const deregisterData = await deregisterResponse.json();
-      console.log(`[meta-register-phone] Deregister response:`, JSON.stringify(deregisterData));
-      
-      // Wait for Meta to process deregistration
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    // A PIN must come from the customer/Embedded Signup. A guessed default PIN can lock
+    // a number and repeated deregister/register attempts can worsen Meta restrictions.
+    if (!/^\d{6}$/.test(String(pin || ''))) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          requiresPin: true,
+          error: 'Informe o PIN de 6 dígitos definido para este número na Meta.',
+          suggestion: 'Não fazemos mais re-registro automático nem usamos PIN padrão. Informe o PIN correto para registrar com segurança.',
+          status: initialStatus,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Step 2: Register the phone number
@@ -105,7 +98,7 @@ serve(async (req) => {
     
     const registerPayload = {
       messaging_product: 'whatsapp',
-      pin: pin || '123456'
+      pin: String(pin)
     };
 
     console.log(`[meta-register-phone] Calling register API for ${phoneNumberId}`);
@@ -205,24 +198,8 @@ serve(async (req) => {
       );
     }
 
-    // Step 3: Subscribe to webhook
-    console.log(`[meta-register-phone] Subscribing phone to webhook...`);
-    
-    const subscribeUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/subscribed_apps`;
-    
-    const subscribeResponse = await fetch(subscribeUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({})
-    });
-
-    const subscribeData = await subscribeResponse.json();
-    console.log(`[meta-register-phone] Subscribe response:`, JSON.stringify(subscribeData));
-
-    // Step 4: Check final status
+    // Webhook subscription is deliberately separate and must happen at WABA level.
+    // Check final status after the registration request.
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const finalStatusResponse = await fetch(statusUrl, {
@@ -236,8 +213,6 @@ serve(async (req) => {
     const finalStatus = await finalStatusResponse.json();
     console.log(`[meta-register-phone] Final status:`, JSON.stringify(finalStatus));
     
-    finalStatus.webhookSubscribed = subscribeData.success === true;
-
     if (finalStatus.status === 'CONNECTED') {
       return new Response(
         JSON.stringify({ 

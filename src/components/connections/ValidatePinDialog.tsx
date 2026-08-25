@@ -55,7 +55,7 @@ export function ValidatePinDialog({ open, onOpenChange, channel, onValidated }: 
 
     setIsWorking(true);
     try {
-      // 1) Opcionalmente define/atualiza o PIN 2FA no Meta
+          // 1) Opcionalmente define/atualiza o PIN 2FA no Meta
       if (defineNewPin) {
         toast.info("Definindo novo PIN no Meta...");
         const { data: setData, error: setErr } = await supabase.functions.invoke("meta-set-pin", {
@@ -84,14 +84,13 @@ export function ValidatePinDialog({ open, onOpenChange, channel, onValidated }: 
         }
       }
 
-      // 2) Registra (ou re-registra) o número usando o PIN informado
+      // 2) Registra o número usando o PIN informado. A função nunca desregistra antes.
       toast.info("Validando PIN e registrando número...");
       const { data, error } = await supabase.functions.invoke("meta-register-phone", {
         body: {
           phoneNumberId: channel.app_name,
           accessToken: channel.access_token,
           pin,
-          forceReregister: true,
         },
       });
 
@@ -194,8 +193,8 @@ export function ValidatePinDialog({ open, onOpenChange, channel, onValidated }: 
           </div>
 
           <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
-            Após validar, o número será re-registrado automaticamente. Caso continue pendente,
-            verifique no Meta Business Suite se há restrições ou aprovações pendentes.
+            A validação tenta registrar com este PIN sem remover o número da conta atual. Caso
+            continue pendente, interrompa as tentativas e verifique a integridade da conta na Meta.
           </div>
         </div>
 

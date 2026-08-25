@@ -28,29 +28,12 @@ serve(async (req) => {
       );
     }
 
-    // If WABA ID is provided, subscribe at WABA level (recommended)
-    // Otherwise, try to subscribe the phone number to the app
-    let subscribeUrl: string;
-    let subscribeBody: Record<string, unknown>;
-
-    if (wabaId) {
-      // Subscribe at WABA level - this enables webhooks for all phone numbers in the WABA
-      subscribeUrl = `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`;
-      subscribeBody = {};
-      console.log(`[meta-subscribe-webhook] Using WABA-level subscription: ${subscribeUrl}`);
-    } else if (phoneNumberId) {
-      // Alternative: Register the phone number for messaging
-      // This ensures the phone number is properly set up for the Cloud API
-      subscribeUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/register`;
-      subscribeBody = {
-        messaging_product: 'whatsapp',
-        pin: '123456' // Default PIN
-      };
-      console.log(`[meta-subscribe-webhook] Using phone registration: ${subscribeUrl}`);
-    } else {
+    // Webhook subscription and phone registration are different operations. Never fall
+    // back to /register here (especially not with a default PIN).
+    if (!wabaId) {
       return new Response(
         JSON.stringify({ 
-          error: 'WABA ID ou Phone Number ID é obrigatório'
+          error: 'WABA ID é obrigatório para inscrever o webhook com segurança'
         }),
         { 
           status: 400, 
@@ -58,6 +41,10 @@ serve(async (req) => {
         }
       );
     }
+
+    const subscribeUrl = `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`;
+    const subscribeBody: Record<string, unknown> = {};
+    console.log(`[meta-subscribe-webhook] Using WABA-level subscription: ${subscribeUrl}`);
 
     console.log(`[meta-subscribe-webhook] Calling API: ${subscribeUrl}`);
     
