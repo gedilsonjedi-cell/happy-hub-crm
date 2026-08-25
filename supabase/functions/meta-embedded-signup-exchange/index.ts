@@ -61,10 +61,10 @@ Deno.serve(async (req) => {
     }
 
     // 1) Troca o code por access token
+    // Código vem do Embedded Signup SDK JS: não enviar redirect_uri.
     const exchangeUrl =
       `${GRAPH}/oauth/access_token?client_id=${META_APP_ID}` +
       `&client_secret=${encodeURIComponent(appSecret)}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
       `&code=${encodeURIComponent(code)}`;
 
     const exRes = await fetch(exchangeUrl);
