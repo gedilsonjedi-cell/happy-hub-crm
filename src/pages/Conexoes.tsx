@@ -23,10 +23,8 @@ import {
   Bot,
   Zap,
   Workflow,
-  ArrowRightLeft,
-  ShieldCheck
+  ArrowRightLeft
 } from "lucide-react";
-import { ValidatePinDialog } from "@/components/connections/ValidatePinDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -220,7 +218,6 @@ const Conexoes = () => {
   
   // Register phone state
   const [isRegistering, setIsRegistering] = useState<string | null>(null);
-  const [pinChannel, setPinChannel] = useState<Channel | null>(null);
   const [isSubscribing, setIsSubscribing] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<Record<string, any>>({});
   const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
@@ -865,8 +862,61 @@ const Conexoes = () => {
         return;
       }
       
-      toast.warning("A Meta ainda não confirmou a conexão. Informe o PIN correto para registrar sem remover o número.");
-      setPinChannel(channel);
+      toast.info("Forçando conexão na Cloud API...", { duration: 3000 });
+
+      const { data, error } = await supabase.functions.invoke('meta-register-phone', {
+        body: {
+          phoneNumberId: channel.app_name,
+          accessToken: channel.access_token,
+          forceReregister: true,
+        },
+      });
+
+      if (error) {
+        toast.error("Falha ao forçar conexão: " + error.message);
+        return;
+      }
+
+      if (data?.success || data?.registered || data?.status?.status === 'CONNECTED') {
+        await supabase
+          .from("channels")
+          .update({ connected: true })
+          .eq("id", channel.id);
+
+        setChannels(prev =>
+          prev.map(ch => ch.id === channel.id ? { ...ch, connected: true } : ch)
+        );
+
+        toast.success(data?.message || "Número conectado com sucesso!");
+        await fetchChannels();
+        return;
+      }
+
+      if (data?.blocked || data?.code === 131031) {
+        toast.error("Meta classificou este número como bloqueado/restrito (#131031).", { duration: 10000 });
+        if (data?.suggestion) toast.info(data.suggestion, { duration: 15000 });
+        return;
+      }
+
+      if (data?.requiresPin) {
+        toast.error(data.error || "A Meta recusou o registro sem PIN.", { duration: 10000 });
+        if (data.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      if (data?.pending) {
+        toast.warning(data?.message || "Número segue pendente após tentativa de conexão.");
+        if (data?.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error, { duration: 10000 });
+        if (data.suggestion) toast.info(data.suggestion, { duration: 12000 });
+        return;
+      }
+
+      toast.warning(data?.message || "A Meta não confirmou a conexão.");
     } catch (err) {
       console.error('Register error:', err);
       toast.error("Erro ao registrar número");
@@ -875,14 +925,9 @@ const Conexoes = () => {
     }
   };
 
-  // PENDING numbers must never be deregistered automatically. Ask for the real PIN.
+  // Force connection without opening the PIN validation dialog.
   const handleForceReregister = async (channel: Channel) => {
-    if (!channel.app_name || !channel.access_token) {
-      toast.error("Canal não possui Phone Number ID ou Access Token");
-      return;
-    }
-
-    setPinChannel(channel);
+    await handleRegisterPhone(channel);
   };
 
   const handleFetchPhones = async () => {
@@ -1621,15 +1666,6 @@ const Conexoes = () => {
                           Migrar WABA
                         </DropdownMenuItem>
                       )}
-                      {channel.provider === 'meta' && (
-                        <DropdownMenuItem
-                          className="gap-2 cursor-pointer"
-                          onClick={() => setPinChannel(channel)}
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          Validar PIN
-                        </DropdownMenuItem>
-                      )}
                       <DropdownMenuItem
                         className="gap-2 cursor-pointer"
                         onClick={() => {
@@ -1744,8 +1780,8 @@ const Conexoes = () => {
                           : "text-red-400"
                       )}>
                         {metaPhoneStatuses[channel.id]?.isPending || metaPhoneStatuses[channel.id]?.code === 'PENDING'
-                          ? "⚠️ Número pendente no Meta. Valide com o PIN correto; o sistema não removerá o número."
-                          : "⚠️ Número desconectado. Valide com o PIN correto para registrar com segurança."}
+                          ? "⚠️ Número pendente no Meta. O sistema vai tentar forçar a conexão sem remover o número."
+                          : "⚠️ Número desconectado. O sistema vai tentar registrar novamente sem remover o número."}
                       </p>
                     </div>
                     <Button 
@@ -1758,12 +1794,12 @@ const Conexoes = () => {
                       {isRegistering === channel.id ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Abrindo validação...
+                          Forçando...
                         </>
                       ) : (
                         <>
                           <Zap className="w-3 h-3" />
-                          Validar PIN com segurança
+                          Forçar conexão
                         </>
                       )}
                     </Button>
@@ -1868,7 +1904,7 @@ const Conexoes = () => {
                               <p className="text-xs text-red-300/90">
                                 A migração foi concluída tecnicamente, mas a Meta colocou o número em análise
                                 {st?.displayName ? ` (nome "${st.displayName}" em PENDING_REVIEW)` : ''}.
-                                <strong> O botão "Forçar Re-registro" não funciona enquanto a Meta não liberar</strong> (erro #131031).
+                                <strong> Se a Meta retornar #131031, o bloqueio é da própria Meta</strong> e a liberação depende de revisão/aprovação.
                               </p>
                               <div className="text-xs text-muted-foreground space-y-1">
                                 <p className="font-medium text-foreground/80">O que fazer no Meta Business Suite:</p>
@@ -1895,8 +1931,8 @@ const Conexoes = () => {
                             <p className="text-xs text-amber-400 font-medium mb-1">
                               ⚠️ Número pendente no Meta
                             </p>
-                            <p className="text-xs text-amber-400/80 mb-2">
-                              Este número precisa concluir o registro com o PIN correto. Não remova nem repita tentativas automáticas.
+                              <p className="text-xs text-amber-400/80 mb-2">
+                               Este número está pendente no Meta. A ação abaixo tentará registrar sem PIN e sem remover o número.
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Se continuar pendente, acesse o <a
@@ -1925,7 +1961,7 @@ const Conexoes = () => {
                         </p>
                       </div>
                     )}
-                    {/* Safe PIN validation for PENDING numbers */}
+                    {/* Force connection for PENDING numbers */}
                     {metaPhoneStatuses[channel.id]?.code === 'PENDING' && (
                       <Button 
                         variant="default" 
@@ -1937,12 +1973,12 @@ const Conexoes = () => {
                         {isRegistering === channel.id ? (
                           <>
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Abrindo validação...
+                            Forçando...
                           </>
                         ) : (
                           <>
                             <RefreshCw className="w-3 h-3" />
-                            Validar PIN com segurança
+                            Forçar conexão
                           </>
                         )}
                       </Button>
@@ -1974,15 +2010,6 @@ const Conexoes = () => {
                         )}
                       </Button>
                     )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full gap-2 text-xs"
-                      onClick={() => setPinChannel(channel)}
-                    >
-                      <ShieldCheck className="w-3 h-3" />
-                      Validar PIN
-                    </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -3147,15 +3174,6 @@ const Conexoes = () => {
         open={!!showMigrateWabaDialog}
         onOpenChange={(open) => !open && setShowMigrateWabaDialog(null)}
         onSuccess={fetchChannels}
-      />
-      <ValidatePinDialog
-        open={!!pinChannel}
-        onOpenChange={(open) => !open && setPinChannel(null)}
-        channel={pinChannel}
-        onValidated={async () => {
-          await fetchChannels();
-          if (pinChannel) await checkMetaPhoneStatus(pinChannel, true);
-        }}
       />
     </MainLayout>
   );
