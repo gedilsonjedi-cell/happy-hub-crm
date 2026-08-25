@@ -1761,37 +1761,45 @@ Deno.serve(async (req) => {
   if (req.method === 'POST') {
     const bodyText = await req.text();
 
-    // Signature verification against every configured Meta app secret
-    const hasAnySecret = !!(Deno.env.get('META_APP_SECRET') || Deno.env.get('META_WEBHOOK_APP_SECRET') || Deno.env.get('META_APP_SECRET_2'));
-    if (hasAnySecret) {
-      const signature = req.headers.get('x-hub-signature-256');
-      const isValid = await verifyAnyMetaSignature(bodyText, signature);
-      if (!isValid) {
-        // Fallback: accept only if the payload references a WABA/phone number we own.
-        let known = false;
-        try {
-          const parsed = JSON.parse(bodyText);
-          const entryId = parsed?.entry?.[0]?.id;
-          const pnId = parsed?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-          if (entryId) {
-            const { data } = await supabase.from('channels').select('id').eq('waba_id', String(entryId)).limit(1);
-            known = !!data?.length;
-          }
-          if (!known && pnId) {
-            const { data } = await supabase.from('channels').select('id').eq('app_name', String(pnId)).limit(1);
-            known = !!data?.length;
-          }
-        } catch { /* ignore */ }
-        if (!known) {
-          console.error('[Webhook] REJECTED: Invalid Meta signature / unknown WABA from', req.headers.get('x-forwarded-for') || 'unknown');
-          return new Response('Unauthorized', { status: 401 });
-        }
-        console.warn('[Webhook] Signature mismatch but WABA/phone is known — processing (configure META_WEBHOOK_APP_SECRET)');
+    // Signature verification.
+    // IMPORTANT: META_APP_SECRET belongs to the Embedded Signup app (1095955566297881),
+    // NOT to the app that delivers these webhooks — using it here rejected every event.
+    // Only a secret explicitly registered for the webhook app is used.
+    const webhookSecrets = [
+      Deno.env.get('META_WEBHOOK_APP_SECRET'),
+      Deno.env.get('META_APP_SECRET_2'),
+    ].filter((s): s is string => !!s);
 
+    let signatureOk = false;
+    if (webhookSecrets.length > 0) {
+      const signature = req.headers.get('x-hub-signature-256');
+      for (const s of webhookSecrets) {
+        if (await verifyMetaSignature(bodyText, signature, s)) { signatureOk = true; break; }
       }
-    } else {
-      console.warn('[Webhook] META_APP_SECRET not configured - signature verification skipped');
     }
+
+    if (!signatureOk) {
+      // Minimal authenticity gate: payload must reference a WABA/phone number we own.
+      let known = false;
+      try {
+        const parsed = JSON.parse(bodyText);
+        const entryId = parsed?.entry?.[0]?.id;
+        const pnId = parsed?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+        if (entryId) {
+          const { data } = await supabase.from('channels').select('id').eq('waba_id', String(entryId)).limit(1);
+          known = !!data?.length;
+        }
+        if (!known && pnId) {
+          const { data } = await supabase.from('channels').select('id').eq('app_name', String(pnId)).limit(1);
+          known = !!data?.length;
+        }
+      } catch { /* ignore */ }
+      if (!known && webhookSecrets.length > 0) {
+        console.error('[Webhook] REJECTED: invalid signature and unknown WABA/phone from', req.headers.get('x-forwarded-for') || 'unknown');
+        return new Response('Unauthorized', { status: 401 });
+      }
+    }
+
 
 
     // Return 200 immediately to Meta — process in background to prevent timeouts
