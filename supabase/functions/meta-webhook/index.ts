@@ -338,6 +338,21 @@ async function verifyMetaSignature(body: string, signature: string | null, appSe
   }
 }
 
+// Multiple Meta apps can point to this webhook (legacy app + Embedded Signup app).
+// Verify against every configured secret before rejecting.
+async function verifyAnyMetaSignature(body: string, signature: string | null): Promise<boolean> {
+  const secrets = [
+    Deno.env.get('META_APP_SECRET'),
+    Deno.env.get('META_WEBHOOK_APP_SECRET'),
+    Deno.env.get('META_APP_SECRET_2'),
+  ].filter((s): s is string => !!s);
+  for (const s of secrets) {
+    if (await verifyMetaSignature(body, signature, s)) return true;
+  }
+  return false;
+}
+
+
 // =============================================
 // PHONE NORMALIZATION
 // =============================================
