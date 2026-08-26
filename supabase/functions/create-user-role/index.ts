@@ -280,32 +280,36 @@ serve(async (req) => {
     if (action === "create_user_with_role") {
       const { email, password, display_name, organization_id, role, whatsapp_phone } = body;
 
-      // WhatsApp do usuário (E.164 apenas dígitos, DDI 55 + DDD + celular de 9 dígitos)
+      // WhatsApp OPCIONAL. Se vier vazio, segue sem validar e sem gravar whatsapp_phone.
+      // (O WhatsappPhoneGate exige o cadastro do número no primeiro login do usuário.)
       const normalizedWhatsapp = String(whatsapp_phone || "").replace(/\D/g, "");
-      const isValidWhatsapp = /^55[1-9][1-9]9[6-9]\d{7}$/.test(normalizedWhatsapp);
-      if (!isValidWhatsapp) {
-        return new Response(JSON.stringify({ error: "WhatsApp do usuário inválido. Use DDI 55 + DDD + celular com 9 dígitos." }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
 
-      // Duplicidade: o WhatsApp não pode estar vinculado a outro usuário
-      const { data: dupProfiles, error: dupError } = await supabaseAdmin
-        .from("profiles")
-        .select("user_id")
-        .eq("whatsapp_phone", normalizedWhatsapp)
-        .limit(1);
-      if (dupError) {
-        console.error("Error checking duplicate whatsapp:", dupError);
-      } else if (dupProfiles && dupProfiles.length > 0) {
-        return new Response(JSON.stringify({
-          error: "Este número de WhatsApp já está cadastrado em outra conta. Use outro número.",
-          code: "whatsapp_exists",
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (normalizedWhatsapp) {
+        const isValidWhatsapp = /^55[1-9][1-9]9[6-9]\d{7}$/.test(normalizedWhatsapp);
+        if (!isValidWhatsapp) {
+          return new Response(JSON.stringify({ error: "WhatsApp do usuário inválido. Use DDI 55 + DDD + celular com 9 dígitos." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Duplicidade: o WhatsApp não pode estar vinculado a outro usuário
+        const { data: dupProfiles, error: dupError } = await supabaseAdmin
+          .from("profiles")
+          .select("user_id")
+          .eq("whatsapp_phone", normalizedWhatsapp)
+          .limit(1);
+        if (dupError) {
+          console.error("Error checking duplicate whatsapp:", dupError);
+        } else if (dupProfiles && dupProfiles.length > 0) {
+          return new Response(JSON.stringify({
+            error: "Este número de WhatsApp já está cadastrado em outra conta. Use outro número.",
+            code: "whatsapp_exists",
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
 
       if (!email || !password || !organization_id || !role) {
