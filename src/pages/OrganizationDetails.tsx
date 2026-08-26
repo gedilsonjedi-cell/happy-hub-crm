@@ -58,6 +58,8 @@ import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 import { PartnerManagementPanel } from "@/components/admin/PartnerManagementPanel";
+import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
+
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -132,7 +134,9 @@ export default function OrganizationDetails() {
   // New user form
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
+  const [newUserWhatsapp, setNewUserWhatsapp] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("admin");
+
 
   useEffect(() => {
     if (!roleLoading && !isSuperAdmin) {
@@ -260,9 +264,31 @@ export default function OrganizationDetails() {
     return password;
   };
 
+  // Aguarda o profile aparecer realmente vinculado à organização antes de
+  // declarar sucesso (evita "criado com sucesso" sem aparecer na lista).
+  const waitForUserInOrganization = async (userId: string) => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("user_id, organization_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (data?.organization_id === organization?.id) return true;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return false;
+  };
+
   const handleCreateUser = async () => {
     if (!organization || !newUserEmail.trim()) {
       toast.error("Preencha o email do usuário");
+      return;
+    }
+
+    const whatsappValidation = validateWhatsappPhone(newUserWhatsapp);
+    if (!whatsappValidation.isValid) {
+      toast.error(whatsappValidation.error || "WhatsApp inválido");
       return;
     }
 
@@ -270,55 +296,46 @@ export default function OrganizationDetails() {
     const tempPassword = generateSecurePassword();
 
     try {
-      // Create user via Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newUserEmail.trim(),
-        password: tempPassword,
-        options: {
-          data: {
-            display_name: newUserName.trim() || undefined,
-          },
+      // IMPORTANTE: criar via edge function (admin API + service role).
+      // Usar supabase.auth.signUp() no navegador trocava a sessão do super admin
+      // e as escritas em profiles/user_roles eram bloqueadas por RLS, resultando
+      // em usuário criado fora da organização (e invisível na lista).
+      const { data, error } = await supabase.functions.invoke("create-user-role", {
+        body: {
+          action: "create_user_with_role",
+          email: newUserEmail.trim().toLowerCase(),
+          password: tempPassword,
+          display_name: newUserName.trim() || newUserEmail.trim().split("@")[0],
+          whatsapp_phone: whatsappValidation.e164,
+          organization_id: organization.id,
+          role: newUserRole,
         },
       });
 
-      if (authError) {
-        console.error("Error creating user:", authError);
-        toast.error(`Erro ao criar usuário: ${authError.message}`);
+      if (error) {
+        console.error("Error creating user:", error);
+        toast.error(`Erro ao criar usuário: ${error.message}`);
         return;
       }
 
-      if (!authData.user) {
-        toast.error("Erro ao criar usuário: usuário não retornado");
+      if (data?.error) {
+        toast.error(data.error);
         return;
       }
 
-      const newUserId = authData.user.id;
-
-      // Update profile with organization_id and display_name
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          organization_id: organization.id,
-          display_name: newUserName.trim() || null,
-        })
-        .eq("user_id", newUserId);
-
-      if (profileError) {
-        console.error("Error updating profile:", profileError);
-        // Profile might not exist yet, try insert
+      if (!data?.user_id) {
+        toast.error("Erro ao criar usuário: resposta inválida do servidor");
+        return;
       }
 
-      // Create user role
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: newUserId,
-          role: newUserRole,
-        });
+      const appeared = await waitForUserInOrganization(data.user_id);
+      await fetchOrganizationData();
 
-      if (roleError) {
-        console.error("Error creating role:", roleError);
-        toast.error("Usuário criado, mas erro ao definir função");
+      if (!appeared) {
+        toast.error(
+          "Usuário criado, mas não foi vinculado à organização. Recarregue a página e verifique."
+        );
+        return;
       }
 
       // Show credentials
@@ -328,11 +345,11 @@ export default function OrganizationDetails() {
       });
 
       toast.success("Usuário criado com sucesso!");
-      fetchOrganizationData();
 
       // Reset form
       setNewUserEmail("");
       setNewUserName("");
+      setNewUserWhatsapp("");
       setNewUserRole("admin");
     } catch (err) {
       console.error("Error creating user:", err);
@@ -341,6 +358,7 @@ export default function OrganizationDetails() {
       setIsCreatingUser(false);
     }
   };
+
 
   const handleCopyCredentials = () => {
     if (createdUserCredentials) {
@@ -813,6 +831,18 @@ export default function OrganizationDetails() {
                     placeholder="usuario@email.com"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>WhatsApp *</Label>
+                  <Input
+                    value={newUserWhatsapp}
+                    onChange={(e) => setNewUserWhatsapp(e.target.value)}
+                    placeholder="+55 (14) 98156-4414"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    DDI 55 + DDD + celular com 9 dígitos
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Nome</Label>
                   <Input
