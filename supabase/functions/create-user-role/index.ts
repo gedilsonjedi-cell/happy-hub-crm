@@ -409,7 +409,7 @@ serve(async (req) => {
         .update({
           organization_id,
           display_name: display_name || null,
-          whatsapp_phone: normalizedWhatsapp,
+          ...(normalizedWhatsapp ? { whatsapp_phone: normalizedWhatsapp } : {}),
         })
         .eq("user_id", authData.user.id);
 
