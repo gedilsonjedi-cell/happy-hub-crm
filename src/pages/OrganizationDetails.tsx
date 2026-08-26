@@ -134,7 +134,9 @@ export default function OrganizationDetails() {
   // New user form
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
+  const [newUserWhatsapp, setNewUserWhatsapp] = useState("");
   const [newUserRole, setNewUserRole] = useState<AppRole>("admin");
+
 
   useEffect(() => {
     if (!roleLoading && !isSuperAdmin) {
