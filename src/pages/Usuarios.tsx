@@ -25,6 +25,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
+import { extractEdgeFunctionError } from "@/lib/edgeFunctionError";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -466,10 +467,16 @@ const Usuarios = () => {
       toast.error("Senha deve ter pelo menos 6 caracteres");
       return;
     }
-    const whatsappValidation = validateWhatsappPhone(newUserWhatsapp);
-    if (!whatsappValidation.isValid) {
-      toast.error(whatsappValidation.error || "WhatsApp inválido");
-      return;
+    // WhatsApp é OPCIONAL: se vazio, segue sem validar (o WhatsappPhoneGate exige no 1º login).
+    const whatsappRaw = newUserWhatsapp.trim();
+    let whatsappE164: string | undefined;
+    if (whatsappRaw) {
+      const whatsappValidation = validateWhatsappPhone(whatsappRaw);
+      if (!whatsappValidation.isValid) {
+        toast.error(whatsappValidation.error || "WhatsApp inválido");
+        return;
+      }
+      whatsappE164 = whatsappValidation.e164;
     }
     
     // Double-check limit (in case data changed)
@@ -500,14 +507,15 @@ const Usuarios = () => {
             email: email,
             password: newUserPassword.trim(),
             display_name: email.split("@")[0],
-            whatsapp_phone: whatsappValidation.e164,
+            whatsapp_phone: whatsappE164,
             organization_id: organizationId,
             role: newUserRole,
           },
         });
 
         if (error) {
-          toast.error(`${email}: ${error.message}`);
+          const real = await extractEdgeFunctionError(error, error.message);
+          toast.error(`${email}: ${real}`);
           errorCount++;
           continue;
         }
@@ -1244,7 +1252,7 @@ const Usuarios = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-user-whatsapp">WhatsApp {newUserEmails.length > 1 && "(para todos)"}</Label>
+                <Label htmlFor="new-user-whatsapp">WhatsApp (opcional) {newUserEmails.length > 1 && "(para todos)"}</Label>
                 <Input
                   id="new-user-whatsapp"
                   inputMode="tel"
@@ -1259,7 +1267,7 @@ const Usuarios = () => {
                   disabled={isCreatingUser}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Obrigatório. Celular com DDD (será usado para validar o acesso do usuário).
+                  Opcional. Se não preencher, o próprio usuário cadastra no primeiro login.
                 </p>
               </div>
               <div className="space-y-2">
@@ -1306,7 +1314,7 @@ const Usuarios = () => {
               >
                 Cancelar
               </Button>
-              <Button onClick={handleCreateUser} disabled={isCreatingUser || newUserEmails.length === 0 || !newUserWhatsapp.trim()}>
+              <Button onClick={handleCreateUser} disabled={isCreatingUser || newUserEmails.length === 0}>
                 {isCreatingUser ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
