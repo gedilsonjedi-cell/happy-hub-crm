@@ -832,6 +832,18 @@ export default function OrganizationDetails() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label>WhatsApp *</Label>
+                  <Input
+                    value={newUserWhatsapp}
+                    onChange={(e) => setNewUserWhatsapp(e.target.value)}
+                    placeholder="+55 (14) 98156-4414"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    DDI 55 + DDD + celular com 9 dígitos
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Nome</Label>
                   <Input
                     value={newUserName}
