@@ -58,6 +58,8 @@ import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 import { PartnerManagementPanel } from "@/components/admin/PartnerManagementPanel";
+import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
+
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
