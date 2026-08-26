@@ -315,10 +315,15 @@ export default function SuperAdmin() {
       return;
     }
 
-    const adminWhatsapp = validateWhatsappPhone(adminPhone);
-    if (!adminWhatsapp.isValid) {
-      toast.error(adminWhatsapp.error || "WhatsApp do administrador inválido");
-      return;
+    // WhatsApp é OPCIONAL: se vazio, segue sem validar (o WhatsappPhoneGate exige no 1º login).
+    let adminWhatsappE164: string | undefined;
+    if (adminPhone.trim()) {
+      const adminWhatsapp = validateWhatsappPhone(adminPhone);
+      if (!adminWhatsapp.isValid) {
+        toast.error(adminWhatsapp.error || "WhatsApp do administrador inválido");
+        return;
+      }
+      adminWhatsappE164 = adminWhatsapp.e164;
     }
 
     // Validate password
@@ -388,7 +393,7 @@ export default function SuperAdmin() {
             email: adminEmail.trim(),
             password: userPassword,
             display_name: adminName.trim(),
-            whatsapp_phone: adminWhatsapp.e164,
+            whatsapp_phone: adminWhatsappE164,
             organization_id: orgData.id,
             role: "admin",
           }),
@@ -396,10 +401,10 @@ export default function SuperAdmin() {
       );
 
       if (!createUserResponse.ok) {
-        const errorData = await createUserResponse.json();
+        const errorData = await createUserResponse.json().catch(() => ({ error: `HTTP ${createUserResponse.status}` }));
         // Rollback: delete the organization
         await supabase.from("organizations").delete().eq("id", orgData.id);
-        toast.error(`Erro ao criar usuário: ${errorData.error}`);
+        toast.error(`Erro ao criar usuário: ${errorData?.error || "resposta inválida do servidor"}`);
         return;
       }
 
@@ -1344,7 +1349,7 @@ export default function SuperAdmin() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>WhatsApp *</Label>
+                    <Label>WhatsApp (opcional)</Label>
                     <Input
                       value={adminPhone}
                       onChange={(e) => setAdminPhone(e.target.value)}

@@ -59,6 +59,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { OrganizationBalancePanel } from "@/components/admin/OrganizationBalancePanel";
 import { PartnerManagementPanel } from "@/components/admin/PartnerManagementPanel";
 import { validateWhatsappPhone } from "@/lib/validateWhatsappPhone";
+import { extractEdgeFunctionError } from "@/lib/edgeFunctionError";
 
 
 type AppRole = Database["public"]["Enums"]["app_role"];
@@ -286,10 +287,16 @@ export default function OrganizationDetails() {
       return;
     }
 
-    const whatsappValidation = validateWhatsappPhone(newUserWhatsapp);
-    if (!whatsappValidation.isValid) {
-      toast.error(whatsappValidation.error || "WhatsApp inválido");
-      return;
+    // WhatsApp é OPCIONAL: se vazio, segue sem validar (o WhatsappPhoneGate exige no 1º login).
+    const whatsappRaw = newUserWhatsapp.trim();
+    let whatsappE164: string | undefined;
+    if (whatsappRaw) {
+      const whatsappValidation = validateWhatsappPhone(whatsappRaw);
+      if (!whatsappValidation.isValid) {
+        toast.error(whatsappValidation.error || "WhatsApp inválido");
+        return;
+      }
+      whatsappE164 = whatsappValidation.e164;
     }
 
     setIsCreatingUser(true);
@@ -306,7 +313,7 @@ export default function OrganizationDetails() {
           email: newUserEmail.trim().toLowerCase(),
           password: tempPassword,
           display_name: newUserName.trim() || newUserEmail.trim().split("@")[0],
-          whatsapp_phone: whatsappValidation.e164,
+          whatsapp_phone: whatsappE164,
           organization_id: organization.id,
           role: newUserRole,
         },
@@ -314,7 +321,8 @@ export default function OrganizationDetails() {
 
       if (error) {
         console.error("Error creating user:", error);
-        toast.error(`Erro ao criar usuário: ${error.message}`);
+        const real = await extractEdgeFunctionError(error, error.message);
+        toast.error(`Erro ao criar usuário: ${real}`);
         return;
       }
 
@@ -832,7 +840,7 @@ export default function OrganizationDetails() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>WhatsApp *</Label>
+                  <Label>WhatsApp (opcional)</Label>
                   <Input
                     value={newUserWhatsapp}
                     onChange={(e) => setNewUserWhatsapp(e.target.value)}
