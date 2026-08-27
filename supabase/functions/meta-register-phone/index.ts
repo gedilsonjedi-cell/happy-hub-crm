@@ -82,28 +82,46 @@ serve(async (req) => {
     const registerUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/register`;
 
     const normalizedPin = String(pin || '').trim();
-    const registerPayload: Record<string, string> = {
-      messaging_product: 'whatsapp',
+    // Meta's /register endpoint ALWAYS requires a `pin`. Omitting it makes the
+    // Cloud API answer with the generic code 100 ("phone number not linked"),
+    // which the UI used to surface as "número não está associado ao WABA".
+    // When the caller does not provide one we fall back to the default 000000.
+    const DEFAULT_PIN = '000000';
+    const primaryPin = /^\d{6}$/.test(normalizedPin) ? normalizedPin : DEFAULT_PIN;
+
+    const callRegister = async (pinValue: string) => {
+      const res = await fetch(registerUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messaging_product: 'whatsapp', pin: pinValue })
+      });
+      return await res.json();
     };
-    if (/^\d{6}$/.test(normalizedPin)) {
-      registerPayload.pin = normalizedPin;
-    }
 
     console.log(
-      `[meta-register-phone] Calling register API for ${phoneNumberId} ${registerPayload.pin ? 'with PIN' : 'without PIN'}${forceReregister ? ' (forced)' : ''}`
+      `[meta-register-phone] Calling register API for ${phoneNumberId} with ${primaryPin === DEFAULT_PIN ? 'default' : 'provided'} PIN${forceReregister ? ' (forced)' : ''}`
     );
-    
-    const registerResponse = await fetch(registerUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(registerPayload)
-    });
 
-    const registerData = await registerResponse.json();
+    let registerData = await callRegister(primaryPin);
     console.log(`[meta-register-phone] Register response:`, JSON.stringify(registerData));
+
+    // If the default PIN was rejected because 2FA is enabled with another PIN,
+    // and the caller did supply a PIN, there is nothing else to try. Otherwise
+    // retry once with the default PIN when a custom one failed.
+    const pinErrorCodes = [133005, 136025];
+    if (
+      registerData?.error &&
+      pinErrorCodes.includes(registerData.error.code) &&
+      primaryPin !== DEFAULT_PIN
+    ) {
+      console.log('[meta-register-phone] Provided PIN rejected, retrying with default PIN');
+      registerData = await callRegister(DEFAULT_PIN);
+      console.log(`[meta-register-phone] Retry response:`, JSON.stringify(registerData));
+    }
+
 
     let registerSuccess = false;
     let registerError = null;
@@ -150,13 +168,25 @@ serve(async (req) => {
           suggestion: 'Acesse o Meta Business Suite > WhatsApp Manager e verifique pendências.'
         };
       }
+      else if (errorCode === 141000) {
+        registerError = {
+          code: errorCode,
+          message: 'A Meta recusou o registro deste número na Cloud API.',
+          suggestion: 'Normalmente é PIN de duas etapas divergente ou número recém-migrado. Aguarde alguns minutos e tente novamente, ou informe o PIN de 6 dígitos configurado no WhatsApp Manager.',
+          requiresPin: true,
+          details: registerData.error
+        };
+      }
       else if (errorCode === 100) {
         registerError = {
           code: errorCode,
-          message: 'Número não está associado ao WABA corretamente.',
-          suggestion: 'Verifique no Meta Business Suite se o número está vinculado ao WABA.'
+          message: 'A Meta não aceitou o registro do número na Cloud API.',
+          suggestion: 'Confirme que o Phone Number ID pertence à WABA informada e que o Access Token tem permissão whatsapp_business_management. Se o número tem verificação em duas etapas, informe o PIN de 6 dígitos.',
+          requiresPin: true,
+          details: registerData.error
         };
       }
+
       else {
         registerError = {
           code: errorCode,
