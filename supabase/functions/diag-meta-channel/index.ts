@@ -35,6 +35,17 @@ Deno.serve(async (req) => {
 
     const results: Record<string, unknown> = { channel: ch };
 
+    if (action === 'register') {
+      const rr = await fetch(`https://graph.facebook.com/v21.0/${pnId}/register`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', pin: '000000' }),
+      });
+      results.register = await rr.json();
+    }
+
+
+
     // 1. Phone status
     const phoneUrl = `https://graph.facebook.com/v21.0/${pnId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,status,name_status,platform_type,throughput,messaging_limit_tier,account_mode,is_pin_enabled,is_official_business_account,eligibility_for_api_business_global_search`;
     const pr = await fetch(phoneUrl, { headers: { Authorization: `Bearer ${token}` } });
