@@ -44,6 +44,15 @@ Deno.serve(async (req) => {
       results.register = await rr.json();
     }
 
+    if (action === 'subscribe') {
+      const sr = await fetch(`https://graph.facebook.com/v21.0/${waba}/subscribed_apps`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      results.subscribe = await sr.json();
+    }
+
 
 
     // 1. Phone status
