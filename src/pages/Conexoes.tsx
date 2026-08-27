@@ -959,6 +959,22 @@ const Conexoes = () => {
       }
 
       if (data?.success || data?.registered || data?.status?.status === 'CONNECTED') {
+        // Registration alone is not enough: the WABA must also be subscribed to
+        // our webhook, otherwise the channel connects but never receives events.
+        if (channel.waba_id) {
+          try {
+            await supabase.functions.invoke('meta-subscribe-webhook', {
+              body: {
+                wabaId: channel.waba_id,
+                phoneNumberId: channel.app_name,
+                accessToken: channel.access_token,
+              },
+            });
+          } catch (subErr) {
+            console.error('Auto webhook subscription failed:', subErr);
+          }
+        }
+
         await supabase
           .from("channels")
           .update({ connected: true })
@@ -972,6 +988,7 @@ const Conexoes = () => {
         await fetchChannels();
         return;
       }
+
 
       if (data?.blocked || data?.code === 131031) {
         toast.error("Meta classificou este número como bloqueado/restrito (#131031).", { duration: 10000 });
