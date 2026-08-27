@@ -168,13 +168,25 @@ serve(async (req) => {
           suggestion: 'Acesse o Meta Business Suite > WhatsApp Manager e verifique pendências.'
         };
       }
+      else if (errorCode === 141000) {
+        registerError = {
+          code: errorCode,
+          message: 'A Meta recusou o registro deste número na Cloud API.',
+          suggestion: 'Normalmente é PIN de duas etapas divergente ou número recém-migrado. Aguarde alguns minutos e tente novamente, ou informe o PIN de 6 dígitos configurado no WhatsApp Manager.',
+          requiresPin: true,
+          details: registerData.error
+        };
+      }
       else if (errorCode === 100) {
         registerError = {
           code: errorCode,
-          message: 'Número não está associado ao WABA corretamente.',
-          suggestion: 'Verifique no Meta Business Suite se o número está vinculado ao WABA.'
+          message: 'A Meta não aceitou o registro do número na Cloud API.',
+          suggestion: 'Confirme que o Phone Number ID pertence à WABA informada e que o Access Token tem permissão whatsapp_business_management. Se o número tem verificação em duas etapas, informe o PIN de 6 dígitos.',
+          requiresPin: true,
+          details: registerData.error
         };
       }
+
       else {
         registerError = {
           code: errorCode,
