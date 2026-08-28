@@ -269,22 +269,29 @@ async function processCampaignDispatch(
             if (local.length === 9 && local.startsWith('9')) variantSet.add(`55${ddd}${local.slice(1)}`);
             else if (local.length === 8) variantSet.add(`55${ddd}9${local}`);
           }
-          let existingAssignment: { id: string } | null = null;
-          for (const v of variantSet) {
-            const { data: hit } = await messageDb
-              .from('conversation_assignments').select('id')
-              .eq('channel_id', channel.id).eq('conversation_phone', v).maybeSingle();
-            if (hit) { existingAssignment = hit; break; }
+          // Busca ÚNICA por todas as variantes + sufixo, com escolha determinística.
+          // Se a leitura falhar, NÃO criamos linha nova (evita conversa duplicada).
+          const suffix8 = digits.slice(-8);
+          const orFilter = [
+            ...Array.from(variantSet).map((v) => `conversation_phone.eq.${v}`),
+            ...(suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : []),
+          ].join(',');
+          const { data: candidates, error: lookupError } = await messageDb
+            .from('conversation_assignments')
+            .select('id, assigned_to, status, updated_at, created_at')
+            .eq('channel_id', channel.id)
+            .or(orFilter)
+            .order('updated_at', { ascending: false })
+            .limit(10);
+          if (lookupError) {
+            console.error('[campaign-dispatch] Assignment lookup falhou — pulando bookkeeping (mensagem já enviada):', lookupError.message, formattedPhone);
+            return { success: true, phone: formattedPhone };
           }
-          if (!existingAssignment) {
-            const suffix8 = digits.slice(-8);
-            if (suffix8) {
-              const { data: bySuffix } = await messageDb
-                .from('conversation_assignments').select('id')
-                .eq('channel_id', channel.id).ilike('conversation_phone', `%${suffix8}`).limit(1).maybeSingle();
-              if (bySuffix) existingAssignment = bySuffix;
-            }
-          }
+          const existingAssignment = [...(candidates || [])].sort((a: any, b: any) => {
+            if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+            return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+          })[0] || null;
+
 
           if (existingAssignment) {
             const updatePayload: Record<string, unknown> = { 

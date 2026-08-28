@@ -125,32 +125,24 @@ async function recoverConversationStatsExternal(params: {
   if (!externalSupabase || !params.organizationId || !params.channelId || !params.phone) return;
 
   const normalized = normalizePhone(params.phone);
-  const variants = Array.from(new Set([...getPhoneVariants(normalized), normalized].flatMap((p) => [p, `+${p}`])));
-  const suffix8 = normalized.slice(-8);
 
-  let { data: assignment } = await externalSupabase
-    .from('conversation_assignments')
-    .select('id, organization_id, conversation_phone')
-    .eq('channel_id', params.channelId)
-    .in('conversation_phone', variants)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!assignment && suffix8) {
-    const { data } = await externalSupabase
-      .from('conversation_assignments')
-      .select('id, organization_id, conversation_phone')
-      .eq('channel_id', params.channelId)
-      .ilike('conversation_phone', `%${suffix8}`)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    assignment = data;
+  // Lookup determinístico. Se a LEITURA falhar, abortamos: criar uma linha nova
+  // aqui geraria conversa duplicada e o atendimento "sumiria" do dono atual.
+  let assignment: Record<string, any> | null = null;
+  try {
+    assignment = await findAssignmentByPhone(
+      externalSupabase,
+      params.channelId,
+      normalized,
+      'id, organization_id, conversation_phone, assigned_to, status, updated_at, created_at'
+    );
+  } catch (e) {
+    console.error('[Stats] assignment lookup failed — abortando recovery (sem criar duplicata):', (e as Error).message, { channelId: params.channelId, phone: normalized });
+    return;
   }
 
   if (!assignment && params.direction === 'inbound') {
-    const { data } = await externalSupabase
+    const { data, error: insErr } = await externalSupabase
       .from('conversation_assignments')
       .insert({
         organization_id: params.organizationId,
@@ -159,9 +151,24 @@ async function recoverConversationStatsExternal(params: {
         status: 'pending',
         updated_at: new Date().toISOString(),
       })
-      .select('id, conversation_phone')
+      .select('id, conversation_phone, organization_id')
       .maybeSingle();
-    assignment = data;
+    if (insErr) {
+      // Corrida: outra requisição criou a linha. Reler em vez de duplicar.
+      console.warn('[Stats] assignment insert falhou, relendo:', insErr.message);
+      try {
+        assignment = await findAssignmentByPhone(
+          externalSupabase,
+          params.channelId,
+          normalized,
+          'id, organization_id, conversation_phone, assigned_to, status, updated_at, created_at'
+        );
+      } catch {
+        return;
+      }
+    } else {
+      assignment = data;
+    }
   }
 
   if (!assignment?.id) return;
@@ -395,6 +402,60 @@ function getPhoneVariants(phone: string): string[] {
     }
   }
   return variants;
+}
+
+/**
+ * Lookup determinístico de assignment por telefone (todas as variantes + sufixo 8).
+ *
+ * NUNCA usar .maybeSingle() aqui: com linhas duplicadas o PostgREST devolve ERRO,
+ * o chamador enxergava "não existe" e criava uma linha nova — foi essa a causa raiz
+ * de conversas duplicadas/reatribuídas. Aqui um erro de leitura é PROPAGADO
+ * (AssignmentLookupError) para o chamador ABORTAR em vez de duplicar.
+ */
+class AssignmentLookupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AssignmentLookupError';
+  }
+}
+
+function buildAssignmentPhoneFilter(phone: string): { normalized: string; filter: string } {
+  const normalized = normalizePhone(phone);
+  const exact = getPhoneVariants(normalized).map((v) => `conversation_phone.eq.${v}`);
+  const suffix8 = normalized.slice(-8);
+  const fallback = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+  return { normalized, filter: [...exact, ...fallback].join(',') };
+}
+
+/** Escolhe determinísticamente: com dono > sem dono; in_progress > outros; mais recente. */
+function pickAssignmentRow<T extends Record<string, any>>(rows: T[]): T | null {
+  return [...(rows || [])].sort((a, b) => {
+    if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+    const aActive = a.status === 'in_progress' ? 1 : 0;
+    const bActive = b.status === 'in_progress' ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+  })[0] || null;
+}
+
+async function findAssignmentByPhone(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  channelId: string,
+  phone: string,
+  select = 'id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at'
+): Promise<Record<string, any> | null> {
+  const { filter } = buildAssignmentPhoneFilter(phone);
+  if (!filter) return null;
+  const { data, error } = await db
+    .from('conversation_assignments')
+    .select(select)
+    .eq('channel_id', channelId)
+    .or(filter)
+    .order('updated_at', { ascending: false })
+    .limit(10);
+  if (error) throw new AssignmentLookupError(error.message);
+  return pickAssignmentRow(data || []);
 }
 
 // =============================================
@@ -801,35 +862,21 @@ async function handleConversationAssignment(
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
-  // Try exact match first, then variants
-  let existing: { id: string; organization_id?: string | null; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
-  
   // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
   const caDb = externalSupabase;
-  const { data: exactMatch } = await caDb
-    .from('conversation_assignments')
-    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
-    .eq('channel_id', channelId)
-    .eq('conversation_phone', normalizedPhone)
-    .maybeSingle();
-  
-  existing = exactMatch;
-  
-  // If no exact match, try phone variants (with/without 9th digit)
-  if (!existing && phoneVariants.length > 1) {
-    for (const variant of phoneVariants.slice(1)) {
-      const { data: variantMatch } = await caDb
-        .from('conversation_assignments')
-        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
-        .eq('channel_id', channelId)
-        .eq('conversation_phone', variant)
-        .maybeSingle();
-      if (variantMatch) {
-        existing = variantMatch;
-        console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${variant} (assignment: ${variantMatch.id})`);
-        break;
-      }
-    }
+
+  // Busca única por TODAS as variantes + sufixo 8, com escolha determinística.
+  // Erro de leitura NUNCA é tratado como "não existe" — abortamos, senão criaríamos
+  // uma conversa duplicada e o atendimento sumiria do dono atual.
+  let existing: Record<string, any> | null = null;
+  try {
+    existing = await findAssignmentByPhone(caDb, channelId, normalizedPhone);
+  } catch (e) {
+    console.error(`[handleConversationAssignment] Lookup falhou para ${normalizedPhone} — abortando (sem criar duplicata):`, (e as Error).message);
+    return { assignmentId: '', assignedTo: null, status: 'pending', sectorId: null, isBotHandling: false };
+  }
+  if (existing && existing.conversation_phone !== normalizedPhone) {
+    console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${existing.conversation_phone} (assignment: ${existing.id})`);
   }
 
   if (existing) {
@@ -962,11 +1009,16 @@ async function handleConversationAssignment(
     .single();
 
   if (error || !newAssignment) {
-    // Race condition: fetch existing
-    const { data: fallback } = await caDb
-      .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, is_bot_handling')
-      .eq('channel_id', channelId).eq('conversation_phone', normalizedPhone).maybeSingle();
+    // Corrida (ou índice único barrando duplicata): reler por variantes/sufixo.
+    let fallback: Record<string, any> | null = null;
+    try {
+      fallback = await findAssignmentByPhone(caDb, channelId, normalizedPhone);
+    } catch (e) {
+      console.error('[handleConversationAssignment] Fallback lookup falhou:', (e as Error).message);
+    }
+    if (!fallback) {
+      console.error('[handleConversationAssignment] Insert falhou e nada encontrado na releitura:', error?.message);
+    }
     return {
       assignmentId: fallback?.id || '',
       assignedTo: fallback?.assigned_to || null,

@@ -199,6 +199,32 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // Sem channel_id não há constraint única que proteja: buscar por
+        // variantes/sufixo na organização antes de criar. Erro de leitura
+        // ABORTA (nunca cria linha nova — isso duplicaria a conversa).
+        if (!p.channel_id && filter) {
+          const { data: orphanRows, error: orphanErr } = await ext.from('conversation_assignments')
+            .select('id, assigned_to, status, sector_id, lead_id, channel_id, conversation_phone, updated_at, created_at')
+            .eq('organization_id', orgId)
+            .is('channel_id', null)
+            .or(filter)
+            .limit(10);
+          if (orphanErr) return json({ error: orphanErr.message }, 500);
+          const target = pickAssignmentRow(orphanRows || [], p.assigned_to ?? user.id);
+          if (target) {
+            const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+            if (p.assigned_to !== undefined) updates.assigned_to = p.assigned_to;
+            if (p.status !== undefined) updates.status = p.status;
+            if (p.sector_id !== undefined) updates.sector_id = p.sector_id;
+            if (p.lead_id !== undefined) updates.lead_id = p.lead_id;
+            const { data, error } = await ext.from('conversation_assignments')
+              .update(updates).eq('id', target.id).eq('organization_id', orgId)
+              .select().single();
+            if (error) return json({ error: error.message }, 500);
+            return json({ success: true, assignment: data });
+          }
+        }
+
         const { data, error } = await ext.from('conversation_assignments')
           .upsert(insertRow, { onConflict: 'channel_id,conversation_phone' })
           .select().single();
