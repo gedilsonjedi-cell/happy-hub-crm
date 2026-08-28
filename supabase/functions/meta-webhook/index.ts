@@ -1009,11 +1009,16 @@ async function handleConversationAssignment(
     .single();
 
   if (error || !newAssignment) {
-    // Race condition: fetch existing
-    const { data: fallback } = await caDb
-      .from('conversation_assignments')
-      .select('id, assigned_to, status, sector_id, is_bot_handling')
-      .eq('channel_id', channelId).eq('conversation_phone', normalizedPhone).maybeSingle();
+    // Corrida (ou índice único barrando duplicata): reler por variantes/sufixo.
+    let fallback: Record<string, any> | null = null;
+    try {
+      fallback = await findAssignmentByPhone(caDb, channelId, normalizedPhone);
+    } catch (e) {
+      console.error('[handleConversationAssignment] Fallback lookup falhou:', (e as Error).message);
+    }
+    if (!fallback) {
+      console.error('[handleConversationAssignment] Insert falhou e nada encontrado na releitura:', error?.message);
+    }
     return {
       assignmentId: fallback?.id || '',
       assignedTo: fallback?.assigned_to || null,
