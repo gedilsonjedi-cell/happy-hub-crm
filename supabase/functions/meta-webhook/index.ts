@@ -862,35 +862,21 @@ async function handleConversationAssignment(
 ): Promise<{ assignmentId: string; assignedTo: string | null; status: string; sectorId: string | null; isBotHandling: boolean }> {
   const phoneVariants = getPhoneVariants(normalizedPhone);
 
-  // Try exact match first, then variants
-  let existing: { id: string; organization_id?: string | null; assigned_to: string | null; status: string; sector_id: string | null; is_bot_handling: boolean; lead_id?: string | null; conversation_phone?: string; updated_at?: string } | null = null;
-  
   // CUTOVER: read/write conversation_assignments DIRECTLY on external (SSoT)
   const caDb = externalSupabase;
-  const { data: exactMatch } = await caDb
-    .from('conversation_assignments')
-    .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
-    .eq('channel_id', channelId)
-    .eq('conversation_phone', normalizedPhone)
-    .maybeSingle();
-  
-  existing = exactMatch;
-  
-  // If no exact match, try phone variants (with/without 9th digit)
-  if (!existing && phoneVariants.length > 1) {
-    for (const variant of phoneVariants.slice(1)) {
-      const { data: variantMatch } = await caDb
-        .from('conversation_assignments')
-        .select('id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at')
-        .eq('channel_id', channelId)
-        .eq('conversation_phone', variant)
-        .maybeSingle();
-      if (variantMatch) {
-        existing = variantMatch;
-        console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${variant} (assignment: ${variantMatch.id})`);
-        break;
-      }
-    }
+
+  // Busca única por TODAS as variantes + sufixo 8, com escolha determinística.
+  // Erro de leitura NUNCA é tratado como "não existe" — abortamos, senão criaríamos
+  // uma conversa duplicada e o atendimento sumiria do dono atual.
+  let existing: Record<string, any> | null = null;
+  try {
+    existing = await findAssignmentByPhone(caDb, channelId, normalizedPhone);
+  } catch (e) {
+    console.error(`[handleConversationAssignment] Lookup falhou para ${normalizedPhone} — abortando (sem criar duplicata):`, (e as Error).message);
+    return { assignmentId: '', assignedTo: null, status: 'pending', sectorId: null, isBotHandling: false };
+  }
+  if (existing && existing.conversation_phone !== normalizedPhone) {
+    console.log(`[handleConversationAssignment] Found variant match: ${normalizedPhone} → ${existing.conversation_phone} (assignment: ${existing.id})`);
   }
 
   if (existing) {
