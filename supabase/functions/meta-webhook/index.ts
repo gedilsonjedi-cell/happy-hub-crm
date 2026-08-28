@@ -125,32 +125,24 @@ async function recoverConversationStatsExternal(params: {
   if (!externalSupabase || !params.organizationId || !params.channelId || !params.phone) return;
 
   const normalized = normalizePhone(params.phone);
-  const variants = Array.from(new Set([...getPhoneVariants(normalized), normalized].flatMap((p) => [p, `+${p}`])));
-  const suffix8 = normalized.slice(-8);
 
-  let { data: assignment } = await externalSupabase
-    .from('conversation_assignments')
-    .select('id, organization_id, conversation_phone')
-    .eq('channel_id', params.channelId)
-    .in('conversation_phone', variants)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!assignment && suffix8) {
-    const { data } = await externalSupabase
-      .from('conversation_assignments')
-      .select('id, organization_id, conversation_phone')
-      .eq('channel_id', params.channelId)
-      .ilike('conversation_phone', `%${suffix8}`)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    assignment = data;
+  // Lookup determinístico. Se a LEITURA falhar, abortamos: criar uma linha nova
+  // aqui geraria conversa duplicada e o atendimento "sumiria" do dono atual.
+  let assignment: Record<string, any> | null = null;
+  try {
+    assignment = await findAssignmentByPhone(
+      externalSupabase,
+      params.channelId,
+      normalized,
+      'id, organization_id, conversation_phone, assigned_to, status, updated_at, created_at'
+    );
+  } catch (e) {
+    console.error('[Stats] assignment lookup failed — abortando recovery (sem criar duplicata):', (e as Error).message, { channelId: params.channelId, phone: normalized });
+    return;
   }
 
   if (!assignment && params.direction === 'inbound') {
-    const { data } = await externalSupabase
+    const { data, error: insErr } = await externalSupabase
       .from('conversation_assignments')
       .insert({
         organization_id: params.organizationId,
@@ -159,9 +151,24 @@ async function recoverConversationStatsExternal(params: {
         status: 'pending',
         updated_at: new Date().toISOString(),
       })
-      .select('id, conversation_phone')
+      .select('id, conversation_phone, organization_id')
       .maybeSingle();
-    assignment = data;
+    if (insErr) {
+      // Corrida: outra requisição criou a linha. Reler em vez de duplicar.
+      console.warn('[Stats] assignment insert falhou, relendo:', insErr.message);
+      try {
+        assignment = await findAssignmentByPhone(
+          externalSupabase,
+          params.channelId,
+          normalized,
+          'id, organization_id, conversation_phone, assigned_to, status, updated_at, created_at'
+        );
+      } catch {
+        return;
+      }
+    } else {
+      assignment = data;
+    }
   }
 
   if (!assignment?.id) return;
