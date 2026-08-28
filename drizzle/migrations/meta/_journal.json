@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787943882697,
+      "tag": "0000_drop_mirror_to_external_triggers",
+      "breakpoints": true
+    }
+  ]
+}
