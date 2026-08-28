@@ -397,6 +397,60 @@ function getPhoneVariants(phone: string): string[] {
   return variants;
 }
 
+/**
+ * Lookup determinístico de assignment por telefone (todas as variantes + sufixo 8).
+ *
+ * NUNCA usar .maybeSingle() aqui: com linhas duplicadas o PostgREST devolve ERRO,
+ * o chamador enxergava "não existe" e criava uma linha nova — foi essa a causa raiz
+ * de conversas duplicadas/reatribuídas. Aqui um erro de leitura é PROPAGADO
+ * (AssignmentLookupError) para o chamador ABORTAR em vez de duplicar.
+ */
+class AssignmentLookupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AssignmentLookupError';
+  }
+}
+
+function buildAssignmentPhoneFilter(phone: string): { normalized: string; filter: string } {
+  const normalized = normalizePhone(phone);
+  const exact = getPhoneVariants(normalized).map((v) => `conversation_phone.eq.${v}`);
+  const suffix8 = normalized.slice(-8);
+  const fallback = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
+  return { normalized, filter: [...exact, ...fallback].join(',') };
+}
+
+/** Escolhe determinísticamente: com dono > sem dono; in_progress > outros; mais recente. */
+function pickAssignmentRow<T extends Record<string, any>>(rows: T[]): T | null {
+  return [...(rows || [])].sort((a, b) => {
+    if (!!a.assigned_to !== !!b.assigned_to) return a.assigned_to ? -1 : 1;
+    const aActive = a.status === 'in_progress' ? 1 : 0;
+    const bActive = b.status === 'in_progress' ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+  })[0] || null;
+}
+
+async function findAssignmentByPhone(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  channelId: string,
+  phone: string,
+  select = 'id, organization_id, assigned_to, status, sector_id, is_bot_handling, lead_id, conversation_phone, updated_at, created_at'
+): Promise<Record<string, any> | null> {
+  const { filter } = buildAssignmentPhoneFilter(phone);
+  if (!filter) return null;
+  const { data, error } = await db
+    .from('conversation_assignments')
+    .select(select)
+    .eq('channel_id', channelId)
+    .or(filter)
+    .order('updated_at', { ascending: false })
+    .limit(10);
+  if (error) throw new AssignmentLookupError(error.message);
+  return pickAssignmentRow(data || []);
+}
+
 // =============================================
 // BUSINESS HOURS + HOLIDAY CHECK (single parallelized call, fully cached)
 // =============================================
