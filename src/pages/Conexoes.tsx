@@ -96,7 +96,7 @@ const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/
 
 // Cadastro Incorporado (Embedded Signup) via SDK JavaScript do Facebook.
 // O SDK é carregado globalmente no index.html (FB.init com appId/version v26.0).
-const FB_CONFIG_ID = "1589173589526641";
+const FB_CONFIG_ID = "1079384691613256";
 
 // Dispara o fluxo oficial de Embedded Signup do WhatsApp via FB.login.
 const openFacebookEmbeddedSignup = (onCode?: (code: string) => void) => {
