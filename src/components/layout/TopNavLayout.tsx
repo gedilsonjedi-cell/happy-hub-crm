@@ -15,6 +15,8 @@ import {
   Moon,
   MessageCircle,
   CreditCard,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,6 +49,8 @@ interface TopNavLayoutProps {
   noPadding?: boolean;
 }
 
+const SIDEBAR_EXPANDED_KEY = "optimus-sidebar-expanded";
+
 export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,6 +59,24 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
   const unreadCount = useUnreadMessagesCount();
   const { theme, setTheme } = useTheme();
   const [userProfile, setUserProfile] = useState<{ display_name: string | null; email: string | null } | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_EXPANDED_KEY);
+      if (saved) setIsExpanded(saved === "true");
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(isExpanded));
+    } catch {
+      // ignore storage errors
+    }
+  }, [isExpanded]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -116,27 +138,41 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
   const renderRailItem = (item: { label: string; path: string; icon: React.ElementType; badge?: number }) => {
     const Icon = item.icon;
     const active = isActive(item.path);
-    return (
-      <Tooltip key={item.path} delayDuration={200}>
-        <TooltipTrigger asChild>
-          <Link
-            to={item.path}
-            aria-label={item.label}
+
+    const content = (
+      <Link
+        to={item.path}
+        aria-label={item.label}
+        className={cn(
+          "relative rounded-lg flex items-center transition-colors shrink-0",
+          isExpanded
+            ? "w-full h-10 px-3 gap-3 justify-start"
+            : "w-11 h-11 justify-center",
+          active
+            ? "bg-primary text-primary-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        )}
+      >
+        <Icon className="w-5 h-5 shrink-0" />
+        {isExpanded && <span className="text-sm font-medium truncate">{item.label}</span>}
+        {!!item.badge && item.badge > 0 && (
+          <span
             className={cn(
-              "relative w-11 h-11 rounded-lg flex items-center justify-center transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              "min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold flex items-center justify-center",
+              isExpanded ? "ml-auto" : "absolute -top-0.5 -right-0.5"
             )}
           >
-            <Icon className="w-5 h-5" />
-            {!!item.badge && item.badge > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold flex items-center justify-center">
-                {item.badge > 99 ? "99+" : item.badge}
-              </span>
-            )}
-          </Link>
-        </TooltipTrigger>
+            {item.badge > 99 ? "99+" : item.badge}
+          </span>
+        )}
+      </Link>
+    );
+
+    if (isExpanded) return <div key={item.path}>{content}</div>;
+
+    return (
+      <Tooltip key={item.path} delayDuration={200}>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
         <TooltipContent side="right">{item.label}</TooltipContent>
       </Tooltip>
     );
@@ -144,81 +180,165 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
-      {/* Barra lateral fina */}
-      <aside className="w-[60px] shrink-0 border-r border-border bg-card flex flex-col items-center py-3 gap-2 z-50">
+      {/* Barra lateral fina / expandida */}
+      <aside
+        className={cn(
+          "shrink-0 border-r border-border bg-card flex flex-col py-3 gap-2 z-50 transition-all duration-300 ease-in-out relative",
+          isExpanded ? "w-[240px] px-3" : "w-[60px] items-center px-0"
+        )}
+      >
+        {/* Botão expandir/recolher */}
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="absolute -right-3 top-20 h-6 w-6 rounded-full border-border bg-card shadow-sm hover:bg-muted z-50 p-0"
+              onClick={() => setIsExpanded((v) => !v)}
+              aria-label={isExpanded ? "Recolher menu" : "Expandir menu"}
+            >
+              {isExpanded ? (
+                <ChevronLeft className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {isExpanded ? "Colapsar menu" : "Expandir menu"}
+          </TooltipContent>
+        </Tooltip>
+
         {/* Logo */}
-        <Link to="/atendimento-v2" className="mb-1" aria-label="Início">
+        <Link
+          to="/atendimento-v2"
+          className={cn("mb-1 flex items-center gap-2", isExpanded ? "px-1" : "")}
+          aria-label="Início"
+        >
           <img
             src={theme === "dark" ? optimusLogoLight : optimusLogoDark}
             alt="Optimus"
-            className="w-8 h-8 object-contain"
+            className="w-8 h-8 object-contain shrink-0"
           />
+          {isExpanded && <span className="text-sm font-semibold truncate">Optimus</span>}
         </Link>
 
         {/* Seletor de cliente (somente super admin) */}
         {isSuperAdmin && (
-          <div className="w-full flex justify-center [&_button]:h-9 [&_button]:w-9 [&_button]:px-0 [&_button>span]:hidden [&_button_svg]:mx-auto">
+          <div
+            className={cn(
+              "w-full",
+              isExpanded
+                ? ""
+                : "flex justify-center [&_button]:h-9 [&_button]:w-9 [&_button]:px-0 [&_button>span]:hidden [&_button_svg]:mx-auto"
+            )}
+          >
             <ClientSwitcher />
           </div>
         )}
 
-        <div className="w-8 h-px bg-border my-1" />
+        <div className={cn("bg-border my-1", isExpanded ? "w-full h-px" : "w-8 h-px")} />
 
         {/* Navegação principal */}
-        <nav className="flex flex-col items-center gap-1.5 flex-1">
+        <nav className={cn("flex flex-col gap-1.5 flex-1", isExpanded ? "w-full" : "items-center")}>
           {navItems.map(renderRailItem)}
         </nav>
 
         {/* Rodapé */}
-        <div className="flex flex-col items-center gap-1.5">
+        <div className={cn("flex flex-col gap-1.5", isExpanded ? "w-full" : "items-center")}>
           {renderRailItem({ label: "Configurações", path: "/configuracoes", icon: Settings })}
 
-          <Tooltip delayDuration={200}>
-            <TooltipTrigger asChild>
-              <a
-                href="https://wa.me/5582996251871"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Contato Suporte"
-                className="w-11 h-11 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors"
-              >
-                <MessageCircle className="w-5 h-5" />
-              </a>
-            </TooltipTrigger>
-            <TooltipContent side="right">Contato Suporte</TooltipContent>
-          </Tooltip>
+          {isExpanded ? (
+            <a
+              href="https://wa.me/5582996251871"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Contato Suporte"
+              className="w-full h-10 px-3 gap-3 rounded-lg flex items-center justify-start text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors"
+            >
+              <MessageCircle className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-medium truncate">Contato Suporte</span>
+            </a>
+          ) : (
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <a
+                  href="https://wa.me/5582996251871"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Contato Suporte"
+                  className="w-11 h-11 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="right">Contato Suporte</TooltipContent>
+            </Tooltip>
+          )}
 
           {/* Status online */}
-          <div className="flex justify-center [&_button]:h-9 [&_button]:px-2">
+          <div className={cn("w-full", isExpanded ? "" : "flex justify-center [&_button]:h-9 [&_button]:px-2")}>
             <OnlineStatusToggle />
           </div>
 
           {/* Tema */}
-          <Tooltip delayDuration={200}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-muted-foreground"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                aria-label="Alternar tema"
-              >
-                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">Alternar tema</TooltipContent>
-          </Tooltip>
+          {isExpanded ? (
+            <Button
+              variant="ghost"
+              className="w-full h-10 px-3 justify-start gap-3 text-muted-foreground"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label="Alternar tema"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+              <span className="text-sm font-medium">Alternar tema</span>
+            </Button>
+          ) : (
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  aria-label="Alternar tema"
+                >
+                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Alternar tema</TooltipContent>
+            </Tooltip>
+          )}
 
           {/* Usuário */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Conta">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                    {userProfile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
+              {isExpanded ? (
+                <Button
+                  variant="ghost"
+                  className="w-full h-11 px-2 justify-start gap-2 text-left"
+                  aria-label="Conta"
+                >
+                  <Avatar className="h-7 w-7 shrink-0">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                      {userProfile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col items-start min-w-0">
+                    <p className="text-sm font-medium truncate w-full">
+                      {userProfile?.display_name || user?.email}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate w-full">{user?.email}</p>
+                  </div>
+                </Button>
+              ) : (
+                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Conta">
+                  <Avatar className="h-7 w-7">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                      {userProfile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="end" className="bg-card border-border w-56">
               <DropdownMenuLabel className="font-normal">
@@ -257,7 +377,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
       {/* Conteúdo */}
       <main
         className={cn(
-          "flex-1 min-w-0 min-h-0",
+          "flex-1 min-w-0 min-h-0 transition-all duration-300 ease-in-out",
           noPadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden p-2 sm:p-4 md:p-6"
         )}
       >
