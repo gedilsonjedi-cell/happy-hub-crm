@@ -156,6 +156,8 @@ const Conexoes = () => {
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [showApiToken, setShowApiToken] = useState(false);
   const [showAppSecret, setShowAppSecret] = useState(false);
