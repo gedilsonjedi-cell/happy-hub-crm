@@ -1463,10 +1463,12 @@ const Conexoes = () => {
   return (
     <MainLayout>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 animate-fade-in">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Conexões WhatsApp</h1>
-          <p className="text-muted-foreground">Conecte seus números via Meta Cloud API</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">Conexões</h1>
+          <p className="text-muted-foreground">
+            Gerencie os números de WhatsApp conectados à sua operação.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" onClick={fetchChannels}>
@@ -1474,232 +1476,61 @@ const Conexoes = () => {
             Atualizar
           </Button>
           {channels.length > 0 && (
-            <Button 
-              variant="outline" 
-              className="gap-2"
-              onClick={() => setShowSyncDialog(true)}
-            >
+            <Button variant="outline" className="gap-2" onClick={() => setShowSyncDialog(true)}>
               <RefreshCw className="w-4 h-4" />
               Sincronizar com Meta
             </Button>
           )}
-        </div>
-      </div>
-
-{/* Embedded Signup via Facebook Info Card */}
-      <div className="bg-card rounded-lg border border-blue-500/40 p-6 animate-slide-up mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="w-12 h-12 rounded-lg bg-[#1877F2]/10 flex items-center justify-center border border-[#1877F2]/30 shrink-0">
-            <svg className="w-6 h-6 text-[#1877F2]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-foreground">Cadastro Incorporado (Embedded Signup)</h3>
-              <Badge variant="outline" className="bg-[#1877F2]/10 text-[#1877F2] border-[#1877F2]/30 text-xs">
-                Facebook
-              </Badge>
-            </div>
-            <p className="text-muted-foreground text-sm">
-              Conecte sua conta do WhatsApp Business através do Facebook. O cadastro é feito
-              diretamente no fluxo oficial da Meta, em uma janela popup.
-            </p>
-          </div>
-          <Button
-            className="bg-[#1877F2] hover:bg-[#166FE5] text-white gap-2 shrink-0"
-            onClick={() => openFacebookEmbeddedSignup(handleEmbeddedSignupCode)}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
-            Conectar com o Facebook
+          <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
+            <Plus className="w-4 h-4" />
+            Criar
           </Button>
         </div>
       </div>
 
-      {/* Meta Cloud API Info Card */}
-      <div className="bg-card rounded-lg border border-border p-6 animate-slide-up mb-6">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-            <svg className="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
-            </svg>
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-foreground">Meta Cloud API</h3>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
-                Oficial
-              </Badge>
-            </div>
-            <p className="text-muted-foreground text-sm mb-3">
-              Conexão direta com a API oficial do WhatsApp. Sem custos de provedor intermediário.
-            </p>
-            <a 
-              href="https://developers.facebook.com/apps/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-500 text-sm hover:underline"
-            >
-              Acessar Meta Developer Console
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          <Button onClick={() => { resetForm(); setConnectionType('meta'); setIsDialogOpen(true); }}>
-            Conectar
-          </Button>
+      {/* Busca + contador */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por nome ou número..."
+            className="pl-9"
+          />
         </div>
-      </div>
-
-      {/* Z-API Info Card */}
-      
-        <div className="bg-card rounded-lg border border-emerald-500/30 p-6 animate-slide-up mb-6">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-              <MessageSquare className="w-6 h-6 text-emerald-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-lg font-semibold text-foreground">Z-API</h3>
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
-                  Não Oficial
-                </Badge>
-              </div>
-              <p className="text-muted-foreground text-sm mb-3">
-                Conexão via Z-API para WhatsApp tradicional. Disponível apenas para configuração por administradores.
-              </p>
-              <a 
-                href="https://developer.z-api.io/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-emerald-500 text-sm hover:underline"
-              >
-                Acessar Z-API Developer
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <Button 
-              variant="outline" 
-              className="border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10"
-              onClick={() => { resetForm(); setConnectionType('zapi'); setIsDialogOpen(true); }}
-            >
-              Conectar Z-API
-            </Button>
-          </div>
-        </div>
-      
-
-      {/* Gupshup Info Card */}
-      
-        <div className="bg-card rounded-lg border border-orange-500/30 p-6 animate-slide-up mb-6">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-              <Zap className="w-6 h-6 text-orange-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-lg font-semibold text-foreground">Gupshup</h3>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
-                  Oficial
-                </Badge>
-              </div>
-              <p className="text-muted-foreground text-sm mb-3">
-                Conexão via Gupshup BSP para WhatsApp Business API. Provedor oficial certificado pela Meta.
-              </p>
-              <a 
-                href="https://www.gupshup.io/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-orange-500 text-sm hover:underline"
-              >
-                Acessar Gupshup
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <Button 
-              variant="outline" 
-              className="border-orange-500/30 text-orange-500 hover:bg-orange-500/10"
-              onClick={() => { resetForm(); setConnectionType('gupshup'); setIsDialogOpen(true); }}
-            >
-              Conectar Gupshup
-            </Button>
-        </div>
-
-      </div>
-      
-
-      {/* Setup Guide with Video Tutorial */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Instructions */}
-        <div className="p-5 bg-muted/20 rounded-lg border border-border">
-          <h4 className="font-medium text-foreground mb-3">Como configurar seu App Meta?</h4>
-          <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-            <li>Acesse o <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Meta Developer Console</a> e crie um novo app (tipo: Business)</li>
-            <li>Adicione o produto <strong>WhatsApp</strong> ao seu app</li>
-            <li>Em <strong>API Setup</strong>, copie o <strong>WhatsApp Business Account ID</strong></li>
-            <li>Gere um <strong>Access Token permanente</strong> em Business Settings → System Users</li>
-            <li>Conecte aqui e selecione os números que deseja adicionar</li>
-          </ol>
-        </div>
-
-        {/* Video Tutorial */}
-        <div className="p-5 bg-muted/20 rounded-lg border border-border">
-          <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            Tutorial em Vídeo
-          </h4>
-          <div className="relative aspect-video bg-black/50 rounded-lg overflow-hidden border border-border/50">
-            {/* Placeholder Video - Replace with actual video URL later */}
-            <video 
-              className="w-full h-full object-cover"
-              controls
-              poster="https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80"
-            >
-              {/* Add your video source here */}
-              <source src="" type="video/mp4" />
-              Seu navegador não suporta vídeos.
-            </video>
-            
-            {/* Overlay for empty state */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white">
-              <div className="w-16 h-16 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center mb-3">
-                <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium">Vídeo Tutorial</p>
-              <p className="text-xs text-white/60 mt-1">Em breve</p>
-            </div>
-          </div>
-        </div>
+        <span className="text-sm text-muted-foreground">
+          {filteredChannels.length} {filteredChannels.length === 1 ? "conexão" : "conexões"}
+        </span>
       </div>
 
       {/* Connected Numbers Section */}
-      <div className="mt-8">
-        <h3 className="text-lg font-semibold text-foreground mb-4">
-          Números Conectados ({channels.length})
-        </h3>
-        
+      <div className="mt-2">
         {loading ? (
           <div className="bg-card rounded-lg border border-border p-8 text-center">
             <Loader2 className="w-8 h-8 mx-auto text-muted-foreground/50 animate-spin mb-2" />
             <p className="text-muted-foreground">Carregando...</p>
           </div>
-        ) : channels.length === 0 ? (
+        ) : filteredChannels.length === 0 ? (
           <div className="bg-card rounded-lg border border-border p-8 text-center">
             <Smartphone className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-            <p className="text-muted-foreground">Nenhum número conectado ainda</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Clique em "Nova Conexão" para começar
+            <p className="text-muted-foreground">
+              {channels.length === 0 ? "Nenhum número conectado ainda" : "Nenhuma conexão encontrada"}
             </p>
-            <Button className="mt-4" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
-              Conectar primeiro número
-            </Button>
+            {channels.length === 0 && (
+              <>
+                <p className="text-sm text-muted-foreground/70 mt-1">
+                  Clique em "Criar" para conectar seu primeiro número
+                </p>
+                <Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
+                  Conectar primeiro número
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {channels.map((channel) => (
+            {filteredChannels.map((channel) => (
               <div 
                 key={channel.id}
                 className={cn(
