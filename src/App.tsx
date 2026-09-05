@@ -60,6 +60,7 @@ import AtendimentoV2 from "./pages/AtendimentoV2";
 import Links from "./pages/Links";
 import LeadsSemInteracao from "./pages/LeadsSemInteracao";
 import RedirectPage from "./pages/RedirectPage";
+import Configuracoes from "./pages/Configuracoes";
 
 const queryClient = new QueryClient({
   defaultOptions: {
