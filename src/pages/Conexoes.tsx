@@ -23,7 +23,10 @@ import {
   Bot,
   Zap,
   Workflow,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Settings2,
+  Search,
+  Star
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
