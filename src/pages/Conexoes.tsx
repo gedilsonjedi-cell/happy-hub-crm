@@ -1460,6 +1460,13 @@ const Conexoes = () => {
     toast.success(`${label} copiado!`);
   };
 
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredChannels = normalizedSearch
+    ? channels.filter((c) =>
+        `${c.name ?? ""} ${c.phone ?? ""}`.toLowerCase().includes(normalizedSearch)
+      )
+    : channels;
+
   return (
     <MainLayout>
       {/* Header */}
