@@ -2046,6 +2046,47 @@ const Conexoes = () => {
         )}
       </div>
 
+      {/* Criar conexão */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="bg-card border-border max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Criar conexão</DialogTitle>
+            <DialogDescription>
+              Escolha o tipo de canal que deseja conectar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateDialog(false);
+              openFacebookEmbeddedSignup(handleEmbeddedSignupCode);
+            }}
+            className="w-full text-left rounded-lg border border-[#1877F2]/40 bg-[#1877F2]/5 hover:bg-[#1877F2]/10 transition-colors p-4 flex items-start gap-3"
+          >
+            <div className="w-11 h-11 rounded-lg bg-[#1877F2]/10 border border-[#1877F2]/30 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6 text-[#1877F2]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h4 className="font-semibold text-foreground">WhatsApp Cloud (Oficial) via Facebook</h4>
+                <Badge variant="outline" className="gap-1 text-[10px] bg-primary/10 text-primary border-primary/30">
+                  <Star className="w-3 h-3" />
+                  Recomendado
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Conecte seu número pelo cadastro oficial da Meta. Rápido, sem tokens manuais e com
+                webhook configurado automaticamente.
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+          </button>
+        </DialogContent>
+      </Dialog>
+
       {/* Connect Dialog - Step-based */}
       <Dialog 
         open={isDialogOpen} 
