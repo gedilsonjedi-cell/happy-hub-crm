@@ -2,6 +2,21 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+
+    <!-- Redirecionamento rápido /r/<slug>: sai antes de carregar o app -->
+    <script>
+      (function () {
+        try {
+          var m = window.location.pathname.match(/^\/r\/([^\/?#]+)/);
+          if (m) {
+            window.location.replace(
+              "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/redirect-link/" + m[1]
+            );
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     
     <!-- Primary Meta Tags -->
