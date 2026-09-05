@@ -60,6 +60,7 @@ import AtendimentoV2 from "./pages/AtendimentoV2";
 import Links from "./pages/Links";
 import LeadsSemInteracao from "./pages/LeadsSemInteracao";
 import RedirectPage from "./pages/RedirectPage";
+import Configuracoes from "./pages/Configuracoes";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -186,6 +187,7 @@ const App = () => (
           <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
+          <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
           <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
           <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
           <Route path="/minha-assinatura" element={<ProtectedRoute><MinhaAssinatura /></ProtectedRoute>} />
