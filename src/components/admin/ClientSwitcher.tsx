@@ -60,12 +60,17 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
           variant="ghost"
           size="icon"
           className={cn(
-            "h-10 w-10 rounded-full p-0",
-            isImpersonating && "bg-primary/10 text-primary hover:bg-primary/15"
+            "group h-10 w-10 rounded-full bg-transparent p-0 hover:bg-transparent data-[state=open]:bg-transparent",
+            isImpersonating && "text-primary"
           )}
           aria-label={`Cliente: ${currentName}`}
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+          <span
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary transition-colors group-hover:bg-primary/20",
+              isImpersonating && "ring-2 ring-primary/30 ring-offset-2 ring-offset-background"
+            )}
+          >
             {initial}
           </span>
         </Button>
