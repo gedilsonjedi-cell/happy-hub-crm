@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
+    --background: 0 0% 96.5%;
     --foreground: 160 10% 10%;
 
     --card: 0 0% 100%;
@@ -36,8 +36,8 @@
     --warning: 45 100% 51%;
     --warning-foreground: 0 0% 10%;
 
-    --border: 160 5% 88%;
-    --input: 160 5% 88%;
+    --border: 214 16% 88%;
+    --input: 214 16% 88%;
     --ring: 142 70% 45%;
 
     --radius: 0.5rem;
