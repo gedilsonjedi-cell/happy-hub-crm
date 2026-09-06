@@ -40,8 +40,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import optimusLogoDark from "@/assets/optimus-logo-dark.png";
-import optimusLogoLight from "@/assets/optimus-logo.png";
+import optimusIcon from "@/assets/optimus-icon.png";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
 
 interface TopNavLayoutProps {
@@ -216,9 +215,9 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
           aria-label="Início"
         >
           <img
-            src={theme === "dark" ? optimusLogoLight : optimusLogoDark}
+            src={optimusIcon}
             alt="Optimus"
-            className="w-12 h-12 object-contain shrink-0"
+            className="w-11 h-11 object-contain shrink-0"
           />
         </Link>
 
