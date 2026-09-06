@@ -218,7 +218,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
           <img
             src={theme === "dark" ? optimusLogoLight : optimusLogoDark}
             alt="Optimus"
-            className="w-8 h-8 object-contain shrink-0"
+            className="w-10 h-10 object-contain shrink-0"
           />
           {isExpanded && <span className="text-sm font-semibold truncate">Optimus</span>}
         </Link>
@@ -227,13 +227,11 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         {isSuperAdmin && (
           <div
             className={cn(
-              "w-full",
-              isExpanded
-                ? ""
-                : "flex justify-center [&_button]:h-9 [&_button]:w-9 [&_button]:px-0 [&_button>span]:hidden [&_button_svg]:mx-auto"
+              "min-w-0",
+              isExpanded ? "w-full" : "flex w-full justify-center"
             )}
           >
-            <ClientSwitcher />
+            <ClientSwitcher compact={!isExpanded} />
           </div>
         )}
 
