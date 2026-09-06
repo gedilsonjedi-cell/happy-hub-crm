@@ -344,7 +344,7 @@ const MessageBubble = memo(function MessageBubble({
                 ? isFailed
                   ? "bg-destructive/80 text-destructive-foreground"
                   : "bg-primary text-primary-foreground"
-                : "bg-muted text-foreground"
+                : "bg-card border border-border/60 text-foreground"
             )}
           >
             {isFailed && (
