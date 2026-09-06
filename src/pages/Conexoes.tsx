@@ -2084,7 +2084,56 @@ const Conexoes = () => {
             </div>
             <ArrowRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateDialog(false);
+              resetForm();
+              setConnectionType('meta');
+              setStep('credentials');
+              setIsDialogOpen(true);
+            }}
+            className="w-full text-left rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors p-4 flex items-start gap-3"
+          >
+            <div className="w-11 h-11 rounded-lg bg-muted/40 border border-border flex items-center justify-center shrink-0">
+              <Webhook className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-semibold text-foreground mb-1">Conexão manual (Token + Webhook)</h4>
+              <p className="text-sm text-muted-foreground">
+                Informe o WABA ID e o Access Token permanente para buscar seus números e
+                configurar o webhook manualmente.
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+          </button>
+
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateDialog(false);
+                resetForm();
+                setConnectionType('zapi');
+                setIsDialogOpen(true);
+              }}
+              className="w-full text-left rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors p-4 flex items-start gap-3"
+            >
+              <div className="w-11 h-11 rounded-lg bg-muted/40 border border-border flex items-center justify-center shrink-0">
+                <Zap className="w-5 h-5 text-emerald-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-foreground mb-1">Z-API (não oficial)</h4>
+                <p className="text-sm text-muted-foreground">
+                  Conecte uma instância Z-API com Instance ID e Token.
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+            </button>
+          )}
         </DialogContent>
+
       </Dialog>
 
       {/* Connect Dialog - Step-based */}
