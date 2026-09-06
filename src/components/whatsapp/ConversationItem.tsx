@@ -123,8 +123,7 @@ export const ConversationItem = memo(function ConversationItem({
         !isSelected && !bulkMode && "border border-transparent",
         isRecentlyUpdated && !isSelected && "animate-pulse bg-primary/10 border-l-4 border-primary",
         bulkMode && isBulkSelected && "bg-primary/10 border border-primary/30",
-        bulkMode && !isBulkSelected && "border border-transparent",
-        isBlocked && "bg-destructive/20 border border-destructive/50 hover:bg-destructive/25"
+        bulkMode && !isBulkSelected && "border border-transparent"
       )}
       onClick={handleClick}
     >
@@ -156,6 +155,12 @@ export const ConversationItem = memo(function ConversationItem({
           <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
             <MessageSquare className="w-2.5 h-2.5 text-white" />
           </div>
+          {conversation.unreadCount > 0 && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
+              aria-label="Nova mensagem"
+            />
+          )}
         </div>
 
         {/* Content */}
