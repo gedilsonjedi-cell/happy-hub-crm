@@ -333,7 +333,7 @@ const MessageBubble = memo(function MessageBubble({
 
       <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
         <div className={cn(
-          "max-w-[80%] transition-opacity duration-300",
+          "max-w-[min(85%,360px)] transition-opacity duration-300",
           isFailed ? "space-y-2" : "",
           isSending ? "opacity-60" : "opacity-100"
         )}>
@@ -540,7 +540,7 @@ const ProgressiveImage = memo(function ProgressiveImage({
         onLoad={handleLoad}
         onError={handleError}
         className={cn(
-          "max-w-full rounded-lg max-h-60 object-cover transition-opacity duration-300",
+          "w-auto max-w-[300px] rounded-lg max-h-56 object-cover transition-opacity duration-300",
           loaded ? "opacity-100" : "opacity-0 absolute inset-0"
         )}
       />
