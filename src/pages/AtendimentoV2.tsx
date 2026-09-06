@@ -5275,7 +5275,7 @@ const AtendimentoV2 = () => {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0 text-left">
-                        <h3 className="font-semibold text-foreground truncate">{selectedConversation.name || selectedConversation.phone}</h3>
+                        <h3 className="font-semibold text-primary truncate">{selectedConversation.name || selectedConversation.phone}</h3>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
                           <Phone className="w-3 h-3 shrink-0" /><span className="truncate">{selectedConversation.phone}</span>
                         </p>
