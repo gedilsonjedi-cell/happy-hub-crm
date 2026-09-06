@@ -212,15 +212,14 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
         {/* Logo */}
         <Link
           to="/atendimento-v2"
-          className={cn("mb-1 flex items-center gap-2", isExpanded ? "px-1" : "")}
+          className={cn("mb-1 flex items-center justify-center", isExpanded ? "px-1" : "")}
           aria-label="Início"
         >
           <img
             src={theme === "dark" ? optimusLogoLight : optimusLogoDark}
             alt="Optimus"
-            className="w-10 h-10 object-contain shrink-0"
+            className="w-12 h-12 object-contain shrink-0"
           />
-          {isExpanded && <span className="text-sm font-semibold truncate">Optimus</span>}
         </Link>
 
         {/* Seletor de cliente (somente super admin) */}
