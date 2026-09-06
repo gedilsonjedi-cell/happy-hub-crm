@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Building2, 
-  ChevronDown, 
+import {
+  ChevronDown,
   Settings, 
   LogOut,
   Eye,
@@ -160,7 +159,7 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        org.is_active ? "bg-green-500" : "bg-muted"
+                        org.is_active ? "bg-success" : "bg-muted"
                       )} />
                       <div>
                         <p className="font-medium">{org.name}</p>

@@ -57,7 +57,7 @@ function StatCard({ title, value, icon: Icon, tone = "primary", trend, subtitle 
           {trend !== undefined && (
             <div className={cn(
               "flex items-center gap-1 mt-2 text-xs font-medium",
-              trend >= 0 ? "text-emerald-500" : "text-destructive"
+              trend >= 0 ? "text-success" : "text-destructive"
             )}>
               {trend >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
               <span>{Math.abs(trend)}% vs ontem</span>
