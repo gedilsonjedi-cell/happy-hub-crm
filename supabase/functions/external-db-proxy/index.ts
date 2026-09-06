@@ -340,11 +340,37 @@ Deno.serve(async (req: Request) => {
       .from("profiles")
       .select("organization_id")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (!profile?.organization_id) {
+    // super_admin has no organization_id bound — it works via impersonation
+    const { data: roleData } = await internalServiceRole
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "super_admin")
+      .maybeSingle();
+
+    const isSuperAdmin = !!roleData;
+
+    let organizationId = profile?.organization_id
+      ? String(profile.organization_id)
+      : "";
+
+    if (
+      isSuperAdmin &&
+      typeof impersonatedOrgId === "string" &&
+      impersonatedOrgId.trim()
+    ) {
+      organizationId = impersonatedOrgId.trim();
+    }
+
+    if (!organizationId) {
       return new Response(
-        JSON.stringify({ error: "No organization found" }),
+        JSON.stringify({
+          error: isSuperAdmin
+            ? "No organization selected"
+            : "No organization found",
+        }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -352,20 +378,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    let organizationId = String(profile.organization_id);
-
-    if (typeof impersonatedOrgId === "string" && impersonatedOrgId.trim()) {
-      const { data: roleData } = await internalServiceRole
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "super_admin")
-        .maybeSingle();
-
-      if (roleData) {
-        organizationId = impersonatedOrgId;
-      }
-    }
 
     // ── External DB client ─────────────────────────────────────────
     const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
