@@ -91,7 +91,7 @@ const MessageBubble = memo(function MessageBubble({
                 <video
                   src={message.media_url}
                   preload="none"
-                  className="max-w-full rounded-lg max-h-60"
+                  className="w-auto max-w-[300px] rounded-lg max-h-56"
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
                   <Play className="w-12 h-12 text-white drop-shadow-lg" />
@@ -170,7 +170,7 @@ const MessageBubble = memo(function MessageBubble({
               className="cursor-pointer group relative"
               onClick={() => onMediaPreview(headerMediaUrl, "video")}
             >
-              <video src={headerMediaUrl} preload="none" className="max-w-full rounded-lg max-h-60" />
+              <video src={headerMediaUrl} preload="none" className="w-auto max-w-[300px] rounded-lg max-h-56" />
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg group-hover:bg-black/40 transition-colors">
                 <Play className="w-12 h-12 text-white drop-shadow-lg" />
               </div>
@@ -214,7 +214,7 @@ const MessageBubble = memo(function MessageBubble({
                 {buttons.map((button, idx) => {
                   const btnType = String(button.type || '').toUpperCase();
                   return (
-                    <div key={idx} className="flex items-center justify-center gap-2 py-1.5 px-3 rounded bg-background/20 text-xs font-medium text-center">
+                    <div key={idx} className="flex items-center justify-center gap-1.5 py-1 px-2 rounded bg-background/20 text-xs font-medium text-center leading-tight">
                       {btnType === "URL" && <><span className="text-primary">🔗</span><span>{button.text}</span></>}
                       {btnType === "PHONE_NUMBER" && <><Phone className="w-3 h-3 text-primary" /><span>{button.text}</span></>}
                       {btnType === "QUICK_REPLY" && <span>{button.text}</span>}
@@ -333,7 +333,7 @@ const MessageBubble = memo(function MessageBubble({
 
       <div className={cn("flex", isOutbound ? "justify-end" : "justify-start")}>
         <div className={cn(
-          "max-w-[80%] transition-opacity duration-300",
+          "max-w-[min(85%,360px)] transition-opacity duration-300",
           isFailed ? "space-y-2" : "",
           isSending ? "opacity-60" : "opacity-100"
         )}>
@@ -540,7 +540,7 @@ const ProgressiveImage = memo(function ProgressiveImage({
         onLoad={handleLoad}
         onError={handleError}
         className={cn(
-          "max-w-full rounded-lg max-h-60 object-cover transition-opacity duration-300",
+          "w-auto max-w-[300px] rounded-lg max-h-56 object-cover transition-opacity duration-300",
           loaded ? "opacity-100" : "opacity-0 absolute inset-0"
         )}
       />
