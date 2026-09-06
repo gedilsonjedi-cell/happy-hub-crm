@@ -33,31 +33,39 @@ interface StatCardProps {
   title: string;
   value: number | string;
   icon: React.ElementType;
-  iconColor?: string;
+  tone?: "primary" | "success" | "warning" | "accent" | "destructive";
   trend?: number;
   subtitle?: string;
 }
 
-function StatCard({ title, value, icon: Icon, iconColor = "text-primary", trend, subtitle }: StatCardProps) {
+const statTones = {
+  primary: "bg-primary/10 text-primary",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/15 text-warning",
+  accent: "bg-accent/10 text-accent",
+  destructive: "bg-destructive/10 text-destructive",
+};
+
+function StatCard({ title, value, icon: Icon, tone = "primary", trend, subtitle }: StatCardProps) {
   return (
-    <div className="bg-card rounded-lg border border-border p-5 animate-fade-in">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-3xl font-bold text-foreground">{value}</p>
+    <div className="min-h-[132px] rounded-lg border border-border/80 bg-card p-5 shadow-sm animate-fade-in">
+      <div className="flex h-full items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="mt-2 text-3xl font-semibold text-foreground">{value}</p>
           {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
           {trend !== undefined && (
             <div className={cn(
               "flex items-center gap-1 mt-2 text-xs font-medium",
-              trend >= 0 ? "text-emerald-500" : "text-destructive"
+              trend >= 0 ? "text-success" : "text-destructive"
             )}>
               {trend >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
               <span>{Math.abs(trend)}% vs ontem</span>
             </div>
           )}
         </div>
-        <div className={cn("p-2 rounded-lg bg-primary/10", iconColor.replace("text-", "bg-").replace("text-", "") + "/10")}>
-          <Icon className={cn("w-5 h-5", iconColor)} />
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", statTones[tone])}>
+          <Icon className="h-5 w-5" />
         </div>
       </div>
     </div>
@@ -328,79 +336,75 @@ const Index = () => {
   return (
     <MainLayout>
       {/* Header */}
-      <div className="mb-8 animate-fade-in">
-        <h1 className="text-2xl font-bold text-foreground mb-1">Dashboard CRM</h1>
-        <p className="text-muted-foreground">Visão geral do seu CRM WhatsApp</p>
+      <div className="mb-6 animate-fade-in">
+        <h1 className="text-2xl font-semibold text-foreground">Dashboard CRM</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Visão geral do seu CRM WhatsApp</p>
       </div>
 
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* KPI Grid */}
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total de Leads"
           value={stats.totalLeads}
           icon={Users}
-          iconColor="text-primary"
+          tone="primary"
         />
         <StatCard
           title="Novos Hoje"
           value={stats.newToday}
           icon={UserPlus}
-          iconColor="text-emerald-500"
+          tone="success"
         />
         <StatCard
           title="Conversas Abertas"
           value={stats.openConversations}
           icon={MessageSquare}
-          iconColor="text-blue-500"
+          tone="accent"
         />
         <StatCard
           title="Campanhas Enviadas"
           value={stats.campaignsSent}
           icon={Send}
-          iconColor="text-purple-500"
+          tone="primary"
         />
-      </div>
-
-      {/* Support Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="Tempo Médio de Resposta"
           value={formatTime(stats.avgResponseTime)}
           icon={Timer}
-          iconColor="text-amber-500"
+          tone="warning"
           subtitle="Primeira resposta"
         />
         <StatCard
           title="Resolvidos Hoje"
           value={stats.resolvedToday}
           icon={CheckCircle2}
-          iconColor="text-emerald-500"
+          tone="success"
         />
         <StatCard
           title="Pendentes"
           value={stats.pendingConversations}
           icon={Clock}
-          iconColor="text-orange-500"
+          tone="warning"
         />
         <StatCard
           title="Em Andamento"
           value={stats.inProgressConversations}
           icon={PhoneCall}
-          iconColor="text-blue-500"
+          tone="accent"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Daily Resolution Chart */}
-        <Card className="lg:col-span-2 animate-slide-up">
-          <CardHeader className="pb-2">
+        <Card className="border-border/80 shadow-sm lg:col-span-2 animate-slide-up">
+          <CardHeader className="pb-1">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Atendimentos por Dia</CardTitle>
+              <CardTitle className="text-base font-semibold">Atendimentos por Dia</CardTitle>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-end justify-between gap-2 h-40 mt-4">
+          <CardContent className="pt-3">
+            <div className="mt-2 flex h-44 items-end justify-between gap-3 rounded-lg bg-muted/20 px-4 pt-5">
               {dailyStats.map((day, index) => (
                 <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
                   <div className="w-full flex flex-col items-center gap-1">
@@ -408,7 +412,7 @@ const Index = () => {
                       {day.resolved}
                     </span>
                     <div 
-                      className="w-full bg-primary/80 rounded-t-sm transition-all duration-300 hover:bg-primary"
+                      className="w-full rounded-t-md bg-primary/70 transition-colors duration-300 hover:bg-primary"
                       style={{ 
                         height: `${Math.max((day.resolved / maxResolved) * 100, 8)}px`,
                         minHeight: "8px"
@@ -429,18 +433,18 @@ const Index = () => {
         </Card>
 
         {/* Quick Stats */}
-        <Card className="animate-slide-up">
-          <CardHeader className="pb-2">
+        <Card className="border-border/80 shadow-sm animate-slide-up">
+          <CardHeader className="pb-1">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Resumo do Dia</CardTitle>
+              <CardTitle className="text-base font-semibold">Resumo do Dia</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+          <CardContent className="space-y-3 pt-3">
+            <div className="flex items-center justify-between rounded-lg border border-border/60 p-3.5">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/10 rounded-lg">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <div className="rounded-lg bg-success/10 p-2">
+                  <CheckCircle2 className="h-4 w-4 text-success" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">Finalizados</p>
@@ -450,10 +454,10 @@ const Index = () => {
               <span className="text-2xl font-bold text-foreground">{stats.resolvedToday}</span>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg border border-border/60 p-3.5">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/10 rounded-lg">
-                  <PhoneCall className="w-4 h-4 text-blue-500" />
+                <div className="rounded-lg bg-accent/10 p-2">
+                  <PhoneCall className="h-4 w-4 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">Em Atendimento</p>
@@ -463,10 +467,10 @@ const Index = () => {
               <span className="text-2xl font-bold text-foreground">{stats.inProgressConversations}</span>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg border border-border/60 p-3.5">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500/10 rounded-lg">
-                  <Clock className="w-4 h-4 text-orange-500" />
+                <div className="rounded-lg bg-warning/15 p-2">
+                  <Clock className="h-4 w-4 text-warning" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">Aguardando</p>
@@ -479,13 +483,13 @@ const Index = () => {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Attendant Performance */}
-        <Card className="animate-slide-up">
+        <Card className="border-border/80 shadow-sm animate-slide-up">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Desempenho por Atendente</CardTitle>
+              <CardTitle className="text-base font-semibold">Desempenho por Atendente</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
@@ -493,7 +497,7 @@ const Index = () => {
               <ScrollArea className="h-64">
                 <div className="space-y-4">
                   {attendantMetrics.map((attendant) => (
-                    <div key={attendant.userId} className="p-3 bg-muted/30 rounded-lg">
+                    <div key={attendant.userId} className="rounded-lg border border-border/60 p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="w-8 h-8">
@@ -511,12 +515,12 @@ const Index = () => {
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-center">
-                        <div className="p-2 bg-background rounded">
-                          <p className="text-lg font-bold text-blue-500">{attendant.inProgress}</p>
+                        <div className="rounded-md bg-muted/30 p-2.5">
+                          <p className="text-lg font-semibold text-accent">{attendant.inProgress}</p>
                           <p className="text-xs text-muted-foreground">Em Andamento</p>
                         </div>
-                        <div className="p-2 bg-background rounded">
-                          <p className="text-lg font-bold text-emerald-500">{attendant.resolved}</p>
+                        <div className="rounded-md bg-muted/30 p-2.5">
+                          <p className="text-lg font-semibold text-success">{attendant.resolved}</p>
                           <p className="text-xs text-muted-foreground">Finalizados</p>
                         </div>
                       </div>
@@ -534,11 +538,11 @@ const Index = () => {
         </Card>
 
         {/* Recent Activity */}
-        <Card className="animate-slide-up">
+        <Card className="border-border/80 shadow-sm animate-slide-up">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-foreground" />
-              <CardTitle className="text-lg">Atividade Recente</CardTitle>
+              <CardTitle className="text-base font-semibold">Atividade Recente</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
@@ -546,14 +550,14 @@ const Index = () => {
               <ScrollArea className="h-64">
                 <div className="space-y-3">
                   {recentActivity.map((activity) => (
-                    <div key={activity.id} className="flex items-start gap-3 p-2 hover:bg-muted/30 rounded-lg transition-colors">
+                    <div key={activity.id} className="flex items-start gap-3 rounded-lg border-b border-border/50 p-3 last:border-b-0 hover:bg-muted/30 transition-colors">
                       <div className={cn(
                         "p-1.5 rounded-full mt-0.5",
-                        activity.type === "message_received" ? "bg-emerald-500/10" : "bg-blue-500/10"
+                        activity.type === "message_received" ? "bg-success/10" : "bg-accent/10"
                       )}>
                         <MessageSquare className={cn(
                           "w-3 h-3",
-                          activity.type === "message_received" ? "text-emerald-500" : "text-blue-500"
+                          activity.type === "message_received" ? "text-success" : "text-accent"
                         )} />
                       </div>
                       <div className="flex-1 min-w-0">

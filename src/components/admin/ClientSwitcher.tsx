@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Building2, 
-  ChevronDown, 
+import {
+  ChevronDown,
   Settings, 
   LogOut,
   Eye,
@@ -19,12 +18,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useSuperAdmin } from "@/hooks/useSuperAdmin";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
 
-export function ClientSwitcher() {
+interface ClientSwitcherProps {
+  compact?: boolean;
+}
+
+export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
   const { isSuperAdmin } = useUserRole();
   const { 
     organizations, 
@@ -42,9 +50,49 @@ export function ClientSwitcher() {
 
   if (!isSuperAdmin) return null;
 
+  const currentName = selectedOrganization?.name || "Selecionar cliente";
+  const initial = selectedOrganization?.name?.trim().charAt(0).toUpperCase() || "C";
+
+  const trigger = (
+    <DropdownMenuTrigger asChild>
+      {compact ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-10 w-10 rounded-full p-0",
+            isImpersonating && "bg-primary/10 text-primary hover:bg-primary/15"
+          )}
+          aria-label={`Cliente: ${currentName}`}
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            {initial}
+          </span>
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            "h-10 w-full min-w-0 justify-start gap-2 px-2.5",
+            isImpersonating && "border-primary/40 bg-primary/5"
+          )}
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {initial}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+            {currentName}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Button>
+      )}
+    </DropdownMenuTrigger>
+  );
+
   return (
-    <div className="flex items-center gap-1 sm:gap-2">
-      {isImpersonating && (
+    <div className={cn("flex min-w-0 items-center", compact ? "justify-center" : "w-full")}>
+      {!compact && isImpersonating && (
         <div className="hidden sm:flex items-center gap-2 bg-warning/10 text-warning px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-warning/20">
           <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
           <span className="text-xs sm:text-sm font-medium max-w-[100px] truncate">
@@ -62,22 +110,12 @@ export function ClientSwitcher() {
       )}
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className={cn(
-              "gap-1 sm:gap-2 h-8 px-2 sm:px-3",
-              isImpersonating && "border-warning/50"
-            )}
-          >
-            <Building2 className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden lg:inline text-xs sm:text-sm">
-              {isImpersonating ? "Trocar" : "Clientes"}
-            </span>
-            <ChevronDown className="w-3 h-3" />
-          </Button>
-        </DropdownMenuTrigger>
+        {compact ? (
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+            <TooltipContent side="right">{currentName}</TooltipContent>
+          </Tooltip>
+        ) : trigger}
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel className="flex items-center justify-between">
             <span>Clientes</span>
@@ -121,7 +159,7 @@ export function ClientSwitcher() {
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        org.is_active ? "bg-green-500" : "bg-muted"
+                        org.is_active ? "bg-success" : "bg-muted"
                       )} />
                       <div>
                         <p className="font-medium">{org.name}</p>
