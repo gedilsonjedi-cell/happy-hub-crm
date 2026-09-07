@@ -19,10 +19,41 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   try {
-    const { data, error } = await supabase.rpc("resolve_redirect_link", { _slug: slug });
+    const { data, error } = await supabase.rpc("resolve_redirect_link_v2", { _slug: slug });
     const link = Array.isArray(data) ? data[0] : data;
     if (error || !link) {
       return new Response(notFoundHtml, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+
+    const countClick = () => {
+      const count = supabase.rpc("increment_redirect_click", { link_id: (link as any).id });
+      // @ts-ignore EdgeRuntime is available in Deno Deploy
+      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(count.then(() => {}).catch(() => {}));
+      else count.then(() => {}).catch(() => {});
+    };
+
+    // Modo 1: redirecionamento de link externo
+    if ((link as any).link_type === "external_redirect") {
+      const raw = String((link as any).original_url || "").trim();
+      let external = "";
+      try {
+        const parsed = new URL(raw);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") external = parsed.toString();
+      } catch (_) { /* url inválida */ }
+
+      if (!external) {
+        return new Response(notFoundHtml, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+
+      countClick();
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: external,
+          "cache-control": "no-store, no-cache, must-revalidate",
+          "referrer-policy": "no-referrer",
+        },
+      });
     }
 
     const destinations = ((link as any).destinations as Destination[]) || [];
