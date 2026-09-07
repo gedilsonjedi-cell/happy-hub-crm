@@ -3111,9 +3111,36 @@ export type Database = {
           },
         ]
       }
+      redirect_link_clicks: {
+        Row: {
+          clicked_at: string
+          id: number
+          link_id: string
+        }
+        Insert: {
+          clicked_at?: string
+          id?: number
+          link_id: string
+        }
+        Update: {
+          clicked_at?: string
+          id?: number
+          link_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_link_clicks_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redirect_links: {
         Row: {
           click_count: number | null
+          click_count_base: number
           created_at: string | null
           created_by: string
           destinations: Json
@@ -3128,6 +3155,7 @@ export type Database = {
         }
         Insert: {
           click_count?: number | null
+          click_count_base?: number
           created_at?: string | null
           created_by: string
           destinations?: Json
@@ -3142,6 +3170,7 @@ export type Database = {
         }
         Update: {
           click_count?: number | null
+          click_count_base?: number
           created_at?: string | null
           created_by?: string
           destinations?: Json
@@ -4285,6 +4314,7 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      log_redirect_click: { Args: { link_id: string }; Returns: undefined }
       maintenance_purge_operational_garbage: {
         Args: never
         Returns: {
@@ -4419,6 +4449,7 @@ export type Database = {
           updated_count: number
         }[]
       }
+      sync_redirect_click_counts: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       update_session_activity: { Args: never; Returns: boolean }
       upsert_conversation_stats_manual: {

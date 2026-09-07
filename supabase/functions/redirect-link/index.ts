@@ -35,7 +35,8 @@ Deno.serve(async (req) => {
     }
 
     const countClick = () => {
-      const count = rpc("increment_redirect_click", { link_id: (link as any).id })
+      // INSERT em tabela de eventos: sem contenção de linha sob rajadas
+      const count = rpc("log_redirect_click", { link_id: (link as any).id })
         .then(() => {})
         .catch(() => {});
       // @ts-ignore EdgeRuntime is available in Deno Deploy
