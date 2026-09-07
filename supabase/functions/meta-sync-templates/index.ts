@@ -128,14 +128,14 @@ Deno.serve(async (req) => {
 
     console.log('Using organization:', organizationId);
 
-    // Get all Meta channels with access tokens for the organization
+    // Get all Meta channels for the organization. Tokens may live in
+    // channels.access_token (legacy) or channel_secrets (Embedded Signup).
     const { data: channels, error: channelsError } = await supabase
       .from('channels')
       .select('id, name, phone, waba_id, access_token')
       .eq('organization_id', organizationId)
       .eq('provider', 'meta')
       .eq('connected', true)
-      .not('access_token', 'is', null)
       .not('waba_id', 'is', null);
 
     if (channelsError) {
@@ -146,7 +146,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!channels || channels.length === 0) {
+    const secretsByChannel: Record<string, string> = {};
+    if (channels && channels.length > 0) {
+      const { data: secrets } = await supabase
+        .from('channel_secrets')
+        .select('channel_id, access_token')
+        .in('channel_id', channels.map((c) => c.id));
+      for (const s of secrets || []) {
+        if (s.access_token) secretsByChannel[s.channel_id] = s.access_token;
+      }
+    }
+
+    const channelsWithToken = (channels || [])
+      .map((c) => ({ ...c, access_token: c.access_token || secretsByChannel[c.id] || null }))
+      .filter((c) => !!c.access_token);
+
+    if (channelsWithToken.length === 0) {
       return new Response(JSON.stringify({ 
         success: false,
         error: 'No connected Meta channels found',
@@ -157,12 +172,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('Found channels:', channels.length);
+    console.log('Found channels:', channelsWithToken.length);
 
     // Group channels by WABA ID (same WABA shares templates)
     const wabaGroups: Record<string, { waba_id: string; access_token: string; channel_ids: string[] }> = {};
     
-    for (const channel of channels) {
+    for (const channel of channelsWithToken) {
       if (!channel.waba_id || !channel.access_token) continue;
       
       if (!wabaGroups[channel.waba_id]) {
