@@ -475,7 +475,7 @@ export function LeadDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg h-[90vh] flex flex-col">
+      <DialogContent className="max-w-lg h-[90vh] flex flex-col bg-[#F5F6F8] dark:bg-card">
         <DialogHeader className="pb-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="w-14 h-14">
