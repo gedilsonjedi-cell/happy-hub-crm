@@ -113,6 +113,8 @@ const Links = () => {
       setLinks(data.map((l: any) => ({
         ...l,
         destinations: (l.destinations as Destination[]) || [],
+        link_type: (l.link_type as LinkType) || "multi_number",
+        original_url: l.original_url ?? null,
       })));
     }
     setLoading(false);
