@@ -385,7 +385,7 @@ const Links = () => {
                 </p>
               </div>
 
-              <div className="space-y-3">
+              <div className={`space-y-3 ${linkType === "external_redirect" ? "hidden" : ""}`}>
                 <div className="flex items-center justify-between">
                   <Label>Destinos WhatsApp</Label>
                   <Button variant="ghost" size="sm" onClick={addDestination}>
