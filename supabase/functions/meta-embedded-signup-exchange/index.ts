@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     if (channelId) {
       const { error: updErr } = await admin
         .from("channels")
-        .update({ name, phone, provider: "meta", waba_id: wabaId || null })
+        .update({ name, phone, provider: "meta", waba_id: wabaId || null, access_token: token })
         .eq("id", channelId);
       if (updErr) return json({ error: `Falha ao atualizar canal: ${updErr.message}` }, 400);
     } else {
@@ -136,6 +136,7 @@ Deno.serve(async (req) => {
           provider: "meta",
           app_name: phoneNumberId,
           waba_id: wabaId || null,
+          access_token: token,
           connected: false,
         })
         .select("id")
