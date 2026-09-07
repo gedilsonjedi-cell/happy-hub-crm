@@ -3119,8 +3119,10 @@ export type Database = {
           destinations: Json
           id: string
           is_active: boolean | null
+          link_type: string
           name: string
           organization_id: string
+          original_url: string | null
           slug: string
           updated_at: string | null
         }
@@ -3131,8 +3133,10 @@ export type Database = {
           destinations?: Json
           id?: string
           is_active?: boolean | null
+          link_type?: string
           name: string
           organization_id: string
+          original_url?: string | null
           slug: string
           updated_at?: string | null
         }
@@ -3143,8 +3147,10 @@ export type Database = {
           destinations?: Json
           id?: string
           is_active?: boolean | null
+          link_type?: string
           name?: string
           organization_id?: string
+          original_url?: string | null
           slug?: string
           updated_at?: string | null
         }
@@ -4328,6 +4334,15 @@ export type Database = {
         Returns: {
           destinations: Json
           id: string
+        }[]
+      }
+      resolve_redirect_link_v2: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+          link_type: string
+          original_url: string
         }[]
       }
       restore_conversation: {
