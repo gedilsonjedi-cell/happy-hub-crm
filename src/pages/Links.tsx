@@ -150,8 +150,15 @@ const Links = () => {
       return;
     }
 
+    const isExternal = linkType === "external_redirect";
     const validDestinations = destinations.filter(d => d.phone.trim());
-    if (validDestinations.length === 0) {
+
+    if (isExternal) {
+      if (!isValidHttpUrl(originalUrl)) {
+        toast.error("Informe um link válido começando com http:// ou https://");
+        return;
+      }
+    } else if (validDestinations.length === 0) {
       toast.error("Adicione pelo menos um número de destino");
       return;
     }
@@ -163,15 +170,30 @@ const Links = () => {
 
     setSaving(true);
 
+    if (!editingLink) {
+      const { data: existing } = await supabase
+        .from("redirect_links")
+        .select("id")
+        .eq("slug", slug.trim().toLowerCase())
+        .maybeSingle();
+      if (existing) {
+        toast.error("Este slug já está em uso. Escolha outro.");
+        setSaving(false);
+        return;
+      }
+    }
+
     if (editingLink) {
-      // Update existing link — slug and URL stay the same
+      // Update existing link — slug, URL e modo permanecem
       const { error } = await supabase
         .from("redirect_links")
         .update({
           name: name.trim(),
-          destinations: validDestinations as any,
+          destinations: isExternal ? ([] as any) : (validDestinations as any),
+          original_url: isExternal ? originalUrl.trim() : null,
         })
         .eq("id", editingLink.id);
+
 
       if (error) {
         toast.error("Erro ao atualizar link: " + error.message);
