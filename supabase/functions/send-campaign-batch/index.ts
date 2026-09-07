@@ -630,8 +630,12 @@ Deno.serve(async (req) => {
       })();
 
       const templateParams: string[] = [];
+      const buttonParams: string[] = [];
       if (template.variables && template.variables.length > 0) {
         for (const varName of template.variables) {
+          // Variáveis de link de botão (BOTAO_LINK_n) não fazem parte do corpo
+          // do template — vão separadas para o componente de botão da Meta.
+          const isButtonLinkVar = /^BOTAO_LINK_\d+$/i.test(varName);
           const mapping = template.variable_mappings?.[varName] || 'manual';
           let value = '';
           if (mapping === 'contact_first_name') {
@@ -679,6 +683,11 @@ Deno.serve(async (req) => {
             }
           }
           if (value.match(/^(VAR_\d+|p\d+)$/i)) value = '';
+          if (isButtonLinkVar) {
+            // Sem valor informado, meta-send cai no exemplo aprovado.
+            buttonParams.push(value.trim());
+            continue;
+          }
           // Ensure no empty params - use fallback to prevent Meta rejection
           if (!value.trim()) value = 'Cliente';
           templateParams.push(value);
@@ -718,6 +727,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             channelId: channel.id, destination: formattedPhone, templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
+            buttonParams: buttonParams.some((v) => v) ? buttonParams : undefined,
             campaignId: campaignId
           }),
           signal: sendController.signal,
