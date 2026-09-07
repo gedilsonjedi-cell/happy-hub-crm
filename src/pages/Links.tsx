@@ -22,6 +22,8 @@ interface Destination {
   message: string;
 }
 
+type LinkType = "external_redirect" | "multi_number";
+
 interface RedirectLink {
   id: string;
   slug: string;
@@ -30,7 +32,18 @@ interface RedirectLink {
   destinations: Destination[];
   click_count: number;
   created_at: string;
+  link_type: LinkType;
+  original_url: string | null;
 }
+
+const isValidHttpUrl = (value: string) => {
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const Links = () => {
   const { user } = useAuth();
