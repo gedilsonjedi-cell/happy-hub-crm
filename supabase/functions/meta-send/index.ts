@@ -1064,6 +1064,7 @@ Deno.serve(async (req) => {
       message, 
       templateName, 
       templateParams,
+      buttonParams,
       templateLanguage = 'pt_BR',
       mediaType,
       messageType,
@@ -1220,7 +1221,7 @@ Deno.serve(async (req) => {
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
       headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
-      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
+      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components, buttonParams);
 
       console.log('[Meta-Send] Resolved template metadata:', {
         templateName,
