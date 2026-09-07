@@ -15,6 +15,13 @@
       "when": 1788821187507,
       "tag": "0001_redirect_links_external_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788824810131,
+      "tag": "0002_redirect_click_events",
+      "breakpoints": true
     }
   ]
 }
