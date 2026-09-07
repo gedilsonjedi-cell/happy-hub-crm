@@ -468,9 +468,21 @@ const Links = () => {
                         <Badge variant={link.is_active ? "default" : "secondary"}>
                           {link.is_active ? "Ativo" : "Inativo"}
                         </Badge>
-                        {link.destinations.length > 1 && (
+                        <Badge variant="outline" className="gap-1">
+                          {link.link_type === "external_redirect" ? (
+                            <>
+                              <ExternalLink className="w-3 h-3" />
+                              Redirecionamento externo
+                            </>
+                          ) : (
+                            <>
+                              <Shuffle className="w-3 h-3" />
+                              Múltiplos números
+                            </>
+                          )}
+                        </Badge>
+                        {link.link_type !== "external_redirect" && link.destinations.length > 1 && (
                           <Badge variant="outline" className="gap-1">
-                            <Shuffle className="w-3 h-3" />
                             {link.destinations.length} destinos
                           </Badge>
                         )}
