@@ -71,10 +71,7 @@ Deno.serve(async (req) => {
     const target = `https://wa.me/${phone}${msg}`;
 
     // Fire-and-forget: não bloqueia a resposta
-    const count = supabase.rpc("increment_redirect_click", { link_id: (link as any).id });
-    // @ts-ignore EdgeRuntime is available in Deno Deploy
-    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(count.then(() => {}).catch(() => {}));
-    else count.then(() => {}).catch(() => {});
+    countClick();
 
     return new Response(null, {
       status: 302,
