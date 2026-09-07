@@ -1,7 +1,17 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-
+// Sem SDK: import npm pesado causava ~1s de cold start por clique.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+const rpc = (fn: string, body: unknown) =>
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
 const notFoundHtml = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Link não encontrado</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1512;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center;padding:24px}h1{font-size:1.4rem;margin:0 0 8px}p{color:#9aa5a0;margin:0}</style></head><body><div><h1>Link não encontrado ou expirado</h1><p>Este link pode ter sido removido ou desativado.</p></div></body></html>`;
 
@@ -16,20 +26,20 @@ Deno.serve(async (req) => {
     return new Response(notFoundHtml, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
   try {
-    const { data, error } = await supabase.rpc("resolve_redirect_link_v2", { _slug: slug });
+    const res = await rpc("resolve_redirect_link_v2", { _slug: slug });
+    const data = res.ok ? await res.json() : null;
     const link = Array.isArray(data) ? data[0] : data;
-    if (error || !link) {
+    if (!link) {
       return new Response(notFoundHtml, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     const countClick = () => {
-      const count = supabase.rpc("increment_redirect_click", { link_id: (link as any).id });
+      const count = rpc("increment_redirect_click", { link_id: (link as any).id })
+        .then(() => {})
+        .catch(() => {});
       // @ts-ignore EdgeRuntime is available in Deno Deploy
-      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(count.then(() => {}).catch(() => {}));
-      else count.then(() => {}).catch(() => {});
+      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(count);
     };
 
     // Modo 1: redirecionamento de link externo
