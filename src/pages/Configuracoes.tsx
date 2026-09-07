@@ -115,7 +115,6 @@ const Configuracoes = () => {
         label: "CRM Avançado",
         icon: GitBranch,
         items: [
-          { label: "Pipeline", description: "Funil de vendas", path: "/pipeline", icon: GitBranch, visible: !!role.canAccessPipeline },
           { label: "Carteira de Clientes", description: "Clientes por atendente", path: "/carteira-clientes", icon: Briefcase, visible: true },
         ],
       },

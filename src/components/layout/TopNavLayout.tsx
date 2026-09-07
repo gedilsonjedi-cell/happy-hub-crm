@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Users,
   Send,
+  GitBranch,
   Settings,
   User,
   Trash2,
@@ -130,6 +131,7 @@ export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps)
     { label: "Atendimentos", path: "/atendimento-v2", icon: MessageSquare, badge: unreadCount },
     { label: "Leads", path: "/leads", icon: Users, badge: 0 },
     { label: "Campanhas", path: "/disparos", icon: Send, badge: 0 },
+    { label: "Pipeline", path: "/pipeline", icon: GitBranch, badge: 0 },
   ];
 
   const isActive = (path: string) => location.pathname === path;
