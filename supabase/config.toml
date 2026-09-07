@@ -134,3 +134,5 @@ verify_jwt = false
 [functions.meta-embedded-signup-exchange]
 verify_jwt = true
 
+[functions.export-nao-quero]
+verify_jwt = true

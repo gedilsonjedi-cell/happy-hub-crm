@@ -1323,7 +1323,7 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
     // finalização manual do atendente ('archived').
     if (isNotWantedLabel(buttonText)) {
       const assignmentId = leadData?.assignment?.assignmentId;
-      if (assignmentId) {
+      if (assignmentId && externalSupabase) {
         runInBackground((async () => {
           const { error: naoQueroErr } = await externalSupabase
             .from('conversation_assignments')

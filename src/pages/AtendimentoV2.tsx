@@ -2930,6 +2930,33 @@ const AtendimentoV2 = () => {
     return () => clearTimeout(timer);
   }, [selectedConversation?.channelId, selectedConversation?.phone, conversations, prefetchQueryClient]);
 
+  // Exportar leads finalizados por "Não Quero" (CSV)
+  const [exportingNaoQuero, setExportingNaoQuero] = useState(false);
+  const handleExportNaoQuero = async () => {
+    if (exportingNaoQuero) return;
+    setExportingNaoQuero(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("export-nao-quero", {
+        body: { organization_id: effectiveOrganizationId },
+      });
+      if (error) throw error;
+      const csv = typeof data === "string" ? data : await (data as Blob).text();
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nao_quero_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Exportação concluída");
+    } catch (e) {
+      console.error("Erro ao exportar Não Quero:", e);
+      toast.error("Não foi possível exportar. Tente novamente.");
+    } finally {
+      setExportingNaoQuero(false);
+    }
+  };
+
   // Archive handlers
   const handleArchive = (conversation: Conversation) => {
     setConversationToArchive(conversation);
@@ -4968,10 +4995,22 @@ const AtendimentoV2 = () => {
                   <Archive className="w-4 h-4" />
                   Conversas Arquivadas ({archivedConversations.length})
                 </span>
-                <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => setShowArchived(false)}>
-                  <X className="w-4 h-4" />
-                  Fechar
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 gap-1"
+                    disabled={exportingNaoQuero}
+                    onClick={handleExportNaoQuero}
+                  >
+                    <Download className="w-4 h-4" />
+                    {exportingNaoQuero ? "Exportando..." : "Exportar Não Quero (CSV)"}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => setShowArchived(false)}>
+                    <X className="w-4 h-4" />
+                    Fechar
+                  </Button>
+                </div>
               </div>
               
               {archivedConversations.length === 0 ? (
