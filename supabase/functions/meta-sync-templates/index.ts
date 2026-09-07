@@ -305,6 +305,26 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Variáveis de LINK em botões de URL (ex.: https://site.com/{{1}}).
+          // Sem isso o disparo não pedia o valor e a Meta recebia o link de
+          // exemplo, quebrando o rastreio de cliques.
+          const buttonsComponent = metaTemplate.components?.find(
+            (c: any) => String(c?.type || '').toUpperCase() === 'BUTTONS',
+          ) as any | undefined;
+          if (Array.isArray(buttonsComponent?.buttons)) {
+            let dynamicButtonIndex = 0;
+            for (const button of buttonsComponent.buttons) {
+              if (
+                String(button?.type || '').toUpperCase() === 'URL' &&
+                typeof button?.url === 'string' &&
+                /\{\{\s*\d+\s*\}\}/.test(button.url)
+              ) {
+                dynamicButtonIndex++;
+                variables.push(`BOTAO_LINK_${dynamicButtonIndex}`);
+              }
+            }
+          }
+
           // Check if template already exists by name for this organization
           const { data: existingTemplate } = await supabase
             .from('message_templates')
