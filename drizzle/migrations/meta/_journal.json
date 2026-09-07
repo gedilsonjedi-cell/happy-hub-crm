@@ -8,6 +8,13 @@
       "when": 1787943882697,
       "tag": "0000_drop_mirror_to_external_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788821187507,
+      "tag": "0001_redirect_links_external_mode",
+      "breakpoints": true
     }
   ]
 }

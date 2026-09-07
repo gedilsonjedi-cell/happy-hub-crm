@@ -14,6 +14,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 
 
@@ -21,6 +22,8 @@ interface Destination {
   phone: string;
   message: string;
 }
+
+type LinkType = "external_redirect" | "multi_number";
 
 interface RedirectLink {
   id: string;
@@ -30,7 +33,18 @@ interface RedirectLink {
   destinations: Destination[];
   click_count: number;
   created_at: string;
+  link_type: LinkType;
+  original_url: string | null;
 }
+
+const isValidHttpUrl = (value: string) => {
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const Links = () => {
   const { user } = useAuth();
@@ -45,6 +59,8 @@ const Links = () => {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [destinations, setDestinations] = useState<Destination[]>([{ phone: "", message: "" }]);
+  const [linkType, setLinkType] = useState<LinkType>("multi_number");
+  const [originalUrl, setOriginalUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   const baseUrl = "https://optimuscrm.com.br";
@@ -98,6 +114,8 @@ const Links = () => {
       setLinks(data.map((l: any) => ({
         ...l,
         destinations: (l.destinations as Destination[]) || [],
+        link_type: (l.link_type as LinkType) || "multi_number",
+        original_url: l.original_url ?? null,
       })));
     }
     setLoading(false);
@@ -133,8 +151,15 @@ const Links = () => {
       return;
     }
 
+    const isExternal = linkType === "external_redirect";
     const validDestinations = destinations.filter(d => d.phone.trim());
-    if (validDestinations.length === 0) {
+
+    if (isExternal) {
+      if (!isValidHttpUrl(originalUrl)) {
+        toast.error("Informe um link válido começando com http:// ou https://");
+        return;
+      }
+    } else if (validDestinations.length === 0) {
       toast.error("Adicione pelo menos um número de destino");
       return;
     }
@@ -146,15 +171,30 @@ const Links = () => {
 
     setSaving(true);
 
+    if (!editingLink) {
+      const { data: existing } = await supabase
+        .from("redirect_links")
+        .select("id")
+        .eq("slug", slug.trim().toLowerCase())
+        .maybeSingle();
+      if (existing) {
+        toast.error("Este slug já está em uso. Escolha outro.");
+        setSaving(false);
+        return;
+      }
+    }
+
     if (editingLink) {
-      // Update existing link — slug and URL stay the same
+      // Update existing link — slug, URL e modo permanecem
       const { error } = await supabase
         .from("redirect_links")
         .update({
           name: name.trim(),
-          destinations: validDestinations as any,
+          destinations: isExternal ? ([] as any) : (validDestinations as any),
+          original_url: isExternal ? originalUrl.trim() : null,
         })
         .eq("id", editingLink.id);
+
 
       if (error) {
         toast.error("Erro ao atualizar link: " + error.message);
@@ -171,7 +211,9 @@ const Links = () => {
         created_by: user.id,
         slug: slug.trim().toLowerCase(),
         name: name.trim(),
-        destinations: validDestinations as any,
+        destinations: (isExternal ? [] : validDestinations) as any,
+        link_type: linkType,
+        original_url: isExternal ? originalUrl.trim() : null,
       });
 
       if (error) {
@@ -194,6 +236,8 @@ const Links = () => {
     setName("");
     setSlug("");
     setDestinations([{ phone: "", message: "" }]);
+    setLinkType("multi_number");
+    setOriginalUrl("");
     setEditingLink(null);
   };
 
@@ -201,6 +245,8 @@ const Links = () => {
     setEditingLink(link);
     setName(link.name);
     setSlug(link.slug);
+    setLinkType(link.link_type || "multi_number");
+    setOriginalUrl(link.original_url || "");
     setDestinations(link.destinations.length > 0 ? [...link.destinations] : [{ phone: "", message: "" }]);
     setDialogOpen(true);
   };
@@ -266,6 +312,31 @@ const Links = () => {
             </DialogHeader>
 
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Qual é o objetivo do link?</Label>
+                {isEditing ? (
+                  <p className="text-sm text-muted-foreground">
+                    {linkType === "external_redirect" ? "Redirecionar um link existente" : "Rotear múltiplos números"}
+                    <span className="ml-2 text-xs">(o modo não pode ser alterado depois de criado)</span>
+                  </p>
+                ) : (
+                  <RadioGroup
+                    value={linkType}
+                    onValueChange={(v) => setLinkType(v as LinkType)}
+                    className="grid gap-2"
+                  >
+                    <label className="flex items-center gap-2 rounded-md border p-3 cursor-pointer">
+                      <RadioGroupItem value="external_redirect" id="lt-external" />
+                      <span className="text-sm">Redirecionar um link existente</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border p-3 cursor-pointer">
+                      <RadioGroupItem value="multi_number" id="lt-multi" />
+                      <span className="text-sm">Rotear múltiplos números</span>
+                    </label>
+                  </RadioGroup>
+                )}
+              </div>
+
               <div>
                 <Label>Nome do Link</Label>
                 <Input
@@ -275,8 +346,26 @@ const Links = () => {
                 />
               </div>
 
+              {linkType === "external_redirect" && (
+                <div>
+                  <Label>Cole seu link original aqui</Label>
+                  <Input
+                    placeholder="https://site-do-cliente.com.br/promocao"
+                    value={originalUrl}
+                    onChange={e => setOriginalUrl(e.target.value)}
+                  />
+                  {originalUrl.trim() && !isValidHttpUrl(originalUrl) && (
+                    <p className="text-xs text-destructive mt-1">
+                      Link inválido. Use um endereço começando com http:// ou https://
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
-                <Label>Slug (identificador do link)</Label>
+                <Label>
+                  {linkType === "external_redirect" ? "Como ficará seu link no Optimus" : "Slug (identificador do link)"}
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     placeholder="ex: campanha-jan"
@@ -296,7 +385,7 @@ const Links = () => {
                 </p>
               </div>
 
-              <div className="space-y-3">
+              <div className={`space-y-3 ${linkType === "external_redirect" ? "hidden" : ""}`}>
                 <div className="flex items-center justify-between">
                   <Label>Destinos WhatsApp</Label>
                   <Button variant="ghost" size="sm" onClick={addDestination}>
@@ -379,9 +468,21 @@ const Links = () => {
                         <Badge variant={link.is_active ? "default" : "secondary"}>
                           {link.is_active ? "Ativo" : "Inativo"}
                         </Badge>
-                        {link.destinations.length > 1 && (
+                        <Badge variant="outline" className="gap-1">
+                          {link.link_type === "external_redirect" ? (
+                            <>
+                              <ExternalLink className="w-3 h-3" />
+                              Redirecionamento externo
+                            </>
+                          ) : (
+                            <>
+                              <Shuffle className="w-3 h-3" />
+                              Múltiplos números
+                            </>
+                          )}
+                        </Badge>
+                        {link.link_type !== "external_redirect" && link.destinations.length > 1 && (
                           <Badge variant="outline" className="gap-1">
-                            <Shuffle className="w-3 h-3" />
                             {link.destinations.length} destinos
                           </Badge>
                         )}
@@ -404,8 +505,10 @@ const Links = () => {
                           <BarChart3 className="w-3 h-3" />
                           {link.click_count} cliques
                         </span>
-                        <span>
-                          {link.destinations.map(d => d.phone).join(", ")}
+                        <span className="truncate">
+                          {link.link_type === "external_redirect"
+                            ? link.original_url
+                            : link.destinations.map(d => d.phone).join(", ")}
                         </span>
                       </div>
                     </div>
