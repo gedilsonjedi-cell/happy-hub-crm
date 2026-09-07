@@ -14,6 +14,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { Link2, Plus, Trash2, Copy, ExternalLink, BarChart3, Shuffle, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 
 
@@ -311,6 +312,31 @@ const Links = () => {
             </DialogHeader>
 
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Qual é o objetivo do link?</Label>
+                {isEditing ? (
+                  <p className="text-sm text-muted-foreground">
+                    {linkType === "external_redirect" ? "Redirecionar um link existente" : "Rotear múltiplos números"}
+                    <span className="ml-2 text-xs">(o modo não pode ser alterado depois de criado)</span>
+                  </p>
+                ) : (
+                  <RadioGroup
+                    value={linkType}
+                    onValueChange={(v) => setLinkType(v as LinkType)}
+                    className="grid gap-2"
+                  >
+                    <label className="flex items-center gap-2 rounded-md border p-3 cursor-pointer">
+                      <RadioGroupItem value="external_redirect" id="lt-external" />
+                      <span className="text-sm">Redirecionar um link existente</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border p-3 cursor-pointer">
+                      <RadioGroupItem value="multi_number" id="lt-multi" />
+                      <span className="text-sm">Rotear múltiplos números</span>
+                    </label>
+                  </RadioGroup>
+                )}
+              </div>
+
               <div>
                 <Label>Nome do Link</Label>
                 <Input
