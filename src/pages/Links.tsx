@@ -210,7 +210,9 @@ const Links = () => {
         created_by: user.id,
         slug: slug.trim().toLowerCase(),
         name: name.trim(),
-        destinations: validDestinations as any,
+        destinations: (isExternal ? [] : validDestinations) as any,
+        link_type: linkType,
+        original_url: isExternal ? originalUrl.trim() : null,
       });
 
       if (error) {
