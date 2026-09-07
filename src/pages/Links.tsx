@@ -346,8 +346,26 @@ const Links = () => {
                 />
               </div>
 
+              {linkType === "external_redirect" && (
+                <div>
+                  <Label>Cole seu link original aqui</Label>
+                  <Input
+                    placeholder="https://site-do-cliente.com.br/promocao"
+                    value={originalUrl}
+                    onChange={e => setOriginalUrl(e.target.value)}
+                  />
+                  {originalUrl.trim() && !isValidHttpUrl(originalUrl) && (
+                    <p className="text-xs text-destructive mt-1">
+                      Link inválido. Use um endereço começando com http:// ou https://
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
-                <Label>Slug (identificador do link)</Label>
+                <Label>
+                  {linkType === "external_redirect" ? "Como ficará seu link no Optimus" : "Slug (identificador do link)"}
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     placeholder="ex: campanha-jan"
