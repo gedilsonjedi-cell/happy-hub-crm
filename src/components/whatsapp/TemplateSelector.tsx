@@ -7,6 +7,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { splitTemplateParams, templateVariableLabel } from "@/lib/templateVariables";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +33,7 @@ interface Template {
 interface TemplateSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSend: (templateName: string, templateParams: string[]) => void;
+  onSend: (templateName: string, templateParams: string[], buttonParams?: string[]) => void;
   channelId: string | null;
 }
 
@@ -127,7 +128,8 @@ export const TemplateSelector = ({
       return;
     }
 
-    onSend(selectedTemplate.name, params);
+    const { bodyParams, buttonParams } = splitTemplateParams(selectedTemplate.variables, params);
+    onSend(selectedTemplate.name, bodyParams, buttonParams.some((v) => v) ? buttonParams : undefined);
     handleClose();
   };
 
@@ -264,7 +266,7 @@ export const TemplateSelector = ({
                 {selectedTemplate.variables.map((variable, index) => (
                   <div key={index}>
                     <label className="text-sm text-muted-foreground mb-1 block">
-                      {variable || `Variável ${index + 1}`}
+                      {templateVariableLabel(variable, index)}
                     </label>
                     <Input
                       placeholder={`Valor para {{${index + 1}}}`}

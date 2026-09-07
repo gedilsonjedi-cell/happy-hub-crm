@@ -17,6 +17,7 @@ export interface SendMessagePayload {
   fileName?: string;
   templateName?: string;
   templateParams?: string[];
+  buttonParams?: string[];
   // Optional template metadata used to render optimistic bubble
   // identical to what the server will persist (avoids duplicate bubbles
   // when realtime arrives before the HTTP onSuccess handler).
@@ -77,6 +78,9 @@ export function useSendMessage(
       if (payload.messageType === "template") {
         body.templateName = payload.templateName;
         body.templateParams = payload.templateParams;
+        if (payload.buttonParams && payload.buttonParams.length > 0) {
+          body.buttonParams = payload.buttonParams;
+        }
       } else if (payload.messageType === "text" || !payload.messageType) {
         body.message = payload.message;
       } else {
