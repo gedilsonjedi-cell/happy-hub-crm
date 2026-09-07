@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
+import { isNotWantedLabel } from "../_shared/notWantedButton.ts";
 import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact } from "../_shared/leadIntent.ts";
 
 const corsHeaders = {
@@ -1316,6 +1317,26 @@ async function processMessage(msg: Record<string, unknown>, channel: Record<stri
   if (messageType === 'button' || messageType === 'interactive') {
     const buttonText = content; // Already extracted by extractContent
     const suffix8 = normalizedPhone.slice(-8);
+
+    // Auto-finalizar: lead clicou em "Não Quero" / "Não Quero Consultar".
+    // Vale para TODAS as organizações (sem opt-in). Usa o mesmo status da
+    // finalização manual do atendente ('archived').
+    if (isNotWantedLabel(buttonText)) {
+      const assignmentId = leadData?.assignment?.assignmentId;
+      if (assignmentId) {
+        runInBackground((async () => {
+          const { error: naoQueroErr } = await externalSupabase
+            .from('conversation_assignments')
+            .update({ status: 'archived', updated_at: new Date().toISOString() })
+            .eq('id', assignmentId);
+          if (naoQueroErr) {
+            console.error('[Webhook] Falha ao finalizar por "Não Quero":', naoQueroErr);
+          } else {
+            console.log(`[Webhook] ✅ Conversa finalizada automaticamente (Não Quero): ${normalizedPhone}`);
+          }
+        })());
+      }
+    }
     
     // Find campaign_recipient that was sent/delivered/read to this phone (most recent campaign)
     supabase
