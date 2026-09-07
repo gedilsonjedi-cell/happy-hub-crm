@@ -27,6 +27,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
+import { templateVariableLabel } from "@/lib/templateVariables";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1882,7 +1883,7 @@ const Disparos = () => {
                       <div className="space-y-2">
                         {currentManualVariables.map((varName) => (
                           <div key={varName}>
-                            <Label className="text-sm mb-1 block">{varName}</Label>
+                            <Label className="text-sm mb-1 block">{templateVariableLabel(varName, 0)}</Label>
                             <Input
                               placeholder={`Valor para ${varName}`}
                               value={manualVariables[varName] || ''}

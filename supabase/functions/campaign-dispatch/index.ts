@@ -216,8 +216,10 @@ async function processCampaignDispatch(
 
       try {
         const templateParams: string[] = [];
+        const buttonParams: string[] = [];
         if (template.variables && template.variables.length > 0) {
           for (const varName of template.variables) {
+            const isButtonLinkVar = /^BOTAO_LINK_\d+$/i.test(varName);
             const mapping = template.variable_mappings?.[varName] || 'manual';
             let value = '';
             if (mapping === 'manual') {
@@ -232,6 +234,10 @@ async function processCampaignDispatch(
               value = String(recipient[field] || varName);
             } else {
               value = varName;
+            }
+            if (isButtonLinkVar) {
+              buttonParams.push(value === varName ? '' : value.trim());
+              continue;
             }
             templateParams.push(value);
           }
@@ -248,6 +254,7 @@ async function processCampaignDispatch(
             destination: formattedPhone,
             templateName: template.name,
             templateParams: templateParams.length > 0 ? templateParams : undefined,
+            buttonParams: buttonParams.some((v) => v) ? buttonParams : undefined,
             // templateLanguage intentionally omitted: meta-send resolves the
             // actual language from Meta so any approved language works.
             campaignId: campaignId

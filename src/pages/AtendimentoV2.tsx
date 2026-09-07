@@ -3839,7 +3839,7 @@ const AtendimentoV2 = () => {
   };
 
   // Send template — delegates to useSendMessage (optimistic updates via infinite cache)
-  const handleSendTemplate = async (templateName: string, templateParams: string[]) => {
+  const handleSendTemplate = async (templateName: string, templateParams: string[], buttonParams?: string[]) => {
     const conversationChannelId = selectedConversation?.channelId;
     if (!selectedConversation || !conversationChannelId) return;
 
@@ -3862,6 +3862,7 @@ const AtendimentoV2 = () => {
         messageType: "template",
         templateName,
         templateParams,
+        buttonParams,
         templateContent: tplData?.content,
         templateButtons: tplData?.components?.buttons,
       },

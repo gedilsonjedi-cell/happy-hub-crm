@@ -8,6 +8,7 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { splitTemplateParams, templateVariableLabel } from "@/lib/templateVariables";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -317,7 +318,11 @@ export const ManualSendDialog = ({
           destination: formattedPhone,
           messageType: 'template',
           templateName: selectedTemplate.name,
-          templateParams: params
+          templateParams: splitTemplateParams(selectedTemplate.variables, params).bodyParams,
+          buttonParams: (() => {
+            const bp = splitTemplateParams(selectedTemplate.variables, params).buttonParams;
+            return bp.some((v) => v) ? bp : undefined;
+          })()
         }
       });
 
@@ -576,7 +581,7 @@ export const ManualSendDialog = ({
                 {selectedTemplate.variables.map((variable, index) => (
                   <div key={index}>
                     <Label className="text-sm text-muted-foreground mb-1 block">
-                      {variable || `Variável ${index + 1}`}
+                      {templateVariableLabel(variable, index)}
                     </Label>
                     <Input
                       placeholder={`Valor para {{${index + 1}}}`}

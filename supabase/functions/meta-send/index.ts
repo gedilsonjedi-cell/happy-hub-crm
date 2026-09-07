@@ -661,7 +661,19 @@ function getHeaderInfo(components: unknown[] | null | undefined): MetaHeaderInfo
   };
 }
 
-function getButtonComponents(components: unknown[] | null | undefined): unknown[] {
+/**
+ * Monta os componentes de botão dinâmicos (URL com {{1}}).
+ *
+ * `buttonParams` é a lista de valores informados pelo usuário no disparo,
+ * na ordem dos botões de URL dinâmicos do template. Sem valor informado,
+ * cai no exemplo aprovado na Meta (comportamento antigo) — mas isso faz
+ * todos os cliques irem para o link de exemplo, então o valor real
+ * deve sempre ser enviado nas campanhas com link rastreado.
+ */
+function getButtonComponents(
+  components: unknown[] | null | undefined,
+  buttonParams?: unknown,
+): unknown[] {
   if (!Array.isArray(components)) return [];
 
   const buttonsComponent = components.find((component: any) => {
@@ -670,17 +682,31 @@ function getButtonComponents(components: unknown[] | null | undefined): unknown[
 
   if (!buttonsComponent?.buttons) return [];
 
+  const provided: string[] = Array.isArray(buttonParams)
+    ? (buttonParams as unknown[]).map((v) => String(v ?? '').trim())
+    : [];
+
   // Check for URL buttons with variables
   const urlButtonsWithVars: unknown[] = [];
+  let dynamicIdx = 0;
   buttonsComponent.buttons.forEach((button: any, index: number) => {
     if (button.type === 'URL' && button.url && /\{\{\s*\d+\s*\}\}/.test(button.url)) {
-      // Has dynamic URL variable — needs example or param
-      const exampleValue = button.example?.[0] || '';
+      const exampleRaw = String(button.example?.[0] || '');
+      // A Meta espera apenas o SUFIXO da URL (a parte que substitui {{1}}),
+      // não a URL completa. O exemplo vem completo, então extrai o sufixo.
+      const urlPrefix = String(button.url).split('{{')[0];
+      const exampleValue = exampleRaw.startsWith(urlPrefix)
+        ? exampleRaw.slice(urlPrefix.length)
+        : exampleRaw;
+      let value = provided[dynamicIdx] || '';
+      if (value.startsWith(urlPrefix)) value = value.slice(urlPrefix.length);
+      if (!value) value = exampleValue;
+      dynamicIdx++;
       urlButtonsWithVars.push({
         type: 'button',
         sub_type: 'url',
         index,
-        parameters: [{ type: 'text', text: exampleValue }]
+        parameters: [{ type: 'text', text: value }]
       });
     }
   });
@@ -1038,6 +1064,7 @@ Deno.serve(async (req) => {
       message, 
       templateName, 
       templateParams,
+      buttonParams,
       templateLanguage = 'pt_BR',
       mediaType,
       messageType,
@@ -1194,7 +1221,7 @@ Deno.serve(async (req) => {
       const hasProvidedTemplateParams = Array.isArray(templateParams);
 
       headerInfo = getHeaderInfo(metaTemplateDefinition?.components);
-      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components);
+      const buttonComponents = getButtonComponents(metaTemplateDefinition?.components, buttonParams);
 
       console.log('[Meta-Send] Resolved template metadata:', {
         templateName,
