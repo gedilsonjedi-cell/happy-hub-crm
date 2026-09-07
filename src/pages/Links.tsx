@@ -505,8 +505,10 @@ const Links = () => {
                           <BarChart3 className="w-3 h-3" />
                           {link.click_count} cliques
                         </span>
-                        <span>
-                          {link.destinations.map(d => d.phone).join(", ")}
+                        <span className="truncate">
+                          {link.link_type === "external_redirect"
+                            ? link.original_url
+                            : link.destinations.map(d => d.phone).join(", ")}
                         </span>
                       </div>
                     </div>
