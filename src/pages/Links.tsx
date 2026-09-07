@@ -235,6 +235,8 @@ const Links = () => {
     setName("");
     setSlug("");
     setDestinations([{ phone: "", message: "" }]);
+    setLinkType("multi_number");
+    setOriginalUrl("");
     setEditingLink(null);
   };
 
@@ -242,6 +244,8 @@ const Links = () => {
     setEditingLink(link);
     setName(link.name);
     setSlug(link.slug);
+    setLinkType(link.link_type || "multi_number");
+    setOriginalUrl(link.original_url || "");
     setDestinations(link.destinations.length > 0 ? [...link.destinations] : [{ phone: "", message: "" }]);
     setDialogOpen(true);
   };
