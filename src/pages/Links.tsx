@@ -58,6 +58,8 @@ const Links = () => {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [destinations, setDestinations] = useState<Destination[]>([{ phone: "", message: "" }]);
+  const [linkType, setLinkType] = useState<LinkType>("multi_number");
+  const [originalUrl, setOriginalUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   const baseUrl = "https://optimuscrm.com.br";
