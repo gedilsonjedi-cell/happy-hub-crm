@@ -132,6 +132,24 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Shell persistente: a barra lateral é montada UMA vez e só o conteúdo troca.
+const AppShell = () => {
+  const location = useLocation();
+  const noPadding = location.pathname === "/atendimento-v2";
+
+  return (
+    <ProtectedRoute>
+      <TopNavLayoutShell noPadding={noPadding}>
+        <LayoutShellContext.Provider value={true}>
+          <Outlet />
+        </LayoutShellContext.Provider>
+      </TopNavLayoutShell>
+    </ProtectedRoute>
+  );
+};
+
+
+
 
 // Home route that shows landing for non-authenticated users and redirects to atendimento for authenticated
 const HomeRoute = () => {
