@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import optimusIcon from "@/assets/optimus-icon.png";
 import { ClientSwitcher } from "@/components/admin/ClientSwitcher";
+import { useInsideLayoutShell } from "@/components/layout/LayoutShellContext";
 
 interface TopNavLayoutProps {
   children: React.ReactNode;
@@ -52,6 +53,12 @@ interface TopNavLayoutProps {
 const SIDEBAR_EXPANDED_KEY = "optimus-sidebar-expanded";
 
 export function TopNavLayout({ children, noPadding = false }: TopNavLayoutProps) {
+  const insideShell = useInsideLayoutShell();
+  if (insideShell) return <>{children}</>;
+  return <TopNavLayoutShell noPadding={noPadding}>{children}</TopNavLayoutShell>;
+}
+
+export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
