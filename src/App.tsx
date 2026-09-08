@@ -192,37 +192,41 @@ const App = () => (
           <Route path="/termos-de-uso" element={<TermsOfUse />} />
           <Route path="/exclusao-de-dados" element={<DataDeletion />} />
           <Route path="/" element={<HomeRoute />} />
-          <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-          <Route path="/conexoes" element={<ProtectedRoute><Conexoes /></ProtectedRoute>} />
-          <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-          <Route path="/leads/:id" element={<ProtectedRoute><ContatoDetalhes /></ProtectedRoute>} />
-          <Route path="/carteira-clientes" element={<ProtectedRoute><CarteiraClientes /></ProtectedRoute>} />
-          <Route path="/disparos" element={<ProtectedRoute><Disparos /></ProtectedRoute>} />
-          <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
-          <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
-          <Route path="/follow-up" element={<ProtectedRoute><FollowUp /></ProtectedRoute>} />
-          <Route path="/chatbot" element={<ProtectedRoute><Chatbot /></ProtectedRoute>} />
           <Route path="/whatsapp-chat" element={<Navigate to="/atendimento-v2" replace />} />
-          <Route path="/atendimento-v2" element={<ProtectedRoute><AtendimentoV2 /></ProtectedRoute>} />
-          <Route path="/usuarios" element={<ProtectedRoute><Usuarios /></ProtectedRoute>} />
-          <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
-          <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
-          <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
-          <Route path="/saldo" element={<ProtectedRoute><Saldo /></ProtectedRoute>} />
-          <Route path="/loja" element={<ProtectedRoute><Loja /></ProtectedRoute>} />
-          <Route path="/minha-assinatura" element={<ProtectedRoute><MinhaAssinatura /></ProtectedRoute>} />
-          <Route path="/indique-ganhe" element={<ProtectedRoute><IndiqueGanhe /></ProtectedRoute>} />
-          <Route path="/lista-negra" element={<ProtectedRoute><ListaNegra /></ProtectedRoute>} />
-          
-          <Route path="/personalizacao/horarios" element={<ProtectedRoute><Horarios /></ProtectedRoute>} />
-          <Route path="/personalizacao/feriados" element={<ProtectedRoute><Feriados /></ProtectedRoute>} />
-          <Route path="/personalizacao/departamentos" element={<ProtectedRoute><Departamentos /></ProtectedRoute>} />
-          <Route path="/personalizacao/tags" element={<ProtectedRoute><Tags /></ProtectedRoute>} />
-          <Route path="/personalizacao/campos" element={<ProtectedRoute><CamposPersonalizados /></ProtectedRoute>} />
-          <Route path="/personalizacao/respostas-rapidas" element={<ProtectedRoute><RespostasRapidas /></ProtectedRoute>} />
-          <Route path="/integracoes" element={<ProtectedRoute><Integracoes /></ProtectedRoute>} />
-          <Route path="/links" element={<ProtectedRoute><Links /></ProtectedRoute>} />
-          <Route path="/apps/leads-sem-interacao" element={<ProtectedRoute><LeadsSemInteracao /></ProtectedRoute>} />
+
+          {/* Shell persistente: barra lateral montada uma única vez */}
+          <Route element={<AppShell />}>
+            <Route path="/dashboard" element={<Index />} />
+            <Route path="/conexoes" element={<Conexoes />} />
+            <Route path="/leads" element={<Leads />} />
+            <Route path="/leads/:id" element={<ContatoDetalhes />} />
+            <Route path="/carteira-clientes" element={<CarteiraClientes />} />
+            <Route path="/disparos" element={<Disparos />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/follow-up" element={<FollowUp />} />
+            <Route path="/chatbot" element={<Chatbot />} />
+            <Route path="/atendimento-v2" element={<AtendimentoV2 />} />
+            <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/perfil" element={<Perfil />} />
+            <Route path="/relatorios" element={<Relatorios />} />
+            <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/saldo" element={<Saldo />} />
+            <Route path="/loja" element={<Loja />} />
+            <Route path="/minha-assinatura" element={<MinhaAssinatura />} />
+            <Route path="/indique-ganhe" element={<IndiqueGanhe />} />
+            <Route path="/lista-negra" element={<ListaNegra />} />
+            <Route path="/personalizacao/horarios" element={<Horarios />} />
+            <Route path="/personalizacao/feriados" element={<Feriados />} />
+            <Route path="/personalizacao/departamentos" element={<Departamentos />} />
+            <Route path="/personalizacao/tags" element={<Tags />} />
+            <Route path="/personalizacao/campos" element={<CamposPersonalizados />} />
+            <Route path="/personalizacao/respostas-rapidas" element={<RespostasRapidas />} />
+            <Route path="/integracoes" element={<Integracoes />} />
+            <Route path="/links" element={<Links />} />
+            <Route path="/apps/leads-sem-interacao" element={<LeadsSemInteracao />} />
+          </Route>
+
           <Route path="/super-admin" element={<ProtectedRoute><SuperAdmin /></ProtectedRoute>} />
           <Route path="/super-admin/organizations/:id" element={<ProtectedRoute><OrganizationDetails /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
