@@ -63,14 +63,31 @@ async function fetchExternalAuth(
 
   // No local session => the edge function can only answer 401. Stop early.
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData?.session) {
+  let session = sessionData?.session ?? null;
+  if (!session) {
     sessionDead = true;
     throw new ExternalAuthUnauthorizedError("Sessão expirada");
   }
 
+  // getSession() returns the cached session even when the access token is
+  // already expired. Sending it guarantees a 401 ("Auth session missing!").
+  // Refresh proactively when it expires within the next 30 seconds.
+  const expiresAtMs = (session.expires_at ?? 0) * 1000;
+  if (expiresAtMs && expiresAtMs - Date.now() < 30_000) {
+    const { data: refreshed, error: refreshError } =
+      await supabase.auth.refreshSession();
+    if (refreshError || !refreshed?.session) {
+      sessionDead = true;
+      throw new ExternalAuthUnauthorizedError("Sessão expirada");
+    }
+    session = refreshed.session;
+  }
 
   const { data, error } = await withTimeout(
-    supabase.functions.invoke("external-auth-token", { body }),
+    supabase.functions.invoke("external-auth-token", {
+      body,
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }),
     EXTERNAL_AUTH_TIMEOUT_MS,
     "Autenticação do banco externo"
   );
