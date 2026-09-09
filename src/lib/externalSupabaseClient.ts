@@ -83,23 +83,45 @@ async function fetchExternalAuth(
     session = refreshed.session;
   }
 
-  const { data, error } = await withTimeout(
-    supabase.functions.invoke("external-auth-token", {
-      body,
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    }),
-    EXTERNAL_AUTH_TIMEOUT_MS,
-    "Autenticação do banco externo"
-  );
+  const invoke = (accessToken: string) =>
+    withTimeout(
+      supabase.functions.invoke("external-auth-token", {
+        body,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+      EXTERNAL_AUTH_TIMEOUT_MS,
+      "Autenticação do banco externo"
+    );
 
+  let { data, error } = await invoke(session.access_token);
+
+  // A 401 here usually means the local access token was rejected (rotated or
+  // stale). Force one hard refresh and retry before giving up.
   if (error) {
     const status = (error as { context?: { status?: number } })?.context?.status;
     if (status === 401 || status === 403) {
-      sessionDead = true;
-      throw new ExternalAuthUnauthorizedError("Sessão expirada");
+      const { data: refreshed, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (refreshError || !refreshed?.session) {
+        sessionDead = true;
+        throw new ExternalAuthUnauthorizedError("Sessão expirada");
+      }
+      ({ data, error } = await invoke(refreshed.session.access_token));
+      if (error) {
+        const retryStatus = (error as { context?: { status?: number } })?.context
+          ?.status;
+        if (retryStatus === 401 || retryStatus === 403) {
+          sessionDead = true;
+          throw new ExternalAuthUnauthorizedError("Sessão expirada");
+        }
+      }
     }
+  }
+
+  if (error) {
     throw new Error(`Failed to get external auth token: ${error.message}`);
   }
+
 
 
   return data as ExternalAuthResponse;
