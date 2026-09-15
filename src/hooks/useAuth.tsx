@@ -44,23 +44,27 @@ export const useAuth = () => {
       }
     }, 8000);
 
+    // Nunca redirecionar para /auth se já estamos nela (evita recarregamento em loop).
+    const goToAuth = () => {
+      if (window.location.pathname !== "/auth") window.location.href = "/auth";
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        setLoading(false);
+        stopLoading();
 
         if (session) resetExternalAuthState();
 
-        
         if (event === "SIGNED_OUT") {
-          window.location.href = "/auth";
+          goToAuth();
         }
 
         // Detect token refresh failure — force re-login
         if (event === "TOKEN_REFRESHED" && !session) {
           console.warn("[useAuth] Token refresh failed, redirecting to login");
-          window.location.href = "/auth";
+          goToAuth();
         }
       }
     );
@@ -74,12 +78,12 @@ export const useAuth = () => {
             console.warn("[useAuth] Session expired and refresh failed, redirecting to login");
             setSession(null);
             setUser(null);
-            setLoading(false);
-            window.location.href = "/auth";
+            stopLoading();
+            goToAuth();
           } else {
             setSession(data.session);
             setUser(data.session.user);
-            setLoading(false);
+            stopLoading();
           }
         });
         return;
@@ -87,7 +91,7 @@ export const useAuth = () => {
 
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
+      stopLoading();
 
       // Proactively check if token is about to expire or already expired
       if (session) {
@@ -101,7 +105,7 @@ export const useAuth = () => {
             supabase.auth.refreshSession().then(({ data, error: refreshError }) => {
               if (refreshError || !data.session) {
                 console.warn("[useAuth] Proactive refresh failed, redirecting to login");
-                window.location.href = "/auth";
+                goToAuth();
               } else {
                 setSession(data.session);
                 setUser(data.session.user);
@@ -110,9 +114,15 @@ export const useAuth = () => {
           }
         }
       }
+    }).catch((err) => {
+      console.error("[useAuth] getSession falhou:", err);
+      stopLoading();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(watchdog);
+      subscription.unsubscribe();
+    };
   }, []);
 
   return { user, session, loading, signOut };
