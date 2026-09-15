@@ -29,6 +29,21 @@ export const useAuth = () => {
   }, []);
 
   useEffect(() => {
+    // Rede/backend fora do ar: getSession() pode nunca resolver (refresh pendente).
+    // Sem esta trava, a tela fica num spinner infinito. Após 8s liberamos a UI.
+    let settled = false;
+    const stopLoading = () => {
+      if (settled) return;
+      settled = true;
+      setLoading(false);
+    };
+    const watchdog = setTimeout(() => {
+      if (!settled) {
+        console.warn("[useAuth] getSession não respondeu em 8s — liberando a interface");
+        stopLoading();
+      }
+    }, 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
