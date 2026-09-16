@@ -208,6 +208,12 @@ interface ConversationSummaryRow {
   bot_paused_until?: string | null;
 }
 
+import {
+  buildAttendanceCacheKey,
+  readAttendanceSnapshot,
+  writeAttendanceSnapshot,
+} from "@/lib/attendanceCache";
+
 interface ConversationSummaryMapping {
   conversations: Conversation[];
   leadLookups: {
@@ -576,9 +582,32 @@ const AtendimentoV2 = () => {
   // uma tela vazia sem explicação, mostramos um aviso pedindo a seleção.
   const needsOrgSelection = roleIsSuperAdmin && !effectiveOrganizationId;
   void roleIsSupervisor;
-  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
-  const [hasMoreConversations, setHasMoreConversations] = useState(false);
-  const [conversationOffset, setConversationOffset] = useState(0);
+  // Snapshot da última lista carregada (por org + usuário + escopo). Permite
+  // voltar para o Atendimento com a lista já na tela enquanto revalidamos.
+  const attendanceCacheKey = buildAttendanceCacheKey({
+    organizationId: effectiveOrganizationId,
+    userId: user?.id,
+    scope: canSeeAllConversations ? "all" : "own",
+  });
+  const initialSnapshotRef = useRef(
+    readAttendanceSnapshot<Conversation, ConversationSummaryMapping["leadLookups"], Record<string, Conversation["status"]>>(
+      attendanceCacheKey
+    )
+  );
+  const [allConversations, setAllConversations] = useState<Conversation[]>(
+    () => initialSnapshotRef.current?.conversations ?? []
+  );
+  const [hasMoreConversations, setHasMoreConversations] = useState(
+    () => initialSnapshotRef.current?.hasMore ?? false
+  );
+  const [conversationOffset, setConversationOffset] = useState(
+    () => initialSnapshotRef.current?.offset ?? 0
+  );
+  // Há lista visível na tela? Se sim, revalidamos em segundo plano (sem spinner).
+  const hasHydratedListRef = useRef(allConversations.length > 0);
+  hasHydratedListRef.current = allConversations.length > 0;
+  // Assinatura do último fetch disparado, para evitar repetições em cascata.
+  const lastFetchRef = useRef<{ signature: string; at: number }>({ signature: "", at: 0 });
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const CONVERSATIONS_PAGE_SIZE = 100;
   const AUTO_LOAD_PAGES_PER_CONTEXT = 5;
@@ -626,7 +655,7 @@ const AtendimentoV2 = () => {
   const [messageWindowBaseTime, setMessageWindowBaseTime] = useState<string | null>(null);
   const [selectedConversationStableKey, setSelectedConversationStableKey] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialSnapshotRef.current);
   const [sendingMessage] = [false]; // Kept for legacy references; replaced by isSendingMessage from useMutation
   // newMessage now lives inside <MessageComposer> so typing does NOT re-render
   // this 4800-line component. We read/write the draft via the imperative ref.
@@ -698,7 +727,9 @@ const AtendimentoV2 = () => {
     cancelRecording
   } = useAudioRecording();
 
-  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>({});
+  const [conversationStatuses, setConversationStatuses] = useState<Record<string, Conversation["status"]>>(
+    () => initialSnapshotRef.current?.statuses ?? {}
+  );
   
   // Track conversations with recent new messages for visual highlight
   const [recentlyUpdatedConversations, setRecentlyUpdatedConversations] = useState<Set<string>>(new Set());
@@ -1056,9 +1087,28 @@ const AtendimentoV2 = () => {
   const leadsMapRef = useRef<{ 
     byPhone: Map<string, { id?: string; name: string; tags: string[] | null }>; 
     bySuffix: Map<string, { id?: string; name: string; tags: string[] | null }>;
-  }>({ byPhone: new Map(), bySuffix: new Map() });
+  }>(initialSnapshotRef.current?.leadLookups ?? { byPhone: new Map(), bySuffix: new Map() });
   const previewHydrationAttemptsRef = useRef<Map<string, number>>(new Map());
   const autoLoadAttemptsRef = useRef<Map<string, number>>(new Map());
+
+  // Guarda o último snapshot bom para hidratar instantaneamente no remount.
+  useEffect(() => {
+    if (!attendanceCacheKey || allConversations.length === 0) return;
+    writeAttendanceSnapshot(attendanceCacheKey, {
+      conversations: allConversations,
+      statuses: conversationStatuses,
+      leadLookups: leadsMapRef.current,
+      offset: conversationOffset,
+      hasMore: hasMoreConversations,
+    });
+  }, [
+    attendanceCacheKey,
+    allConversations,
+    conversationStatuses,
+    conversationOffset,
+    hasMoreConversations,
+  ]);
+
 
   const fetchConversationsFallback = useCallback(async (channelIds: string[]) => {
     const assignments: Array<{
@@ -1189,13 +1239,15 @@ const AtendimentoV2 = () => {
     };
 
     const fetchConversations = async () => {
+      const hasDataOnScreen = hasHydratedListRef.current;
+
       if (!channelsLoaded) {
-        setLoading(true);
+        if (!hasDataOnScreen) setLoading(true);
         return;
       }
 
       if (!canSeeAllConversations && sectorsLoading) {
-        setLoading(true);
+        if (!hasDataOnScreen) setLoading(true);
         return;
       }
 
@@ -1206,9 +1258,36 @@ const AtendimentoV2 = () => {
         return;
       }
 
-      setLoading(true);
-      armReleaseLoadingTimer();
       const channelIds = channels.map(c => c.id);
+
+      // Dedupe: as dependências deste efeito (channels, sectorIds, flags de
+      // papel) chegam em cascata e disparavam o mesmo fetch pesado várias
+      // vezes no mesmo mount. Ignoramos repetições idênticas em 3s, exceto
+      // quando o refetch foi pedido explicitamente.
+      const signature = [
+        effectiveOrganizationId ?? "",
+        externalImpersonatedOrgId ?? "",
+        user?.id ?? "",
+        canSeeAllConversations ? "all" : "own",
+        channelIds.slice().sort().join(","),
+        (sectorIds ?? []).slice().sort().join(","),
+        conversationRefetchTrigger,
+      ].join("|");
+
+      const now = Date.now();
+      if (
+        lastFetchRef.current.signature === signature &&
+        now - lastFetchRef.current.at < 3000
+      ) {
+        if (!hasDataOnScreen) setLoading(false);
+        return;
+      }
+      lastFetchRef.current = { signature, at: now };
+
+      if (!hasDataOnScreen) {
+        setLoading(true);
+        armReleaseLoadingTimer();
+      }
 
       try {
         // For attendants/supervisors-without-org-wide-view, use a focused RPC that
