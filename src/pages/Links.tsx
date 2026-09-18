@@ -332,6 +332,29 @@ const Links = () => {
           </Button>
         </div>
 
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Cliques:</span>
+          <div className="inline-flex rounded-md border bg-muted/50 p-0.5">
+            {([
+              { key: "day", label: "Diário" },
+              { key: "week", label: "Semanal" },
+              { key: "month", label: "Mensal" },
+            ] as { key: ClickPeriod; label: string }[]).map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setPeriod(opt.key)}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                  period === opt.key
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
 
 
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
