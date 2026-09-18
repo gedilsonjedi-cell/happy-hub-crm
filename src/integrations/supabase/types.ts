@@ -4267,6 +4267,15 @@ export type Database = {
           id: string
         }[]
       }
+      get_redirect_link_stats: {
+        Args: { _link_ids: string[] }
+        Returns: {
+          clicks_month: number
+          clicks_today: number
+          clicks_week: number
+          link_id: string
+        }[]
+      }
       get_unread_conversations_full: {
         Args: { p_channel_ids: string[]; p_organization_id: string }
         Returns: {

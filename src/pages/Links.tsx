@@ -37,6 +37,14 @@ interface RedirectLink {
   original_url: string | null;
 }
 
+type ClickPeriod = "day" | "week" | "month";
+
+interface LinkStats {
+  clicks_today: number;
+  clicks_week: number;
+  clicks_month: number;
+}
+
 const isValidHttpUrl = (value: string) => {
   try {
     const u = new URL(value.trim());
@@ -62,6 +70,8 @@ const Links = () => {
   const [linkType, setLinkType] = useState<LinkType>("multi_number");
   const [originalUrl, setOriginalUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState<ClickPeriod>("day");
+  const [stats, setStats] = useState<Record<string, LinkStats>>({});
 
   const baseUrl = "https://optimuscrm.com.br";
 
@@ -111,15 +121,34 @@ const Links = () => {
     const { data, error } = await query;
 
     if (!error && data) {
-      setLinks(data.map((l: any) => ({
+      const mapped = data.map((l: any) => ({
         ...l,
         destinations: (l.destinations as Destination[]) || [],
         link_type: (l.link_type as LinkType) || "multi_number",
         original_url: l.original_url ?? null,
-      })));
+      }));
+      setLinks(mapped);
+      fetchStats(mapped.map(l => l.id as string));
     }
     setLoading(false);
   };
+
+  const fetchStats = async (linkIds: string[]) => {
+    if (linkIds.length === 0) { setStats({}); return; }
+    const { data, error } = await supabase.rpc("get_redirect_link_stats", { _link_ids: linkIds });
+    if (error) return;
+    const map: Record<string, LinkStats> = {};
+    (data || []).forEach((row: any) => { map[row.link_id] = row; });
+    setStats(map);
+  };
+
+  // Atualiza os contadores por período a cada 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (links.length > 0) fetchStats(links.map(l => l.id));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [links]);
 
   const generateSlug = () => {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -301,6 +330,29 @@ const Links = () => {
             <Plus className="w-4 h-4 mr-2" />
             Novo Link
           </Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Cliques:</span>
+          <div className="inline-flex rounded-md border bg-muted/50 p-0.5">
+            {([
+              { key: "day", label: "Diário" },
+              { key: "week", label: "Semanal" },
+              { key: "month", label: "Mensal" },
+            ] as { key: ClickPeriod; label: string }[]).map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setPeriod(opt.key)}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                  period === opt.key
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
 
@@ -501,9 +553,17 @@ const Links = () => {
                       </div>
 
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" title={`Total histórico: ${link.click_count} cliques`}>
                           <BarChart3 className="w-3 h-3" />
-                          {link.click_count} cliques
+                          <span className="font-semibold text-foreground">
+                            {period === "day"
+                              ? (stats[link.id]?.clicks_today ?? 0)
+                              : period === "week"
+                                ? (stats[link.id]?.clicks_week ?? 0)
+                                : (stats[link.id]?.clicks_month ?? 0)}
+                          </span>
+                          {period === "day" ? "hoje" : period === "week" ? "esta semana" : "este mês"}
+                          <span className="text-muted-foreground/70">· total: {link.click_count}</span>
                         </span>
                         <span className="truncate">
                           {link.link_type === "external_redirect"
