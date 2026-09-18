@@ -553,9 +553,17 @@ const Links = () => {
                       </div>
 
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" title={`Total histórico: ${link.click_count} cliques`}>
                           <BarChart3 className="w-3 h-3" />
-                          {link.click_count} cliques
+                          <span className="font-semibold text-foreground">
+                            {period === "day"
+                              ? (stats[link.id]?.clicks_today ?? 0)
+                              : period === "week"
+                                ? (stats[link.id]?.clicks_week ?? 0)
+                                : (stats[link.id]?.clicks_month ?? 0)}
+                          </span>
+                          {period === "day" ? "hoje" : period === "week" ? "esta semana" : "este mês"}
+                          <span className="text-muted-foreground/70">· total: {link.click_count}</span>
                         </span>
                         <span className="truncate">
                           {link.link_type === "external_redirect"
