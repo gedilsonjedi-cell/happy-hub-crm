@@ -37,6 +37,14 @@ interface RedirectLink {
   original_url: string | null;
 }
 
+type ClickPeriod = "day" | "week" | "month";
+
+interface LinkStats {
+  clicks_today: number;
+  clicks_week: number;
+  clicks_month: number;
+}
+
 const isValidHttpUrl = (value: string) => {
   try {
     const u = new URL(value.trim());
@@ -62,6 +70,8 @@ const Links = () => {
   const [linkType, setLinkType] = useState<LinkType>("multi_number");
   const [originalUrl, setOriginalUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState<ClickPeriod>("day");
+  const [stats, setStats] = useState<Record<string, LinkStats>>({});
 
   const baseUrl = "https://optimuscrm.com.br";
 
