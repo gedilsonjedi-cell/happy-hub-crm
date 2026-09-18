@@ -121,15 +121,34 @@ const Links = () => {
     const { data, error } = await query;
 
     if (!error && data) {
-      setLinks(data.map((l: any) => ({
+      const mapped = data.map((l: any) => ({
         ...l,
         destinations: (l.destinations as Destination[]) || [],
         link_type: (l.link_type as LinkType) || "multi_number",
         original_url: l.original_url ?? null,
-      })));
+      }));
+      setLinks(mapped);
+      fetchStats(mapped.map(l => l.id as string));
     }
     setLoading(false);
   };
+
+  const fetchStats = async (linkIds: string[]) => {
+    if (linkIds.length === 0) { setStats({}); return; }
+    const { data, error } = await supabase.rpc("get_redirect_link_stats", { _link_ids: linkIds });
+    if (error) return;
+    const map: Record<string, LinkStats> = {};
+    (data || []).forEach((row: any) => { map[row.link_id] = row; });
+    setStats(map);
+  };
+
+  // Atualiza os contadores por período a cada 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (links.length > 0) fetchStats(links.map(l => l.id));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [links]);
 
   const generateSlug = () => {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
