@@ -29,6 +29,13 @@
       "when": 1789753941163,
       "tag": "0003_redirect_link_click_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790078145886,
+      "tag": "0004_harden_pricing_otp_storage_read_policies",
+      "breakpoints": true
     }
   ]
 }
