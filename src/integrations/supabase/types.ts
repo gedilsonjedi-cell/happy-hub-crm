@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -4331,6 +4331,7 @@ export type Database = {
           job_run_details_deleted: number
         }[]
       }
+      otp_login_enabled: { Args: never; Returns: boolean }
       process_referral_commission: {
         Args: { referred_org_id: string; subscription_amount: number }
         Returns: boolean

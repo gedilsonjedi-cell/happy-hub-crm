@@ -88,14 +88,14 @@ export function OtpGate({ children }: { children: React.ReactNode }) {
       }
 
       const [settingsRes, profileRes, poolRes] = await Promise.all([
-        supabase.from("otp_settings").select("otp_login_enabled").eq("id", true).maybeSingle(),
+        supabase.rpc("otp_login_enabled"),
         supabase.from("profiles").select("otp_last_verified_date, whatsapp_phone").eq("user_id", user.id).maybeSingle(),
         supabase.from("message_templates").select("id").eq("otp_active", true).limit(1),
       ]);
       if (cancelled) return;
 
       // FAIL-OPEN: qualquer erro de leitura (RLS, rede, timeout) = OTP desligado.
-      if (settingsRes.error || settingsRes.data?.otp_login_enabled !== true) {
+      if (settingsRes.error || settingsRes.data !== true) {
         if (settingsRes.error) console.warn("[OtpGate] falha ao ler otp_settings, liberando acesso:", settingsRes.error.message);
         setNeedsOtp(false);
         setChecked(true);
