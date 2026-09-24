@@ -36,6 +36,13 @@
       "when": 1790078145886,
       "tag": "0004_harden_pricing_otp_storage_read_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790261866464,
+      "tag": "0005_db_cost_optimization_indexes",
+      "breakpoints": true
     }
   ]
 }
