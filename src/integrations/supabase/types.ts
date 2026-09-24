@@ -2672,6 +2672,7 @@ export type Database = {
           unread_count: number
         }[]
       }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       reset_conversation_unread_ext:
         | { Args: { p_channel_id: string }; Returns: undefined }
         | {
