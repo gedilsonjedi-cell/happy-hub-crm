@@ -48,8 +48,12 @@ Deno.serve(async (req) => {
     const { data: existing } = await msgDb.from("conversation_assignments").select("id")
       .eq("channel_id", channelId).eq("conversation_phone", phone).limit(1).maybeSingle();
     if (!existing) {
+      // Mesma fila/setor do WhatsApp (setor padrão + round-robin)
+      const dist = await pickDistribution(localDb, orgId);
       const { error: aErr } = await msgDb.from("conversation_assignments").insert({
-        conversation_phone: phone, channel_id: channelId, organization_id: orgId, status: "pending", lead_id: leadId,
+        conversation_phone: phone, channel_id: channelId, organization_id: orgId, lead_id: leadId,
+        status: dist.status, sector_id: dist.sectorId, assigned_to: dist.assignedTo,
+        assigned_at: dist.assignedTo ? new Date().toISOString() : null,
       });
       if (aErr) throw aErr;
       isNew = true;

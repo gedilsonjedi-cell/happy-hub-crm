@@ -28,7 +28,12 @@ export async function loadActiveLink(linkId: string) {
     .select("id, organization_id, channel_id, name, greeting_message, theme_color, is_active")
     .eq("id", linkId)
     .maybeSingle();
-  if (!data || !data.is_active) return null;
+  if (!data || !data.is_active || !data.organization_id) return null;
+  // Isolamento: o canal do link precisa ser web_chat da MESMA organização
+  if (data.channel_id) {
+    const { data: ch } = await localDb.from("channels").select("organization_id, provider").eq("id", data.channel_id).maybeSingle();
+    if (!ch || ch.organization_id !== data.organization_id || ch.provider !== "web_chat") return null;
+  }
   return data;
 }
 
