@@ -1718,9 +1718,11 @@ export type Database = {
       }
       organizations: {
         Row: {
+          auto_blacklist_enabled: boolean
           auto_distribute_enabled: boolean
           created_at: string
           custom_subscription_price: number | null
+          decline_message_enabled: boolean
           default_sector_id: string | null
           has_paid_first_subscription: boolean
           id: string
@@ -1739,9 +1741,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_blacklist_enabled?: boolean
           auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          decline_message_enabled?: boolean
           default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
@@ -1760,9 +1764,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_blacklist_enabled?: boolean
           auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          decline_message_enabled?: boolean
           default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
@@ -2671,16 +2677,74 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_add_product_to_organization: {
+        Args: {
+          _is_free?: boolean
+          _organization_id: string
+          _product_id: string
+          _quantity?: number
+        }
+        Returns: boolean
+      }
       archive_conversation_ext: {
         Args: { p_channel_id: string; p_phone: string }
         Returns: undefined
       }
       assert_org_access: { Args: { p_org: string }; Returns: undefined }
+      cancel_addon: { Args: { _addon_id: string }; Returns: boolean }
+      check_organization_balance: {
+        Args: { _amount: number; _organization_id: string }
+        Returns: boolean
+      }
+      claim_campaign_recipients: {
+        Args: {
+          p_batch_size: number
+          p_campaign_id: string
+          p_include_retries?: boolean
+        }
+        Returns: {
+          id: string
+          is_retry: boolean
+          last_error_code: string
+          lead_id: string
+          name: string
+          phone: string
+          retry_count: number
+          status: string
+        }[]
+      }
+      credit_organization_balance: {
+        Args: {
+          _amount: number
+          _created_by?: string
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
+      debit_organization_balance: {
+        Args: {
+          _amount: number
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
       delete_channel_cascade: {
         Args: { _channel_id: string }
         Returns: boolean
       }
+      delete_organization_cascade: {
+        Args: { _organization_id: string }
+        Returns: boolean
+      }
       effective_org_id: { Args: never; Returns: string }
+      force_sync_all_campaign_counts: { Args: never; Returns: undefined }
+      generate_referral_code: { Args: never; Returns: string }
       get_attendant_conversations_ext: {
         Args: {
           p_channel_ids: string[]
@@ -2706,6 +2770,47 @@ export type Database = {
           sender_name: string
           status: string
           unread_count: number
+        }[]
+      }
+      get_campaign_counts: {
+        Args: { p_campaign_id: string }
+        Returns: {
+          total_delivered: number
+          total_failed: number
+          total_pending: number
+          total_processing: number
+          total_sent: number
+          total_waiting_retry: number
+        }[]
+      }
+      get_campaign_real_counts: {
+        Args: { p_campaign_ids: string[] }
+        Returns: {
+          campaign_id: string
+          delivered_count: number
+          failed_count: number
+          interacted_count: number
+          read_count: number
+          recipients_count: number
+          sent_count: number
+        }[]
+      }
+      get_campaign_sector_for_phone: {
+        Args: { _organization_id: string; _phone: string }
+        Returns: string
+      }
+      get_channel_by_api_token: {
+        Args: { _token: string }
+        Returns: {
+          access_token: string
+          app_name: string
+          id: string
+          name: string
+          organization_id: string
+          phone: string
+          provider: string
+          user_id: string
+          waba_id: string
         }[]
       }
       get_conversations_summary_ext:
@@ -2779,6 +2884,7 @@ export type Database = {
         }[]
       }
       get_jwt_organization_id: { Args: never; Returns: string }
+      get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
       get_unread_conversations_full_ext: {
         Args: { p_channel_ids: string[]; p_organization_id: string }
         Returns: {
@@ -2800,8 +2906,38 @@ export type Database = {
           unread_count: number
         }[]
       }
+      get_user_organization_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
+      is_phone_blacklisted: {
+        Args: { _organization_id: string; _phone: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       log_redirect_click: { Args: { link_id: string }; Returns: undefined }
+      purchase_product: {
+        Args: {
+          _organization_id: string
+          _product_id: string
+          _quantity?: number
+        }
+        Returns: boolean
+      }
+      register_user_session: {
+        Args: {
+          _device_info?: string
+          _ip_address?: string
+          _session_token: string
+        }
+        Returns: boolean
+      }
       reset_conversation_unread_ext:
         | { Args: { p_channel_id: string }; Returns: undefined }
         | {
@@ -2848,6 +2984,23 @@ export type Database = {
           unread_count: number
         }[]
       }
+      set_org_auto_reply_flags: {
+        Args: {
+          p_auto_blacklist_enabled: boolean
+          p_decline_message_enabled: boolean
+          p_organization_id: string
+        }
+        Returns: undefined
+      }
+      set_org_default_sector: {
+        Args: {
+          _enabled: boolean
+          _organization_id: string
+          _sector_id: string
+        }
+        Returns: undefined
+      }
+      update_session_activity: { Args: never; Returns: boolean }
       upsert_conversation_stats_external: {
         Args: {
           _channel_id: string
@@ -2860,6 +3013,10 @@ export type Database = {
           _sender_name: string
         }
         Returns: string
+      }
+      validate_user_session: {
+        Args: { _session_token: string }
+        Returns: boolean
       }
     }
     Enums: {
