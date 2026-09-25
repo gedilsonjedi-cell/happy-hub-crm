@@ -8,3 +8,5 @@
 - [x] Corrigir viewport e estrutura móvel do Web Chat público
 - [x] Implementar envio otimista com confirmação e falha por mensagem
 - [x] Validar o Web Chat em celular, incluindo envio e erro simulado
+- [x] Levar o Web Chat a tela cheia (sem faixas laterais), com cabeçalho e rodapé fixos e sem zoom ao digitar
+- [x] Padronizar a cor dos links do Web Chat em verde WhatsApp

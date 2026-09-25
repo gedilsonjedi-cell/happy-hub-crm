@@ -120,6 +120,14 @@
 }
 
 @layer utilities {
+  /* Web Chat: área de segurança inferior (botão de enviar nunca fica sob a home bar) */
+  .pb-safe {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
   .gradient-primary {
     background: linear-gradient(135deg, hsl(142 70% 40%), hsl(142 70% 50%));
   }
