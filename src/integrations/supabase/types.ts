@@ -2676,6 +2676,10 @@ export type Database = {
         Returns: undefined
       }
       assert_org_access: { Args: { p_org: string }; Returns: undefined }
+      delete_channel_cascade: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
       effective_org_id: { Args: never; Returns: string }
       get_attendant_conversations_ext: {
         Args: {
