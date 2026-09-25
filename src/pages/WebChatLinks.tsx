@@ -42,7 +42,7 @@ export default function WebChatLinks() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("Olá! Como podemos ajudar?");
-  const [color, setColor] = useState("#3385FF");
+  const [color, setColor] = useState("#005C4B");
   const [saving, setSaving] = useState(false);
   const db = supabase as any;
 
