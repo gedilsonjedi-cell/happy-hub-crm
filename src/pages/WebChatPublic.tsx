@@ -111,12 +111,12 @@ export default function WebChatPublic() {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-muted/40">
-      <header className="flex items-center gap-3 px-4 py-3 shadow-sm" style={{ backgroundColor: color, color: "#fff" }}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/20 font-semibold">
+    <div className="fixed inset-x-0 top-0 flex h-[100dvh] flex-col overflow-hidden bg-muted/40" style={shellStyle}>
+      <header className="flex shrink-0 items-center gap-3 px-4 py-3 shadow-sm" style={{ backgroundColor: color, color: "#fff", paddingTop: "max(0.75rem, env(safe-area-inset-top))", paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background/20 font-semibold">
           {link?.name?.charAt(0).toUpperCase()}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate font-semibold leading-tight">{link?.name}</p>
           <p className="text-xs opacity-80">{typing ? "digitando..." : status === "offline" ? "reconectando..." : "online"}</p>
         </div>
@@ -128,17 +128,17 @@ export default function WebChatPublic() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6" style={{ WebkitOverflowScrolling: "touch" }}>
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {messages.map((m) => {
             const mine = m.direction === "inbound";
             return (
               <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${mine ? "rounded-br-md" : "rounded-bl-md bg-background text-foreground"}`}
+                  className={`min-w-0 max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${mine ? "rounded-br-md" : "rounded-bl-md bg-background text-foreground"}`}
                   style={mine ? { backgroundColor: color, color: "#fff" } : undefined}
                 >
-                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.content}</p>
                   <p className={`mt-1 text-right text-[10px] ${mine ? "opacity-75" : "text-muted-foreground"}`}>{fmtTime(m.created_at)}</p>
                 </div>
               </div>
@@ -157,16 +157,17 @@ export default function WebChatPublic() {
         </div>
       </main>
 
-      <footer className="border-t border-border bg-background p-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+      <footer className="shrink-0 border-t border-border bg-background p-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
         <form className="mx-auto flex max-w-2xl items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             rows={1}
+            enterKeyHint="send"
             maxLength={4000}
             placeholder="Digite sua mensagem..."
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-input bg-muted/50 px-4 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-input bg-muted/50 px-4 py-2.5 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
           />
           <button
             type="submit"
