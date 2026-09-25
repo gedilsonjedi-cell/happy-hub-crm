@@ -748,8 +748,17 @@ const Templates = () => {
         toast.error("Falha ao enviar arquivo");
         return;
       }
-      const { data: pub } = supabase.storage.from('template-media').getPublicUrl(path);
-      const publicUrl = pub.publicUrl;
+      // Bucket privado (workspace bloqueia buckets públicos): URL assinada de longa duração (~10 anos)
+      const { data: signed, error: signError } = await supabase
+        .storage
+        .from('template-media')
+        .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+      if (signError || !signed?.signedUrl) {
+        console.error('Signed URL error:', signError);
+        toast.error("Falha ao gerar link da imagem");
+        return;
+      }
+      const publicUrl = signed.signedUrl;
       const { error: updateError } = await supabase
         .from('message_templates')
         .update({ header_media_url: publicUrl } as any)
