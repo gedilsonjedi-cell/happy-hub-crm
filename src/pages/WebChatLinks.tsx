@@ -152,6 +152,44 @@ export default function WebChatLinks() {
             </Card>
           ))}
         </div>
+
+        <div className="pt-4 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><Users className="h-5 w-5 text-primary" /> Visitantes</h2>
+            <p className="text-sm text-muted-foreground">Pessoas que iniciaram conversa pelos links de chat.</p>
+          </div>
+
+          {visitors.length === 0 && (
+            <Card><CardContent className="p-6 text-center text-muted-foreground">Nenhum visitante ainda.</CardContent></Card>
+          )}
+
+          <div className="grid gap-2">
+            {visitors.map((v) => {
+              const sessionShort = v.phone.replace("webchat:", "").slice(0, 8);
+              const displayName = v.name && !v.name.startsWith("Visitante Web Chat")
+                ? v.name
+                : `Visitante ${sessionShort}`;
+              const statusCfg = visitorStatusConfig[v.status || "new"] || visitorStatusConfig.new;
+              const origin = v.channel_id ? linkNameByChannel.get(v.channel_id) : undefined;
+              return (
+                <Card key={v.id}>
+                  <CardContent className="p-4 flex flex-wrap items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{displayName}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {origin ? `Origem: ${origin} · ` : ""}{new Date(v.created_at).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full border ${statusCfg.className}`}>{statusCfg.label}</span>
+                    <Button variant="outline" size="sm" onClick={() => openConversation(v)}>
+                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir conversa
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
