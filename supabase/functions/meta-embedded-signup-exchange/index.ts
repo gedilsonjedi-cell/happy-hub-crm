@@ -5,11 +5,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
+const json = (body: unknown, status = 200) => {
+  if (status >= 400) console.error("[embedded-signup] resposta", status, JSON.stringify(body));
+  return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+};
 
 const META_APP_ID = "1095955566297881";
 const GRAPH = "https://graph.facebook.com/v20.0";
@@ -37,6 +39,7 @@ Deno.serve(async (req) => {
       authHeader.replace("Bearer ", ""),
     );
     const caller = userData?.user;
+    if (userErr || !caller) console.error("[embedded-signup] getUser", userErr?.message);
     if (userErr || !caller) return json({ error: "Sessão inválida." }, 401);
 
     const body = await req.json().catch(() => ({}));
