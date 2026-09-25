@@ -2415,6 +2415,57 @@ export type Database = {
         }
         Relationships: []
       }
+      webchat_links: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          greeting_message: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          theme_color: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          theme_color?: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          theme_color?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webchat_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhooks: {
         Row: {
           created_at: string
