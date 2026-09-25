@@ -167,12 +167,22 @@ export const ConversationItem = memo(function ConversationItem({
         <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center justify-between gap-2 mb-0.5">
             <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
-              {conversation.name || (conversation.phone.startsWith("webchat:") ? "Visitante Web Chat" : conversation.phone)}
+              {conversation.name || (conversation.phone.startsWith("webchat:") ? "Web Chat" : conversation.phone)}
             </span>
-            {conversation.phone.startsWith("webchat:") && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 gap-1 shrink-0">
+            {conversation.phone.startsWith("webchat:") ? (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 gap-1 shrink-0" title="Conversa pelo Web Chat do site">
                 <Globe className="h-2.5 w-2.5" /> Web Chat
               </Badge>
+            ) : (
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-primary shrink-0"
+                title="Conversa pelo WhatsApp"
+                aria-label="WhatsApp"
+              >
+                <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z" />
+                </svg>
+              </span>
             )}
             {sectorName && (
               <Badge
