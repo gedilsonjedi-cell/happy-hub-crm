@@ -66,6 +66,14 @@ export function useSendMessage(
       if (payload.channelProvider === "web_chat" && payload.messageType && payload.messageType !== "text") {
         throw new Error("No Web Chat, por enquanto só é possível enviar mensagens de texto.");
       }
+      // Conversa de WhatsApp (telefone real) não pode ser respondida pelo canal Web Chat:
+      // o visitante do site é identificado por "webchat:<sessão>". Evita o 400 "Conversa inválida".
+      if (
+        payload.channelProvider === "web_chat" &&
+        !/[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i.test(String(payload.destination || ""))
+      ) {
+        throw new Error("Esta conversa é de WhatsApp e não pode ser respondida pelo canal Web Chat. Selecione o número de WhatsApp da conversa.");
+      }
       const sendFunction = payload.channelProvider === "web_chat"
         ? "webchat-reply"
         : payload.channelProvider === "zapi"
