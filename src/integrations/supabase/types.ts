@@ -527,6 +527,13 @@ export type Database = {
             referencedRelation: "channels"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "channel_secrets_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       channel_templates: {
@@ -2490,6 +2497,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "webchat_links_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -2677,7 +2691,56 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      channels_public: {
+        Row: {
+          app_name: string | null
+          connected: boolean | null
+          created_at: string | null
+          id: string | null
+          name: string | null
+          organization_id: string | null
+          phone: string | null
+          provider: string | null
+          updated_at: string | null
+          user_id: string | null
+          waba_id: string | null
+        }
+        Insert: {
+          app_name?: string | null
+          connected?: boolean | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          provider?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Update: {
+          app_name?: string | null
+          connected?: boolean | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          provider?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       admin_add_product_to_organization: {
