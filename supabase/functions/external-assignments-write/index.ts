@@ -32,6 +32,9 @@ function json(data: unknown, status = 200) {
 }
 
 function normalizePhoneThreadValue(phone: string): string {
+  // Web Chat: identificador de sessão, nunca vira telefone.
+  const raw = String(phone || '').replace(/^\+(?=webchat:)/, '');
+  if (raw.startsWith('webchat:')) return raw;
   const normalized = String(phone || '').replace(/\D/g, '');
   if (!normalized) return '';
   if (normalized.length <= 11 && !normalized.startsWith('55')) return `55${normalized}`;
@@ -41,6 +44,7 @@ function normalizePhoneThreadValue(phone: string): string {
 function getPhoneThreadVariants(phone: string): string[] {
   const normalized = normalizePhoneThreadValue(phone);
   if (!normalized) return [];
+  if (normalized.startsWith('webchat:')) return [normalized];
 
   const variants = new Set<string>([normalized]);
   if (normalized.startsWith('55') && normalized.length >= 10) {
