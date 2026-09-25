@@ -1571,6 +1571,7 @@ export type Database = {
           tags: string[] | null
           updated_at: string
           user_id: string
+          webchat_id: string | null
         }
         Insert: {
           bsuid?: string | null
@@ -1590,6 +1591,7 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id: string
+          webchat_id?: string | null
         }
         Update: {
           bsuid?: string | null
@@ -1609,6 +1611,7 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id?: string
+          webchat_id?: string | null
         }
         Relationships: []
       }
