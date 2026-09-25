@@ -2739,7 +2739,61 @@ const AtendimentoV2 = () => {
 
     setAllConversations(prev => {
       const existing = prev.find(isMatch);
-      if (!existing) return prev; // new-conversation path is handled elsewhere
+      if (!existing) {
+        // conversation_stats is the reliable SSoT notification for inbound
+        // messages. A brand-new assignment can be emitted before its message,
+        // and whatsapp_messages Realtime may reconnect between those events.
+        // Build the visible queue item directly from stats instead of leaving
+        // the assignment as a hidden placeholder until the next page reload.
+        const newConversation: Conversation = {
+          id: stats.assignmentId || undefined,
+          phone: `+${normalizedPhone}`,
+          name: stats.senderName || null,
+          lastMessage: stats.lastMessageContent || "",
+          lastMessageTime: stats.lastMessageAt || new Date().toISOString(),
+          lastInboundTime: stats.lastInboundAt || null,
+          unreadCount: stats.unreadCount,
+          channelId: stats.channelId,
+          status: "pending",
+          assignedTo: null,
+          assignedToName: null,
+          sectorId: null,
+          tags: null,
+        };
+
+        if (!newConversation.lastInboundTime) return prev;
+
+        // Enrich ownership/sector asynchronously. The conversation is already
+        // visible in "Novos" while this lookup runs.
+        fetchAssignmentByPhoneExternal({
+          channelId: stats.channelId,
+          phone: normalizedPhone,
+          impersonatedOrgId: externalImpersonatedOrgIdRef.current,
+        }).then((assignment) => {
+          if (!assignment) return;
+          setAllConversations(current => current.map(conversation =>
+            isMatch(conversation)
+              ? {
+                  ...conversation,
+                  id: assignment.id,
+                  assignedTo: assignment.assigned_to,
+                  sectorId: assignment.sector_id,
+                  status: assignment.status === "active" || assignment.status === "in_progress"
+                    ? "in_progress"
+                    : assignment.status === "resolved"
+                      ? "resolved"
+                      : assignment.status === "archived"
+                        ? "archived"
+                        : "pending",
+                }
+              : conversation
+          ));
+        }).catch((error) => {
+          console.warn("[handleStatsChangeRealtime] assignment enrichment failed:", error);
+        });
+
+        return [newConversation, ...prev];
+      }
 
       // If this conversation is currently open and focused, do NOT bump unread —
       // the attendant is actively reading. markConversationAsRead already fired
