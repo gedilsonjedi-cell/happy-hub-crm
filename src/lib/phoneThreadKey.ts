@@ -3,6 +3,7 @@ function stripPhone(phone: string): string {
 }
 
 export function normalizePhoneThreadValue(phone: string): string {
+  if (phone?.startsWith("webchat:")) return phone;
   const normalized = stripPhone(phone);
 
   if (!normalized) {
@@ -17,6 +18,7 @@ export function normalizePhoneThreadValue(phone: string): string {
 }
 
 export function getPhoneThreadVariants(phone: string): string[] {
+  if (phone?.startsWith("webchat:")) return [phone];
   const normalized = normalizePhoneThreadValue(phone);
 
   if (!normalized) {
@@ -41,6 +43,7 @@ export function getPhoneThreadVariants(phone: string): string[] {
 }
 
 export function getPhoneLookupVariants(phone: string): string[] {
+  if (phone?.startsWith("webchat:")) return [phone];
   const variants = new Set<string>();
 
   getPhoneThreadVariants(phone).forEach((variant) => {

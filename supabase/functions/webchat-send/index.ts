@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
       .eq("channel_id", link.channel_id).eq("conversation_phone", phone).limit(1).maybeSingle();
     if (!assignment) return json({ error: "Sessão não iniciada" }, 409);
 
-    const { data: lead } = await localDb.from("leads").select("name").eq("organization_id", link.organization_id).eq("phone", phone).limit(1).maybeSingle();
+    const { data: lead } = await localDb.from("leads").select("name").eq("organization_id", link.organization_id).or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
 
     const m = await insertMessage({ channelId: link.channel_id, orgId: link.organization_id, sessionId, content: text,
       direction: "inbound", senderName: lead?.name || "Visitante", linkId: link.id });

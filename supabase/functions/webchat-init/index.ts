@@ -29,17 +29,18 @@ Deno.serve(async (req) => {
 
     const phone = threadPhone(sessionId);
 
-    // Lead upsert (idempotent by org + phone)
+    // Lead anônimo: sem telefone; sessão salva em bsuid (fallback: leads antigos com phone=webchat:<id>)
     let leadId: string | null = null;
-    const { data: existingLead } = await localDb.from("leads").select("id").eq("organization_id", orgId).eq("phone", phone).limit(1).maybeSingle();
+    const { data: existingLead } = await localDb.from("leads").select("id").eq("organization_id", orgId)
+      .or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
     if (existingLead) {
       leadId = existingLead.id;
       if (name) await localDb.from("leads").update({ name }).eq("id", leadId);
     } else {
       const { data: owner } = await localDb.from("channels").select("user_id").eq("id", channelId).maybeSingle();
       const { data: lead } = await localDb.from("leads").insert({
-        organization_id: orgId, user_id: owner?.user_id, name: name || "Visitante Web Chat",
-        phone, tags: ["web_chat"], status: "new", custom_fields: { source: "web_chat", link_id: link.id },
+        organization_id: orgId, user_id: owner?.user_id, name: name || `Visitante Web - ${sessionId.slice(0, 6)}`,
+        phone: null, bsuid: sessionId, tags: ["web_chat"], status: "new", custom_fields: { source: "web_chat", link_id: link.id },
       }).select("id").maybeSingle();
       leadId = lead?.id ?? null;
     }

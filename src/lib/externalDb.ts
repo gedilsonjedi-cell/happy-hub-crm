@@ -319,6 +319,26 @@ export async function fetchExternalMessages(params: {
 }): Promise<ExternalMessagePage> {
   const pageSize = params.pageSize ?? 25;
 
+  // Web Chat: conversa identificada por sessão ("webchat:<uuid>"), sem telefone.
+  // Busca exata por canal + sessão, sem normalização/sufixo de telefone.
+  const webchatKey = params.phoneVariants.find((p) => p.startsWith("webchat:"));
+  if (webchatKey) {
+    const ext = await getExternalClient(params.impersonatedOrgId ?? undefined);
+    const cursorTs = params.cursor ?? new Date(Date.now() + 120_000).toISOString();
+    const { data, error } = await ext
+      .from("whatsapp_messages")
+      .select(SELECT_FIELDS)
+      .eq("channel_id", params.channelId)
+      .eq("sender_phone", webchatKey)
+      .lt("created_at", cursorTs)
+      .order("created_at", { ascending: false })
+      .limit(pageSize);
+    if (error) throw error;
+    const rows = (data ?? []) as unknown as ExternalMessageRow[];
+    const hasMore = rows.length >= pageSize;
+    return { messages: rows, nextCursor: hasMore ? rows[rows.length - 1].created_at : null, hasMore };
+  }
+
   // Build channel phone lookup for filtering messages by specific channel
   const channelPhoneLookup = params.channelPhone
     ? buildPhoneLookup([params.channelPhone])

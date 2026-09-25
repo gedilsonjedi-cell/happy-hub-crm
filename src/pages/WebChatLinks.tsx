@@ -55,13 +55,16 @@ export default function WebChatLinks() {
     // Visitantes: leads criados pelo Web Chat (phone = webchat:<sessionId>)
     const { data: visitorLeads } = await db
       .from("leads")
-      .select("id, name, phone, status, created_at")
+      .select("id, name, phone, bsuid, status, created_at")
       .eq("organization_id", effectiveOrganizationId)
-      .ilike("phone", "webchat:%")
+      .or("phone.ilike.webchat:%,tags.cs.{web_chat}")
       .order("created_at", { ascending: false })
       .limit(200);
 
-    const rows = (visitorLeads || []) as Omit<WebChatVisitor, "channel_id">[];
+    // Visitantes anônimos não têm telefone: a sessão fica em bsuid.
+    const rows = ((visitorLeads || []) as Array<Omit<WebChatVisitor, "channel_id"> & { bsuid?: string | null }>)
+      .map(({ bsuid, ...v }) => ({ ...v, phone: v.phone || (bsuid ? `webchat:${bsuid}` : "") }))
+      .filter((v) => v.phone.startsWith("webchat:"));
     if (rows.length > 0) {
       // Relaciona cada visitante ao canal (e ao link de origem) via conversation_assignments
       const { data: assignments } = await db
@@ -166,7 +169,7 @@ export default function WebChatLinks() {
           <div className="grid gap-2">
             {visitors.map((v) => {
               const sessionShort = v.phone.replace("webchat:", "").slice(0, 8);
-              const displayName = v.name && !v.name.startsWith("Visitante Web Chat")
+              const displayName = v.name && !v.name.startsWith("Visitante Web")
                 ? v.name
                 : `Visitante ${sessionShort}`;
               const statusCfg = visitorStatusConfig[v.status || "new"] || visitorStatusConfig.new;
