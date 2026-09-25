@@ -60,6 +60,8 @@ import Integracoes from "./pages/Integracoes";
 import BlogPost from "./pages/BlogPost";
 import AtendimentoV2 from "./pages/AtendimentoV2";
 import Links from "./pages/Links";
+import WebChatLinks from "./pages/WebChatLinks";
+import WebChatPublic from "./pages/WebChatPublic";
 import LeadsSemInteracao from "./pages/LeadsSemInteracao";
 import RedirectPage from "./pages/RedirectPage";
 import Configuracoes from "./pages/Configuracoes";
@@ -188,6 +190,7 @@ const App = () => (
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/indique-ganhe/:code" element={<ReferralRedirect />} />
           <Route path="/r/:slug" element={<RedirectPage />} />
+          <Route path="/chat/:linkId" element={<WebChatPublic />} />
           <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos-de-uso" element={<TermsOfUse />} />
           <Route path="/exclusao-de-dados" element={<DataDeletion />} />
@@ -224,6 +227,7 @@ const App = () => (
             <Route path="/personalizacao/respostas-rapidas" element={<RespostasRapidas />} />
             <Route path="/integracoes" element={<Integracoes />} />
             <Route path="/links" element={<Links />} />
+            <Route path="/webchat" element={<WebChatLinks />} />
             <Route path="/apps/leads-sem-interacao" element={<LeadsSemInteracao />} />
           </Route>
 
