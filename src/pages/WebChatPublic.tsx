@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Send, Loader2, WifiOff } from "lucide-react";
+import { CircleAlert, Loader2, Send, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
-interface Msg { id: string; content: string; direction: string; sender_name: string | null; created_at: string; }
+interface Msg {
+  id: string;
+  content: string;
+  direction: string;
+  sender_name: string | null;
+  created_at: string;
+  delivery?: "sending" | "failed";
+}
 
 const SESSION_KEY = "webchat_session_id";
 
@@ -22,11 +30,20 @@ export default function WebChatPublic() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "offline">("loading");
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const addMsg = (m: Msg) => setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
+
+  const confirmMsg = (optimisticId: string, confirmed: Msg) => {
+    setMessages((prev) => {
+      const withoutOptimistic = prev.filter((message) => message.id !== optimisticId);
+      return withoutOptimistic.some((message) => message.id === confirmed.id)
+        ? withoutOptimistic
+        : [...withoutOptimistic, confirmed];
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -52,13 +69,17 @@ export default function WebChatPublic() {
       })
       .on("broadcast", { event: "typing" }, () => {
         setTyping(true);
-        setTimeout(() => setTyping(false), 4000);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => setTyping(false), 4000);
       })
       .subscribe((s) => {
         if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") setStatus((p) => (p === "ready" ? "offline" : p));
         if (s === "SUBSCRIBED") setStatus((p) => (p === "offline" ? "ready" : p));
       });
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      supabase.removeChannel(ch);
+    };
   }, [sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, typing]);
@@ -86,15 +107,39 @@ export default function WebChatPublic() {
   }, []);
   const shellStyle = vh ? { height: `${vh}px` } : undefined;
 
-  const send = async () => {
+  const send = () => {
     const content = text.trim();
-    if (!content || sending) return;
-    setSending(true);
+    if (!content) return;
+
+    const optimisticId = `pending:${crypto.randomUUID()}`;
+    const optimisticMessage: Msg = {
+      id: optimisticId,
+      content,
+      direction: "inbound",
+      sender_name: "Visitante",
+      created_at: new Date().toISOString(),
+      delivery: "sending",
+    };
+
+    addMsg(optimisticMessage);
     setText("");
-    const { data, error } = await supabase.functions.invoke("webchat-send", { body: { linkId, sessionId, content } });
-    setSending(false);
-    if (error || !data?.message) { setText(content); setStatus("offline"); return; }
-    addMsg(data.message);
+
+    void supabase.functions
+      .invoke("webchat-send", { body: { linkId, sessionId, content } })
+      .then(({ data, error }) => {
+        if (error || !data?.message) {
+          setMessages((prev) => prev.map((message) =>
+            message.id === optimisticId ? { ...message, delivery: "failed" } : message
+          ));
+          return;
+        }
+        confirmMsg(optimisticId, data.message as Msg);
+      })
+      .catch(() => {
+        setMessages((prev) => prev.map((message) =>
+          message.id === optimisticId ? { ...message, delivery: "failed" } : message
+        ));
+      });
   };
 
   const color = link?.theme_color || "hsl(var(--primary))";
@@ -111,8 +156,8 @@ export default function WebChatPublic() {
   }
 
   return (
-    <div className="fixed inset-x-0 top-0 flex h-[100dvh] flex-col overflow-hidden bg-muted/40" style={shellStyle}>
-      <header className="flex shrink-0 items-center gap-3 px-4 py-3 shadow-sm" style={{ backgroundColor: color, color: "#fff", paddingTop: "max(0.75rem, env(safe-area-inset-top))", paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
+    <div className="fixed inset-x-0 top-0 mx-auto flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-muted" style={shellStyle}>
+      <header className="sticky top-0 z-10 flex flex-none items-center gap-3 px-4 py-3 shadow-sm" style={{ backgroundColor: color, color: "#fff", paddingTop: "max(0.75rem, env(safe-area-inset-top))", paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background/20 font-semibold">
           {link?.name?.charAt(0).toUpperCase()}
         </div>
@@ -128,18 +173,25 @@ export default function WebChatPublic() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6" style={{ WebkitOverflowScrolling: "touch" }}>
-        <div className="mx-auto flex max-w-2xl flex-col gap-2">
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="flex flex-col gap-2">
           {messages.map((m) => {
             const mine = m.direction === "inbound";
             return (
-              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={m.id} className={`flex items-end gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
+                {mine && m.delivery === "failed" && (
+                  <CircleAlert className="mb-1 h-4 w-4 shrink-0 text-destructive" aria-label="Falha ao enviar" />
+                )}
                 <div
-                  className={`min-w-0 max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${mine ? "rounded-br-md" : "rounded-bl-md bg-background text-foreground"}`}
+                  className={`min-w-0 max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${mine ? "rounded-br-md" : "rounded-bl-md bg-background text-foreground"} ${m.delivery === "failed" ? "ring-1 ring-destructive/40" : ""}`}
                   style={mine ? { backgroundColor: color, color: "#fff" } : undefined}
                 >
                   <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.content}</p>
-                  <p className={`mt-1 text-right text-[10px] ${mine ? "opacity-75" : "text-muted-foreground"}`}>{fmtTime(m.created_at)}</p>
+                  <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "opacity-75" : "text-muted-foreground"}`}>
+                    {m.delivery === "sending" && <span>enviando</span>}
+                    {m.delivery === "failed" && <span>não enviada</span>}
+                    <span>{fmtTime(m.created_at)}</span>
+                  </p>
                 </div>
               </div>
             );
@@ -157,8 +209,8 @@ export default function WebChatPublic() {
         </div>
       </main>
 
-      <footer className="shrink-0 border-t border-border bg-background p-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
-        <form className="mx-auto flex max-w-2xl items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      <footer className="sticky bottom-0 z-10 flex-none border-t border-border bg-background p-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+        <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -169,15 +221,16 @@ export default function WebChatPublic() {
             placeholder="Digite sua mensagem..."
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-input bg-muted/50 px-4 py-2.5 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
           />
-          <button
+          <Button
             type="submit"
-            disabled={!text.trim() || sending}
+            size="icon"
+            disabled={!text.trim()}
             aria-label="Enviar"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition-opacity disabled:opacity-40"
+            className="h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-full transition-opacity disabled:opacity-40"
             style={{ backgroundColor: color }}
           >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
+            <Send className="h-4 w-4" />
+          </Button>
         </form>
       </footer>
     </div>
