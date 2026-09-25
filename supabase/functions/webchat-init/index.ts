@@ -1,4 +1,5 @@
 import { broadcast, corsHeaders, insertMessage, isUuid, json, loadActiveLink, localDb, msgDb, publicMessage, threadPhone } from "../_shared/webchat.ts";
+import { pickDistribution } from "../_shared/assignment.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -55,8 +56,9 @@ Deno.serve(async (req) => {
         status: dist.status, sector_id: dist.sectorId, assigned_to: dist.assignedTo,
         assigned_at: dist.assignedTo ? new Date().toISOString() : null,
       });
-      if (aErr) throw aErr;
-      isNew = true;
+      // 23505 = outra requisição concorrente (ex.: duplo carregamento) já criou a conversa
+      if (aErr && aErr.code !== "23505") throw aErr;
+      isNew = !aErr;
     }
 
     if (isNew && link.greeting_message) {
