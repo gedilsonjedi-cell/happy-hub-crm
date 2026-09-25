@@ -66,6 +66,7 @@ function getPhoneLookupVariants(phone: string): string[] {
   const variants = new Set<string>();
   for (const variant of getPhoneThreadVariants(phone)) {
     variants.add(variant);
+    if (variant.startsWith('webchat:')) continue;
     variants.add(`+${variant}`);
   }
   return Array.from(variants);
@@ -73,6 +74,7 @@ function getPhoneLookupVariants(phone: string): string[] {
 
 function buildPhoneMatch(phone: string): { normalized: string; filter: string } {
   const normalized = normalizePhoneThreadValue(phone);
+  if (normalized.startsWith('webchat:')) return { normalized, filter: `conversation_phone.eq."${normalized}"` };
   const exactFilter = getPhoneLookupVariants(normalized).map((value) => `conversation_phone.eq.${value}`);
   const suffix8 = normalized.slice(-8);
   const fallbackFilter = suffix8 ? [`conversation_phone.ilike.%${suffix8}`] : [];
@@ -397,6 +399,14 @@ Deno.serve(async (req: Request) => {
         const channelId = body.channel_id;
         const phone = body.phone || body.conversation_phone;
         if (!channelId || !phone) return json({ error: 'channel_id+phone required' }, 400);
+        if (String(phone).replace(/^\+/, '').startsWith('webchat:')) {
+          const key = String(phone).replace(/^\+/, '');
+          const { error } = await ext.from('conversation_stats')
+            .update({ unread_count: 0, updated_at: new Date().toISOString() })
+            .eq('organization_id', orgId).eq('channel_id', channelId).eq('conversation_phone', key);
+          if (error) return json({ error: error.message }, 500);
+          return json({ success: true });
+        }
         const norm = String(phone).replace(/\D/g, '');
         if (!norm) return json({ error: 'valid phone required' }, 400);
         const baseVariants = Array.isArray(body.phone_variants) && body.phone_variants.length
