@@ -61,7 +61,30 @@ export default function WebChatPublic() {
     return () => { supabase.removeChannel(ch); };
   }, [sessionId]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, typing]);
+
+  // Altura real visível (fallback para iOS sem dvh / teclado aberto)
+  const [vh, setVh] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const update = () => {
+      setVh(vv ? vv.height : window.innerHeight);
+      window.scrollTo(0, 0);
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    };
+    update();
+    vv?.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    const html = document.documentElement, body = document.body;
+    const prev = [html.style.overscrollBehavior, body.style.overscrollBehavior, body.style.overflow];
+    html.style.overscrollBehavior = "none"; body.style.overscrollBehavior = "none"; body.style.overflow = "hidden";
+    return () => {
+      vv?.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+      [html.style.overscrollBehavior, body.style.overscrollBehavior, body.style.overflow] = prev;
+    };
+  }, []);
+  const shellStyle = vh ? { height: `${vh}px` } : undefined;
 
   const send = async () => {
     const content = text.trim();
