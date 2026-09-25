@@ -2,7 +2,7 @@ import React, { memo, useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MessageSquare, User, UserCheck, Clock, AlertCircle, Timer } from "lucide-react";
+import { MessageSquare, User, UserCheck, Clock, AlertCircle, Timer, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Conversation {
@@ -167,8 +167,13 @@ export const ConversationItem = memo(function ConversationItem({
         <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center justify-between gap-2 mb-0.5">
             <span className="font-medium text-foreground text-sm truncate flex-1 min-w-0">
-              {conversation.name || conversation.phone}
+              {conversation.name || (conversation.phone.startsWith("webchat:") ? "Visitante Web Chat" : conversation.phone)}
             </span>
+            {conversation.phone.startsWith("webchat:") && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 gap-1 shrink-0">
+                <Globe className="h-2.5 w-2.5" /> Web Chat
+              </Badge>
+            )}
             {sectorName && (
               <Badge
                 variant="outline"

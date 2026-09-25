@@ -929,7 +929,7 @@ const AtendimentoV2 = () => {
             .from("channels_public")
             .select("id, name, phone, provider, connected")
             .eq("organization_id", effectiveOrganizationId)
-            .in("provider", ["meta", "zapi", "gupshup"]),
+            .in("provider", ["meta", "zapi", "gupshup", "web_chat"]),
           "Carregamento dos canais"
         );
         data = result.data;

@@ -114,8 +114,12 @@ export function useConversations({ channels, sectorIds, canSeeSector, canAccessC
       profilesMapRef.current = profilesMap;
 
       const mapped: Conversation[] = (rows || []).map((r: any) => {
-        const normalizedPhone = (r.conversation_phone || '').replace(/\D/g, '');
-        const displayPhone = normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone;
+        const rawPhone: string = r.conversation_phone || '';
+        const normalizedPhone = rawPhone.replace(/\D/g, '');
+        // Web Chat threads use a synthetic key ("webchat:<uuid>") — keep it intact.
+        const displayPhone = rawPhone.startsWith('webchat:')
+          ? rawPhone
+          : (normalizedPhone.startsWith('+') ? normalizedPhone : '+' + normalizedPhone);
 
         let mappedStatus: Conversation["status"] = "pending";
         if (r.status === "active" || r.status === "in_progress") mappedStatus = "in_progress";
