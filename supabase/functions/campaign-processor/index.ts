@@ -38,19 +38,8 @@ async function processCampaignBatch(
   if (state.done || Date.now() - startTime >= MAX_EXECUTION_MS) return;
 
   const isFullMode = state.min_interval === 0 && state.max_interval === 0;
-
-  // Check interval timing
-  const elapsed = Date.now() - state.lastSentAt;
-  let requiredWait: number;
-  if (state.isRetryOnly || isFullMode) {
-    requiredWait = isFullMode ? 300 : 0;
-  } else {
-    requiredWait = getRandomInterval(state.min_interval || 5, state.max_interval || 120) * 1000;
-  }
-
-  if (state.lastSentAt > 0 && elapsed < requiredWait) {
-    return; // Not ready yet
-  }
+  // Sem espera por intervalo aqui: o banco (scheduled_at) decide quem sai.
+  if (state.lastSentAt > Date.now()) return; // pausa de retry
 
   try {
     const requestBody = isFullMode
@@ -211,8 +200,8 @@ Deno.serve(async (req) => {
         if (state.done) continue;
         const isFullMode = state.min_interval === 0 && state.max_interval === 0;
         const elapsed = Date.now() - state.lastSentAt;
-        const minWait = state.lastSentAt === 0 ? 0 :
-          (isFullMode ? 300 : (state.min_interval || 5) * 1000);
+        // Apenas frequência de consulta ao banco (não é a cadência do envio).
+        const minWait = state.lastSentAt === 0 ? 0 : (isFullMode ? 300 : 5_000);
         
         if (elapsed >= minWait) {
           readyCampaigns.push(state);
@@ -227,7 +216,7 @@ Deno.serve(async (req) => {
           if (state.done) continue;
           const isFullMode = state.min_interval === 0 && state.max_interval === 0;
           const elapsed = Date.now() - state.lastSentAt;
-          const minInterval = isFullMode ? 300 : (state.min_interval || 5) * 1000;
+          const minInterval = isFullMode ? 300 : 5_000;
           const remaining = minInterval - elapsed;
           if (remaining > 0 && remaining < minWait) {
             minWait = remaining;

@@ -357,9 +357,11 @@ Deno.serve(async (req) => {
     // FULL mode: cap parallel calls per tick at 25 to stay under the edge-runtime
     // per-trace rate limit (~100/min). Higher values caused mass "RateLimitError"
     // failures (Retry after 60s) when sending 99 meta-send calls in parallel.
+    // Cadência agora é ditada por campaign_recipients.scheduled_at (o claim só
+    // devolve quem já está no horário). Pegamos até 25 vencidos por chamada.
     const effectiveBatchSize = isFullMode
       ? Math.min(Math.max(Number(batchSize) || 25, 1), 25)
-      : standardTickSize;
+      : Math.max(standardTickSize, 25);
     const recoverableFailedCodes: string[] = [];
 
     const releaseStaleProcessingRecipients = async () => {
