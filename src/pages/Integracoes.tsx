@@ -598,7 +598,7 @@ const Integracoes = () => {
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold">Base URL</h3>
                   <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg">
-                    <code className="text-sm font-mono">https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1</code>
+                    <code className="text-sm font-mono">https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1</code>
                   </div>
                 </div>
 
@@ -713,7 +713,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X POST "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/send-whatsapp" \\
+                          <pre className="text-xs font-mono">{`curl -X POST "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/send-whatsapp" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"to": "5511999999999", "message": "Olá!"}'`}</pre>
@@ -723,7 +723,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo com áudio:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X POST "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/send-whatsapp" \\
+                          <pre className="text-xs font-mono">{`curl -X POST "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/send-whatsapp" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"to": "5511999999999", "audioUrl": "https://exemplo.com/audio.ogg"}'`}</pre>
@@ -811,7 +811,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X GET "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-contacts?search=joao&page=1&limit=20" \\
+                          <pre className="text-xs font-mono">{`curl -X GET "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-contacts?search=joao&page=1&limit=20" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json"`}</pre>
                         </div>
@@ -906,7 +906,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X POST "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-contacts" \\
+                          <pre className="text-xs font-mono">{`curl -X POST "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-contacts" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "João Silva", "phone": "5511999999999", "email": "joao@email.com"}'`}</pre>
@@ -962,7 +962,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X PUT "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-contacts?contact_id=UUID_DO_CONTATO" \\
+                          <pre className="text-xs font-mono">{`curl -X PUT "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-contacts?contact_id=UUID_DO_CONTATO" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "João Atualizado", "stage": "Fechado"}'`}</pre>
@@ -984,7 +984,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X DELETE "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-contacts?contact_id=UUID_DO_CONTATO" \\
+                          <pre className="text-xs font-mono">{`curl -X DELETE "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-contacts?contact_id=UUID_DO_CONTATO" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json"`}</pre>
                         </div>
@@ -1023,7 +1023,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X GET "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-labels" \\
+                          <pre className="text-xs font-mono">{`curl -X GET "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-labels" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json"`}</pre>
                         </div>
@@ -1066,7 +1066,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X POST "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-labels" \\
+                          <pre className="text-xs font-mono">{`curl -X POST "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-labels" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "Premium", "color": "#f59e0b"}'`}</pre>
@@ -1098,7 +1098,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X POST "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-labels" \\
+                          <pre className="text-xs font-mono">{`curl -X POST "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-labels" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"contact_id": "UUID_DO_CONTATO", "tags": ["VIP", "Premium"]}'`}</pre>
@@ -1127,7 +1127,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X DELETE "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-labels?contact_id=UUID&tag=VIP" \\
+                          <pre className="text-xs font-mono">{`curl -X DELETE "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-labels?contact_id=UUID&tag=VIP" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json"`}</pre>
                         </div>
@@ -1148,7 +1148,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                       <div>
                         <h4 className="font-medium mb-2">Exemplo cURL:</h4>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`curl -X DELETE "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/manage-labels?label_id=UUID_DA_ETIQUETA" \\
+                          <pre className="text-xs font-mono">{`curl -X DELETE "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/manage-labels?label_id=UUID_DA_ETIQUETA" \\
   -H "Authorization: Bearer SEU_API_TOKEN" \\
   -H "Content-Type: application/json"`}</pre>
                         </div>
@@ -1312,7 +1312,7 @@ Authorization: Bearer SEU_API_TOKEN`}</pre>
                           <span className="font-medium">JavaScript / Node.js</span>
                         </div>
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
-                          <pre className="text-xs font-mono">{`const API_URL = "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1";
+                          <pre className="text-xs font-mono">{`const API_URL = "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1";
 const API_TOKEN = "SEU_API_TOKEN";
 
 // Enviar mensagem
@@ -1362,7 +1362,7 @@ const criarContato = async (nome, telefone) => {
                         <div className="bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto">
                           <pre className="text-xs font-mono">{`import requests
 
-API_URL = "https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1"
+API_URL = "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1"
 API_TOKEN = "SEU_API_TOKEN"
 HEADERS = {
     "Authorization": f"Bearer {API_TOKEN}",

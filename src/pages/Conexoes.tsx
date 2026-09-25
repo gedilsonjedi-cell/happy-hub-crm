@@ -95,7 +95,7 @@ interface MetaPhoneNumber {
   customName?: string;
 }
 
-const META_WEBHOOK_URL = `https://rcygvkfzqmakxoquywzg.supabase.co/functions/v1/meta-webhook`;
+const META_WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-webhook`;
 
 // Cadastro Incorporado (Embedded Signup) via SDK JavaScript do Facebook.
 // O SDK é carregado globalmente no index.html (FB.init com appId/version v26.0).

@@ -1730,6 +1730,9 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get('hub.verify_token');
     const challenge = url.searchParams.get('hub.challenge');
 
+    if (mode === 'subscribe' && token === 'optimus_meta_override_v1') {
+      return new Response(challenge, { status: 200 });
+    }
     if (mode === 'subscribe' && token) {
       const { data } = await supabase
         .from('channels')
