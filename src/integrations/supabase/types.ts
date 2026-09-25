@@ -1611,6 +1611,7 @@ export type Database = {
           content: string
           created_at: string
           dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          header_media_url: string | null
           id: string
           name: string
           organization_id: string | null
@@ -1625,6 +1626,7 @@ export type Database = {
           content: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          header_media_url?: string | null
           id?: string
           name: string
           organization_id?: string | null
@@ -1639,6 +1641,7 @@ export type Database = {
           content?: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          header_media_url?: string | null
           id?: string
           name?: string
           organization_id?: string | null
