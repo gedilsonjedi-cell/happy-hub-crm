@@ -1,20 +1,22 @@
-## Ajustes visuais do Optimus
+# Corrigir Web Chat público no celular
 
-### Dashboard
-- Preservar todas as consultas, métricas e valores atuais.
-- Reorganizar os oito indicadores em uma faixa responsiva de cards limpos, com rótulo, valor e ícone em fundo suave.
-- Refinar o gráfico, o resumo diário, o desempenho dos atendentes e a atividade recente com bordas discretas, espaçamento consistente e hierarquia tipográfica clara.
+## Interface móvel
+- Atualizar a configuração de viewport para impedir zoom automático e manter o campo com fonte de 16px.
+- Organizar a tela em altura dinâmica total: cabeçalho fixo, histórico rolável e campo de mensagem sempre visível acima das barras e do teclado.
+- Limitar a largura no desktop sem deixar áreas pretas no celular, respeitando as áreas seguras do aparelho.
+- Manter rolagem automática ao carregar, receber e enviar mensagens.
 
-### Barra lateral
-- No modo recolhido, substituir o seletor espremido por uma inicial circular da organização, com tooltip do nome completo.
-- No modo expandido, exibir nome truncado e seta de abertura sem quebra de linha, mantendo a troca de organização atual.
-- Aumentar a logo para 40px, preservando proporção com `object-contain`.
+## Envio instantâneo
+- Inserir a mensagem imediatamente no histórico e limpar o campo antes da resposta do servidor.
+- Manter vários envios independentes, sem bloquear o campo enquanto uma mensagem anterior é processada.
+- Substituir a mensagem provisória pela mensagem confirmada sem duplicação.
+- Em falha, preservar o texto no histórico e mostrar um indicador vermelho ao lado do balão.
 
-### Validação
-- Conferir dashboard e barra lateral no preview em tamanhos desktop e móvel.
-- Rodar o typecheck do projeto.
-- Não publicar.
+## Validação
+- Validar envio, confirmação, falha visual e posição do campo com teclado/altura móvel.
+- Conferir o Web Chat em viewport de celular e executar o typecheck completo.
+- Manter tudo somente no preview, sem publicação.
 
-### Detalhes técnicos
-- Alterações restritas a `src/pages/Index.tsx`, `src/components/admin/ClientSwitcher.tsx` e `src/components/layout/TopNavLayout.tsx`.
-- As duas logos têm 1920 × 711 px, resolução suficiente para exibição a 40px sem pixelização.
+## Detalhes técnicos
+- Alterações restritas a `src/pages/WebChatPublic.tsx` e à meta viewport de `index.html`.
+- O endpoint e a lógica de criação/roteamento das conversas permanecem inalterados.
