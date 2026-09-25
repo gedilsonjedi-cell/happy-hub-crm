@@ -16,10 +16,29 @@ import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Users } from "l
 
 interface WebChatLink { id: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; }
 
+interface WebChatVisitor {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  created_at: string;
+  channel_id: string | null;
+}
+
+const visitorStatusConfig: Record<string, { label: string; className: string }> = {
+  new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/30" },
+  contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/30" },
+  qualified: { label: "Qualificado", className: "bg-blue-500/10 text-blue-400 border-blue-400/30" },
+  converted: { label: "Convertido", className: "bg-primary/10 text-primary border-primary/30" },
+  lost: { label: "Perdido", className: "bg-muted text-muted-foreground border-border" },
+};
+
 export default function WebChatLinks() {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const navigate = useNavigate();
   const [links, setLinks] = useState<WebChatLink[]>([]);
+  const [visitors, setVisitors] = useState<WebChatVisitor[]>([]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("Olá! Como podemos ajudar?");
@@ -32,9 +51,43 @@ export default function WebChatLinks() {
     const { data, error } = await db.from("webchat_links").select("*").eq("organization_id", effectiveOrganizationId).order("created_at", { ascending: false });
     if (error) toast.error("Erro ao carregar links de chat");
     setLinks(data || []);
+
+    // Visitantes: leads criados pelo Web Chat (phone = webchat:<sessionId>)
+    const { data: visitorLeads } = await db
+      .from("leads")
+      .select("id, name, phone, status, created_at")
+      .eq("organization_id", effectiveOrganizationId)
+      .ilike("phone", "webchat:%")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    const rows = (visitorLeads || []) as Omit<WebChatVisitor, "channel_id">[];
+    if (rows.length > 0) {
+      // Relaciona cada visitante ao canal (e ao link de origem) via conversation_assignments
+      const { data: assignments } = await db
+        .from("conversation_assignments")
+        .select("lead_id, channel_id")
+        .eq("organization_id", effectiveOrganizationId)
+        .in("lead_id", rows.map((r) => r.id));
+      const channelByLead = new Map<string, string>();
+      (assignments || []).forEach((a: any) => {
+        if (a.lead_id && a.channel_id && !channelByLead.has(a.lead_id)) channelByLead.set(a.lead_id, a.channel_id);
+      });
+      setVisitors(rows.map((r) => ({ ...r, channel_id: channelByLead.get(r.id) ?? null })));
+    } else {
+      setVisitors([]);
+    }
   }, [effectiveOrganizationId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const linkNameByChannel = new Map(links.filter((l) => l.channel_id).map((l) => [l.channel_id as string, l.name]));
+
+  const openConversation = (v: WebChatVisitor) => {
+    const params = new URLSearchParams({ phone: v.phone });
+    if (v.channel_id) params.set("channelId", v.channel_id);
+    navigate(`/atendimento-v2?${params.toString()}`);
+  };
 
   const create = async () => {
     if (!name.trim() || !effectiveOrganizationId || !user) return;
