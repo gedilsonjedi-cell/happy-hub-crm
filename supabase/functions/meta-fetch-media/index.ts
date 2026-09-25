@@ -54,9 +54,9 @@ Deno.serve(async (req) => {
     }
 
     const { data: channel } = await supabase
-      .from('whatsapp_channels')
+      .from('channel_secrets')
       .select('access_token')
-      .eq('id', msg.channel_id)
+      .eq('channel_id', msg.channel_id)
       .maybeSingle();
 
     const accessToken = channel?.access_token as string | undefined;
