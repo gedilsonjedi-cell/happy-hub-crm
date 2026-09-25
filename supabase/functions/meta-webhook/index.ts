@@ -754,104 +754,15 @@ async function processSystemUserChange(msg: Record<string, unknown>, channel: Re
 // =============================================
 // ROUND-ROBIN ATTENDANT ASSIGNMENT
 // =============================================
-async function getNextAvailableAttendant(
-  organizationId: string,
-  sectorId: string | null
-): Promise<{ userId: string } | null> {
-  if (!sectorId) return null;
-
-  const { data: sectorUsers } = await supabase
-    .from('user_sectors')
-    .select('user_id')
-    .eq('sector_id', sectorId);
-
-  if (!sectorUsers || sectorUsers.length === 0) return null;
-
-  const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
-
-  // Prefer attendants explicitly online (is_available=true).
-  const { data: onlineAttendants } = await supabase
-    .from('attendant_availability')
-    .select('user_id, last_assignment_at')
-    .eq('organization_id', organizationId)
-    .eq('is_available', true)
-    .in('user_id', userIds)
-    .order('last_assignment_at', { ascending: true, nullsFirst: true });
-
-  let availableAttendants = onlineAttendants;
-
-  // Fallback: no one online in the sector — still distribute inside the sector
-  // (never send the conversation back to the "Novos" queue).
-  if (!availableAttendants || availableAttendants.length === 0) {
-    const { data: anyAttendants } = await supabase
-      .from('attendant_availability')
-      .select('user_id, last_assignment_at')
-      .eq('organization_id', organizationId)
-      .in('user_id', userIds)
-      .order('last_assignment_at', { ascending: true, nullsFirst: true });
-    availableAttendants = anyAttendants;
-  }
-
-  // Last resort: sector members without an availability row yet.
-  if (!availableAttendants || availableAttendants.length === 0) {
-    availableAttendants = userIds.map((id: string) => ({ user_id: id, last_assignment_at: null }));
-  }
-
-  const nextAttendant = availableAttendants[0];
-
-  // Update last_assignment_at (fire and forget)
-  supabase
-    .from('attendant_availability')
-    .update({ last_assignment_at: new Date().toISOString() })
-    .eq('user_id', nextAttendant.user_id)
-    .eq('organization_id', organizationId)
-    .then(() => {}, () => {});
-
-  return { userId: nextAttendant.user_id };
+// Lógica compartilhada com o Web Chat (_shared/assignment.ts) — uma única fila.
+function getNextAvailableAttendant(organizationId: string, sectorId: string | null) {
+  return sharedNextAttendant(supabase, organizationId, sectorId);
 }
-
-// =============================================
-// GLOBAL ROUND-ROBIN (for ad leads without sector — distributes to any online attendant)
-// =============================================
-async function getNextAvailableAttendantGlobal(
-  organizationId: string
-): Promise<{ userId: string } | null> {
-  const { data: availableAttendants } = await supabase
-    .from('attendant_availability')
-    .select('user_id, last_assignment_at')
-    .eq('organization_id', organizationId)
-    .eq('is_available', true)
-    .order('last_assignment_at', { ascending: true, nullsFirst: true });
-
-  if (!availableAttendants || availableAttendants.length === 0) return null;
-
-  const nextAttendant = availableAttendants[0];
-
-  // Update last_assignment_at (fire and forget)
-  supabase
-    .from('attendant_availability')
-    .update({ last_assignment_at: new Date().toISOString() })
-    .eq('user_id', nextAttendant.user_id)
-    .eq('organization_id', organizationId)
-    .then(() => {}, () => {});
-
-  return { userId: nextAttendant.user_id };
+function getNextAvailableAttendantGlobal(organizationId: string) {
+  return sharedNextAttendantGlobal(supabase, organizationId);
 }
-
-// =============================================
-// DEFAULT SECTOR (per-organization auto distribution)
-// Returns the org's default sector when the feature is enabled, else null.
-// =============================================
-async function getOrgDefaultSector(organizationId: string): Promise<string | null> {
-  return await getCached(`orgdefsector:${organizationId}`, async () => {
-    const { data } = await supabase
-      .from('organizations')
-      .select('auto_distribute_enabled, default_sector_id')
-      .eq('id', organizationId)
-      .maybeSingle();
-    if (data?.auto_distribute_enabled && data?.default_sector_id) return data.default_sector_id as string;
-    return null;
-  });
+function getOrgDefaultSector(organizationId: string) {
+  return sharedOrgDefaultSector(supabase, organizationId);
 }
 
 

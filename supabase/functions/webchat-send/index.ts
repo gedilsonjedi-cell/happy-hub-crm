@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
     if (!link || !link.channel_id) return json({ error: "Chat indisponível" }, 404);
 
     const phone = threadPhone(sessionId);
-    const { data: assignment } = await msgDb.from("conversation_assignments").select("id, status")
+    const { data: assignment } = await msgDb.from("conversation_assignments").select("id, status, assigned_to, sector_id")
       .eq("channel_id", link.channel_id).eq("conversation_phone", phone).limit(1).maybeSingle();
     if (!assignment) return json({ error: "Sessão não iniciada" }, 409);
 
@@ -21,10 +21,19 @@ Deno.serve(async (req) => {
     const m = await insertMessage({ channelId: link.channel_id, orgId: link.organization_id, sessionId, content: text,
       direction: "inbound", senderName: lead?.name || "Visitante", linkId: link.id });
 
-    if (assignment.status === "archived" || assignment.status === "resolved") {
-      await msgDb.from("conversation_assignments").update({ status: "pending", updated_at: new Date().toISOString() }).eq("id", assignment.id);
+    const now = new Date().toISOString();
+    const reopened = assignment.status === "archived" || assignment.status === "resolved";
+    if (!assignment.assigned_to) {
+      // Ainda sem atendente: tenta distribuir; update condicional evita dois donos
+      const dist = await pickDistribution(localDb, link.organization_id, assignment.sector_id);
+      await msgDb.from("conversation_assignments").update({
+        status: dist.assignedTo ? "in_progress" : "pending", sector_id: dist.sectorId, assigned_to: dist.assignedTo,
+        assigned_at: dist.assignedTo ? now : null, updated_at: now,
+      }).eq("id", assignment.id).is("assigned_to", null);
+    } else if (reopened) {
+      await msgDb.from("conversation_assignments").update({ status: "in_progress", updated_at: now }).eq("id", assignment.id);
     } else {
-      await msgDb.from("conversation_assignments").update({ updated_at: new Date().toISOString() }).eq("id", assignment.id);
+      await msgDb.from("conversation_assignments").update({ updated_at: now }).eq("id", assignment.id);
     }
 
     await msgDb.rpc("upsert_conversation_stats_external", {
