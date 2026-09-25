@@ -372,6 +372,7 @@ export type Database = {
           phone: string
           read_at: string | null
           retry_count: number | null
+          scheduled_at: string | null
           sent_at: string | null
           status: string
           updated_at: string
@@ -392,6 +393,7 @@ export type Database = {
           phone: string
           read_at?: string | null
           retry_count?: number | null
+          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           updated_at?: string
@@ -412,6 +414,7 @@ export type Database = {
           phone?: string
           read_at?: string | null
           retry_count?: number | null
+          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           updated_at?: string
@@ -3092,6 +3095,10 @@ export type Database = {
       restore_conversation_ext: {
         Args: { p_channel_id: string; p_phone: string }
         Returns: undefined
+      }
+      schedule_campaign_recipients: {
+        Args: { p_campaign_id: string }
+        Returns: number
       }
       search_conversations_global_ext: {
         Args: {
