@@ -305,10 +305,19 @@ const Conexoes = () => {
       });
 
       if (error) {
-        console.error("[EmbeddedSignup] erro na edge function:", error, data);
+        let detail: any = data;
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx && typeof ctx.text === "function") {
+            const txt = await ctx.text();
+            try { detail = JSON.parse(txt); } catch { detail = { error: txt }; }
+          }
+        } catch { /* ignore */ }
+        console.error("[EmbeddedSignup] erro na edge function:", error, detail);
+        const metaMsg = detail?.meta?.error?.message;
         toast.error(
-          (data as any)?.error || `Falha ao conectar o número: ${error.message}`,
-          { id: toastId, duration: 12000 }
+          `Falha ao conectar o número: ${detail?.error || error.message}${metaMsg ? ` — Meta: ${metaMsg}` : ""}`,
+          { id: toastId, duration: 20000 }
         );
         return;
       }
