@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     // Lead anônimo: sem telefone; sessão salva em bsuid (fallback: leads antigos com phone=webchat:<id>)
     let leadId: string | null = null;
     const { data: existingLead } = await localDb.from("leads").select("id").eq("organization_id", orgId)
-      .or(`bsuid.eq.${sessionId},phone.eq.${phone}`).limit(1).maybeSingle();
+      .or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
     if (existingLead) {
       leadId = existingLead.id;
       if (name) await localDb.from("leads").update({ name }).eq("id", leadId);
