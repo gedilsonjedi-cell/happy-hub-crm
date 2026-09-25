@@ -50,11 +50,34 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       .order("started_at", { ascending: false });
 
     if (!error && data) {
-      const newDataString = JSON.stringify(data);
+      let merged: RunningCampaign[] = data as RunningCampaign[];
+      // Corrige agregados desatualizados em `campaigns` com contagens reais por destinatário
+      if (merged.length > 0) {
+        const { data: counts, error: countsError } = await supabase.rpc("get_campaign_real_counts", {
+          p_campaign_ids: merged.map((c) => c.id),
+        });
+        if (!countsError && counts) {
+          const map = new Map(
+            (counts as Array<{ campaign_id: string; recipients_count: number; sent_count: number; delivered_count: number; failed_count: number }>)
+              .map((r) => [r.campaign_id, r])
+          );
+          merged = merged.map((c) => {
+            const r = map.get(c.id);
+            if (!r) return c;
+            return {
+              ...c,
+              total_recipients: Number(r.recipients_count) || c.total_recipients,
+              sent_count: Number(r.sent_count) || 0,
+              delivered_count: Number(r.delivered_count) || 0,
+              failed_count: Number(r.failed_count) || 0,
+            };
+          });
+        }
+      }
+      const newDataString = JSON.stringify(merged);
       if (newDataString !== previousDataRef.current) {
         previousDataRef.current = newDataString;
-        // Always use the latest values from database (source of truth)
-        setRunningCampaigns(data);
+        setRunningCampaigns(merged);
       }
     }
   }, [effectiveOrganizationId]);
@@ -99,12 +122,18 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
       )
       .subscribe();
 
-    // Sem polling: realtime já cobre todas as mudanças relevantes em `campaigns`.
-    // O botão de refresh manual continua disponível para forçar sincronização.
     return () => {
       supabase.removeChannel(channel);
     };
   }, [effectiveOrganizationId, fetchRunningCampaigns, debouncedFetch]);
+
+  // Polling de fallback (defesa em profundidade caso o realtime falhe)
+  const hasRunning = runningCampaigns.length > 0;
+  useEffect(() => {
+    if (!effectiveOrganizationId || !hasRunning) return;
+    const id = setInterval(() => fetchRunningCampaigns(), 15000);
+    return () => clearInterval(id);
+  }, [effectiveOrganizationId, hasRunning, fetchRunningCampaigns]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
