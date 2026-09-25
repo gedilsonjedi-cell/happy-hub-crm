@@ -63,11 +63,16 @@ export function useSendMessage(
     { tempId: string; queryKey: unknown[] }
   >({
     mutationFn: async (payload) => {
-      const sendFunction = payload.channelProvider === "zapi"
-        ? "zapi-send"
-        : payload.channelProvider === "gupshup"
-          ? "gupshup-send"
-          : "meta-send";
+      if (payload.channelProvider === "web_chat" && payload.messageType && payload.messageType !== "text") {
+        throw new Error("No Web Chat, por enquanto só é possível enviar mensagens de texto.");
+      }
+      const sendFunction = payload.channelProvider === "web_chat"
+        ? "webchat-reply"
+        : payload.channelProvider === "zapi"
+          ? "zapi-send"
+          : payload.channelProvider === "gupshup"
+            ? "gupshup-send"
+            : "meta-send";
 
       const body: Record<string, unknown> = {
         channelId: payload.channelId,
