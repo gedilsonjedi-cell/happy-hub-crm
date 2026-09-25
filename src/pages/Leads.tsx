@@ -166,7 +166,8 @@ const Leads = () => {
         let query = supabase
           .from("leads")
           .select("*")
-          .eq("organization_id", effectiveOrganizationId);
+          .eq("organization_id", effectiveOrganizationId)
+          .not("phone", "ilike", "webchat:%");
 
         // Use server-side narrowing, then client-side normalized matching.
         // Multi-word names must match ALL typed words anywhere in the name,
@@ -236,7 +237,8 @@ const Leads = () => {
       let query = supabase
         .from("leads")
         .select("*")
-        .eq("organization_id", effectiveOrganizationId);
+        .eq("organization_id", effectiveOrganizationId)
+        .not("phone", "ilike", "webchat:%");
 
       // Apply tag filter if selected (OR semantics: lead com QUALQUER tag selecionada)
       if (selectedTagFilters.length > 0) {
@@ -470,7 +472,8 @@ const Leads = () => {
       const { data, error } = await supabase
         .from("leads")
         .select("status")
-        .eq("organization_id", effectiveOrganizationId);
+        .eq("organization_id", effectiveOrganizationId)
+        .not("phone", "ilike", "webchat:%");
 
       if (error) throw error;
 

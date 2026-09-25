@@ -37,6 +37,7 @@ export async function fetchAllLeads<T = any>({
       .from("leads")
       .select(columns)
       .eq("organization_id", organizationId)
+      .not("phone", "ilike", "webchat:%")
       .range(from, to);
 
     if (orderBy) {
