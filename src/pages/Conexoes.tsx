@@ -510,6 +510,7 @@ const Conexoes = () => {
           channel_secrets(access_token, api_token, meta_app_secret, webhook_verify_token)
         `)
         .eq("organization_id", effectiveOrganizationId)
+        .neq("provider", "web_chat")
         .order("created_at", { ascending: false });
 
       if (error) {

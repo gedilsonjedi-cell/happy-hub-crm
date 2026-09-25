@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,14 +12,33 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
-import { Globe, Plus, Copy, ExternalLink, Trash2 } from "lucide-react";
+import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Users } from "lucide-react";
 
 interface WebChatLink { id: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; }
+
+interface WebChatVisitor {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  created_at: string;
+  channel_id: string | null;
+}
+
+const visitorStatusConfig: Record<string, { label: string; className: string }> = {
+  new: { label: "Novo", className: "bg-primary/10 text-primary border-primary/30" },
+  contacted: { label: "Contatado", className: "bg-warning/10 text-warning border-warning/30" },
+  qualified: { label: "Qualificado", className: "bg-blue-500/10 text-blue-400 border-blue-400/30" },
+  converted: { label: "Convertido", className: "bg-primary/10 text-primary border-primary/30" },
+  lost: { label: "Perdido", className: "bg-muted text-muted-foreground border-border" },
+};
 
 export default function WebChatLinks() {
   const { user } = useAuth();
   const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const navigate = useNavigate();
   const [links, setLinks] = useState<WebChatLink[]>([]);
+  const [visitors, setVisitors] = useState<WebChatVisitor[]>([]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("Olá! Como podemos ajudar?");
@@ -31,9 +51,43 @@ export default function WebChatLinks() {
     const { data, error } = await db.from("webchat_links").select("*").eq("organization_id", effectiveOrganizationId).order("created_at", { ascending: false });
     if (error) toast.error("Erro ao carregar links de chat");
     setLinks(data || []);
+
+    // Visitantes: leads criados pelo Web Chat (phone = webchat:<sessionId>)
+    const { data: visitorLeads } = await db
+      .from("leads")
+      .select("id, name, phone, status, created_at")
+      .eq("organization_id", effectiveOrganizationId)
+      .ilike("phone", "webchat:%")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    const rows = (visitorLeads || []) as Omit<WebChatVisitor, "channel_id">[];
+    if (rows.length > 0) {
+      // Relaciona cada visitante ao canal (e ao link de origem) via conversation_assignments
+      const { data: assignments } = await db
+        .from("conversation_assignments")
+        .select("lead_id, channel_id")
+        .eq("organization_id", effectiveOrganizationId)
+        .in("lead_id", rows.map((r) => r.id));
+      const channelByLead = new Map<string, string>();
+      (assignments || []).forEach((a: any) => {
+        if (a.lead_id && a.channel_id && !channelByLead.has(a.lead_id)) channelByLead.set(a.lead_id, a.channel_id);
+      });
+      setVisitors(rows.map((r) => ({ ...r, channel_id: channelByLead.get(r.id) ?? null })));
+    } else {
+      setVisitors([]);
+    }
   }, [effectiveOrganizationId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const linkNameByChannel = new Map(links.filter((l) => l.channel_id).map((l) => [l.channel_id as string, l.name]));
+
+  const openConversation = (v: WebChatVisitor) => {
+    const params = new URLSearchParams({ phone: v.phone });
+    if (v.channel_id) params.set("channelId", v.channel_id);
+    navigate(`/atendimento-v2?${params.toString()}`);
+  };
 
   const create = async () => {
     if (!name.trim() || !effectiveOrganizationId || !user) return;
@@ -97,6 +151,44 @@ export default function WebChatLinks() {
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        <div className="pt-4 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><Users className="h-5 w-5 text-primary" /> Visitantes</h2>
+            <p className="text-sm text-muted-foreground">Pessoas que iniciaram conversa pelos links de chat.</p>
+          </div>
+
+          {visitors.length === 0 && (
+            <Card><CardContent className="p-6 text-center text-muted-foreground">Nenhum visitante ainda.</CardContent></Card>
+          )}
+
+          <div className="grid gap-2">
+            {visitors.map((v) => {
+              const sessionShort = v.phone.replace("webchat:", "").slice(0, 8);
+              const displayName = v.name && !v.name.startsWith("Visitante Web Chat")
+                ? v.name
+                : `Visitante ${sessionShort}`;
+              const statusCfg = visitorStatusConfig[v.status || "new"] || visitorStatusConfig.new;
+              const origin = v.channel_id ? linkNameByChannel.get(v.channel_id) : undefined;
+              return (
+                <Card key={v.id}>
+                  <CardContent className="p-4 flex flex-wrap items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{displayName}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {origin ? `Origem: ${origin} · ` : ""}{new Date(v.created_at).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full border ${statusCfg.className}`}>{statusCfg.label}</span>
+                    <Button variant="outline" size="sm" onClick={() => openConversation(v)}>
+                      <MessageCircle className="h-4 w-4 mr-1" /> Abrir conversa
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </div>
 
