@@ -275,9 +275,14 @@ const sanitizeConversationCollection = (
   );
 };
 
+// Web Chat threads use "webchat:<sessionId>" (sem telefone) — nunca reduzir a dígitos.
+const digitsOrKey = (phone: string): string =>
+  phone.startsWith("webchat:") ? phone : phone.replace(/\D/g, "");
+
 // Helper function to normalize phone numbers consistently
 const normalizePhoneNumber = (phone: string): string => {
   let normalized = digitsOrKey(phone);
+  if (normalized.startsWith("webchat:")) return normalized;
   if (normalized.length <= 11 && !normalized.startsWith('55')) {
     normalized = '55' + normalized;
   }
@@ -1545,7 +1550,7 @@ const AtendimentoV2 = () => {
       // Build bulk request — up to 50 conversations at a time
       const bulkRequest = pendingConversations.slice(0, 50).map((conversation) => ({
         channelId: conversation.channelId!,
-        phoneVariants: digitsOrKey(buildMessageLookupVariants(conversation.phone)),
+        phoneVariants: buildMessageLookupVariants(digitsOrKey(conversation.phone)),
       }));
 
       try {
@@ -2109,11 +2114,11 @@ const AtendimentoV2 = () => {
 
     // ── Step 1: Instant local filter (no DB hit) ──
     const lowerTerm = searchTerm.toLowerCase();
-    const normalizedSearchDigits = digitsOrKey(searchTerm);
+    const normalizedSearchDigits = searchTerm.replace(/\D/g, "");
     
     const localMatches = conversations.filter(conv => {
       if (conv.name?.toLowerCase().includes(lowerTerm)) return true;
-      if (normalizedSearchDigits && digitsOrKey(conv.phone).includes(normalizedSearchDigits)) return true;
+      if (normalizedSearchDigits && conv.phone.replace(/\D/g, "").includes(normalizedSearchDigits)) return true;
       if (conv.tags?.some(t => t.toLowerCase().includes(lowerTerm))) return true;
       return false;
     });
@@ -3046,7 +3051,7 @@ const AtendimentoV2 = () => {
         const qk = ["messages", effectiveOrganizationId, conv.channelId, threadKey];
         // Only prefetch if not already cached
         if (!prefetchQueryClient.getQueryData(qk)) {
-          const phoneVariants = digitsOrKey(buildMessageLookupVariants(conv.phone));
+          const phoneVariants = buildMessageLookupVariants(digitsOrKey(conv.phone));
           prefetchQueryClient.prefetchInfiniteQuery({
             queryKey: qk,
             queryFn: async () => {
@@ -5394,7 +5399,7 @@ const AtendimentoV2 = () => {
                 placeholder="(00) 0000-0000" 
                 className="flex-1 h-9 text-sm" 
                 value={manualPhoneInput} 
-                onChange={(e) => digitsOrKey(setManualPhoneInput(e.target.value).slice(0, 11))} 
+                onChange={(e) => setManualPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 11))} 
               />
               <Button 
                 onClick={() => setShowManualSendDialog(true)} 
