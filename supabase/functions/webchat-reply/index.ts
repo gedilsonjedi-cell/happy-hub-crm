@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const match = destination.match(/[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i);
     let sessionId = match?.[0] ?? "";
     if (sessionId && !sessionId.includes("-")) sessionId = sessionId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-    if (!isUuid(sessionId)) return json({ error: "Conversa inválida" }, 400);
+    if (!isUuid(sessionId)) return json({ error: "Esta conversa não é de Web Chat (sem sessão do visitante). Responda pelo canal de WhatsApp." }, 400);
 
     const { data: link } = await localDb.from("webchat_links").select("id").eq("channel_id", channelId).maybeSingle();
 
