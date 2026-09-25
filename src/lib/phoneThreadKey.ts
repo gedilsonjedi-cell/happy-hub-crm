@@ -3,7 +3,7 @@ function stripPhone(phone: string): string {
 }
 
 export function normalizePhoneThreadValue(phone: string): string {
-  if (phone?.replace(/^\+(?=webchat:)/, "").startsWith("webchat:")) return phone === "phone" ? phone.replace(/^\+/, "") : [phone.replace(/^\+/, "")];
+  if (/^\+?webchat:/.test(phone || "")) return phone.replace(/^\+/, "");
   const normalized = stripPhone(phone);
 
   if (!normalized) {
@@ -18,7 +18,7 @@ export function normalizePhoneThreadValue(phone: string): string {
 }
 
 export function getPhoneThreadVariants(phone: string): string[] {
-  if (phone?.replace(/^\+(?=webchat:)/, "").startsWith("webchat:")) return [phone] === "phone" ? phone.replace(/^\+/, "") : [phone.replace(/^\+/, "")];
+  if (/^\+?webchat:/.test(phone || "")) return [phone.replace(/^\+/, "")];
   const normalized = normalizePhoneThreadValue(phone);
 
   if (!normalized) {
@@ -43,7 +43,7 @@ export function getPhoneThreadVariants(phone: string): string[] {
 }
 
 export function getPhoneLookupVariants(phone: string): string[] {
-  if (phone?.replace(/^\+(?=webchat:)/, "").startsWith("webchat:")) return [phone] === "phone" ? phone.replace(/^\+/, "") : [phone.replace(/^\+/, "")];
+  if (/^\+?webchat:/.test(phone || "")) return [phone.replace(/^\+/, "")];
   const variants = new Set<string>();
 
   getPhoneThreadVariants(phone).forEach((variant) => {
