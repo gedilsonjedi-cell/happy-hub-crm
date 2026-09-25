@@ -1494,6 +1494,22 @@ Deno.serve(async (req) => {
       };
     }
 
+    // Template media header: Meta often fails to download header links at delivery
+    // time (async 131053), especially its own expiring scontent example URLs.
+    // Pre-upload the media and send by media_id; keep the link if upload fails.
+    if (templateName) {
+      try {
+        const converted = await convertTemplateHeaderLinkToMediaId(
+          messagePayload as MutableTemplatePayload,
+          phoneNumberId,
+          accessToken,
+        );
+        if (!converted) console.log('[Meta-Send] Header media kept as link (no header or upload failed)');
+      } catch (e) {
+        console.warn('[Meta-Send] Header pre-upload failed, keeping link:', e);
+      }
+    }
+
     console.log('Meta API payload:', JSON.stringify(messagePayload));
 
     // Retry logic for transient infra/provider errors only.
