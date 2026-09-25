@@ -1718,8 +1718,10 @@ export type Database = {
       }
       organizations: {
         Row: {
+          auto_distribute_enabled: boolean
           created_at: string
           custom_subscription_price: number | null
+          default_sector_id: string | null
           has_paid_first_subscription: boolean
           id: string
           is_active: boolean
@@ -1737,8 +1739,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
@@ -1756,8 +1760,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_distribute_enabled?: boolean
           created_at?: string
           custom_subscription_price?: number | null
+          default_sector_id?: string | null
           has_paid_first_subscription?: boolean
           id?: string
           is_active?: boolean
@@ -1994,10 +2000,13 @@ export type Database = {
           destinations: Json
           id: string
           is_active: boolean | null
+          link_type: string
           name: string
           organization_id: string
+          original_url: string | null
           slug: string
           updated_at: string | null
+          webchat_link_id: string | null
         }
         Insert: {
           click_count?: number | null
@@ -2006,10 +2015,13 @@ export type Database = {
           destinations?: Json
           id?: string
           is_active?: boolean | null
+          link_type?: string
           name: string
           organization_id: string
+          original_url?: string | null
           slug: string
           updated_at?: string | null
+          webchat_link_id?: string | null
         }
         Update: {
           click_count?: number | null
@@ -2018,12 +2030,23 @@ export type Database = {
           destinations?: Json
           id?: string
           is_active?: boolean | null
+          link_type?: string
           name?: string
           organization_id?: string
+          original_url?: string | null
           slug?: string
           updated_at?: string | null
+          webchat_link_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "redirect_links_webchat_link_id_fkey"
+            columns: ["webchat_link_id"]
+            isOneToOne: false
+            referencedRelation: "webchat_links"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referral_codes: {
         Row: {
@@ -2774,12 +2797,23 @@ export type Database = {
         }[]
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      log_redirect_click: { Args: { link_id: string }; Returns: undefined }
       reset_conversation_unread_ext:
         | { Args: { p_channel_id: string }; Returns: undefined }
         | {
             Args: { p_channel_id: string; p_phone: string }
             Returns: undefined
           }
+      resolve_redirect_link_v2: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+          link_type: string
+          original_url: string
+          webchat_link_id: string
+        }[]
+      }
       restore_conversation_ext: {
         Args: { p_channel_id: string; p_phone: string }
         Returns: undefined
