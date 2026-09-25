@@ -1,6 +1,7 @@
 // Sem SDK: import npm pesado causava ~1s de cold start por clique.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
+const APP_URL = (Deno.env.get("APP_PUBLIC_URL") || "https://optimuscrm.com.br").replace(/\/$/, "");
 
 const rpc = (fn: string, body: unknown) =>
   fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -42,6 +43,19 @@ Deno.serve(async (req) => {
       // @ts-ignore EdgeRuntime is available in Deno Deploy
       if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(count);
     };
+
+    // Modo 3: Web Chat próprio -> /chat/:webchatLinkId
+    if ((link as any).link_type === "web_chat") {
+      const wid = String((link as any).webchat_link_id || "");
+      if (!/^[0-9a-f-]{36}$/i.test(wid)) {
+        return new Response(notFoundHtml, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      countClick();
+      return new Response(null, {
+        status: 302,
+        headers: { location: `${APP_URL}/chat/${wid}`, "cache-control": "no-store, no-cache, must-revalidate", "referrer-policy": "no-referrer" },
+      });
+    }
 
     // Modo 1: redirecionamento de link externo
     if ((link as any).link_type === "external_redirect") {
