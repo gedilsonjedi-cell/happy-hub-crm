@@ -2026,6 +2026,32 @@ export type Database = {
         }
         Relationships: []
       }
+      redirect_link_clicks: {
+        Row: {
+          clicked_at: string
+          id: string
+          link_id: string
+        }
+        Insert: {
+          clicked_at?: string
+          id?: string
+          link_id: string
+        }
+        Update: {
+          clicked_at?: string
+          id?: string
+          link_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_link_clicks_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redirect_links: {
         Row: {
           click_count: number | null
@@ -2969,6 +2995,15 @@ export type Database = {
       }
       get_jwt_organization_id: { Args: never; Returns: string }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
+      get_redirect_link_stats: {
+        Args: { _link_ids: string[] }
+        Returns: {
+          clicks_month: number
+          clicks_today: number
+          clicks_week: number
+          link_id: string
+        }[]
+      }
       get_unread_conversations_full_ext: {
         Args: { p_channel_ids: string[]; p_organization_id: string }
         Returns: {
