@@ -3,6 +3,11 @@ import { uploadToExternalMedia } from "../_shared/externalStorage.ts";
 import { maybeAutoBlacklist } from "../_shared/autoBlacklist.ts";
 import { isNotWantedLabel } from "../_shared/notWantedButton.ts";
 import { classifyLeadIntent, DECLINE_MESSAGE, isFirstInboundContact } from "../_shared/leadIntent.ts";
+import {
+  getOrgDefaultSector as sharedOrgDefaultSector,
+  getNextAvailableAttendant as sharedNextAttendant,
+  getNextAvailableAttendantGlobal as sharedNextAttendantGlobal,
+} from "../_shared/assignment.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
