@@ -22,7 +22,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -120,7 +120,8 @@ export default {
         'glass': '0 8px 32px rgba(0, 0, 0, 0.08)',
         'glass-lg': '0 16px 48px rgba(0, 0, 0, 0.12)',
         'whatsapp': '0 4px 20px rgba(37, 211, 102, 0.25)',
-        'card': '0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06)',
+        'card': 'var(--shadow-card)',
+        'popover': 'var(--shadow-popover)',
       },
     },
   },

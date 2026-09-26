@@ -10,8 +10,8 @@ createRoot(document.getElementById("root")!).render(
     <HelmetProvider>
       <ThemeProvider 
         attribute="class" 
-        defaultTheme="dark" 
-        storageKey="whatscode-theme"
+        defaultTheme="light" 
+        storageKey="optimus-theme"
         enableSystem={false}
       >
         <App />
