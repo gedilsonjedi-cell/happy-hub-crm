@@ -230,7 +230,7 @@ export const ConversationItem = memo(function ConversationItem({
               {hasAgent ? (
                 <Badge
                   variant="outline"
-                  className="text-[0.625rem] h-5 px-2 gap-1 bg-info/15 text-info border-info/30 max-w-[7.125rem]"
+                  className="text-xs h-5 px-2 gap-1 bg-info/15 text-info border-info/30 max-w-[8.1875rem]"
                   title={`Atendente: ${conversation.assignedToName}`}
                 >
                   <UserCheck className="w-3 h-3 shrink-0" />
@@ -264,7 +264,7 @@ export const ConversationItem = memo(function ConversationItem({
             conversation.assignedToName && (
               <div className="flex items-center gap-1 mb-0.5">
                 <UserCheck className="w-3 h-3 text-info" />
-                <span className="text-[0.6875rem] text-info font-medium truncate">
+                <span className="text-xs text-info font-medium truncate">
                   {conversation.assignedToName}
                 </span>
               </div>

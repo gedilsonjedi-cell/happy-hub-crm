@@ -695,10 +695,10 @@ export function LeadDetailsDialog({
                             variant="outline" 
                             className={
                               dispatch.status === "delivered" 
-                                ? "bg-success/10 text-success border-success/30 text-[0.625rem]" 
+                                ? "bg-success/10 text-success border-success/30 text-xs" 
                                 : dispatch.status === "failed" 
-                                  ? "bg-destructive/10 text-destructive border-destructive/30 text-[0.625rem]"
-                                  : "bg-info/10 text-info border-info/30 text-[0.625rem]"
+                                  ? "bg-destructive/10 text-destructive border-destructive/30 text-xs"
+                                  : "bg-info/10 text-info border-info/30 text-xs"
                             }
                           >
                             {dispatch.status === "delivered" ? "Entregue" : dispatch.status === "failed" ? "Falhou" : dispatch.status === "sent" ? "Enviado" : dispatch.status}

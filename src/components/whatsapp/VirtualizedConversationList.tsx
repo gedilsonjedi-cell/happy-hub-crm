@@ -38,8 +38,8 @@ interface VirtualizedConversationListProps {
 }
 
 // react-window requires pixel values; these mirror the compact Tailwind scale.
-const ITEM_HEIGHT = 82;
-const ITEM_HEIGHT_UNREAD = 102;
+const ITEM_HEIGHT = 94;
+const ITEM_HEIGHT_UNREAD = 116;
 
 interface RowData {
   conversations: Conversation[];

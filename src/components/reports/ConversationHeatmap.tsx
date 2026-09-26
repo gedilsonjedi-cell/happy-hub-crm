@@ -69,7 +69,7 @@ export function ConversationHeatmap() {
             {live ? "Ao vivo" : "Ao vivo"}
           </Button>
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
-            <SelectTrigger className="w-[7.125rem] h-8 text-xs">
+            <SelectTrigger className="w-[8.1875rem] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -95,7 +95,7 @@ export function ConversationHeatmap() {
         )}
         <TooltipProvider delayDuration={100}>
           <div className="overflow-x-auto">
-            <div className="min-w-[35.5rem]">
+            <div className="min-w-[41rem]">
               {data.days.map((day, dayIdx) => (
                 <div key={day.date} className="flex items-center gap-1 mb-1">
                   <div className="w-28 text-xs text-right pr-2 flex-shrink-0">
@@ -113,7 +113,7 @@ export function ConversationHeatmap() {
                         <TooltipTrigger asChild>
                           <div
                             className={cn(
-                              "w-[calc((100%-5.6875rem-1.25rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[0.9375rem]",
+                              "w-[calc((100%-6.5625rem-1.40625rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[1.0625rem]",
                               getHeatColor(count, data.maxCount)
                             )}
                           />
@@ -126,7 +126,7 @@ export function ConversationHeatmap() {
                     );
                   })}
                   {/* Total column */}
-                  <div className="min-w-[2rem] text-center text-xs font-semibold text-foreground flex items-center justify-center">
+                  <div className="min-w-[2.34375rem] text-center text-xs font-semibold text-foreground flex items-center justify-center">
                     {data.cells.filter(c => c.day === dayIdx).reduce((sum, c) => sum + c.count, 0)}
                   </div>
                 </div>
@@ -135,11 +135,11 @@ export function ConversationHeatmap() {
               <div className="flex items-center gap-1 mt-2">
                 <div className="w-28 flex-shrink-0" />
                 {hours.map(h => (
-                  <div key={h} className="w-[calc((100%-5.6875rem-1.25rem)/24)] text-center text-[0.625rem] text-muted-foreground min-w-[0.9375rem]">
+                  <div key={h} className="w-[calc((100%-6.5625rem-1.40625rem)/24)] text-center text-xs text-muted-foreground min-w-[1.0625rem]">
                     {h}
                   </div>
                 ))}
-                <div className="min-w-[2rem] text-center text-[0.625rem] text-muted-foreground font-semibold">Total</div>
+                <div className="min-w-[2.34375rem] text-center text-xs text-muted-foreground font-semibold">Total</div>
               </div>
             </div>
           </div>
