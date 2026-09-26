@@ -43,7 +43,7 @@ function MetricCard({ title, value, subtitle, icon: Icon, iconColor = "text-prim
         {trend !== undefined && (
           <div className={cn(
             "flex items-center gap-1 mt-2 text-xs font-medium",
-            trend >= 0 ? "text-emerald-500" : "text-red-500"
+            trend >= 0 ? "text-success" : "text-destructive"
           )}>
             <TrendingUp className={cn("w-3 h-3", trend < 0 && "rotate-180")} />
             <span>{Math.abs(trend)}% vs semana anterior</span>
@@ -89,28 +89,28 @@ export function ConversationMetricsPanel() {
           value={formatTime(summary.avgFirstResponseTime)}
           subtitle="Primeira resposta ao cliente"
           icon={Timer}
-          iconColor="text-blue-500"
+          iconColor="text-info"
         />
         <MetricCard
           title="TMA - Tempo Médio de Atendimento"
           value={formatTime(summary.avgHandlingTime)}
           subtitle="Duração total da conversa"
           icon={Clock}
-          iconColor="text-purple-500"
+          iconColor="text-chart-3"
         />
         <MetricCard
           title="TME - Tempo Médio de Espera"
           value={formatTime(summary.avgWaitTime)}
           subtitle="Cliente aguardando na fila"
           icon={Hourglass}
-          iconColor="text-orange-500"
+          iconColor="text-chart-4"
         />
         <MetricCard
           title="Resolvidos Hoje"
           value={summary.resolvedToday.toString()}
           subtitle={`de ${summary.totalConversations} conversas`}
           icon={CheckCircle2}
-          iconColor="text-emerald-500"
+          iconColor="text-success"
         />
       </div>
 
@@ -160,11 +160,11 @@ export function ConversationMetricsPanel() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium truncate">{attendant.displayName}</span>
                         {attendant.isAvailable ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
+                          <Badge variant="outline" className="bg-success/10 text-success border-success/30">
                             Online
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-gray-500/10 text-gray-500 border-gray-500/30">
+                          <Badge variant="outline" className="bg-neutral/10 text-neutral border-neutral/30">
                             Offline
                           </Badge>
                         )}
@@ -172,15 +172,15 @@ export function ConversationMetricsPanel() {
                       
                       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Timer className="w-3 h-3 text-blue-500" />
+                          <Timer className="w-3 h-3 text-info" />
                           TMR: {formatTime(attendant.avgFirstResponseTime)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-purple-500" />
+                          <Clock className="w-3 h-3 text-chart-3" />
                           TMA: {formatTime(attendant.avgHandlingTime)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          <CheckCircle2 className="w-3 h-3 text-success" />
                           {attendant.resolvedCount} resolvidos
                         </span>
                       </div>
@@ -223,15 +223,15 @@ export function ConversationMetricsPanel() {
                       
                       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Timer className="w-3 h-3 text-blue-500" />
+                          <Timer className="w-3 h-3 text-info" />
                           TMR: {formatTime(sector.avgFirstResponseTime)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-purple-500" />
+                          <Clock className="w-3 h-3 text-chart-3" />
                           TMA: {formatTime(sector.avgHandlingTime)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Hourglass className="w-3 h-3 text-orange-500" />
+                          <Hourglass className="w-3 h-3 text-chart-4" />
                           TME: {formatTime(sector.avgWaitTime)}
                         </span>
                       </div>
