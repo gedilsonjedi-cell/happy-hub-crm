@@ -52,8 +52,8 @@ export function ConversationHeatmap() {
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <CardTitle className="text-lg font-semibold">Tráfego de conversa</CardTitle>
-          <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 inline-block" />
+          <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-success mr-1.5 inline-block" />
             Em tempo real
           </Badge>
         </div>
@@ -61,7 +61,7 @@ export function ConversationHeatmap() {
           <Button
             variant={live ? "default" : "outline"}
             size="sm"
-            className={cn("h-8 text-xs gap-1.5", live && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+            className={cn("h-8 text-xs gap-1.5", live && "bg-success text-success-foreground hover:bg-success/90")}
             onClick={() => setLive(v => !v)}
             title={live ? "Pausar atualização ao vivo" : "Ativar atualização ao vivo"}
           >
@@ -69,7 +69,7 @@ export function ConversationHeatmap() {
             {live ? "Ao vivo" : "Ao vivo"}
           </Button>
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className="w-[7.125rem] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -85,7 +85,7 @@ export function ConversationHeatmap() {
       </CardHeader>
       <CardContent>
         {warning && (
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/50">
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
             <span className="mt-0.5">⚠️</span>
             <div className="flex-1">{warning}</div>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
@@ -95,7 +95,7 @@ export function ConversationHeatmap() {
         )}
         <TooltipProvider delayDuration={100}>
           <div className="overflow-x-auto">
-            <div className="min-w-[700px]">
+            <div className="min-w-[35.5rem]">
               {data.days.map((day, dayIdx) => (
                 <div key={day.date} className="flex items-center gap-1 mb-1">
                   <div className="w-28 text-xs text-right pr-2 flex-shrink-0">
@@ -113,7 +113,7 @@ export function ConversationHeatmap() {
                         <TooltipTrigger asChild>
                           <div
                             className={cn(
-                              "w-[calc((100%-7rem-1.5rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[18px]",
+                              "w-[calc((100%-5.6875rem-1.25rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[0.9375rem]",
                               getHeatColor(count, data.maxCount)
                             )}
                           />
@@ -126,7 +126,7 @@ export function ConversationHeatmap() {
                     );
                   })}
                   {/* Total column */}
-                  <div className="min-w-[40px] text-center text-xs font-semibold text-foreground flex items-center justify-center">
+                  <div className="min-w-[2rem] text-center text-xs font-semibold text-foreground flex items-center justify-center">
                     {data.cells.filter(c => c.day === dayIdx).reduce((sum, c) => sum + c.count, 0)}
                   </div>
                 </div>
@@ -135,11 +135,11 @@ export function ConversationHeatmap() {
               <div className="flex items-center gap-1 mt-2">
                 <div className="w-28 flex-shrink-0" />
                 {hours.map(h => (
-                  <div key={h} className="w-[calc((100%-7rem-1.5rem)/24)] text-center text-[10px] text-muted-foreground min-w-[18px]">
+                  <div key={h} className="w-[calc((100%-5.6875rem-1.25rem)/24)] text-center text-[0.625rem] text-muted-foreground min-w-[0.9375rem]">
                     {h}
                   </div>
                 ))}
-                <div className="min-w-[40px] text-center text-[10px] text-muted-foreground font-semibold">Total</div>
+                <div className="min-w-[2rem] text-center text-[0.625rem] text-muted-foreground font-semibold">Total</div>
               </div>
             </div>
           </div>

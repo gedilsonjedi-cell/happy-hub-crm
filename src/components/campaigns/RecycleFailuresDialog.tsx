@@ -346,7 +346,7 @@ export function RecycleFailuresDialog({
             {/* Summary */}
             <div className="bg-muted/30 rounded-lg p-4 border border-border">
               <div className="flex items-center gap-3 mb-2">
-                <Users className="w-5 h-5 text-amber-500" />
+                <Users className="w-5 h-5 text-warning" />
                 <span className="font-medium text-foreground">
                   {failedRecipients.length} destinatários não entregues
                 </span>
@@ -358,7 +358,7 @@ export function RecycleFailuresDialog({
                 <span className="text-destructive">
                   • {failedRecipients.filter(r => r.status === "failed").length} falhas confirmadas
                 </span>
-                <span className="text-amber-400">
+                <span className="text-warning">
                   • {failedRecipients.filter(r => r.status === "sent").length} aguardando Meta
                 </span>
               </div>

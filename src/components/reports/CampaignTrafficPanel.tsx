@@ -12,11 +12,11 @@ type StatusFilter = "all" | "delivered_only";
 
 function statusBadge(status: string) {
   switch (status) {
-    case "completed": return <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px]">Concluída</Badge>;
-    case "processing": return <Badge className="bg-blue-100 text-blue-700 border-0 text-[10px]">Em andamento</Badge>;
-    case "paused": return <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Pausada</Badge>;
-    case "scheduled": return <Badge className="bg-purple-100 text-purple-700 border-0 text-[10px]">Agendada</Badge>;
-    default: return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+    case "completed": return <Badge className="bg-success/10 text-success border-0 text-[0.625rem]">Concluída</Badge>;
+    case "processing": return <Badge className="bg-info/10 text-info border-0 text-[0.625rem]">Em andamento</Badge>;
+    case "paused": return <Badge className="bg-warning/10 text-warning border-0 text-[0.625rem]">Pausada</Badge>;
+    case "scheduled": return <Badge className="bg-chart-3/10 text-chart-3 border-0 text-[0.625rem]">Agendada</Badge>;
+    default: return <Badge variant="outline" className="text-[0.625rem]">{status}</Badge>;
   }
 }
 
@@ -75,21 +75,21 @@ export function CampaignTrafficPanel() {
           {statusFilter === "all" ? (
             <>
               <div className="flex items-center gap-1.5">
-                <Send className="w-4 h-4 text-blue-500" />
+                <Send className="w-4 h-4 text-info" />
                 <span className="text-muted-foreground">Enviados:</span>
                 <span className="font-semibold">{totalSent.toLocaleString("pt-BR")}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-success" />
                 <span className="text-muted-foreground">Entregues:</span>
                 <span className="font-semibold">{totalDelivered.toLocaleString("pt-BR")}</span>
               </div>
             </>
           ) : (
             <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <CheckCircle2 className="w-4 h-4 text-success" />
               <span className="text-muted-foreground">Total entregues (delivered + read):</span>
-              <span className="font-semibold text-emerald-600">{totalDelivered.toLocaleString("pt-BR")}</span>
+              <span className="font-semibold text-success">{totalDelivered.toLocaleString("pt-BR")}</span>
             </div>
           )}
         </div>
@@ -138,7 +138,7 @@ export function CampaignTrafficPanel() {
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                     {statusFilter === "all" && (
                       <div className="flex items-center gap-1.5 text-xs">
-                        <Send className="w-3.5 h-3.5 text-blue-500" />
+                      <Send className="w-3.5 h-3.5 text-info" />
                         <div>
                           <div className="font-semibold">{campaign.sentCount}</div>
                           <div className="text-muted-foreground">Enviados</div>
@@ -146,7 +146,7 @@ export function CampaignTrafficPanel() {
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 text-xs">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                       <div>
                         <div className="font-semibold">{campaign.deliveredCount + campaign.readCount}</div>
                         <div className="text-muted-foreground">Entregues</div>
@@ -155,21 +155,21 @@ export function CampaignTrafficPanel() {
                     {statusFilter === "all" && (
                       <>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <Eye className="w-3.5 h-3.5 text-purple-500" />
+                          <Eye className="w-3.5 h-3.5 text-chart-3" />
                           <div>
                             <div className="font-semibold">{campaign.readCount}</div>
                             <div className="text-muted-foreground">Lidos ({readRate}%)</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <MousePointerClick className="w-3.5 h-3.5 text-amber-500" />
+                          <MousePointerClick className="w-3.5 h-3.5 text-warning" />
                           <div>
                             <div className="font-semibold">{campaign.interactedCount}</div>
                             <div className="text-muted-foreground">Cliques</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <XCircle className="w-3.5 h-3.5 text-red-500" />
+                          <XCircle className="w-3.5 h-3.5 text-destructive" />
                           <div>
                             <div className="font-semibold">{campaign.failedCount}</div>
                             <div className="text-muted-foreground">Falhas</div>

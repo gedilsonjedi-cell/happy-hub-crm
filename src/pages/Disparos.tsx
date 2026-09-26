@@ -133,8 +133,8 @@ interface Campaign {
 const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
   draft: { label: "Rascunho", className: "bg-muted text-muted-foreground border-border", icon: MessageSquare },
   scheduled: { label: "Agendada", className: "bg-warning/10 text-warning border-warning/30", icon: Clock },
-  running: { label: "Enviando", className: "bg-blue-500/10 text-blue-400 border-blue-400/30", icon: Play },
-  paused: { label: "Pausada", className: "bg-yellow-500/10 text-yellow-400 border-yellow-400/30", icon: Pause },
+  running: { label: "Enviando", className: "bg-info/10 text-info border-info/30", icon: Play },
+  paused: { label: "Pausada", className: "bg-warning/10 text-warning border-warning/30", icon: Pause },
   completed: { label: "Concluída", className: "bg-primary/10 text-primary border-primary/30", icon: CheckCircle },
   failed: { label: "Falhou", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
 };
@@ -1482,7 +1482,7 @@ const Disparos = () => {
                     <p className="text-xs text-muted-foreground">
                       Intervalos de <strong>3 min</strong> a <strong>5 min</strong>
                     </p>
-                    <p className="text-xs text-amber-500 mt-1">Para números novos ou pouco usados</p>
+                    <p className="text-xs text-warning mt-1">Para números novos ou pouco usados</p>
                   </div>
 
                   {role === "super_admin" && (
@@ -1845,10 +1845,10 @@ const Disparos = () => {
                               {template.dispatch_type && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
                                   template.dispatch_type === 'marketing' 
-                                    ? 'bg-purple-500/10 text-purple-500 border-purple-500/30' 
+                                    ? 'bg-chart-3/10 text-chart-3 border-chart-3/30' 
                                     : template.dispatch_type === 'utility'
-                                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
-                                    : 'bg-green-500/10 text-green-500 border-green-500/30'
+                                    ? 'bg-info/10 text-info border-info/30'
+                                    : 'bg-success/10 text-success border-success/30'
                                 }`}>
                                   {template.dispatch_type === 'marketing' ? 'Marketing' : 
                                    template.dispatch_type === 'utility' ? 'Utilitário' : 'Serviço'}
@@ -1949,10 +1949,10 @@ const Disparos = () => {
                                         {t.dispatch_type && (
                                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
                                             t.dispatch_type === 'marketing' 
-                                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/30' 
+                                              ? 'bg-chart-3/10 text-chart-3 border-chart-3/30' 
                                               : t.dispatch_type === 'utility'
-                                              ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
-                                              : 'bg-green-500/10 text-green-500 border-green-500/30'
+                                              ? 'bg-info/10 text-info border-info/30'
+                                              : 'bg-success/10 text-success border-success/30'
                                           }`}>
                                             {t.dispatch_type === 'marketing' ? 'Marketing' : 
                                              t.dispatch_type === 'utility' ? 'Utilitário' : 'Serviço'}
@@ -2120,9 +2120,9 @@ const Disparos = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Em Execução</p>
-              <p className="text-2xl font-bold text-blue-400">{stats.running}</p>
+              <p className="text-2xl font-bold text-info">{stats.running}</p>
             </div>
-            <Play className="w-6 h-6 text-blue-400" />
+            <Play className="w-6 h-6 text-info" />
           </div>
         </div>
         <div className="bg-card rounded-lg border border-border p-5">
@@ -2205,7 +2205,7 @@ const Disparos = () => {
                     key={campaign.id}
                     className={cn(
                       "border-border hover:bg-muted/20 cursor-pointer",
-                      hasInconsistency && "bg-amber-500/5"
+                      hasInconsistency && "bg-warning/5"
                     )}
                     onClick={() => handleViewDetails(campaign.id)}
                   >
@@ -2222,7 +2222,7 @@ const Disparos = () => {
                                       onClick={(e) => e.stopPropagation()}
                                       className="inline-flex items-center"
                                     >
-                                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                      <AlertTriangle className="w-4 h-4 text-warning" />
                                     </span>
                                   </TooltipTrigger>
                                   <TooltipContent side="right" className="max-w-xs">
@@ -2258,10 +2258,10 @@ const Disparos = () => {
                       <span className="text-foreground">{campaign.total_recipients}</span>
                     </TableCell>
                     <TableCell>
-                      <span className={cn("text-foreground", hasInconsistency && "text-amber-600 font-medium")}>{campaign.sent_count}</span>
+                      <span className={cn("text-foreground", hasInconsistency && "text-warning font-medium")}>{campaign.sent_count}</span>
                     </TableCell>
                     <TableCell>
-                      <span className={cn("text-primary", delivered > sent && "text-amber-600 font-medium")}>{campaign.delivered_count}</span>
+                      <span className={cn("text-primary", delivered > sent && "text-warning font-medium")}>{campaign.delivered_count}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-destructive">{campaign.failed_count}</span>

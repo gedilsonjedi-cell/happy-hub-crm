@@ -112,12 +112,12 @@ interface CampaignReportDialogProps {
 // Recipient status display config
 const recipientStatusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
   pending: { label: "Na fila", className: "bg-muted text-muted-foreground", icon: Clock },
-  sent: { label: "Aguardando Meta", className: "bg-amber-500/80 text-white", icon: Clock },
-  delivered: { label: "Entregue", className: "bg-green-500/80 text-white", icon: CheckCheck },
-  read: { label: "Lida", className: "bg-violet-600 text-white", icon: Eye },
-  failed: { label: "Falha", className: "bg-destructive text-white", icon: XCircle },
-  waiting_retry: { label: "Aguardando Retry", className: "bg-orange-500/80 text-white", icon: Clock },
-  no_whatsapp: { label: "Sem WhatsApp", className: "bg-warning text-white", icon: PhoneOff },
+  sent: { label: "Aguardando Meta", className: "bg-warning/80 text-warning-foreground", icon: Clock },
+  delivered: { label: "Entregue", className: "bg-success/80 text-success-foreground", icon: CheckCheck },
+  read: { label: "Lida", className: "bg-chart-3 text-chart-foreground", icon: Eye },
+  failed: { label: "Falha", className: "bg-destructive text-destructive-foreground", icon: XCircle },
+  waiting_retry: { label: "Aguardando Retry", className: "bg-chart-4/80 text-chart-foreground", icon: Clock },
+  no_whatsapp: { label: "Sem WhatsApp", className: "bg-warning text-warning-foreground", icon: PhoneOff },
 };
 
 // Classification based on error codes
@@ -547,7 +547,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+                className="gap-2 border-warning/50 text-warning hover:bg-warning/10 hover:text-warning"
                 onClick={() => setShowRecycleDialog(true)}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -626,13 +626,13 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.processed > 0 && (
                         <div 
-                          className="h-full bg-purple-600 flex items-center justify-between px-2"
+                          className="h-full bg-chart-3 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.processed / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">
+                          <span className="text-xs text-chart-foreground font-medium">
                             {Math.round((metrics.processed / metrics.total) * 100)}%
                           </span>
-                          <span className="text-xs text-white">{metrics.processed}</span>
+                          <span className="text-xs text-chart-foreground">{metrics.processed}</span>
                         </div>
                       )}
                     </div>
@@ -645,13 +645,13 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.sent > 0 && (
                         <div 
-                          className="h-full bg-teal-600 flex items-center justify-between px-2"
+                          className="h-full bg-chart-2 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.sent / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">
+                          <span className="text-xs text-chart-foreground font-medium">
                             {metrics.sentPercent}%
                           </span>
-                          <span className="text-xs text-white">{metrics.sent}</span>
+                          <span className="text-xs text-chart-foreground">{metrics.sent}</span>
                         </div>
                       )}
                     </div>
@@ -661,17 +661,17 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                   {/* Aguardando confirmação da Meta - THE KEY NEW METRIC */}
                   {metrics.awaitingConfirmation > 0 && (
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-amber-400 w-24 font-medium">⏳ Aguardando</span>
+                      <span className="text-sm text-warning w-24 font-medium">⏳ Aguardando</span>
                       <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                         <div 
-                          className="h-full bg-amber-500 flex items-center justify-between px-2"
+                          className="h-full bg-warning flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.awaitingConfirmation / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.awaitingPercent}%</span>
-                          <span className="text-xs text-white">{metrics.awaitingConfirmation}</span>
+                          <span className="text-xs text-warning-foreground font-medium">{metrics.awaitingPercent}%</span>
+                          <span className="text-xs text-warning-foreground">{metrics.awaitingConfirmation}</span>
                         </div>
                       </div>
-                      <Clock className="w-4 h-4 text-amber-400" />
+                      <Clock className="w-4 h-4 text-warning" />
                     </div>
                   )}
                   
@@ -681,11 +681,11 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.delivered > 0 && (
                         <div 
-                          className="h-full bg-green-600 flex items-center justify-between px-2"
+                          className="h-full bg-success flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.delivered / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.deliveredPercent}%</span>
-                          <span className="text-xs text-white">{metrics.delivered}</span>
+                          <span className="text-xs text-success-foreground font-medium">{metrics.deliveredPercent}%</span>
+                          <span className="text-xs text-success-foreground">{metrics.delivered}</span>
                         </div>
                       )}
                     </div>
@@ -698,11 +698,11 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.read > 0 && (
                         <div 
-                          className="h-full bg-violet-700 flex items-center justify-between px-2"
+                          className="h-full bg-chart-3 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.read / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.readPercent}%</span>
-                          <span className="text-xs text-white">{metrics.read}</span>
+                          <span className="text-xs text-chart-foreground font-medium">{metrics.readPercent}%</span>
+                          <span className="text-xs text-chart-foreground">{metrics.read}</span>
                         </div>
                       )}
                     </div>
@@ -715,11 +715,11 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                     <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                       {metrics.clicked > 0 && (
                         <div 
-                          className="h-full bg-cyan-600 flex items-center justify-between px-2"
+                          className="h-full bg-chart-5 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.clicked / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.clickedPercent}%</span>
-                          <span className="text-xs text-white">{metrics.clicked}</span>
+                          <span className="text-xs text-chart-foreground font-medium">{metrics.clickedPercent}%</span>
+                          <span className="text-xs text-chart-foreground">{metrics.clicked}</span>
                         </div>
                       )}
                     </div>
@@ -729,17 +729,17 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                   {/* Waiting Retry Section - NEW */}
                   {metrics.waitingRetry > 0 && (
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-orange-400 w-24 font-medium">⏳ Retry Agend.</span>
+                      <span className="text-sm text-chart-4 w-24 font-medium">⏳ Retry Agend.</span>
                       <div className="flex-1 h-7 bg-muted rounded flex items-center overflow-hidden">
                         <div 
-                          className="h-full bg-orange-500 flex items-center justify-between px-2"
+                          className="h-full bg-chart-4 flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.waitingRetry / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.waitingRetryPercent}%</span>
-                          <span className="text-xs text-white">{metrics.waitingRetry}</span>
+                          <span className="text-xs text-chart-foreground font-medium">{metrics.waitingRetryPercent}%</span>
+                          <span className="text-xs text-chart-foreground">{metrics.waitingRetry}</span>
                         </div>
                       </div>
-                      <Clock className="w-4 h-4 text-orange-400" />
+                      <Clock className="w-4 h-4 text-chart-4" />
                     </div>
                   )}
                   
@@ -752,8 +752,8 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                           className="h-full bg-destructive flex items-center justify-between px-2"
                           style={{ width: `${Math.max((metrics.failed / metrics.total) * 100, 15)}%` }}
                         >
-                          <span className="text-xs text-white font-medium">{metrics.failedPercent}%</span>
-                          <span className="text-xs text-white">{metrics.failed}</span>
+                          <span className="text-xs text-destructive-foreground font-medium">{metrics.failedPercent}%</span>
+                          <span className="text-xs text-destructive-foreground">{metrics.failed}</span>
                         </div>
                       </div>
                       <XCircle className="w-4 h-4 text-destructive" />
@@ -773,25 +773,25 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                         </div>
                       )}
                       {metrics.invalidNumber > 0 && (
-                        <div className="flex justify-between bg-orange-500/20 text-orange-400 px-2 py-1 rounded">
+                        <div className="flex justify-between bg-chart-4/20 text-chart-4 px-2 py-1 rounded">
                           <span>Número Inválido</span>
                           <span className="font-bold">{metrics.invalidNumber}</span>
                         </div>
                       )}
                       {metrics.blocked > 0 && (
-                        <div className="flex justify-between bg-red-500/20 text-red-400 px-2 py-1 rounded">
+                        <div className="flex justify-between bg-destructive/20 text-destructive px-2 py-1 rounded">
                           <span>Bloqueado</span>
                           <span className="font-bold">{metrics.blocked}</span>
                         </div>
                       )}
                       {metrics.templateError > 0 && (
-                        <div className="flex justify-between bg-pink-500/20 text-pink-400 px-2 py-1 rounded">
+                        <div className="flex justify-between bg-destructive/20 text-destructive px-2 py-1 rounded">
                           <span>Erro de Template</span>
                           <span className="font-bold">{metrics.templateError}</span>
                         </div>
                       )}
                       {metrics.apiError > 0 && (
-                        <div className="flex justify-between bg-gray-500/20 text-gray-400 px-2 py-1 rounded">
+                        <div className="flex justify-between bg-neutral/20 text-neutral px-2 py-1 rounded">
                           <span>Erro de API</span>
                           <span className="font-bold">{metrics.apiError}</span>
                         </div>
@@ -812,7 +812,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                 
                 {/* Delivery Rate */}
                 <div className="mt-4 pt-3 border-t border-border">
-                  <p className="text-2xl font-bold text-green-500">{metrics.deliveryRate}%</p>
+                  <p className="text-2xl font-bold text-success">{metrics.deliveryRate}%</p>
                   <p className="text-xs text-muted-foreground">Taxa de Entrega</p>
                   <p className="text-xs text-muted-foreground">
                     {metrics.delivered} de {metrics.sent} entregues
@@ -1127,25 +1127,25 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 <p className="text-muted-foreground">Na fila</p>
                                 <p className="font-bold text-foreground">{cb.pending}</p>
                               </div>
-                              <div className="bg-teal-500/10 rounded px-2 py-1.5">
-                                <p className="text-teal-400">Enviadas</p>
-                                <p className="font-bold text-teal-300">{cb.sent}</p>
+                              <div className="bg-chart-2/10 rounded px-2 py-1.5">
+                                <p className="text-chart-2">Enviadas</p>
+                                <p className="font-bold text-chart-2">{cb.sent}</p>
                               </div>
-                              <div className="bg-amber-500/10 rounded px-2 py-1.5">
-                                <p className="text-amber-400">Aguardando</p>
-                                <p className="font-bold text-amber-300">{cb.awaiting}</p>
+                              <div className="bg-warning/10 rounded px-2 py-1.5">
+                                <p className="text-warning">Aguardando</p>
+                                <p className="font-bold text-warning">{cb.awaiting}</p>
                               </div>
-                              <div className="bg-green-500/10 rounded px-2 py-1.5">
-                                <p className="text-green-400">Entregues</p>
-                                <p className="font-bold text-green-300">{cb.delivered}</p>
+                              <div className="bg-success/10 rounded px-2 py-1.5">
+                                <p className="text-success">Entregues</p>
+                                <p className="font-bold text-success">{cb.delivered}</p>
                               </div>
-                              <div className="bg-violet-500/10 rounded px-2 py-1.5">
-                                <p className="text-violet-400">Lidas</p>
-                                <p className="font-bold text-violet-300">{cb.read}</p>
+                              <div className="bg-chart-3/10 rounded px-2 py-1.5">
+                                <p className="text-chart-3">Lidas</p>
+                                <p className="font-bold text-chart-3">{cb.read}</p>
                               </div>
-                              <div className="bg-cyan-500/10 rounded px-2 py-1.5">
-                                <p className="text-cyan-400">Engajadas</p>
-                                <p className="font-bold text-cyan-300">{cb.clicked}</p>
+                              <div className="bg-chart-5/10 rounded px-2 py-1.5">
+                                <p className="text-chart-5">Engajadas</p>
+                                <p className="font-bold text-chart-5">{cb.clicked}</p>
                               </div>
                               <div className="bg-destructive/10 rounded px-2 py-1.5">
                                 <p className="text-destructive">Falhas</p>
@@ -1216,7 +1216,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                               </p>
                                             )}
                                             {opts.showRetry && r.next_retry_at && (
-                                              <p className="text-orange-400/90 mt-0.5">
+                                              <p className="text-chart-4/90 mt-0.5">
                                                 Retry: {formatNextRetry(r.next_retry_at)} (tentativa {(r.retry_count || 0) + 1})
                                               </p>
                                             )}
@@ -1236,7 +1236,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 return (
                                   <>
                                     <details className="group">
-                                      <summary className="flex items-center justify-between cursor-pointer text-[11px] font-medium text-teal-300 hover:text-teal-200 px-1 py-1">
+                                      <summary className="flex items-center justify-between cursor-pointer text-[0.6875rem] font-medium text-chart-2 hover:text-chart-2/80 px-1 py-1">
                                         <span className="flex items-center gap-1.5">
                                           <CheckCircle className="w-3 h-3" /> Enviados ({sentList.length})
                                         </span>

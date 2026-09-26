@@ -261,7 +261,7 @@ const MessageBubble = memo(function MessageBubble({
           <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
 
           {/* Tracking card */}
-          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/50 p-3 text-foreground shadow-sm">
+          <div className="mt-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-foreground shadow-sm">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2">
               <span>Rastreamento</span>
               <span className="ml-auto text-xs text-muted-foreground font-normal">
@@ -363,7 +363,7 @@ const MessageBubble = memo(function MessageBubble({
               <span>{format(new Date(message.created_at), "HH:mm")}</span>
               {isOutbound && !isFailed && (
                 message.status === "read" ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <CheckCheck className="w-3.5 h-3.5 text-info" />
                 ) : message.status === "delivered" ? (
                   <CheckCheck className="w-3.5 h-3.5" />
                 ) : message.status === "sending" ? (

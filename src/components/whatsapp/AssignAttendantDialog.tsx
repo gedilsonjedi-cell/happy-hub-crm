@@ -263,7 +263,7 @@ export const AssignAttendantDialog = ({
             </div>
           )}
 
-          <ScrollArea className="h-[300px]">
+          <ScrollArea className="h-[15.25rem]">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -309,13 +309,13 @@ export const AssignAttendantDialog = ({
                         </Avatar>
                         <span className={cn(
                           "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background",
-                          attendant.is_online ? "bg-green-500" : "bg-destructive"
+                          attendant.is_online ? "bg-success" : "bg-destructive"
                         )} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="font-medium text-sm truncate">{displayName}</p>
-                          <span className={cn("text-[10px] font-medium", attendant.is_online ? "text-green-600" : "text-muted-foreground")}>
+                          <span className={cn("text-[0.625rem] font-medium", attendant.is_online ? "text-success" : "text-muted-foreground")}>
                             {attendant.is_online ? "Online" : "Offline"}
                           </span>
                         </div>

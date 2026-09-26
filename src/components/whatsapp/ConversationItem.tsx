@@ -62,9 +62,9 @@ function getWaitingTimeSeverity(fromIso: string | null): {
   if (!fromIso) return { className: "bg-muted text-muted-foreground", label: "—" };
   const ms = Date.now() - new Date(fromIso).getTime();
   const minutes = ms / 60000;
-  if (minutes < 5) return { className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30", label: "ok" };
-  if (minutes < 30) return { className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30", label: "atenção" };
-  if (minutes < 120) return { className: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30", label: "atraso" };
+  if (minutes < 5) return { className: "bg-success/15 text-success border-success/30", label: "ok" };
+  if (minutes < 30) return { className: "bg-warning/15 text-warning border-warning/30", label: "atenção" };
+  if (minutes < 120) return { className: "bg-chart-4/15 text-chart-4 border-chart-4/30", label: "atraso" };
   return { className: "bg-destructive/15 text-destructive border-destructive/30", label: "crítico" };
 }
 
@@ -152,8 +152,8 @@ export const ConversationItem = memo(function ConversationItem({
               {initials || <User className="w-4 h-4" />}
             </AvatarFallback>
           </Avatar>
-          <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-            <MessageSquare className="w-2.5 h-2.5 text-white" />
+          <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-success rounded-full flex items-center justify-center">
+            <MessageSquare className="w-2.5 h-2.5 text-success-foreground" />
           </div>
           {conversation.unreadCount > 0 && (
             <span
@@ -230,7 +230,7 @@ export const ConversationItem = memo(function ConversationItem({
               {hasAgent ? (
                 <Badge
                   variant="outline"
-                  className="text-[10px] h-5 px-2 gap-1 bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 max-w-[140px]"
+                  className="text-[0.625rem] h-5 px-2 gap-1 bg-info/15 text-info border-info/30 max-w-[7.125rem]"
                   title={`Atendente: ${conversation.assignedToName}`}
                 >
                   <UserCheck className="w-3 h-3 shrink-0" />
@@ -263,8 +263,8 @@ export const ConversationItem = memo(function ConversationItem({
           ) : (
             conversation.assignedToName && (
               <div className="flex items-center gap-1 mb-0.5">
-                <UserCheck className="w-3 h-3 text-blue-400" />
-                <span className="text-[11px] text-blue-400 font-medium truncate">
+                <UserCheck className="w-3 h-3 text-info" />
+                <span className="text-[0.6875rem] text-info font-medium truncate">
                   {conversation.assignedToName}
                 </span>
               </div>

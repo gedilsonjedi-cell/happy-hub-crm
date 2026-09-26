@@ -37,8 +37,9 @@ interface VirtualizedConversationListProps {
   isBlocked?: (phone: string) => boolean;
 }
 
-const ITEM_HEIGHT = 100;
-const ITEM_HEIGHT_UNREAD = 124;
+// react-window requires pixel values; these mirror the compact Tailwind scale.
+const ITEM_HEIGHT = 82;
+const ITEM_HEIGHT_UNREAD = 102;
 
 interface RowData {
   conversations: Conversation[];

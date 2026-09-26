@@ -305,7 +305,7 @@ export function AttendanceReportPanel() {
                 </TableCell>
                 <TableCell>
                   {wait !== null ? (
-                    <span className={wait >= 30 ? "text-destructive font-semibold" : wait >= 10 ? "text-orange-600 font-medium" : ""}>
+                    <span className={wait >= 30 ? "text-destructive font-semibold" : wait >= 10 ? "text-warning font-medium" : ""}>
                       {wait < 60 ? `${wait}m` : `${Math.floor(wait/60)}h ${wait%60}m`}
                     </span>
                   ) : <span className="text-muted-foreground">—</span>}

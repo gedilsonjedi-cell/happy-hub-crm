@@ -38,7 +38,7 @@ export function AgentPerformanceTable() {
                     <td className="py-3 px-2">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-amber-100 text-amber-700 text-sm font-medium">
+                          <AvatarFallback className="bg-warning/10 text-warning text-sm font-medium">
                             {agent.displayName.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
@@ -46,7 +46,7 @@ export function AgentPerformanceTable() {
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm truncate">{agent.displayName}</span>
                             {agent.isAvailable && (
-                              <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                              <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground truncate block">{agent.email}</span>
@@ -57,10 +57,10 @@ export function AgentPerformanceTable() {
                       <span className="text-lg font-semibold">{agent.openCount}</span>
                     </td>
                     <td className="text-center py-3 px-2">
-                      <span className="text-lg font-semibold text-orange-500">{agent.unattendedCount}</span>
+                      <span className="text-lg font-semibold text-chart-4">{agent.unattendedCount}</span>
                     </td>
                     <td className="text-center py-3 px-2">
-                      <span className="text-lg font-semibold text-emerald-600">{agent.resolvedCount}</span>
+                      <span className="text-lg font-semibold text-success">{agent.resolvedCount}</span>
                     </td>
                   </tr>
                 ))}

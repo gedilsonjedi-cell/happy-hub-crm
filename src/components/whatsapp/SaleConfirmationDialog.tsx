@@ -160,28 +160,28 @@ export function SaleConfirmationDialog({
         <div className="grid grid-cols-2 gap-4 py-6">
           <Button
             variant="outline"
-            className="h-24 flex-col gap-2 border-2 hover:border-green-500 hover:bg-green-500/10"
+            className="h-24 flex-col gap-2 border-2 hover:border-success hover:bg-success/10"
             onClick={() => handleConfirm(true)}
             disabled={loading}
           >
             {loading ? (
               <Loader2 className="h-8 w-8 animate-spin" />
             ) : (
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
+              <CheckCircle2 className="h-8 w-8 text-success" />
             )}
             <span className="font-medium">Venda Realizada</span>
           </Button>
 
           <Button
             variant="outline"
-            className="h-24 flex-col gap-2 border-2 hover:border-red-500 hover:bg-red-500/10"
+            className="h-24 flex-col gap-2 border-2 hover:border-destructive hover:bg-destructive/10"
             onClick={() => handleConfirm(false)}
             disabled={loading}
           >
             {loading ? (
               <Loader2 className="h-8 w-8 animate-spin" />
             ) : (
-              <XCircle className="h-8 w-8 text-red-500" />
+              <XCircle className="h-8 w-8 text-destructive" />
             )}
             <span className="font-medium">Não Finalizou</span>
           </Button>

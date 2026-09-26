@@ -15,10 +15,10 @@ const LIVE_INTERVAL_MS = 5000;
 function getHeatColor(count: number, max: number): string {
   if (count === 0 || max === 0) return "bg-muted/40";
   const ratio = count / max;
-  if (ratio > 0.75) return "bg-amber-500";
-  if (ratio > 0.5) return "bg-amber-400/80";
-  if (ratio > 0.25) return "bg-amber-300/60";
-  return "bg-amber-200/40";
+  if (ratio > 0.75) return "bg-warning";
+  if (ratio > 0.5) return "bg-warning/80";
+  if (ratio > 0.25) return "bg-warning/60";
+  return "bg-warning/40";
 }
 
 export function ButtonTrafficHeatmap() {
@@ -38,13 +38,13 @@ export function ButtonTrafficHeatmap() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <MousePointerClick className="w-5 h-5 text-amber-500" />
+            <MousePointerClick className="w-5 h-5 text-warning" />
             <CardTitle className="text-lg font-semibold">Tráfego por botão</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <div className="h-64 flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-warning border-t-transparent rounded-full animate-spin" />
           </div>
         </CardContent>
       </Card>
@@ -57,10 +57,10 @@ export function ButtonTrafficHeatmap() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
-          <MousePointerClick className="w-5 h-5 text-amber-500" />
+          <MousePointerClick className="w-5 h-5 text-warning" />
           <CardTitle className="text-lg font-semibold">Tráfego por botão</CardTitle>
-          <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-xs dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 inline-block" />
+          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-warning mr-1.5 inline-block" />
             Interações
           </Badge>
         </div>
@@ -68,7 +68,7 @@ export function ButtonTrafficHeatmap() {
           <Button
             variant={live ? "default" : "outline"}
             size="sm"
-            className={cn("h-8 text-xs gap-1.5", live && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+            className={cn("h-8 text-xs gap-1.5", live && "bg-success text-success-foreground hover:bg-success/90")}
             onClick={() => setLive(v => !v)}
             title={live ? "Pausar atualização ao vivo" : "Ativar atualização ao vivo"}
           >
@@ -79,7 +79,7 @@ export function ButtonTrafficHeatmap() {
             value={selectedButton || "all"}
             onValueChange={(v) => setSelectedButton(v === "all" ? undefined : v)}
           >
-            <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectTrigger className="w-[10.125rem] h-8 text-xs">
               <SelectValue placeholder="Selecione um botão" />
             </SelectTrigger>
             <SelectContent>
@@ -90,7 +90,7 @@ export function ButtonTrafficHeatmap() {
             </SelectContent>
           </Select>
           <Select value={String(daysBack)} onValueChange={(v) => setDaysBack(Number(v))}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className="w-[7.125rem] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -106,7 +106,7 @@ export function ButtonTrafficHeatmap() {
       </CardHeader>
       <CardContent>
         {warning && (
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/50">
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
             <span className="mt-0.5">⚠️</span>
             <div className="flex-1">{warning}</div>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
@@ -123,7 +123,7 @@ export function ButtonTrafficHeatmap() {
         ) : (
           <TooltipProvider delayDuration={100}>
             <div className="overflow-x-auto">
-              <div className="min-w-[700px]">
+              <div className="min-w-[35.5rem]">
                 {data.days.map((day, dayIdx) => (
                   <div key={day.date} className="flex items-center gap-1 mb-1">
                     <div className="w-28 text-xs text-right pr-2 flex-shrink-0">
@@ -141,7 +141,7 @@ export function ButtonTrafficHeatmap() {
                           <TooltipTrigger asChild>
                             <div
                               className={cn(
-                                "w-[calc((100%-7rem-1.5rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[18px]",
+                                "w-[calc((100%-5.6875rem-1.25rem)/24)] aspect-square rounded-sm cursor-default transition-colors min-w-[0.9375rem]",
                                 getHeatColor(count, data.maxCount)
                               )}
                             />
@@ -149,12 +149,12 @@ export function ButtonTrafficHeatmap() {
                           <TooltipContent className="text-xs">
                             <p className="font-semibold">{count} clique{count !== 1 ? "s" : ""}</p>
                             <p className="text-muted-foreground">{day.label} às {String(h).padStart(2, "0")}:00</p>
-                            {selectedButton && <p className="text-amber-500 font-medium">Botão: {selectedButton}</p>}
+                            {selectedButton && <p className="text-warning font-medium">Botão: {selectedButton}</p>}
                           </TooltipContent>
                         </Tooltip>
                       );
                     })}
-                    <div className="min-w-[40px] text-center text-xs font-semibold text-foreground flex items-center justify-center">
+                    <div className="min-w-[2rem] text-center text-xs font-semibold text-foreground flex items-center justify-center">
                       {data.cells.filter(c => c.day === dayIdx).reduce((sum, c) => sum + c.count, 0)}
                     </div>
                   </div>
@@ -162,11 +162,11 @@ export function ButtonTrafficHeatmap() {
                 <div className="flex items-center gap-1 mt-2">
                   <div className="w-28 flex-shrink-0" />
                   {hours.map(h => (
-                    <div key={h} className="w-[calc((100%-7rem-1.5rem)/24)] text-center text-[10px] text-muted-foreground min-w-[18px]">
+                    <div key={h} className="w-[calc((100%-5.6875rem-1.25rem)/24)] text-center text-[0.625rem] text-muted-foreground min-w-[0.9375rem]">
                       {h}
                     </div>
                   ))}
-                  <div className="min-w-[40px] text-center text-[10px] text-muted-foreground font-semibold">Total</div>
+                  <div className="min-w-[2rem] text-center text-[0.625rem] text-muted-foreground font-semibold">Total</div>
                 </div>
               </div>
             </div>
