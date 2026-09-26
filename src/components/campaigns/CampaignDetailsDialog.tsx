@@ -70,8 +70,8 @@ interface CampaignDetailsDialogProps {
 const statusConfig: Record<string, { label: string; className: string; icon: typeof MessageSquare }> = {
   draft: { label: "Rascunho", className: "bg-muted text-muted-foreground border-border", icon: MessageSquare },
   scheduled: { label: "Agendada", className: "bg-warning/10 text-warning border-warning/30", icon: Clock },
-  running: { label: "Enviando", className: "bg-blue-500/10 text-blue-400 border-blue-400/30", icon: Play },
-  paused: { label: "Pausada", className: "bg-yellow-500/10 text-yellow-400 border-yellow-400/30", icon: Pause },
+  running: { label: "Enviando", className: "bg-info/10 text-info border-info/30", icon: Play },
+  paused: { label: "Pausada", className: "bg-warning/10 text-warning border-warning/30", icon: Pause },
   completed: { label: "Concluída", className: "bg-primary/10 text-primary border-primary/30", icon: CheckCircle },
   failed: { label: "Falhou", className: "bg-destructive/10 text-destructive border-destructive/30", icon: XCircle },
 };
@@ -313,9 +313,9 @@ export function CampaignDetailsDialog({ campaign, open, onOpenChange, onCampaign
 
         {/* Progress Section (for running campaigns) */}
         {campaign.status === "running" && (
-          <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-4">
+          <div className="bg-info/5 border border-info/20 rounded-lg p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-blue-400 font-medium">Progresso do Disparo</span>
+              <span className="text-sm text-info font-medium">Progresso do Disparo</span>
               <span className="text-sm text-foreground">{campaign.sent_count} / {campaign.total_recipients}</span>
             </div>
             <Progress value={progress} className="h-2 bg-muted" />

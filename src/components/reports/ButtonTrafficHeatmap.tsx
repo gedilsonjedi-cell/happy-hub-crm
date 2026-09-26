@@ -106,7 +106,7 @@ export function ButtonTrafficHeatmap() {
       </CardHeader>
       <CardContent>
         {warning && (
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/50">
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
             <span className="mt-0.5">⚠️</span>
             <div className="flex-1">{warning}</div>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
@@ -149,7 +149,7 @@ export function ButtonTrafficHeatmap() {
                           <TooltipContent className="text-xs">
                             <p className="font-semibold">{count} clique{count !== 1 ? "s" : ""}</p>
                             <p className="text-muted-foreground">{day.label} às {String(h).padStart(2, "0")}:00</p>
-                            {selectedButton && <p className="text-amber-500 font-medium">Botão: {selectedButton}</p>}
+                            {selectedButton && <p className="text-warning font-medium">Botão: {selectedButton}</p>}
                           </TooltipContent>
                         </Tooltip>
                       );
