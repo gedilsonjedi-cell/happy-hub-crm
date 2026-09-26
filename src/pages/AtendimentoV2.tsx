@@ -5425,7 +5425,7 @@ const AtendimentoV2 = () => {
               <div className="p-3 border-b border-border shrink-0">
                 {selectedConversationChannel && (
                   <div className="flex items-center gap-2 mb-2 p-2 rounded-lg bg-primary/5 border border-primary/20">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <div className="w-2 h-2 rounded-full bg-success animate-pulse shrink-0" />
                     <span className="text-xs font-medium text-primary truncate">{selectedConversationChannel.name}</span>
                     <span className="text-xs text-muted-foreground hidden sm:inline">({selectedConversationChannel.phone})</span>
                     {channelBotConfig?.is_enabled && (
@@ -5452,7 +5452,7 @@ const AtendimentoV2 = () => {
                     </Button>
                     <button onClick={() => setShowLeadDetailsDialog(true)} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0">
                       <Avatar className="w-10 h-10 shrink-0">
-                        <AvatarFallback className="bg-pink-100 text-pink-600 font-semibold text-sm">
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
                           {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
                         </AvatarFallback>
                       </Avatar>
@@ -5497,7 +5497,7 @@ const AtendimentoV2 = () => {
                         size="sm"
                         onClick={handleSimular}
                         disabled={isSimulating}
-                        className="gap-1 h-8 px-2 bg-amber-500 hover:bg-amber-600 text-white"
+                        className="gap-1 h-8 px-2 bg-warning text-warning-foreground hover:bg-warning/90"
                         title="Gerar e enviar simulação ao cliente"
                       >
                         {isSimulating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Calculator className="w-3 h-3" />}
@@ -5521,7 +5521,7 @@ const AtendimentoV2 = () => {
                         {isPhoneBlocked(selectedConversation.phone) ? (
                           <DropdownMenuItem
                             onClick={() => handleRemoveFromBlacklist(selectedConversation)}
-                            className="text-emerald-600 focus:text-emerald-600"
+                            className="text-success focus:text-success"
                           >
                             <Ban className="w-4 h-4 mr-2" />Desbloquear contato
                           </DropdownMenuItem>
@@ -5585,29 +5585,29 @@ const AtendimentoV2 = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-56 bg-popover">
                       <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar mídia</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => imageInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Image className="w-4 h-4 mr-2 text-emerald-500" />Imagem</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => videoInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Video className="w-4 h-4 mr-2 text-blue-500" />Vídeo</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => audioInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Music className="w-4 h-4 mr-2 text-purple-500" />Áudio</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => documentInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><File className="w-4 h-4 mr-2 text-orange-500" />Documento</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => imageInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Image className="w-4 h-4 mr-2 text-success" />Imagem</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => videoInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Video className="w-4 h-4 mr-2 text-info" />Vídeo</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => audioInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><Music className="w-4 h-4 mr-2 text-chart-3" />Áudio</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => documentInputRef.current?.click()} disabled={isWindowExpired || uploadingMedia}><File className="w-4 h-4 mr-2 text-chart-4" />Documento</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel className="text-xs text-muted-foreground">Mensagens</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => setShowTemplateSelector(true)}><FileText className="w-4 h-4 mr-2 text-primary" />Modelo de mensagem</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setShowScheduleDialog(true)} disabled={isWindowExpired}><CalendarClock className="w-4 h-4 mr-2 text-warning" />Agendar mensagem</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel className="text-xs text-muted-foreground">Conversa</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => setShowNotesDialog(true)}><StickyNote className="w-4 h-4 mr-2 text-yellow-500" />Adicionar nota</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowNotesDialog(true)}><StickyNote className="w-4 h-4 mr-2 text-warning" />Adicionar nota</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   
                   {isRecording ? (
-                    <div className="flex items-center gap-3 flex-1 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 border border-red-200 dark:border-red-800">
+                    <div className="flex items-center gap-3 flex-1 bg-destructive/10 rounded-lg px-4 py-2 border border-destructive/30">
                       <div className="flex items-center gap-2 flex-1">
-                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shrink-0" />
-                        <span className="text-red-600 dark:text-red-400 font-medium text-sm">{formatRecordingDuration(recordingDuration)}</span>
+                        <div className="w-3 h-3 bg-destructive rounded-full animate-pulse shrink-0" />
+                        <span className="text-destructive font-medium text-sm">{formatRecordingDuration(recordingDuration)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={handleCancelVoiceRecording} className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100"><X className="w-5 h-5" /></Button>
-                        <Button onClick={handleSendVoiceRecording} disabled={uploadingMedia || isConvertingAudio} className="h-9 px-4 bg-green-600 hover:bg-green-700">
+                        <Button variant="ghost" size="icon" onClick={handleCancelVoiceRecording} className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"><X className="w-5 h-5" /></Button>
+                        <Button onClick={handleSendVoiceRecording} disabled={uploadingMedia || isConvertingAudio} className="h-9 px-4">
                           {(uploadingMedia || isConvertingAudio) ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                         </Button>
                       </div>

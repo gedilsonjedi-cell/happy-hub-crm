@@ -144,10 +144,10 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
   if (runningCampaigns.length === 0) return null;
 
   return (
-    <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 mb-6 animate-fade-in">
+    <div className="bg-info/5 border border-info/20 rounded-lg p-4 mb-6 animate-fade-in">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+          <div className="w-2 h-2 bg-info rounded-full animate-pulse" />
           <h3 className="text-sm font-medium text-foreground">Disparos em Andamento</h3>
           <Badge variant="secondary" className="text-xs">{runningCampaigns.length}</Badge>
         </div>
@@ -184,7 +184,7 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Play className="w-4 h-4 text-blue-400" />
+                  <Play className="w-4 h-4 text-info" />
                   <span className="font-medium text-foreground text-sm">{campaign.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -207,8 +207,8 @@ export function CampaignProgressBar({ onViewDetails }: CampaignProgressBarProps)
               
               <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-purple-400">📤 {campaign.sent_count} enviadas</span>
-                  <span className="text-green-400">✓ {campaign.delivered_count} entregues</span>
+                  <span className="text-chart-3">📤 {campaign.sent_count} enviadas</span>
+                  <span className="text-success">✓ {campaign.delivered_count} entregues</span>
                   {campaign.failed_count > 0 && (
                     <span className="text-destructive">✗ {campaign.failed_count} falhas</span>
                   )}

@@ -188,7 +188,7 @@ const MessageComposerInner = forwardRef<MessageComposerHandle, MessageComposerPr
             onClick={onStartVoiceRecording}
             disabled={uploadingMedia}
             variant="default"
-            className="h-11 px-4 bg-green-600 hover:bg-green-700 shrink-0"
+            className="h-11 px-4 shrink-0"
           >
             {uploadingMedia ? (
               <Loader2 className="w-5 h-5 animate-spin" />
