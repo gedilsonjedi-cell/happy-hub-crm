@@ -12,11 +12,11 @@ type StatusFilter = "all" | "delivered_only";
 
 function statusBadge(status: string) {
   switch (status) {
-    case "completed": return <Badge className="bg-success/10 text-success border-0 text-[0.625rem]">Concluída</Badge>;
-    case "processing": return <Badge className="bg-info/10 text-info border-0 text-[0.625rem]">Em andamento</Badge>;
-    case "paused": return <Badge className="bg-warning/10 text-warning border-0 text-[0.625rem]">Pausada</Badge>;
-    case "scheduled": return <Badge className="bg-chart-3/10 text-chart-3 border-0 text-[0.625rem]">Agendada</Badge>;
-    default: return <Badge variant="outline" className="text-[0.625rem]">{status}</Badge>;
+    case "completed": return <Badge className="bg-success/10 text-success border-0 text-xs">Concluída</Badge>;
+    case "processing": return <Badge className="bg-info/10 text-info border-0 text-xs">Em andamento</Badge>;
+    case "paused": return <Badge className="bg-warning/10 text-warning border-0 text-xs">Pausada</Badge>;
+    case "scheduled": return <Badge className="bg-chart-3/10 text-chart-3 border-0 text-xs">Agendada</Badge>;
+    default: return <Badge variant="outline" className="text-xs">{status}</Badge>;
   }
 }
 

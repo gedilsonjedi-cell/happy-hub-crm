@@ -1236,7 +1236,7 @@ export function CampaignReportDialog({ campaign, open, onOpenChange, onRecycleSu
                                 return (
                                   <>
                                     <details className="group">
-                                      <summary className="flex items-center justify-between cursor-pointer text-[0.6875rem] font-medium text-chart-2 hover:text-chart-2/80 px-1 py-1">
+                                      <summary className="flex items-center justify-between cursor-pointer text-xs font-medium text-chart-2 hover:text-chart-2/80 px-1 py-1">
                                         <span className="flex items-center gap-1.5">
                                           <CheckCircle className="w-3 h-3" /> Enviados ({sentList.length})
                                         </span>

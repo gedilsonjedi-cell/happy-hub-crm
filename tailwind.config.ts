@@ -24,49 +24,58 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
-      // Densidade compacta explícita: mantém a raiz acessível em 16px e escala
-      // texto, espaços, ícones e controles que usam as utilities do Tailwind.
+      // Densidade explícita: raiz do navegador continua nativa (16px) e a escala
+      // do Tailwind é que define texto, espaços, ícones e controles.
+      // Fator 0.9375 (15px no base): mais legível/clicável que o Datacrazy puro,
+      // pois o Optimus tem mais ações por tela. Valores arredondados a 0,5px.
       fontSize: {
-        xs: ["0.625rem", { lineHeight: "0.875rem" }],
-        sm: ["0.75rem", { lineHeight: "1rem" }],
-        base: ["0.8125rem", { lineHeight: "1.125rem" }],
-        lg: ["0.9375rem", { lineHeight: "1.25rem" }],
-        xl: ["1.0625rem", { lineHeight: "1.375rem" }],
-        "2xl": ["1.25rem", { lineHeight: "1.625rem" }],
-        "3xl": ["1.5rem", { lineHeight: "1.875rem" }],
-        "4xl": ["1.875rem", { lineHeight: "2.25rem" }],
+        xs: ["0.71875rem", { lineHeight: "0.9375rem" }], // 11.5 / 15px
+        sm: ["0.8125rem", { lineHeight: "1.1875rem" }], // 13 / 19px
+        base: ["0.9375rem", { lineHeight: "1.40625rem" }], // 15 / 22.5px
+        lg: ["1.0625rem", { lineHeight: "1.65625rem" }], // 17 / 26.5px
+        xl: ["1.1875rem", { lineHeight: "1.65625rem" }], // 19 / 26.5px
+        "2xl": ["1.40625rem", { lineHeight: "1.875rem" }], // 22.5 / 30px
+        "3xl": ["1.75rem", { lineHeight: "2.125rem" }], // 28 / 34px
+        "4xl": ["2.125rem", { lineHeight: "2.34375rem" }], // 34 / 37.5px
       },
+      // Escala completa do Tailwind multiplicada por 0.9375 (monotônica,
+      // preservando todas as chaves e a relação entre degraus).
       spacing: {
-        "0.5": "0.125rem",
-        "1": "0.1875rem",
-        "1.5": "0.3125rem",
-        "2": "0.4375rem",
-        "2.5": "0.5rem",
-        "3": "0.625rem",
-        "3.5": "0.6875rem",
-        "4": "0.8125rem",
-        "5": "1rem",
-        "6": "1.25rem",
-        "7": "1.4375rem",
-        "8": "1.625rem",
-        "9": "1.8125rem",
-        "10": "2rem",
-        "11": "2.25rem",
-        "12": "2.4375rem",
-        "14": "2.875rem",
-        "16": "3.25rem",
-        "20": "4.0625rem",
-        "24": "4.875rem",
-        "28": "5.6875rem",
-        "32": "6.5rem",
-        "36": "7.3125rem",
-        "40": "8.125rem",
-        "48": "9.75rem",
-        "56": "11.375rem",
-        "64": "13rem",
-        "72": "14.625rem",
-        "80": "16.25rem",
-        "96": "19.5rem",
+        px: "1px", // 0.9375px
+        "0": "0px",
+        "0.5": "0.125rem", // 2px
+        "1": "0.25rem", // 4px
+        "1.5": "0.34375rem", // 5.5px
+        "2": "0.46875rem", // 7.5px
+        "2.5": "0.59375rem", // 9.5px
+        "3": "0.71875rem", // 11.5px
+        "3.5": "0.8125rem", // 13px
+        "4": "0.9375rem", // 15px
+        "5": "1.1875rem", // 19px
+        "6": "1.40625rem", // 22.5px
+        "7": "1.65625rem", // 26.5px
+        "8": "1.875rem", // 30px
+        "9": "2.125rem", // 34px
+        "10": "2.34375rem", // 37.5px
+        "11": "2.59375rem", // 41.5px
+        "12": "2.8125rem", // 45px
+        "14": "3.28125rem", // 52.5px
+        "16": "3.75rem", // 60px
+        "20": "4.6875rem", // 75px
+        "24": "5.625rem", // 90px
+        "28": "6.5625rem", // 105px
+        "32": "7.5rem", // 120px
+        "36": "8.4375rem", // 135px
+        "40": "9.375rem", // 150px
+        "44": "10.3125rem", // 165px
+        "48": "11.25rem", // 180px
+        "52": "12.1875rem", // 195px
+        "56": "13.125rem", // 210px
+        "60": "14.0625rem", // 225px
+        "64": "15rem", // 240px
+        "72": "16.875rem", // 270px
+        "80": "18.75rem", // 300px
+        "96": "22.5rem", // 360px
       },
       colors: {
         border: "hsl(var(--border))",

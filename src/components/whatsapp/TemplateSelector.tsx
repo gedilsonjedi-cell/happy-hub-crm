@@ -196,7 +196,7 @@ export const TemplateSelector = ({
               />
             </div>
 
-            <ScrollArea className="h-[20.25rem] -mx-6 px-6">
+            <ScrollArea className="h-[23.4375rem] -mx-6 px-6">
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Carregando templates...

@@ -503,7 +503,7 @@ export const ManualSendDialog = ({
               />
             </div>
 
-            <ScrollArea className="h-[17.75rem] -mx-6 px-6">
+            <ScrollArea className="h-[20.5rem] -mx-6 px-6">
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Carregando templates...
