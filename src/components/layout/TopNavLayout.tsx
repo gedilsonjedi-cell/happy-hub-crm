@@ -152,13 +152,13 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
         to={item.path}
         aria-label={item.label}
         className={cn(
-          "relative rounded-lg flex items-center transition-colors shrink-0",
+          "relative rounded-md flex items-center transition-colors shrink-0",
           isExpanded
             ? "w-full h-10 px-3 gap-3 justify-start"
             : "w-11 h-11 justify-center",
           active
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            ? "text-primary"
+            : "text-foreground hover:bg-primary/5"
         )}
       >
         <Icon className="w-5 h-5 shrink-0" />
