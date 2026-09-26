@@ -475,11 +475,11 @@ export function LeadDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg h-[90vh] flex flex-col bg-[#F5F6F8] dark:bg-card">
+      <DialogContent className="max-w-lg h-[90vh] flex flex-col bg-background">
         <DialogHeader className="pb-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="w-14 h-14">
-              <AvatarFallback className="bg-emerald-500/10 text-emerald-500 text-lg font-semibold">
+              <AvatarFallback className="bg-success/10 text-success text-lg font-semibold">
                 {formData.name
                   ? formData.name.split(" ").map((n) => n[0]).join("")
                   : <User className="w-6 h-6" />}
@@ -695,10 +695,10 @@ export function LeadDetailsDialog({
                             variant="outline" 
                             className={
                               dispatch.status === "delivered" 
-                                ? "bg-green-500/10 text-green-600 border-green-500/30 text-[10px]" 
+                                ? "bg-success/10 text-success border-success/30 text-[0.625rem]" 
                                 : dispatch.status === "failed" 
-                                  ? "bg-red-500/10 text-red-600 border-red-500/30 text-[10px]"
-                                  : "bg-blue-500/10 text-blue-600 border-blue-500/30 text-[10px]"
+                                  ? "bg-destructive/10 text-destructive border-destructive/30 text-[0.625rem]"
+                                  : "bg-info/10 text-info border-info/30 text-[0.625rem]"
                             }
                           >
                             {dispatch.status === "delivered" ? "Entregue" : dispatch.status === "failed" ? "Falhou" : dispatch.status === "sent" ? "Enviado" : dispatch.status}

@@ -156,9 +156,9 @@ export const TemplateSelector = ({
 
   const getDispatchTypeClass = (type: string) => {
     switch (type) {
-      case "marketing": return "bg-purple-500/10 text-purple-500 border-purple-500/30";
-      case "utility": return "bg-blue-500/10 text-blue-500 border-blue-500/30";
-      case "service": return "bg-green-500/10 text-green-500 border-green-500/30";
+      case "marketing": return "bg-chart-3/10 text-chart-3 border-chart-3/30";
+      case "utility": return "bg-info/10 text-info border-info/30";
+      case "service": return "bg-success/10 text-success border-success/30";
       default: return "";
     }
   };
@@ -196,7 +196,7 @@ export const TemplateSelector = ({
               />
             </div>
 
-            <ScrollArea className="h-[400px] -mx-6 px-6">
+            <ScrollArea className="h-[20.25rem] -mx-6 px-6">
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Carregando templates...
