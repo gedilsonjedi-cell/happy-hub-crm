@@ -321,12 +321,11 @@ const Index = () => {
         const metric = metricsMap[availability.user_id];
         if (!metric) return;
         metric.isAvailable = availability.is_available || false;
-        metric.inProgress = availability.current_conversations || 0;
       });
       assignments.forEach((assignment) => {
         const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
         if (!metric) return;
-        if (assignment.status === "active") metric.inProgress += metric.inProgress === 0 ? 1 : 0;
+        if (assignment.status === "active") metric.inProgress += 1;
         if (assignment.status === "pending") metric.pending += 1;
         if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
       });
