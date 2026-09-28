@@ -2418,6 +2418,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          avatar_path: string | null
+          avatar_updated_at: string | null
+          avatar_updated_by: string | null
           bsuid: string | null
           city: string | null
           created_at: string
@@ -2437,6 +2440,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -2456,6 +2462,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string

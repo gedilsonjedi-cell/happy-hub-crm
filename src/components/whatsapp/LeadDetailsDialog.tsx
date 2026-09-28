@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ContactAvatarEditable } from "@/components/contacts/ContactAvatarEditable";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -478,13 +478,17 @@ export function LeadDetailsDialog({
       <DialogContent className="max-w-lg h-[90vh] flex flex-col bg-background">
         <DialogHeader className="pb-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-4">
-            <Avatar className="w-14 h-14">
-              <AvatarFallback className="bg-success/10 text-success text-lg font-semibold">
-                {formData.name
-                  ? formData.name.split(" ").map((n) => n[0]).join("")
-                  : <User className="w-6 h-6" />}
-              </AvatarFallback>
-            </Avatar>
+            <ContactAvatarEditable
+              name={formData.name || name}
+              phone={phone}
+              organizationId={effectiveOrganizationId}
+              leadId={lead?.id ?? null}
+              avatarPath={(lead as { avatar_path?: string | null } | null)?.avatar_path ?? null}
+              className="w-14 h-14"
+              fallbackClassName="bg-success/10 text-success text-lg"
+              iconClassName="w-6 h-6"
+              onChanged={() => { void refetchLead(); }}
+            />
             <div>
               <DialogTitle className="text-lg">
                 {lead ? "Detalhes do Contato" : "Novo Contato"}

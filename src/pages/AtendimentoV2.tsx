@@ -78,7 +78,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ContactAvatar, ContactAvatarOrgContext } from "@/components/contacts/ContactAvatar";
+import { ChatHeaderContactAvatar } from "@/components/contacts/ContactAvatarEditable";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -5215,11 +5216,7 @@ const AtendimentoV2 = () => {
                           <div className="flex items-start gap-3">
                             {/* Avatar with status */}
                             <div className="relative shrink-0">
-                              <Avatar className="w-10 h-10">
-                                <AvatarFallback className="bg-muted text-muted-foreground text-sm font-semibold">
-                                  {conv.name ? conv.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
-                                </AvatarFallback>
-                              </Avatar>
+                              <ContactAvatar name={conv.name} phone={conv.phone} organizationId={effectiveOrganizationId} className="w-10 h-10" fallbackClassName="bg-muted text-muted-foreground text-sm" />
                               <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
                                 <Archive className="w-2.5 h-2.5 text-white" />
                               </div>
@@ -5384,6 +5381,7 @@ const AtendimentoV2 = () => {
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
+                <ContactAvatarOrgContext.Provider value={effectiveOrganizationId ?? null}>
                 <VirtualizedConversationList
                   conversations={filteredConversations}
                   selectedConversationKey={selectedConversation ? getConversationKey(selectedConversation) : null}
@@ -5410,6 +5408,7 @@ const AtendimentoV2 = () => {
                   }}
                   isBlocked={isPhoneBlocked}
                 />
+                </ContactAvatarOrgContext.Provider>
               )}
             </div>
           )}
@@ -5479,12 +5478,12 @@ const AtendimentoV2 = () => {
                     }}>
                       <ArrowLeft className="w-5 h-5" />
                     </Button>
+                    <ChatHeaderContactAvatar
+                      name={selectedConversation.name}
+                      phone={selectedConversation.phone}
+                      organizationId={effectiveOrganizationId}
+                    />
                     <button onClick={() => setShowLeadDetailsDialog(true)} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0">
-                      <Avatar className="w-10 h-10 shrink-0">
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
-                          {selectedConversation.name ? selectedConversation.name.split(" ").map(n => n[0]).join("").slice(0, 2) : <User className="w-4 h-4" />}
-                        </AvatarFallback>
-                      </Avatar>
                       <div className="flex-1 min-w-0 text-left">
                         <h3 className="font-semibold text-primary truncate">{selectedConversation.name || selectedConversation.phone}</h3>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
