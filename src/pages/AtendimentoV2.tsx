@@ -586,6 +586,10 @@ const AtendimentoV2 = () => {
   // Somente admin e super_admin têm bypass total. Supervisor é tratado como
   // atendente: só vê conversas sem dono ou atribuídas a ele mesmo.
   const canSeeAllConversations = roleIsAdmin || roleIsSuperAdmin;
+  const canSeeAllConversationsRef = useRef(canSeeAllConversations);
+  canSeeAllConversationsRef.current = canSeeAllConversations;
+  const canAccessConversationRef = useRef(canAccessConversation);
+  canAccessConversationRef.current = canAccessConversation;
   // Super admin sem organização selecionada: todas as queries de conversas e
   // mensagens ficam desabilitadas (effectiveOrganizationId = null). Em vez de
   // uma tela vazia sem explicação, mostramos um aviso pedindo a seleção.
@@ -2508,6 +2512,30 @@ const AtendimentoV2 = () => {
       // conversations handled by other attendants.
       setAllConversations(convs => {
         const matchingConv = convs.find(isConversationMatch);
+        // Conversa fora da lista do atendente: pode ser de OUTRO atendente.
+        // Confirma o dono no banco antes de tocar som/notificar.
+        if (!matchingConv && !canSeeAllConversationsRef.current) {
+          const suffix8 = normalizedContactPhone.replace(/\D/g, "").slice(-8);
+          void (async () => {
+            try {
+              const ext = await getExternalAssignments();
+              const { data: row } = await ext
+                .from("conversation_assignments")
+                .select("assigned_to, sector_id")
+                .eq("channel_id", msg.channelId)
+                .ilike("conversation_phone", `%${suffix8}`)
+                .limit(1)
+                .maybeSingle();
+              const ok = row
+                ? canAccessConversationRef.current({ sectorId: row.sector_id ?? null, assignedTo: row.assigned_to ?? null })
+                : true;
+              if (!ok) return;
+              showNotificationRef.current(newMsg);
+              if (soundEnabledRef.current) playNotificationSoundRef.current();
+            } catch { /* silencioso */ }
+          })();
+          return convs;
+        }
         const isAssignedToMe = !matchingConv?.assignedTo || matchingConv.assignedTo === userIdRef.current;
 
         if (isAssignedToMe) {

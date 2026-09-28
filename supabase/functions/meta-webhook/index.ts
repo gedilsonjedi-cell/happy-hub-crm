@@ -830,6 +830,16 @@ async function handleConversationAssignment(
       // Default sector (per-org auto distribution): conversation without sector
       // goes to the organization's default department instead of the "Novos" queue.
       let effectiveSectorId = existing.sector_id;
+      // Linha criada sem setor (ex.: corrida com o registro de stats):
+      // herdar o departamento da campanha antes de cair no padrão/Novos.
+      if (!effectiveSectorId) {
+        for (const variant of phoneVariants) {
+          const { data: campSector } = await supabase.rpc('get_campaign_sector_for_phone', {
+            _organization_id: organizationId, _phone: variant,
+          });
+          if (campSector) { effectiveSectorId = campSector as string; break; }
+        }
+      }
       if (!effectiveSectorId) {
         effectiveSectorId = await getOrgDefaultSector(organizationId);
         if (effectiveSectorId) {
