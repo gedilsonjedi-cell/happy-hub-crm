@@ -216,6 +216,7 @@ const Index = () => {
   const { effectiveOrganizationId, isLoading: organizationLoading } = useEffectiveOrganizationId();
   const [period, setPeriod] = useState<Period>("7d");
   const [loading, setLoading] = useState(true);
+  const [readinessTimedOut, setReadinessTimedOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [moduleErrors, setModuleErrors] = useState<Partial<Record<DashboardModule, string>>>({});
   const [moduleLoading, setModuleLoading] = useState<Record<DashboardModule, boolean>>(ACTIVE_LOADING);
@@ -445,7 +446,24 @@ const Index = () => {
   }, [effectiveOrganizationId, period, updateStats, userId]);
 
   useEffect(() => {
-    if (authLoading || organizationLoading) return;
+    if (!authLoading && !organizationLoading) {
+      setReadinessTimedOut(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      requestIdRef.current += 1;
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+      setReadinessTimedOut(true);
+      setError("Não foi possível confirmar sua sessão e o cliente selecionado em 8 segundos.");
+    }, 8000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [authLoading, organizationLoading]);
+
+  useEffect(() => {
+    if (authLoading || organizationLoading || readinessTimedOut) return;
     if (!userId || !effectiveOrganizationId) {
       requestIdRef.current += 1;
       setLoading(false);
@@ -454,7 +472,7 @@ const Index = () => {
       return;
     }
     void fetchDashboardData();
-  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, userId]);
+  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, readinessTimedOut, userId]);
 
   const stateData = useMemo(() => [
     { name: "Finalizados", value: stats.resolvedToday, key: "resolved", color: "hsl(var(--success))" },
@@ -506,7 +524,7 @@ const Index = () => {
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error || "Alguns módulos não responderam. Os demais dados continuam disponíveis."}</span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => void fetchDashboardData()}>Tentar novamente</Button>
+            <Button variant="outline" size="sm" onClick={() => readinessTimedOut ? window.location.reload() : void fetchDashboardData()}>Tentar novamente</Button>
           </div>
         )}
 
