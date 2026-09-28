@@ -1588,6 +1588,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          avatar_path: string | null
+          avatar_updated_at: string | null
+          avatar_updated_by: string | null
           bsuid: string | null
           city: string | null
           created_at: string
@@ -1608,6 +1611,9 @@ export type Database = {
           webchat_id: string | null
         }
         Insert: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -1628,6 +1634,9 @@ export type Database = {
           webchat_id?: string | null
         }
         Update: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -2864,6 +2873,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      current_profile_org_id: { Args: never; Returns: string }
       debit_organization_balance: {
         Args: {
           _amount: number
