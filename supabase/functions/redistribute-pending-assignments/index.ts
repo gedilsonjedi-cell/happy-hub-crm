@@ -1,8 +1,10 @@
-// One-shot: redistribute conversation_assignments that are pending and
-// unassigned (assigned_to IS NULL) by running round-robin over the sector.
-// External DB is the SSoT for conversation_assignments; sector users and
-// availability live on internal DB.
+// Fila de espera por departamento: conversas PENDENTES, com departamento e
+// sem dono, são entregues a um atendente ONLINE do departamento (round-robin).
+// Sem ninguém online, continuam na fila. Roda a cada minuto via cron e é
+// idempotente (só age sobre status='pending', nunca sobre placeholders
+// 'archived' de campanha que o lead ainda não respondeu).
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getNextAvailableAttendant } from "../_shared/assignment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,127 +15,45 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const organizationId: string = body.organizationId;
-    const channelIds: string[] | undefined = body.channelIds;
-    const sectorId: string | undefined = body.sectorId;
-    const limit: number = body.limit ?? 1000;
-    const dryRun: boolean = !!body.dryRun;
+    let body: { organizationId?: string; dryRun?: boolean } = {};
+    try { body = await req.json(); } catch { /* sem corpo */ }
+    const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+    const dryRun = !!body.dryRun;
 
-    if (!organizationId) {
-      return new Response(JSON.stringify({ error: "organizationId required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const internal = createClient(
+    const db = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-    const ext = createClient(
-      Deno.env.get("EXTERNAL_SUPABASE_URL") ?? "",
-      Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 1) Fetch candidate assignments: pending/archived, no attendant
-    let q = ext.from("conversation_assignments")
-      .select("id, conversation_phone, sector_id, channel_id, status")
-      .eq("organization_id", organizationId)
+    let q = db.from("conversation_assignments")
+      .select("id, organization_id, sector_id, conversation_phone")
+      .eq("status", "pending")
       .is("assigned_to", null)
-      .in("status", ["pending", "archived"])
-      .limit(limit);
-    if (channelIds && channelIds.length) q = q.in("channel_id", channelIds);
-    if (sectorId) q = q.eq("sector_id", sectorId);
+      .not("sector_id", "is", null)
+      .not("organization_id", "is", null)
+      .order("updated_at", { ascending: true })
+      .limit(500);
+    if (organizationId) q = q.eq("organization_id", organizationId);
 
     const { data: rows, error } = await q;
     if (error) throw error;
 
-    // 2) Build sector → eligible users map (cache)
-    const sectorCache = new Map<string, string[]>();
-    async function getEligible(sId: string): Promise<string[]> {
-      if (sectorCache.has(sId)) return sectorCache.get(sId)!;
-      const { data: sectorUsers, error: suErr } = await internal
-        .from("user_sectors").select("user_id").eq("sector_id", sId);
-      if (suErr) console.error("[user_sectors error]", suErr);
-      console.log(`[getEligible] sector=${sId} found ${sectorUsers?.length || 0} users`);
-      const userIds = (sectorUsers || []).map((u: any) => u.user_id);
-      if (userIds.length === 0) { sectorCache.set(sId, []); return []; }
-      const { data: offRows } = await internal
-        .from("attendant_availability")
-        .select("user_id")
-        .eq("organization_id", organizationId)
-        .eq("is_available", false)
-        .in("user_id", userIds);
-      const offIds = new Set((offRows || []).map((r: any) => r.user_id));
-      const eligible = userIds.filter((id: string) => !offIds.has(id));
-      console.log(`[getEligible] sector=${sId} eligible=${eligible.length}`);
-      sectorCache.set(sId, eligible);
-      return eligible;
-    }
-
-    async function pickNext(sId: string): Promise<string | null> {
-      const eligible = await getEligible(sId);
-      if (eligible.length === 0) return null;
-      // Prefer online first
-      const { data: onRows } = await internal
-        .from("attendant_availability")
-        .select("user_id, last_assignment_at")
-        .eq("organization_id", organizationId)
-        .eq("is_available", true)
-        .in("user_id", eligible)
-        .order("last_assignment_at", { ascending: true, nullsFirst: true });
-      if (onRows && onRows.length > 0) return onRows[0].user_id;
-      // Fallback: any eligible — round-robin by last_assignment_at
-      const { data: all } = await internal
-        .from("attendant_availability")
-        .select("user_id, last_assignment_at")
-        .eq("organization_id", organizationId)
-        .in("user_id", eligible);
-      const lastMap = new Map((all || []).map((r: any) => [r.user_id, r.last_assignment_at]));
-      const sorted = [...eligible].sort((a, b) => {
-        const la = lastMap.get(a); const lb = lastMap.get(b);
-        if (!la && !lb) return 0; if (!la) return -1; if (!lb) return 1;
-        return new Date(la).getTime() - new Date(lb).getTime();
-      });
-      return sorted[0];
-    }
-
-    async function bumpLast(userId: string) {
-      const { data: upd } = await internal
-        .from("attendant_availability")
-        .update({ last_assignment_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("organization_id", organizationId)
-        .select("id");
-      if (!upd || upd.length === 0) {
-        await internal.from("attendant_availability").insert({
-          user_id: userId, organization_id: organizationId,
-          is_available: true, last_assignment_at: new Date().toISOString(),
-        });
-      }
-    }
-
-    const results: any[] = [];
-    let assignedCount = 0; let skipped = 0;
+    let assigned = 0, waiting = 0;
     for (const row of rows || []) {
-      if (!row.sector_id) { skipped++; continue; }
-      const userId = await pickNext(row.sector_id);
-      if (!userId) { skipped++; results.push({ phone: row.conversation_phone, reason: "no eligible user" }); continue; }
-      if (!dryRun) {
-        await ext.from("conversation_assignments")
-          .update({ assigned_to: userId, status: "in_progress", updated_at: new Date().toISOString() })
-          .eq("id", row.id);
-        await bumpLast(userId);
-      }
-      assignedCount++;
-      results.push({ phone: row.conversation_phone, userId });
+      if (dryRun) continue;
+      const next = await getNextAvailableAttendant(db, row.organization_id, row.sector_id);
+      if (!next) { waiting++; continue; }
+      const { data: upd } = await db.from("conversation_assignments")
+        .update({ assigned_to: next.userId, assigned_at: new Date().toISOString(), status: "in_progress", updated_at: new Date().toISOString() })
+        .eq("id", row.id).is("assigned_to", null).eq("status", "pending")
+        .select("id");
+      if (upd?.length) assigned++;
     }
 
-    return new Response(JSON.stringify({
-      total: rows?.length || 0, assignedCount, skipped, dryRun, sample: results.slice(0, 20),
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message || String(e) }), {
+    return new Response(JSON.stringify({ total: rows?.length || 0, assigned, waiting, dryRun }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: (e as Error).message || String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
