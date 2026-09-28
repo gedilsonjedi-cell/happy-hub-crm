@@ -2101,7 +2101,8 @@ const AtendimentoV2 = () => {
         };
       });
 
-      setGlobalSearchResults(results);
+      // Atendente só vê as próprias conversas e a fila "Novos" do seu departamento.
+      setGlobalSearchResults(results.filter(c => canAccessConversationRef.current({ sectorId: c.sectorId, assignedTo: c.assignedTo })));
       setIsSearchingGlobal(false);
     } catch (error) {
       console.error("Error searching conversations:", error);
