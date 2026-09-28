@@ -18,6 +18,9 @@ import {
   CreditCard,
   ChevronRight,
   ChevronLeft,
+  LayoutDashboard,
+  FileText,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,7 +65,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { isSuperAdmin } = useUserRole();
+  const { isSuperAdmin, canAccessTemplates, canAccessConexoes } = useUserRole();
   const unreadCount = useUnreadMessagesCount();
   const { theme, setTheme } = useTheme();
   const [userProfile, setUserProfile] = useState<{ display_name: string | null; email: string | null } | null>(null);
@@ -135,11 +138,14 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
   };
 
   const navItems = [
+    { label: "Dashboard", path: "/", icon: LayoutDashboard, badge: 0, visible: true },
     { label: "Atendimentos", path: "/atendimento-v2", icon: MessageSquare, badge: unreadCount },
     { label: "Leads", path: "/leads", icon: Users, badge: 0 },
     { label: "Campanhas", path: "/disparos", icon: Send, badge: 0 },
     { label: "Pipeline", path: "/pipeline", icon: GitBranch, badge: 0 },
-  ];
+    { label: "Templates", path: "/templates", icon: FileText, badge: 0, visible: canAccessTemplates },
+    { label: "Conexões", path: "/conexoes", icon: Plug, badge: 0, visible: canAccessConexoes },
+  ].filter((item) => item.visible !== false);
 
   const isActive = (path: string) => location.pathname === path;
 
