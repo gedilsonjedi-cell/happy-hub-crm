@@ -150,6 +150,7 @@
 
   html.dark {
     color-scheme: dark;
+    background-color: hsl(var(--app-background));
   }
 
   html,
