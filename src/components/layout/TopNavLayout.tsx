@@ -138,7 +138,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
   };
 
   const navItems = [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard, badge: 0, visible: true },
+    { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, badge: 0, visible: true },
     { label: "Atendimentos", path: "/atendimento-v2", icon: MessageSquare, badge: unreadCount },
     { label: "Leads", path: "/leads", icon: Users, badge: 0 },
     { label: "Campanhas", path: "/disparos", icon: Send, badge: 0 },
