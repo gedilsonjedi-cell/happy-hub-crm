@@ -21,24 +21,25 @@ function touch(db: Db, organizationId: string, userId: string) {
     .eq("user_id", userId).eq("organization_id", organizationId).then(() => {}, () => {});
 }
 
-/** Round-robin dentro do setor, preferindo quem está online. */
+/**
+ * Round-robin dentro do setor, SOMENTE entre atendentes online.
+ * Ninguém online → null (conversa fica na fila de espera do departamento e
+ * é entregue pelo redistribute-pending-assignments quando alguém ficar online).
+ */
 export async function getNextAvailableAttendant(db: Db, organizationId: string, sectorId: string | null): Promise<{ userId: string } | null> {
   if (!sectorId) return null;
   const { data: sectorUsers } = await db.from("user_sectors").select("user_id").eq("sector_id", sectorId);
   if (!sectorUsers?.length) return null;
   const userIds = sectorUsers.map((u: { user_id: string }) => u.user_id);
 
-  let list: { user_id: string }[] | null = (await db.from("attendant_availability")
+  const { data: list } = await db.from("attendant_availability")
     .select("user_id, last_assignment_at").eq("organization_id", organizationId).eq("is_available", true)
-    .in("user_id", userIds).order("last_assignment_at", { ascending: true, nullsFirst: true })).data;
-  if (!list?.length) {
-    list = (await db.from("attendant_availability").select("user_id, last_assignment_at")
-      .eq("organization_id", organizationId).in("user_id", userIds)
-      .order("last_assignment_at", { ascending: true, nullsFirst: true })).data;
-  }
-  if (!list?.length) list = userIds.map((id: string) => ({ user_id: id }));
-  const next = list![0];
-  touch(db, organizationId, next.user_id);
+    .in("user_id", userIds).order("last_assignment_at", { ascending: true, nullsFirst: true });
+  if (!list?.length) return null;
+  const next = list[0];
+  // Aguarda a marcação para o próximo round-robin não pegar a mesma pessoa.
+  await db.from("attendant_availability").update({ last_assignment_at: new Date().toISOString() })
+    .eq("user_id", next.user_id).eq("organization_id", organizationId).then(() => {}, () => {});
   return { userId: next.user_id };
 }
 
