@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     /* Tema claro alinhado ao design system de referência (Datacrazy) */
     --background: 0 0% 100%;
     --foreground: 222 84% 5%;
@@ -71,6 +72,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: 160 10% 6%;
     --foreground: 0 0% 95%;
 
@@ -125,10 +127,13 @@
     --sidebar-border: 160 10% 16%;
     --sidebar-ring: 142 70% 45%;
     --sidebar-muted: 0 0% 55%;
+    --app-background: 160 10% 4%;
 
     /* Custom tokens */
     --header-background: 160 15% 6%;
     --header-border: 160 10% 15%;
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-popover: 0 0 14px 0 rgb(0 0 0 / 0.75);
   }
 }
 

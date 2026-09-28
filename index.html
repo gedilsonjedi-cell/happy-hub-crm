@@ -249,17 +249,17 @@
           if (theme === 'light') {
             document.documentElement.classList.remove('dark');
           } else {
-            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('dark');
           }
         } catch (e) {
-          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('dark');
         }
       })();
     </script>
     <style>
-      html { background-color: #0f1512; }
-      html.dark { background-color: #0f1512; }
-      html:not(.dark) { background-color: #fafafa; }
+      html { background-color: #0a0e0c; }
+      html.dark { background-color: #0a0e0c; }
+      html:not(.dark) { background-color: #f2f2f2; }
     </style>
   </head>
 
