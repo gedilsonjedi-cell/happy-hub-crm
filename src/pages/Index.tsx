@@ -274,7 +274,7 @@ const Index = () => {
 
     let channelIds: string[] = [];
     try {
-      const channelsResult = await withTimeout(
+      const channelsResult: { data: Array<{ id: string }> | null; error: Error | null } = await withTimeout(
         (supabase as any).from("channels_public").select("id").eq("organization_id", effectiveOrganizationId),
         "Dashboard:canais",
       );
