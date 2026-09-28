@@ -61,4 +61,18 @@ describe("Dashboard: estado de organização efetiva", () => {
       expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
     });
   });
+
+  it("encerra o skeleton e mostra erro quando os hooks iniciais ficam presos", async () => {
+    vi.useFakeTimers();
+    authState.loading = true;
+    organizationState.isLoading = true;
+
+    render(<Index />);
+    await vi.advanceTimersByTimeAsync(8000);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível confirmar sua sessão e o cliente selecionado em 8 segundos.");
+    expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
+    expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    vi.useRealTimers();
+  });
 });

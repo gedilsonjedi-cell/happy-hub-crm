@@ -2,6 +2,19 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem("optimus-theme") === "dark" ? "dark" : "light";
+          document.documentElement.classList.remove("light", "dark");
+          document.documentElement.classList.add(theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {
+          document.documentElement.classList.add("light");
+          document.documentElement.style.colorScheme = "light";
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://vytjufibiwhtvsnvvqri.supabase.co" crossorigin />
 
 
@@ -245,21 +258,21 @@
       
       (function() {
         try {
-          var theme = localStorage.getItem('optimuscrm-theme');
-          if (theme === 'light') {
-            document.documentElement.classList.remove('dark');
-          } else {
+          var theme = localStorage.getItem('optimus-theme');
+          if (theme === 'dark') {
             document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
           }
         } catch (e) {
-          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('dark');
         }
       })();
     </script>
     <style>
-      html { background-color: #0f1512; }
-      html.dark { background-color: #0f1512; }
-      html:not(.dark) { background-color: #fafafa; }
+      html { background-color: #0a0e0c; }
+      html.dark { background-color: #0a0e0c; }
+      html:not(.dark) { background-color: #f2f2f2; }
     </style>
   </head>
 

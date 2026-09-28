@@ -23,6 +23,17 @@ const SuperAdminContext = createContext<SuperAdminContextType | undefined>(undef
 
 const STORAGE_KEY = "super_admin_selected_org";
 
+function withOrganizationTimeout<T>(promise: PromiseLike<T>, timeoutMs = 8000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Consulta de clientes excedeu 8s")), timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 // Helper to get cached organization from sessionStorage
 const getCachedOrganization = (): Organization | null => {
   try {
@@ -92,11 +103,11 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("id, name, slug, is_active, plan")
-        .order("name");
+      const { data, error } = await withOrganizationTimeout(
+        supabase.from("organizations").select("id, name, slug, is_active, plan").order("name"),
+      );
 
       if (error) {
         console.error("Error fetching organizations:", error);

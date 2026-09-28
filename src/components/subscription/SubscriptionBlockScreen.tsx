@@ -63,7 +63,7 @@ export function SubscriptionBlockScreen() {
 
             {/* Pay on WhatsApp */}
             <Button
-              className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white"
+              className="w-full bg-success text-success-foreground hover:bg-success/90"
               size="lg"
               onClick={handlePayOnWhatsApp}
             >
