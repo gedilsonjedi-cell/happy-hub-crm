@@ -2873,7 +2873,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      current_profile_org_id: { Args: never; Returns: string }
       debit_organization_balance: {
         Args: {
           _amount: number
