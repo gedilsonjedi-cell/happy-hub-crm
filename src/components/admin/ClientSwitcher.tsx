@@ -5,7 +5,6 @@ import {
   Settings, 
   LogOut,
   Eye,
-  X,
   Search
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -59,16 +58,14 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "group h-10 w-10 rounded-full bg-transparent p-0 hover:bg-transparent data-[state=open]:bg-transparent",
-            isImpersonating && "text-primary"
-          )}
+          data-testid="client-switcher-trigger"
+          className="group h-10 w-10 rounded-full bg-transparent p-0 hover:bg-transparent data-[state=open]:bg-transparent"
           aria-label={`Cliente: ${currentName}`}
         >
           <span
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary transition-colors group-hover:bg-primary/20",
-              isImpersonating && "ring-2 ring-primary/30 ring-offset-2 ring-offset-background"
+              "relative flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary transition-colors group-hover:bg-primary/20",
+              isImpersonating && "ring-2 ring-warning/60 ring-offset-2 ring-offset-background"
             )}
           >
             {initial}
@@ -78,14 +75,15 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
         <Button
           variant="outline"
           size="sm"
+          data-testid="client-switcher-trigger"
+          title={currentName}
+          aria-label={`Cliente: ${currentName}`}
           className={cn(
             "h-10 w-full min-w-0 justify-start gap-2 px-2.5",
-            isImpersonating && "border-primary/40 bg-primary/5"
+            isImpersonating && "border-warning/50 bg-warning/5"
           )}
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-            {initial}
-          </span>
+          {isImpersonating && <Eye aria-label="Visualizando cliente" className="h-4 w-4 shrink-0 text-warning" />}
           <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
             {currentName}
           </span>
@@ -97,30 +95,11 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
 
   return (
     <div className={cn("flex min-w-0 items-center", compact ? "justify-center" : "w-full")}>
-      {!compact && isImpersonating && (
-        <div className="hidden sm:flex items-center gap-2 bg-warning/10 text-warning px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-warning/20">
-          <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
-          <span className="text-xs sm:text-sm font-medium max-w-[100px] truncate">
-            {selectedOrganization?.name}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-warning/20"
-            onClick={() => setSelectedOrganization(null)}
-          >
-            <X className="w-2 h-2 sm:w-3 sm:h-3" />
-          </Button>
-        </div>
-      )}
-
       <DropdownMenu>
-        {compact ? (
-          <Tooltip delayDuration={200}>
-            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-            <TooltipContent side="right">{currentName}</TooltipContent>
-          </Tooltip>
-        ) : trigger}
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="right">{currentName}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel className="flex items-center justify-between">
             <span>Clientes</span>
@@ -197,7 +176,7 @@ export function ClientSwitcher({ compact = false }: ClientSwitcherProps) {
               onClick={() => setSelectedOrganization(null)}
             >
               <LogOut className="w-4 h-4 mr-2" />
-              Sair da visualização
+              Sair do cliente
             </DropdownMenuItem>
           )}
           
