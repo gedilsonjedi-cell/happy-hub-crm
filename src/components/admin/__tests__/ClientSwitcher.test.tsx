@@ -17,7 +17,7 @@ import { ClientSwitcher } from "../ClientSwitcher";
 
 const zentum = { id: "z", name: "Zentum Soluções Financeiras", slug: "zentum", is_active: true, plan: "pro" };
 const mount = (compact = false) => render(<MemoryRouter><TooltipProvider><ClientSwitcher compact={compact} /></TooltipProvider></MemoryRouter>);
-const open = (el: HTMLElement) => { fireEvent.pointerDown(el, { button: 0, ctrlKey: false }); };
+const open = (el: HTMLElement) => { el.focus(); fireEvent.keyDown(el, { key: "Enter" }); };
 
 describe("ClientSwitcher", () => {
   beforeEach(() => { state.selected = null; state.setSelected.mockReset(); });
