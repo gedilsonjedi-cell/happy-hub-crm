@@ -7,4 +7,4 @@
 - [x] Reajustar a escala para fator 0,9375 (base 15px) e re-derivar as medidas fixas geradas pelo fator anterior; conferido por CSS computado.
 
 
-- [ ] Mover Dashboard, Templates e Conexões para a barra principal; remover duplicatas de Configurações; validar UI e typecheck.
+- [x] Mover Dashboard, Templates e Conexões para a barra principal; remover duplicatas de Configurações; validar UI e typecheck.
