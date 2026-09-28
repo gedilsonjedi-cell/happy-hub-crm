@@ -13,6 +13,8 @@ createRoot(document.getElementById("root")!).render(
         defaultTheme="light" 
         storageKey="optimus-theme"
         enableSystem={false}
+        enableColorScheme
+        disableTransitionOnChange
       >
         <App />
       </ThemeProvider>

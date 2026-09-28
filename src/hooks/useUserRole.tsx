@@ -38,7 +38,7 @@ function withRoleTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = 
 }
 
 export function useUserRole(userIdOverride?: string | null): UserRoleState {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const resolvedUserId = userIdOverride ?? user?.id ?? null;
 
   // Fetch role using React Query with aggressive caching
@@ -96,7 +96,7 @@ export function useUserRole(userIdOverride?: string | null): UserRoleState {
   });
 
   const role = roleData ?? null;
-  const loading = roleLoading || orgLoading;
+  const loading = authLoading || roleLoading || orgLoading;
   const syncing = roleFetching || orgFetching;
 
   // Memoize permissions to prevent unnecessary re-renders
