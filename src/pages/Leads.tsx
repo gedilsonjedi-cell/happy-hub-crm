@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ContactAvatar } from "@/components/contacts/ContactAvatar";
 import { 
   Table, 
   TableBody, 
@@ -749,11 +750,12 @@ const Leads = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar className="w-9 h-9">
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
-                          {lead.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <ContactAvatar
+                        name={lead.name}
+                        avatarPath={(lead as { avatar_path?: string | null }).avatar_path ?? null}
+                        className="w-9 h-9"
+                        fallbackClassName="bg-primary/10 text-primary text-sm"
+                      />
                       <span className="font-medium text-foreground">{lead.name}</span>
                     </div>
                   </TableCell>

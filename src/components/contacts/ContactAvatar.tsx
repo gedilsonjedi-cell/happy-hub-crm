@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from "react";
+import { createContext, useContext, useEffect, useReducer, useState } from "react";
 import { User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,9 @@ import {
   requestSignedUrl,
   subscribeAvatars,
 } from "@/lib/contactAvatars";
+
+/** Organização usada para resolver fotos pelo telefone quando não passada via prop. */
+export const ContactAvatarOrgContext = createContext<string | null>(null);
 
 export function getContactInitials(name: string | null | undefined): string {
   if (!name) return "";
@@ -33,11 +36,13 @@ export function ContactAvatar({
   name,
   avatarPath,
   phone,
-  organizationId,
+  organizationId: organizationIdProp,
   className,
   fallbackClassName = "bg-primary/10 text-primary",
   iconClassName = "w-4 h-4",
 }: ContactAvatarProps) {
+  const ctxOrg = useContext(ContactAvatarOrgContext);
+  const organizationId = organizationIdProp ?? ctxOrg;
   const [, force] = useReducer((x: number) => x + 1, 0);
   useEffect(() => subscribeAvatars(force), []);
 

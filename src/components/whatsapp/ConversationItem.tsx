@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ContactAvatar } from "@/components/contacts/ContactAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MessageSquare, User, UserCheck, Clock, AlertCircle, Timer, Globe } from "lucide-react";
@@ -140,18 +140,12 @@ export const ConversationItem = memo(function ConversationItem({
 
         {/* Avatar with initials */}
         <div className="relative shrink-0">
-          <Avatar className="w-10 h-10">
-            <AvatarFallback
-              className={cn(
-                "text-sm font-semibold",
-                initials
-                  ? "bg-primary/10 text-primary"
-                  : "bg-secondary text-secondary-foreground"
-              )}
-            >
-              {initials || <User className="w-4 h-4" />}
-            </AvatarFallback>
-          </Avatar>
+          <ContactAvatar
+            name={conversation.name}
+            phone={conversation.phone}
+            className="w-10 h-10"
+            fallbackClassName={cn("text-sm", initials ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground")}
+          />
           <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 bg-success rounded-full flex items-center justify-center">
             <MessageSquare className="w-2.5 h-2.5 text-success-foreground" />
           </div>
