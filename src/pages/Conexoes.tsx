@@ -1479,6 +1479,26 @@ const Conexoes = () => {
       )
     : channels;
 
+  const managedChannel = manageChannelId ? channels.find((c) => c.id === manageChannelId) ?? null : null;
+
+  // Handlers estáveis para o card memoizado (evita re-render dos 180+ cards)
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
+  const toggleRef = useRef(handleToggleConnection);
+  toggleRef.current = handleToggleConnection;
+  const handleOpenManage = useCallback((id: string) => setManageChannelId(id), []);
+  const handleToggleById = useCallback((id: string) => {
+    const ch = channelsRef.current.find((c) => c.id === id);
+    if (ch) void toggleRef.current(ch);
+  }, []);
+
+  const getConnectionStatus = (channel: Channel): ConnectionStatus => {
+    if (isCheckingStatus[channel.id]) return "checking";
+    const st = channel.provider === "meta" ? metaPhoneStatuses[channel.id] : undefined;
+    if (st) return st.isConnected ? "connected" : st.isPending || st.code === "PENDING" ? "pending" : "disconnected";
+    return channel.connected ? "connected" : "disconnected";
+  };
+
   return (
     <MainLayout>
       {/* Header */}
