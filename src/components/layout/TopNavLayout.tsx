@@ -193,7 +193,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
   };
 
   return (
-    <div className="h-screen bg-[hsl(var(--app-background))] flex overflow-hidden">
+    <div className="h-screen bg-app flex overflow-hidden">
       {/* Barra lateral fina / expandida */}
       <aside
         className={cn(
@@ -394,7 +394,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
       {/* Conteúdo */}
       <main
         className={cn(
-          "flex-1 min-w-0 min-h-0 bg-[hsl(var(--app-background))] transition-all duration-300 ease-in-out",
+          "flex-1 min-w-0 min-h-0 bg-app transition-all duration-300 ease-in-out",
           noPadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden p-2 sm:p-4 md:p-6"
         )}
       >

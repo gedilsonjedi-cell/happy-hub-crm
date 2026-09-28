@@ -144,7 +144,8 @@
 
   html {
     color-scheme: light;
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--app-background));
+    @apply text-foreground;
   }
 
   html.dark {
@@ -154,7 +155,9 @@
   html,
   body,
   #root {
-    @apply min-h-full bg-background text-foreground;
+    min-height: 100%;
+    background-color: hsl(var(--app-background));
+    @apply text-foreground;
   }
 
   body {
