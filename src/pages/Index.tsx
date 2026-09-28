@@ -432,7 +432,6 @@ const Index = () => {
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <Card className="relative overflow-hidden border-primary/30 bg-primary text-primary-foreground shadow-card xl:col-span-4">
-            <div className="absolute right-0 top-0 h-36 w-36 translate-x-10 -translate-y-12 rounded-full border border-primary-foreground/15" />
             <CardContent className="relative flex min-h-52 flex-col justify-between p-6">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-primary-foreground/80">Total de Leads</p>
