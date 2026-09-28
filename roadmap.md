@@ -9,3 +9,4 @@
 
 - [x] Mover Dashboard, Templates e Conexões para a barra principal; remover duplicatas de Configurações; validar UI e typecheck.
 - [x] Reformular a Dashboard com os dados atuais, gráficos reais, filtro de período, estados vazios e barra lateral modernizada; validar desktop, celular e typecheck.
+- [x] Corrigir o carregamento infinito da Dashboard para super admin sem cliente, isolar falhas por módulo, adicionar timeout às consultas e corrigir a ordenação das etapas do Pipeline.
