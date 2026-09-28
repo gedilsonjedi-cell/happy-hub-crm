@@ -1,4 +1,3 @@
-import DemoConexoesTmp from "./pages/DemoConexoesTmp";
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -197,7 +196,6 @@ const App = () => (
           <Route path="/chat/:linkId" element={<WebChatPublic />} />
           <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos-de-uso" element={<TermsOfUse />} />
-          <Route path="/demo-conexoes-tmp" element={<DemoConexoesTmp />} />
           <Route path="/exclusao-de-dados" element={<DataDeletion />} />
           <Route path="/" element={<HomeRoute />} />
           <Route path="/whatsapp-chat" element={<Navigate to="/atendimento-v2" replace />} />
