@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
 type Period = "today" | "7d" | "30d";
+type DashboardModule = "leads" | "campaigns" | "attendance" | "chart" | "distribution" | "activity";
 
 interface DashboardStats {
   totalLeads: number;
@@ -103,6 +104,35 @@ const EMPTY_STATS: DashboardStats = {
   pendingConversations: 0,
   inProgressConversations: 0,
 };
+
+const EMPTY_LOADING: Record<DashboardModule, boolean> = {
+  leads: false,
+  campaigns: false,
+  attendance: false,
+  chart: false,
+  distribution: false,
+  activity: false,
+};
+
+const ACTIVE_LOADING: Record<DashboardModule, boolean> = {
+  leads: true,
+  campaigns: true,
+  attendance: true,
+  chart: true,
+  distribution: true,
+  activity: true,
+};
+
+function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = 10000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs / 1000}s`)), timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 const periodLabels: Record<Period, string> = {
   today: "Hoje",
@@ -182,94 +212,196 @@ function ModuleSkeleton({ chart = false }: { chart?: boolean }) {
 }
 
 const Index = () => {
-  const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { user, loading: authLoading } = useAuth();
+  const { effectiveOrganizationId, isLoading: organizationLoading } = useEffectiveOrganizationId();
   const [period, setPeriod] = useState<Period>("7d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [moduleErrors, setModuleErrors] = useState<Partial<Record<DashboardModule, string>>>({});
+  const [moduleLoading, setModuleLoading] = useState<Record<DashboardModule, boolean>>(ACTIVE_LOADING);
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
   const [attendantMetrics, setAttendantMetrics] = useState<AttendantMetrics[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [leadDistribution, setLeadDistribution] = useState<LeadDistribution[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const requestIdRef = useRef(0);
+  const userId = user?.id;
+
+  const updateStats = useCallback((values: Partial<DashboardStats>) => {
+    setStats((current) => ({ ...current, ...values }));
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
-    if (!user || !effectiveOrganizationId) return;
+    if (!userId || !effectiveOrganizationId) {
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoading(true);
     setError(null);
+    setModuleErrors({});
+    setModuleLoading(ACTIVE_LOADING);
 
+    const now = new Date();
+    const periodStart = getPeriodStart(period);
+    const periodStartIso = periodStart.toISOString();
+    const dayCount = period === "today" ? 1 : period === "7d" ? 7 : 30;
+
+    const finishModule = (module: DashboardModule) => {
+      if (requestIdRef.current !== requestId) return;
+      setModuleLoading((current) => ({ ...current, [module]: false }));
+    };
+
+    const failModule = (module: DashboardModule, failure: unknown) => {
+      if (requestIdRef.current !== requestId) return;
+      const message = failure instanceof Error ? failure.message : "Consulta indisponível";
+      console.error(`[Dashboard:${module}]`, failure);
+      setModuleErrors((current) => ({ ...current, [module]: message }));
+    };
+
+    const runModule = async (module: DashboardModule, task: () => Promise<void>) => {
+      try {
+        await withTimeout(task(), `Dashboard:${module}`);
+      } catch (failure) {
+        failModule(module, failure);
+      } finally {
+        finishModule(module);
+      }
+    };
+
+    let channelIds: string[] = [];
     try {
-      const now = new Date();
-      const periodStart = getPeriodStart(period);
-      const periodStartIso = periodStart.toISOString();
-      const dayCount = period === "today" ? 1 : period === "7d" ? 7 : 30;
-
-      const [totalLeadsResult, periodLeadsResult, campaignsResult, channelsResult, availabilityResult, profilesResult, stagesResult] = await Promise.all([
-        supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId),
-        supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso),
-        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+      const channelsResult: { data: Array<{ id: string }> | null; error: Error | null } = await withTimeout(
         (supabase as any).from("channels_public").select("id").eq("organization_id", effectiveOrganizationId),
-        supabase.from("attendant_availability").select("user_id, is_available, current_conversations").eq("organization_id", effectiveOrganizationId),
-        supabase.from("profiles").select("user_id, display_name, email").eq("organization_id", effectiveOrganizationId),
-        supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("position", { ascending: true }),
+        "Dashboard:canais",
+      );
+      if (channelsResult.error) throw channelsResult.error;
+      channelIds = (channelsResult.data || []).map((channel: { id: string }) => channel.id);
+    } catch (failure) {
+      failModule("attendance", failure);
+      failModule("chart", failure);
+      failModule("activity", failure);
+    }
+
+    const assignmentsPromise = runModule("attendance", async () => {
+      const [availabilityResult, profilesResult] = await Promise.all([
+        withTimeout(supabase.from("attendant_availability").select("user_id, is_available, current_conversations").eq("organization_id", effectiveOrganizationId), "Dashboard:disponibilidade"),
+        withTimeout(supabase.from("profiles").select("user_id, display_name, email").eq("organization_id", effectiveOrganizationId), "Dashboard:perfis"),
       ]);
+      if (availabilityResult.error) throw availabilityResult.error;
+      if (profilesResult.error) throw profilesResult.error;
 
-      const baseErrors = [totalLeadsResult.error, periodLeadsResult.error, campaignsResult.error, channelsResult.error, availabilityResult.error, profilesResult.error, stagesResult.error].filter(Boolean);
-      if (baseErrors.length > 0) throw baseErrors[0];
-
-      const channelIds = (channelsResult.data || []).map((channel: { id: string }) => channel.id);
-      let assignments: Array<{
-        assigned_to?: string | null;
-        status?: string | null;
-        created_at?: string | null;
-        updated_at?: string | null;
-      }> = [];
-
+      let assignments: Array<{ assigned_to?: string | null; status?: string | null; created_at?: string | null; updated_at?: string | null }> = [];
       if (channelIds.length > 0) {
-        const externalClient = await getExternalAssignments();
-        const assignmentsResult = await externalClient
-          .from("conversation_assignments")
-          .select("assigned_to, status, created_at, updated_at")
-          .in("channel_id", channelIds);
+        const externalClient = await withTimeout(getExternalAssignments(), "Dashboard:cliente externo");
+        const assignmentsResult = await withTimeout(
+          externalClient.from("conversation_assignments").select("assigned_to, status, created_at, updated_at").in("channel_id", channelIds),
+          "Dashboard:atendimentos",
+        );
         if (assignmentsResult.error) throw assignmentsResult.error;
         assignments = assignmentsResult.data || [];
       }
 
-      const periodAssignments = assignments.filter((assignment) => {
-        const createdAt = assignment.created_at ? new Date(assignment.created_at).getTime() : 0;
-        return createdAt >= periodStart.getTime();
-      });
-      const resolvedInPeriod = assignments.filter((assignment) => {
-        const updatedAt = assignment.updated_at ? new Date(assignment.updated_at).getTime() : 0;
-        return assignment.status === "resolved" && updatedAt >= periodStart.getTime();
-      });
+      if (requestIdRef.current !== requestId) return;
+      const periodAssignments = assignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at).getTime() >= periodStart.getTime());
+      const resolvedInPeriod = assignments.filter((assignment) => assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
       const pendingConversations = assignments.filter((assignment) => assignment.status === "pending").length;
       const inProgressConversations = assignments.filter((assignment) => assignment.status === "active").length;
+      updateStats({
+        openConversations: pendingConversations + inProgressConversations,
+        resolvedToday: resolvedInPeriod.length,
+        pendingConversations,
+        inProgressConversations,
+      });
 
-      let messages: Array<{ direction: string; sender_phone: string | null; created_at: string }> = [];
-      let recentMessages: Array<{ id: string; sender_name: string | null; sender_phone: string | null; direction: string; created_at: string }> = [];
-      if (channelIds.length > 0) {
-        const [messagesResult, recentMessagesResult] = await Promise.all([
-          supabase
-            .from("whatsapp_messages")
-            .select("direction, sender_phone, created_at")
-            .in("channel_id", channelIds)
-            .gte("created_at", periodStartIso)
-            .order("created_at", { ascending: true })
-            .limit(500),
-          supabase
-            .from("whatsapp_messages")
-            .select("id, sender_name, sender_phone, direction, created_at")
-            .in("channel_id", channelIds)
-            .gte("created_at", periodStartIso)
-            .order("created_at", { ascending: false })
-            .limit(10),
-        ]);
-        if (messagesResult.error) throw messagesResult.error;
-        if (recentMessagesResult.error) throw recentMessagesResult.error;
-        messages = messagesResult.data || [];
-        recentMessages = recentMessagesResult.data || [];
+      const metricsMap: Record<string, AttendantMetrics> = {};
+      (profilesResult.data || []).forEach((profile) => {
+        metricsMap[profile.user_id] = {
+          userId: profile.user_id,
+          displayName: profile.display_name || profile.email || "Atendente",
+          email: profile.email || "",
+          inProgress: 0,
+          pending: 0,
+          resolved: 0,
+          isAvailable: false,
+        };
+      });
+      (availabilityResult.data || []).forEach((availability) => {
+        const metric = metricsMap[availability.user_id];
+        if (metric) metric.isAvailable = availability.is_available || false;
+      });
+      assignments.forEach((assignment) => {
+        const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
+        if (!metric) return;
+        if (assignment.status === "active") metric.inProgress += 1;
+        if (assignment.status === "pending") metric.pending += 1;
+        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
+      });
+      setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
+
+      const days: DailyStats[] = [];
+      for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
+        const date = subDays(startOfDay(now), offset);
+        const nextDate = new Date(date);
+        nextDate.setDate(nextDate.getDate() + 1);
+        days.push({
+          date: dayCount === 30 ? format(date, "dd/MM") : format(date, "EEE", { locale: ptBR }),
+          fullDate: format(date, "dd 'de' MMMM", { locale: ptBR }),
+          newConversations: periodAssignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at) >= date && new Date(assignment.created_at) < nextDate).length,
+          resolved: resolvedInPeriod.filter((assignment) => assignment.updated_at && new Date(assignment.updated_at) >= date && new Date(assignment.updated_at) < nextDate).length,
+        });
       }
+      setDailyStats(days);
+      finishModule("chart");
+    });
+
+    const leadsPromise = runModule("leads", async () => {
+      const [totalLeadsResult, periodLeadsResult, stagesResult] = await Promise.all([
+        withTimeout(supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
+        withTimeout(supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso), "Dashboard:leads do período"),
+        withTimeout(supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("order_index", { ascending: true }), "Dashboard:etapas"),
+      ]);
+      if (totalLeadsResult.error) throw totalLeadsResult.error;
+      if (periodLeadsResult.error) throw periodLeadsResult.error;
+      if (stagesResult.error) throw stagesResult.error;
+      if (requestIdRef.current !== requestId) return;
+      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodLeadsResult.data?.length || 0 });
+      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
+      const distributionMap = new Map<string, number>();
+      (periodLeadsResult.data || []).forEach((lead) => {
+        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
+        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
+      });
+      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
+      finishModule("distribution");
+    });
+
+    const campaignsPromise = runModule("campaigns", async () => {
+      const result = await withTimeout(
+        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+        "Dashboard:campanhas",
+      );
+      if (result.error) throw result.error;
+      if (requestIdRef.current === requestId) updateStats({ campaignsSent: result.count || 0 });
+    });
+
+    const messagesPromise = runModule("activity", async () => {
+      if (channelIds.length === 0) {
+        if (requestIdRef.current === requestId) setRecentActivity([]);
+        return;
+      }
+      const [messagesResult, recentMessagesResult] = await Promise.all([
+        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: true }).limit(500), "Dashboard:tempo de resposta"),
+        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
+      ]);
+      if (messagesResult.error) throw messagesResult.error;
+      if (recentMessagesResult.error) throw recentMessagesResult.error;
+      if (requestIdRef.current !== requestId) return;
+      const messages = messagesResult.data || [];
+      const recentMessages = recentMessagesResult.data || [];
 
       const messagesByPhone: Record<string, Array<{ direction: string; created_at: string }>> = {};
       messages.forEach((message) => {
@@ -294,71 +426,7 @@ const Index = () => {
         }
       });
 
-      setStats({
-        totalLeads: totalLeadsResult.count || 0,
-        newToday: periodLeadsResult.data?.length || 0,
-        openConversations: pendingConversations + inProgressConversations,
-        campaignsSent: campaignsResult.count || 0,
-        resolvedToday: resolvedInPeriod.length,
-        avgResponseTime: responseCount > 0 ? Math.round(totalResponseTime / responseCount) : 0,
-        pendingConversations,
-        inProgressConversations,
-      });
-
-      const metricsMap: Record<string, AttendantMetrics> = {};
-      (profilesResult.data || []).forEach((profile) => {
-        metricsMap[profile.user_id] = {
-          userId: profile.user_id,
-          displayName: profile.display_name || profile.email || "Atendente",
-          email: profile.email || "",
-          inProgress: 0,
-          pending: 0,
-          resolved: 0,
-          isAvailable: false,
-        };
-      });
-      (availabilityResult.data || []).forEach((availability) => {
-        const metric = metricsMap[availability.user_id];
-        if (!metric) return;
-        metric.isAvailable = availability.is_available || false;
-      });
-      assignments.forEach((assignment) => {
-        const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
-        if (!metric) return;
-        if (assignment.status === "active") metric.inProgress += 1;
-        if (assignment.status === "pending") metric.pending += 1;
-        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
-      });
-      setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
-
-      const days: DailyStats[] = [];
-      for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
-        const date = subDays(startOfDay(now), offset);
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-        days.push({
-          date: dayCount === 30 ? format(date, "dd/MM") : format(date, "EEE", { locale: ptBR }),
-          fullDate: format(date, "dd 'de' MMMM", { locale: ptBR }),
-          newConversations: periodAssignments.filter((assignment) => {
-            const createdAt = assignment.created_at ? new Date(assignment.created_at) : null;
-            return createdAt && createdAt >= date && createdAt < nextDate;
-          }).length,
-          resolved: resolvedInPeriod.filter((assignment) => {
-            const updatedAt = assignment.updated_at ? new Date(assignment.updated_at) : null;
-            return updatedAt && updatedAt >= date && updatedAt < nextDate;
-          }).length,
-        });
-      }
-      setDailyStats(days);
-
-      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
-      const distributionMap = new Map<string, number>();
-      (periodLeadsResult.data || []).forEach((lead) => {
-        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
-        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
-      });
-      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
-
+      updateStats({ avgResponseTime: responseCount > 0 ? Math.round(totalResponseTime / responseCount) : 0 });
       setRecentActivity(recentMessages.map((message) => ({
         id: message.id,
         type: message.direction === "inbound" ? "message_received" : "message_sent",
@@ -367,22 +435,26 @@ const Index = () => {
           : `Mensagem enviada para ${message.sender_phone || message.sender_name || "contato"}`,
         timestamp: message.created_at,
       })));
-    } catch (fetchError) {
-      console.error("Error fetching dashboard data:", fetchError);
-      setError("Não foi possível carregar os dados da Dashboard.");
-      setStats(EMPTY_STATS);
-      setAttendantMetrics([]);
-      setDailyStats([]);
-      setLeadDistribution([]);
-      setRecentActivity([]);
-    } finally {
+    });
+
+    await Promise.allSettled([assignmentsPromise, leadsPromise, campaignsPromise, messagesPromise]);
+    if (requestIdRef.current === requestId) {
       setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
     }
-  }, [effectiveOrganizationId, period, user]);
+  }, [effectiveOrganizationId, period, updateStats, userId]);
 
   useEffect(() => {
+    if (authLoading || organizationLoading) return;
+    if (!userId || !effectiveOrganizationId) {
+      requestIdRef.current += 1;
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+      setError(null);
+      return;
+    }
     void fetchDashboardData();
-  }, [fetchDashboardData]);
+  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, userId]);
 
   const stateData = useMemo(() => [
     { name: "Finalizados", value: stats.resolvedToday, key: "resolved", color: "hsl(var(--success))" },
@@ -393,6 +465,8 @@ const Index = () => {
   const leadTotal = leadDistribution.reduce((total, item) => total + item.value, 0);
   const maxAttendantTotal = Math.max(...attendantMetrics.map((metric) => metric.inProgress + metric.pending + metric.resolved), 1);
   const hasDailyData = dailyStats.some((day) => day.newConversations > 0 || day.resolved > 0);
+  const hasModuleErrors = Object.keys(moduleErrors).length > 0;
+  const needsOrganization = !authLoading && !organizationLoading && !!userId && !effectiveOrganizationId;
 
   return (
     <MainLayout>
@@ -419,11 +493,18 @@ const Index = () => {
           </div>
         </header>
 
-        {error && (
+        {needsOrganization && (
+          <div role="status" className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm text-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0 text-warning" />
+            <span>Selecione um cliente na barra lateral para visualizar a Dashboard.</span>
+          </div>
+        )}
+
+        {(error || hasModuleErrors) && !needsOrganization && (
           <div role="alert" className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
+              <span>{error || "Alguns módulos não responderam. Os demais dados continuam disponíveis."}</span>
             </div>
             <Button variant="outline" size="sm" onClick={() => void fetchDashboardData()}>Tentar novamente</Button>
           </div>
@@ -438,7 +519,7 @@ const Index = () => {
                   <Users className="h-5 w-5" />
                 </div>
               </div>
-              {loading ? <Skeleton className="h-12 w-32 bg-primary-foreground/20" /> : <p className="text-4xl font-semibold tabular-nums">{stats.totalLeads.toLocaleString("pt-BR")}</p>}
+              {moduleLoading.leads ? <Skeleton className="h-12 w-32 bg-primary-foreground/20" /> : <p className="text-4xl font-semibold tabular-nums">{stats.totalLeads.toLocaleString("pt-BR")}</p>}
               <p className="text-xs text-primary-foreground/70">Base total do cliente selecionado</p>
             </CardContent>
           </Card>
@@ -454,7 +535,7 @@ const Index = () => {
                   <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", item.tone)}>
                     <item.icon className="h-4 w-4" />
                   </div>
-                  {loading ? <Skeleton className="h-8 w-16" /> : <p className="text-2xl font-semibold tabular-nums text-foreground">{item.value.toLocaleString("pt-BR")}</p>}
+                  {(item.label === "Novos Hoje" ? moduleLoading.leads : item.label === "Campanhas Enviadas" ? moduleLoading.campaigns : moduleLoading.attendance) ? <Skeleton className="h-8 w-16" /> : <p className="text-2xl font-semibold tabular-nums text-foreground">{item.value.toLocaleString("pt-BR")}</p>}
                   <div>
                     <p className="text-xs font-medium text-foreground">{item.label}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{periodLabels[period]}</p>
@@ -475,7 +556,7 @@ const Index = () => {
                   <Timer className="h-4 w-4" />
                 </div>
               </div>
-              {loading ? <Skeleton className="h-10 w-28" /> : <p className="text-3xl font-semibold tabular-nums text-foreground">{formatResponseTime(stats.avgResponseTime)}</p>}
+              {moduleLoading.activity ? <Skeleton className="h-10 w-28" /> : <p className="text-3xl font-semibold tabular-nums text-foreground">{formatResponseTime(stats.avgResponseTime)}</p>}
               <div className="grid grid-cols-3 gap-2 border-t border-border/70 pt-4">
                 {[
                   { label: "Resolvidos Hoje", value: stats.resolvedToday, color: "text-success" },
@@ -483,7 +564,7 @@ const Index = () => {
                   { label: "Em Andamento", value: stats.inProgressConversations, color: "text-info" },
                 ].map((item) => (
                   <div key={item.label} className="min-w-0">
-                    <p className={cn("text-lg font-semibold tabular-nums", item.color)}>{loading ? "—" : item.value}</p>
+                    <p className={cn("text-lg font-semibold tabular-nums", item.color)}>{moduleLoading.attendance ? "—" : item.value}</p>
                     <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{item.label}</p>
                   </div>
                 ))}
@@ -505,7 +586,7 @@ const Index = () => {
               <Badge variant="secondary">{periodLabels[period]}</Badge>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : hasDailyData ? (
+              {moduleLoading.chart ? <ModuleSkeleton chart /> : hasDailyData ? (
                 <ChartContainer config={attendanceChartConfig} className="h-72 w-full aspect-auto">
                   <BarChart data={dailyStats} margin={{ top: 18, right: 8, left: -18, bottom: 0 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -519,7 +600,7 @@ const Index = () => {
               ) : (
                 <EmptyState icon={BarChart3} title="Sem atendimentos no período" description="As barras aparecerão quando houver conversas iniciadas ou resolvidas." />
               )}
-              {!loading && hasDailyData && (
+              {!moduleLoading.chart && hasDailyData && (
                 <div className="mt-3 flex flex-wrap justify-center gap-5 border-t border-border/70 pt-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-chart-2" />Iniciados</span>
                   <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-primary" />Resolvidos</span>
@@ -534,7 +615,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Situação dos atendimentos · {periodLabels[period]}</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : stateTotal > 0 ? (
+              {moduleLoading.attendance ? <ModuleSkeleton chart /> : stateTotal > 0 ? (
                 <>
                   <div className="relative mx-auto h-52 max-w-64">
                     <ChartContainer config={stateChartConfig} className="h-full w-full aspect-auto">
@@ -575,7 +656,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Atendimentos por responsável</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton /> : attendantMetrics.length > 0 ? (
+              {moduleLoading.attendance ? <ModuleSkeleton /> : attendantMetrics.length > 0 ? (
                 <ScrollArea className="h-80 pr-3">
                   <div className="space-y-5">
                     {attendantMetrics.map((attendant) => {
@@ -620,7 +701,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Etapas reais do Pipeline · {periodLabels[period]}</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : leadTotal > 0 ? (
+              {moduleLoading.distribution ? <ModuleSkeleton chart /> : leadTotal > 0 ? (
                 <>
                   <div className="relative mx-auto h-48 max-w-60">
                     <ChartContainer config={leadChartConfig} className="h-full w-full aspect-auto">
@@ -661,7 +742,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Últimos eventos reais de mensagens</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton /> : recentActivity.length > 0 ? (
+              {moduleLoading.activity ? <ModuleSkeleton /> : recentActivity.length > 0 ? (
                 <ScrollArea className="h-80 pr-3">
                   <div className="space-y-1">
                     {recentActivity.map((activity) => {
