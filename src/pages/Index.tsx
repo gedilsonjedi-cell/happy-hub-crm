@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
 type Period = "today" | "7d" | "30d";
+type DashboardModule = "leads" | "campaigns" | "attendance" | "chart" | "distribution" | "activity";
 
 interface DashboardStats {
   totalLeads: number;
@@ -103,6 +104,35 @@ const EMPTY_STATS: DashboardStats = {
   pendingConversations: 0,
   inProgressConversations: 0,
 };
+
+const EMPTY_LOADING: Record<DashboardModule, boolean> = {
+  leads: false,
+  campaigns: false,
+  attendance: false,
+  chart: false,
+  distribution: false,
+  activity: false,
+};
+
+const ACTIVE_LOADING: Record<DashboardModule, boolean> = {
+  leads: true,
+  campaigns: true,
+  attendance: true,
+  chart: true,
+  distribution: true,
+  activity: true,
+};
+
+function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = 10000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs / 1000}s`)), timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 const periodLabels: Record<Period, string> = {
   today: "Hoje",
@@ -182,94 +212,196 @@ function ModuleSkeleton({ chart = false }: { chart?: boolean }) {
 }
 
 const Index = () => {
-  const { user } = useAuth();
-  const { effectiveOrganizationId } = useEffectiveOrganizationId();
+  const { user, loading: authLoading } = useAuth();
+  const { effectiveOrganizationId, isLoading: organizationLoading } = useEffectiveOrganizationId();
   const [period, setPeriod] = useState<Period>("7d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [moduleErrors, setModuleErrors] = useState<Partial<Record<DashboardModule, string>>>({});
+  const [moduleLoading, setModuleLoading] = useState<Record<DashboardModule, boolean>>(ACTIVE_LOADING);
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
   const [attendantMetrics, setAttendantMetrics] = useState<AttendantMetrics[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [leadDistribution, setLeadDistribution] = useState<LeadDistribution[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const requestIdRef = useRef(0);
+  const userId = user?.id;
+
+  const updateStats = useCallback((values: Partial<DashboardStats>) => {
+    setStats((current) => ({ ...current, ...values }));
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
-    if (!user || !effectiveOrganizationId) return;
+    if (!userId || !effectiveOrganizationId) {
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoading(true);
     setError(null);
+    setModuleErrors({});
+    setModuleLoading(ACTIVE_LOADING);
 
+    const now = new Date();
+    const periodStart = getPeriodStart(period);
+    const periodStartIso = periodStart.toISOString();
+    const dayCount = period === "today" ? 1 : period === "7d" ? 7 : 30;
+
+    const finishModule = (module: DashboardModule) => {
+      if (requestIdRef.current !== requestId) return;
+      setModuleLoading((current) => ({ ...current, [module]: false }));
+    };
+
+    const failModule = (module: DashboardModule, failure: unknown) => {
+      if (requestIdRef.current !== requestId) return;
+      const message = failure instanceof Error ? failure.message : "Consulta indisponível";
+      console.error(`[Dashboard:${module}]`, failure);
+      setModuleErrors((current) => ({ ...current, [module]: message }));
+    };
+
+    const runModule = async (module: DashboardModule, task: () => Promise<void>) => {
+      try {
+        await withTimeout(task(), `Dashboard:${module}`);
+      } catch (failure) {
+        failModule(module, failure);
+      } finally {
+        finishModule(module);
+      }
+    };
+
+    let channelIds: string[] = [];
     try {
-      const now = new Date();
-      const periodStart = getPeriodStart(period);
-      const periodStartIso = periodStart.toISOString();
-      const dayCount = period === "today" ? 1 : period === "7d" ? 7 : 30;
-
-      const [totalLeadsResult, periodLeadsResult, campaignsResult, channelsResult, availabilityResult, profilesResult, stagesResult] = await Promise.all([
-        supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId),
-        supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso),
-        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+      const channelsResult = await withTimeout(
         (supabase as any).from("channels_public").select("id").eq("organization_id", effectiveOrganizationId),
-        supabase.from("attendant_availability").select("user_id, is_available, current_conversations").eq("organization_id", effectiveOrganizationId),
-        supabase.from("profiles").select("user_id, display_name, email").eq("organization_id", effectiveOrganizationId),
-        supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("position", { ascending: true }),
+        "Dashboard:canais",
+      );
+      if (channelsResult.error) throw channelsResult.error;
+      channelIds = (channelsResult.data || []).map((channel: { id: string }) => channel.id);
+    } catch (failure) {
+      failModule("attendance", failure);
+      failModule("chart", failure);
+      failModule("activity", failure);
+    }
+
+    const assignmentsPromise = runModule("attendance", async () => {
+      const [availabilityResult, profilesResult] = await Promise.all([
+        withTimeout(supabase.from("attendant_availability").select("user_id, is_available, current_conversations").eq("organization_id", effectiveOrganizationId), "Dashboard:disponibilidade"),
+        withTimeout(supabase.from("profiles").select("user_id, display_name, email").eq("organization_id", effectiveOrganizationId), "Dashboard:perfis"),
       ]);
+      if (availabilityResult.error) throw availabilityResult.error;
+      if (profilesResult.error) throw profilesResult.error;
 
-      const baseErrors = [totalLeadsResult.error, periodLeadsResult.error, campaignsResult.error, channelsResult.error, availabilityResult.error, profilesResult.error, stagesResult.error].filter(Boolean);
-      if (baseErrors.length > 0) throw baseErrors[0];
-
-      const channelIds = (channelsResult.data || []).map((channel: { id: string }) => channel.id);
-      let assignments: Array<{
-        assigned_to?: string | null;
-        status?: string | null;
-        created_at?: string | null;
-        updated_at?: string | null;
-      }> = [];
-
+      let assignments: Array<{ assigned_to?: string | null; status?: string | null; created_at?: string | null; updated_at?: string | null }> = [];
       if (channelIds.length > 0) {
-        const externalClient = await getExternalAssignments();
-        const assignmentsResult = await externalClient
-          .from("conversation_assignments")
-          .select("assigned_to, status, created_at, updated_at")
-          .in("channel_id", channelIds);
+        const externalClient = await withTimeout(getExternalAssignments(), "Dashboard:cliente externo");
+        const assignmentsResult = await withTimeout(
+          externalClient.from("conversation_assignments").select("assigned_to, status, created_at, updated_at").in("channel_id", channelIds),
+          "Dashboard:atendimentos",
+        );
         if (assignmentsResult.error) throw assignmentsResult.error;
         assignments = assignmentsResult.data || [];
       }
 
-      const periodAssignments = assignments.filter((assignment) => {
-        const createdAt = assignment.created_at ? new Date(assignment.created_at).getTime() : 0;
-        return createdAt >= periodStart.getTime();
-      });
-      const resolvedInPeriod = assignments.filter((assignment) => {
-        const updatedAt = assignment.updated_at ? new Date(assignment.updated_at).getTime() : 0;
-        return assignment.status === "resolved" && updatedAt >= periodStart.getTime();
-      });
+      if (requestIdRef.current !== requestId) return;
+      const periodAssignments = assignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at).getTime() >= periodStart.getTime());
+      const resolvedInPeriod = assignments.filter((assignment) => assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
       const pendingConversations = assignments.filter((assignment) => assignment.status === "pending").length;
       const inProgressConversations = assignments.filter((assignment) => assignment.status === "active").length;
+      updateStats({
+        openConversations: pendingConversations + inProgressConversations,
+        resolvedToday: resolvedInPeriod.length,
+        pendingConversations,
+        inProgressConversations,
+      });
 
-      let messages: Array<{ direction: string; sender_phone: string | null; created_at: string }> = [];
-      let recentMessages: Array<{ id: string; sender_name: string | null; sender_phone: string | null; direction: string; created_at: string }> = [];
-      if (channelIds.length > 0) {
-        const [messagesResult, recentMessagesResult] = await Promise.all([
-          supabase
-            .from("whatsapp_messages")
-            .select("direction, sender_phone, created_at")
-            .in("channel_id", channelIds)
-            .gte("created_at", periodStartIso)
-            .order("created_at", { ascending: true })
-            .limit(500),
-          supabase
-            .from("whatsapp_messages")
-            .select("id, sender_name, sender_phone, direction, created_at")
-            .in("channel_id", channelIds)
-            .gte("created_at", periodStartIso)
-            .order("created_at", { ascending: false })
-            .limit(10),
-        ]);
-        if (messagesResult.error) throw messagesResult.error;
-        if (recentMessagesResult.error) throw recentMessagesResult.error;
-        messages = messagesResult.data || [];
-        recentMessages = recentMessagesResult.data || [];
+      const metricsMap: Record<string, AttendantMetrics> = {};
+      (profilesResult.data || []).forEach((profile) => {
+        metricsMap[profile.user_id] = {
+          userId: profile.user_id,
+          displayName: profile.display_name || profile.email || "Atendente",
+          email: profile.email || "",
+          inProgress: 0,
+          pending: 0,
+          resolved: 0,
+          isAvailable: false,
+        };
+      });
+      (availabilityResult.data || []).forEach((availability) => {
+        const metric = metricsMap[availability.user_id];
+        if (metric) metric.isAvailable = availability.is_available || false;
+      });
+      assignments.forEach((assignment) => {
+        const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
+        if (!metric) return;
+        if (assignment.status === "active") metric.inProgress += 1;
+        if (assignment.status === "pending") metric.pending += 1;
+        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
+      });
+      setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
+
+      const days: DailyStats[] = [];
+      for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
+        const date = subDays(startOfDay(now), offset);
+        const nextDate = new Date(date);
+        nextDate.setDate(nextDate.getDate() + 1);
+        days.push({
+          date: dayCount === 30 ? format(date, "dd/MM") : format(date, "EEE", { locale: ptBR }),
+          fullDate: format(date, "dd 'de' MMMM", { locale: ptBR }),
+          newConversations: periodAssignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at) >= date && new Date(assignment.created_at) < nextDate).length,
+          resolved: resolvedInPeriod.filter((assignment) => assignment.updated_at && new Date(assignment.updated_at) >= date && new Date(assignment.updated_at) < nextDate).length,
+        });
       }
+      setDailyStats(days);
+      finishModule("chart");
+    });
+
+    const leadsPromise = runModule("leads", async () => {
+      const [totalLeadsResult, periodLeadsResult, stagesResult] = await Promise.all([
+        withTimeout(supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
+        withTimeout(supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso), "Dashboard:leads do período"),
+        withTimeout(supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("order_index", { ascending: true }), "Dashboard:etapas"),
+      ]);
+      if (totalLeadsResult.error) throw totalLeadsResult.error;
+      if (periodLeadsResult.error) throw periodLeadsResult.error;
+      if (stagesResult.error) throw stagesResult.error;
+      if (requestIdRef.current !== requestId) return;
+      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodLeadsResult.data?.length || 0 });
+      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
+      const distributionMap = new Map<string, number>();
+      (periodLeadsResult.data || []).forEach((lead) => {
+        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
+        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
+      });
+      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
+      finishModule("distribution");
+    });
+
+    const campaignsPromise = runModule("campaigns", async () => {
+      const result = await withTimeout(
+        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+        "Dashboard:campanhas",
+      );
+      if (result.error) throw result.error;
+      if (requestIdRef.current === requestId) updateStats({ campaignsSent: result.count || 0 });
+    });
+
+    const messagesPromise = runModule("activity", async () => {
+      if (channelIds.length === 0) {
+        if (requestIdRef.current === requestId) setRecentActivity([]);
+        return;
+      }
+      const [messagesResult, recentMessagesResult] = await Promise.all([
+        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: true }).limit(500), "Dashboard:tempo de resposta"),
+        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
+      ]);
+      if (messagesResult.error) throw messagesResult.error;
+      if (recentMessagesResult.error) throw recentMessagesResult.error;
+      if (requestIdRef.current !== requestId) return;
+      const messages = messagesResult.data || [];
+      const recentMessages = recentMessagesResult.data || [];
 
       const messagesByPhone: Record<string, Array<{ direction: string; created_at: string }>> = {};
       messages.forEach((message) => {
@@ -294,71 +426,7 @@ const Index = () => {
         }
       });
 
-      setStats({
-        totalLeads: totalLeadsResult.count || 0,
-        newToday: periodLeadsResult.data?.length || 0,
-        openConversations: pendingConversations + inProgressConversations,
-        campaignsSent: campaignsResult.count || 0,
-        resolvedToday: resolvedInPeriod.length,
-        avgResponseTime: responseCount > 0 ? Math.round(totalResponseTime / responseCount) : 0,
-        pendingConversations,
-        inProgressConversations,
-      });
-
-      const metricsMap: Record<string, AttendantMetrics> = {};
-      (profilesResult.data || []).forEach((profile) => {
-        metricsMap[profile.user_id] = {
-          userId: profile.user_id,
-          displayName: profile.display_name || profile.email || "Atendente",
-          email: profile.email || "",
-          inProgress: 0,
-          pending: 0,
-          resolved: 0,
-          isAvailable: false,
-        };
-      });
-      (availabilityResult.data || []).forEach((availability) => {
-        const metric = metricsMap[availability.user_id];
-        if (!metric) return;
-        metric.isAvailable = availability.is_available || false;
-      });
-      assignments.forEach((assignment) => {
-        const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
-        if (!metric) return;
-        if (assignment.status === "active") metric.inProgress += 1;
-        if (assignment.status === "pending") metric.pending += 1;
-        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
-      });
-      setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
-
-      const days: DailyStats[] = [];
-      for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
-        const date = subDays(startOfDay(now), offset);
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-        days.push({
-          date: dayCount === 30 ? format(date, "dd/MM") : format(date, "EEE", { locale: ptBR }),
-          fullDate: format(date, "dd 'de' MMMM", { locale: ptBR }),
-          newConversations: periodAssignments.filter((assignment) => {
-            const createdAt = assignment.created_at ? new Date(assignment.created_at) : null;
-            return createdAt && createdAt >= date && createdAt < nextDate;
-          }).length,
-          resolved: resolvedInPeriod.filter((assignment) => {
-            const updatedAt = assignment.updated_at ? new Date(assignment.updated_at) : null;
-            return updatedAt && updatedAt >= date && updatedAt < nextDate;
-          }).length,
-        });
-      }
-      setDailyStats(days);
-
-      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
-      const distributionMap = new Map<string, number>();
-      (periodLeadsResult.data || []).forEach((lead) => {
-        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
-        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
-      });
-      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
-
+      updateStats({ avgResponseTime: responseCount > 0 ? Math.round(totalResponseTime / responseCount) : 0 });
       setRecentActivity(recentMessages.map((message) => ({
         id: message.id,
         type: message.direction === "inbound" ? "message_received" : "message_sent",
@@ -367,22 +435,23 @@ const Index = () => {
           : `Mensagem enviada para ${message.sender_phone || message.sender_name || "contato"}`,
         timestamp: message.created_at,
       })));
-    } catch (fetchError) {
-      console.error("Error fetching dashboard data:", fetchError);
-      setError("Não foi possível carregar os dados da Dashboard.");
-      setStats(EMPTY_STATS);
-      setAttendantMetrics([]);
-      setDailyStats([]);
-      setLeadDistribution([]);
-      setRecentActivity([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [effectiveOrganizationId, period, user]);
+    });
+
+    await Promise.allSettled([assignmentsPromise, leadsPromise, campaignsPromise, messagesPromise]);
+    if (requestIdRef.current === requestId) setLoading(false);
+  }, [effectiveOrganizationId, period, updateStats, userId]);
 
   useEffect(() => {
+    if (authLoading || organizationLoading) return;
+    if (!userId || !effectiveOrganizationId) {
+      requestIdRef.current += 1;
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+      setError(null);
+      return;
+    }
     void fetchDashboardData();
-  }, [fetchDashboardData]);
+  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, userId]);
 
   const stateData = useMemo(() => [
     { name: "Finalizados", value: stats.resolvedToday, key: "resolved", color: "hsl(var(--success))" },
