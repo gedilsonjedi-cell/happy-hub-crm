@@ -145,6 +145,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
     { label: "Pipeline", path: "/pipeline", icon: GitBranch, badge: 0 },
     { label: "Templates", path: "/templates", icon: FileText, badge: 0, visible: canAccessTemplates },
     { label: "Conexões", path: "/conexoes", icon: Plug, badge: 0, visible: canAccessConexoes },
+    { label: "Links", path: "/links", icon: Link2, badge: 0 },
   ].filter((item) => item.visible !== false);
 
   const isActive = (path: string) => location.pathname === path;

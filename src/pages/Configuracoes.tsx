@@ -95,7 +95,6 @@ const Configuracoes = () => {
         label: "Ferramentas",
         icon: Link2,
         items: [
-          { label: "Links", description: "Links curtos de redirecionamento", path: "/links", icon: Link2, visible: true },
           { label: "Web Chat", description: "Links públicos de chat ao vivo", path: "/webchat", icon: Link2, visible: true },
           { label: "Exportar Leads", description: "Exportação de leads sem interação", path: "/apps/leads-sem-interacao", icon: UserX, visible: role.isSuperAdmin },
         ],
