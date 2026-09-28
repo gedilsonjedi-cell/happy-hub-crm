@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
 import { TopNavLayoutShell } from "@/components/layout/TopNavLayout";
 import { LayoutShellContext } from "@/components/layout/LayoutShellContext";
+import { RouteErrorBoundary } from "@/components/layout/RouteErrorBoundary";
 import { useAuth } from "@/hooks/useAuth";
 import { SuperAdminProvider } from "@/hooks/useSuperAdmin";
 import { WhatsAppNotificationProvider } from "@/hooks/useWhatsAppNotifications";
@@ -143,7 +144,9 @@ const AppShell = () => {
     <ProtectedRoute>
       <TopNavLayoutShell noPadding={noPadding}>
         <LayoutShellContext.Provider value={true}>
-          <Outlet />
+          <RouteErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </RouteErrorBoundary>
         </LayoutShellContext.Provider>
       </TopNavLayoutShell>
     </ProtectedRoute>

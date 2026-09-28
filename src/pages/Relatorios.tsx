@@ -35,7 +35,7 @@ export default function Relatorios() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
-  if (!hasAccess) return <Navigate to="/" replace />;
+  if (!hasAccess) return <Navigate to="/atendimento-v2" replace />;
 
   return (
     <MainLayout>
