@@ -78,7 +78,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ContactAvatar, ContactAvatarOrgContext } from "@/components/contacts/ContactAvatar";
 import { ChatHeaderContactAvatar } from "@/components/contacts/ContactAvatarEditable";
 import { Textarea } from "@/components/ui/textarea";
@@ -5382,6 +5381,7 @@ const AtendimentoV2 = () => {
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
+                <ContactAvatarOrgContext.Provider value={effectiveOrganizationId ?? null}>
                 <VirtualizedConversationList
                   conversations={filteredConversations}
                   selectedConversationKey={selectedConversation ? getConversationKey(selectedConversation) : null}
@@ -5408,6 +5408,7 @@ const AtendimentoV2 = () => {
                   }}
                   isBlocked={isPhoneBlocked}
                 />
+                </ContactAvatarOrgContext.Provider>
               )}
             </div>
           )}
