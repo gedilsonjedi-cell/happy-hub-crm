@@ -61,7 +61,6 @@ const Configuracoes = () => {
         label: "Geral",
         icon: LayoutGrid,
         items: [
-          { label: "Dashboard", description: "Visão geral dos indicadores", path: "/dashboard", icon: LayoutGrid, visible: true },
           { label: "Perfil", description: "Seus dados de usuário", path: "/perfil", icon: User, visible: true },
           { label: "Minha Assinatura", description: "Plano e cobrança", path: "/minha-assinatura", icon: CreditCard, visible: true },
           { label: "Saldo", description: "Créditos e recargas", path: "/saldo", icon: Wallet, visible: true },
@@ -89,7 +88,6 @@ const Configuracoes = () => {
         items: [
           { label: "Follow-Up", description: "Retomada automática de contatos", path: "/follow-up", icon: RotateCcw, visible: true },
           { label: "Chatbot IA", description: "Agentes e fluxos automáticos", path: "/chatbot", icon: Bot, visible: !!role.canAccessChatbot },
-          { label: "Templates", description: "Modelos aprovados na Meta", path: "/templates", icon: FileText, visible: !!role.canAccessTemplates },
         ],
       },
       {
@@ -107,7 +105,6 @@ const Configuracoes = () => {
         label: "Integrações",
         icon: Plug,
         items: [
-          { label: "Conexões", description: "Números de WhatsApp conectados", path: "/conexoes", icon: Plug, visible: !!role.canAccessConexoes },
           { label: "Integrações", description: "Webhooks e APIs externas", path: "/integracoes", icon: Zap, visible: !!role.canAccessIntegracoes },
         ],
       },
