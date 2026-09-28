@@ -438,7 +438,10 @@ const Index = () => {
     });
 
     await Promise.allSettled([assignmentsPromise, leadsPromise, campaignsPromise, messagesPromise]);
-    if (requestIdRef.current === requestId) setLoading(false);
+    if (requestIdRef.current === requestId) {
+      setLoading(false);
+      setModuleLoading(EMPTY_LOADING);
+    }
   }, [effectiveOrganizationId, period, updateStats, userId]);
 
   useEffect(() => {
@@ -462,6 +465,8 @@ const Index = () => {
   const leadTotal = leadDistribution.reduce((total, item) => total + item.value, 0);
   const maxAttendantTotal = Math.max(...attendantMetrics.map((metric) => metric.inProgress + metric.pending + metric.resolved), 1);
   const hasDailyData = dailyStats.some((day) => day.newConversations > 0 || day.resolved > 0);
+  const hasModuleErrors = Object.keys(moduleErrors).length > 0;
+  const needsOrganization = !authLoading && !organizationLoading && !!userId && !effectiveOrganizationId;
 
   return (
     <MainLayout>
@@ -488,11 +493,18 @@ const Index = () => {
           </div>
         </header>
 
-        {error && (
+        {needsOrganization && (
+          <div role="status" className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm text-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0 text-warning" />
+            <span>Selecione um cliente na barra lateral para visualizar a Dashboard.</span>
+          </div>
+        )}
+
+        {(error || hasModuleErrors) && !needsOrganization && (
           <div role="alert" className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
+              <span>{error || "Alguns módulos não responderam. Os demais dados continuam disponíveis."}</span>
             </div>
             <Button variant="outline" size="sm" onClick={() => void fetchDashboardData()}>Tentar novamente</Button>
           </div>
@@ -507,7 +519,7 @@ const Index = () => {
                   <Users className="h-5 w-5" />
                 </div>
               </div>
-              {loading ? <Skeleton className="h-12 w-32 bg-primary-foreground/20" /> : <p className="text-4xl font-semibold tabular-nums">{stats.totalLeads.toLocaleString("pt-BR")}</p>}
+              {moduleLoading.leads ? <Skeleton className="h-12 w-32 bg-primary-foreground/20" /> : <p className="text-4xl font-semibold tabular-nums">{stats.totalLeads.toLocaleString("pt-BR")}</p>}
               <p className="text-xs text-primary-foreground/70">Base total do cliente selecionado</p>
             </CardContent>
           </Card>
@@ -523,7 +535,7 @@ const Index = () => {
                   <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", item.tone)}>
                     <item.icon className="h-4 w-4" />
                   </div>
-                  {loading ? <Skeleton className="h-8 w-16" /> : <p className="text-2xl font-semibold tabular-nums text-foreground">{item.value.toLocaleString("pt-BR")}</p>}
+                  {(item.label === "Novos Hoje" ? moduleLoading.leads : item.label === "Campanhas Enviadas" ? moduleLoading.campaigns : moduleLoading.attendance) ? <Skeleton className="h-8 w-16" /> : <p className="text-2xl font-semibold tabular-nums text-foreground">{item.value.toLocaleString("pt-BR")}</p>}
                   <div>
                     <p className="text-xs font-medium text-foreground">{item.label}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{periodLabels[period]}</p>
@@ -544,7 +556,7 @@ const Index = () => {
                   <Timer className="h-4 w-4" />
                 </div>
               </div>
-              {loading ? <Skeleton className="h-10 w-28" /> : <p className="text-3xl font-semibold tabular-nums text-foreground">{formatResponseTime(stats.avgResponseTime)}</p>}
+              {moduleLoading.activity ? <Skeleton className="h-10 w-28" /> : <p className="text-3xl font-semibold tabular-nums text-foreground">{formatResponseTime(stats.avgResponseTime)}</p>}
               <div className="grid grid-cols-3 gap-2 border-t border-border/70 pt-4">
                 {[
                   { label: "Resolvidos Hoje", value: stats.resolvedToday, color: "text-success" },
@@ -552,7 +564,7 @@ const Index = () => {
                   { label: "Em Andamento", value: stats.inProgressConversations, color: "text-info" },
                 ].map((item) => (
                   <div key={item.label} className="min-w-0">
-                    <p className={cn("text-lg font-semibold tabular-nums", item.color)}>{loading ? "—" : item.value}</p>
+                    <p className={cn("text-lg font-semibold tabular-nums", item.color)}>{moduleLoading.attendance ? "—" : item.value}</p>
                     <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{item.label}</p>
                   </div>
                 ))}
@@ -574,7 +586,7 @@ const Index = () => {
               <Badge variant="secondary">{periodLabels[period]}</Badge>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : hasDailyData ? (
+              {moduleLoading.chart ? <ModuleSkeleton chart /> : hasDailyData ? (
                 <ChartContainer config={attendanceChartConfig} className="h-72 w-full aspect-auto">
                   <BarChart data={dailyStats} margin={{ top: 18, right: 8, left: -18, bottom: 0 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -588,7 +600,7 @@ const Index = () => {
               ) : (
                 <EmptyState icon={BarChart3} title="Sem atendimentos no período" description="As barras aparecerão quando houver conversas iniciadas ou resolvidas." />
               )}
-              {!loading && hasDailyData && (
+              {!moduleLoading.chart && hasDailyData && (
                 <div className="mt-3 flex flex-wrap justify-center gap-5 border-t border-border/70 pt-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-chart-2" />Iniciados</span>
                   <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-primary" />Resolvidos</span>
@@ -603,7 +615,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Situação dos atendimentos · {periodLabels[period]}</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : stateTotal > 0 ? (
+              {moduleLoading.attendance ? <ModuleSkeleton chart /> : stateTotal > 0 ? (
                 <>
                   <div className="relative mx-auto h-52 max-w-64">
                     <ChartContainer config={stateChartConfig} className="h-full w-full aspect-auto">
@@ -644,7 +656,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Atendimentos por responsável</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton /> : attendantMetrics.length > 0 ? (
+              {moduleLoading.attendance ? <ModuleSkeleton /> : attendantMetrics.length > 0 ? (
                 <ScrollArea className="h-80 pr-3">
                   <div className="space-y-5">
                     {attendantMetrics.map((attendant) => {
@@ -689,7 +701,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Etapas reais do Pipeline · {periodLabels[period]}</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton chart /> : leadTotal > 0 ? (
+              {moduleLoading.distribution ? <ModuleSkeleton chart /> : leadTotal > 0 ? (
                 <>
                   <div className="relative mx-auto h-48 max-w-60">
                     <ChartContainer config={leadChartConfig} className="h-full w-full aspect-auto">
@@ -730,7 +742,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Últimos eventos reais de mensagens</p>
             </CardHeader>
             <CardContent>
-              {loading ? <ModuleSkeleton /> : recentActivity.length > 0 ? (
+              {moduleLoading.activity ? <ModuleSkeleton /> : recentActivity.length > 0 ? (
                 <ScrollArea className="h-80 pr-3">
                   <div className="space-y-1">
                     {recentActivity.map((activity) => {
