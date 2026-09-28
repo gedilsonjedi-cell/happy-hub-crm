@@ -48,6 +48,9 @@ interface Props {
   onToggle: (id: string) => void;
 }
 
+// React 18 não tipa `inert`; atributo vazio desativa foco/clique na face oculta.
+const inertAttr = (on: boolean) => (on ? ({ inert: "" } as Record<string, string>) : {});
+
 const canHover = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
@@ -96,7 +99,7 @@ export const ConnectionFlipCard = memo(function ConnectionFlipCard({
         {/* Frente */}
         <div
           aria-hidden={flipped}
-          inert={flipped ? true : undefined}
+          {...inertAttr(flipped)}
           tabIndex={flipped ? -1 : 0}
           aria-label={`${name}, ${phoneText}, ${statusLabel[status]}`}
           className={cn(
@@ -121,7 +124,7 @@ export const ConnectionFlipCard = memo(function ConnectionFlipCard({
         <div
           data-testid="connection-card-back"
           aria-hidden={!flipped}
-          inert={!flipped ? true : undefined}
+          {...inertAttr(!flipped)}
           className={cn(
             "absolute inset-0 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-card px-3.5 text-card-foreground [backface-visibility:hidden] [transform:rotateY(180deg)]",
             "motion-reduce:[transform:none] motion-reduce:transition-opacity motion-reduce:duration-200",
