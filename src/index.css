@@ -142,8 +142,23 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: light;
+    @apply bg-background text-foreground;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    @apply min-h-full bg-background text-foreground;
+  }
+
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply font-sans antialiased;
     font-family: 'Inter', system-ui, sans-serif;
   }
 }
@@ -199,11 +214,6 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Theme transition */
-html {
-  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Custom scrollbar */

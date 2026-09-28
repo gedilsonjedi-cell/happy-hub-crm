@@ -26,6 +26,17 @@ interface UserRoleState {
   organizationId: string | null;
 }
 
+function withRoleTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = 8000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs / 1000}s`)), timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 export function useUserRole(userIdOverride?: string | null): UserRoleState {
   const { user } = useAuth();
   const resolvedUserId = userIdOverride ?? user?.id ?? null;
@@ -36,11 +47,10 @@ export function useUserRole(userIdOverride?: string | null): UserRoleState {
     queryFn: async () => {
       if (!resolvedUserId) return null;
       
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", resolvedUserId)
-        .maybeSingle();
+      const { data, error } = await withRoleTimeout(
+        supabase.from("user_roles").select("role").eq("user_id", resolvedUserId).maybeSingle(),
+        "Consulta de função do usuário",
+      );
 
       if (error) {
         console.error("[useUserRole] Error fetching role:", error.message);
@@ -64,11 +74,10 @@ export function useUserRole(userIdOverride?: string | null): UserRoleState {
     queryFn: async () => {
       if (!resolvedUserId) return null;
       
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("user_id", resolvedUserId)
-        .maybeSingle();
+      const { data, error } = await withRoleTimeout(
+        supabase.from("profiles").select("organization_id").eq("user_id", resolvedUserId).maybeSingle(),
+        "Consulta de organização do usuário",
+      );
 
       if (error) {
         console.error("[useUserRole] Error fetching profile:", error.message);

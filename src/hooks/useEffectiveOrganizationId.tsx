@@ -23,16 +23,15 @@ export function useEffectiveOrganizationId() {
     // No SuperAdminProvider in tree — treat as non-impersonating.
   }
 
-  // Wait for both to finish loading before determining effective org
-  const isLoading = roleLoading || superAdminLoading;
+  const hasSelectedOrganization = isImpersonating && !!selectedOrganization?.id;
+  const isLoading = hasSelectedOrganization ? false : roleLoading || superAdminLoading;
 
-  // If super admin is impersonating, use the selected organization's ID
   const effectiveOrganizationId = isImpersonating 
     ? selectedOrganization?.id 
     : organizationId;
 
   return {
-    effectiveOrganizationId: isLoading ? null : effectiveOrganizationId,
+    effectiveOrganizationId,
     isImpersonating,
     realOrganizationId: organizationId,
     impersonatedOrganizationId: selectedOrganization?.id,
