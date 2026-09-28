@@ -48,6 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { ConnectionFlipCard, bmLabel, type ConnectionStatus } from "@/components/connections/ConnectionFlipCard";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -167,6 +168,7 @@ const Conexoes = () => {
   const [editableAppSecret, setEditableAppSecret] = useState("");
   const [isSavingChannelConfig, setIsSavingChannelConfig] = useState(false);
   const [showChannelConfig, setShowChannelConfig] = useState<Channel | null>(null);
+  const [manageChannelId, setManageChannelId] = useState<string | null>(null);
   const [renameChannel, setRenameChannel] = useState<Channel | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
@@ -1477,6 +1479,26 @@ const Conexoes = () => {
       )
     : channels;
 
+  const managedChannel = manageChannelId ? channels.find((c) => c.id === manageChannelId) ?? null : null;
+
+  // Handlers estáveis para o card memoizado (evita re-render dos 180+ cards)
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
+  const toggleRef = useRef(handleToggleConnection);
+  toggleRef.current = handleToggleConnection;
+  const handleOpenManage = useCallback((id: string) => setManageChannelId(id), []);
+  const handleToggleById = useCallback((id: string) => {
+    const ch = channelsRef.current.find((c) => c.id === id);
+    if (ch) void toggleRef.current(ch);
+  }, []);
+
+  const getConnectionStatus = (channel: Channel): ConnectionStatus => {
+    if (isCheckingStatus[channel.id]) return "checking";
+    const st = channel.provider === "meta" ? metaPhoneStatuses[channel.id] : undefined;
+    if (st) return st.isConnected ? "connected" : st.isPending || st.code === "PENDING" ? "pending" : "disconnected";
+    return channel.connected ? "connected" : "disconnected";
+  };
+
   return (
     <MainLayout>
       {/* Header */}
@@ -1546,40 +1568,41 @@ const Conexoes = () => {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
             {filteredChannels.map((channel) => (
-              <div 
+              <ConnectionFlipCard
                 key={channel.id}
-                className={cn(
-                  "bg-card rounded-lg border p-5 transition-all",
-                  channel.connected 
-                    ? "border-emerald-500/30 hover:border-emerald-500/50" 
-                    : "border-amber-500/30 hover:border-amber-500/50"
-                )}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center",
-                      channel.connected 
-                        ? "bg-blue-500/10 border border-blue-500/20"
-                        : "bg-amber-500/10 border border-amber-500/20"
-                    )}>
-                      <Smartphone className={cn(
-                        "w-5 h-5",
-                        channel.connected ? "text-blue-500" : "text-amber-500"
-                      )} />
+                id={channel.id}
+                name={channel.name}
+                phone={channel.phone}
+                wabaId={channel.waba_id}
+                organizationName={isSuperAdmin ? channel.organization?.name ?? null : null}
+                active={!!channel.connected}
+                status={getConnectionStatus(channel)}
+                onManage={handleOpenManage}
+                onToggle={handleToggleById}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+
+      {/* Gerenciar conexão: mesmas ações que ficavam no card */}
+      <Dialog open={!!managedChannel} onOpenChange={(open) => !open && setManageChannelId(null)}>
+        <DialogContent className="bg-card border-border max-w-md max-h-[90vh] overflow-y-auto">
+          {managedChannel && (() => {
+            const channel = managedChannel;
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-start justify-between gap-2 pr-6">
+                    <div className="min-w-0">
+                      <DialogTitle className="truncate">{channel.name}</DialogTitle>
+                      <DialogDescription>
+                        {channel.phone}{channel.waba_id ? ` · ${bmLabel(channel.waba_id)}` : ""}
+                      </DialogDescription>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-foreground truncate">{channel.name}</h4>
-                      <p className="text-sm text-muted-foreground">{channel.phone}</p>
-                      {isSuperAdmin && channel.organization && (
-                        <p className="text-xs text-primary/80 truncate mt-0.5">
-                          {channel.organization.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1660,8 +1683,8 @@ const Conexoes = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-
+                  </div>
+                </DialogHeader>
                 <div className="flex items-center justify-between">
                   <Badge 
                     variant="outline" 
@@ -2022,12 +2045,11 @@ const Conexoes = () => {
                   </div>
                 )}
 
-                {/* Rodapé do card: Gerenciar + ativo/inativo */}
-                <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
+                <div className="mt-4 pt-3 border-t border-border">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-2 text-xs"
+                    className="w-full gap-2 text-xs"
                     onClick={() => {
                       setShowAccessToken(false);
                       setShowApiToken(false);
@@ -2037,24 +2059,14 @@ const Conexoes = () => {
                     }}
                   >
                     <Settings2 className="w-3 h-3" />
-                    Gerenciar
+                    Configuração e tokens
                   </Button>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {channel.connected ? "Ativo" : "Inativo"}
-                    </span>
-                    <Switch
-                      checked={!!channel.connected}
-                      onCheckedChange={() => handleToggleConnection(channel)}
-                      aria-label="Ativar ou desativar conexão"
-                    />
-                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Criar conexão */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
