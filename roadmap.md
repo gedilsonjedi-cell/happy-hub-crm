@@ -8,3 +8,4 @@
 
 
 - [x] Mover Dashboard, Templates e Conexões para a barra principal; remover duplicatas de Configurações; validar UI e typecheck.
+- [x] Reformular a Dashboard com os dados atuais, gráficos reais, filtro de período, estados vazios e barra lateral modernizada; validar desktop, celular e typecheck.

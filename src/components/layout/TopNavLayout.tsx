@@ -163,8 +163,8 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
             ? "w-full h-10 px-3 gap-3 justify-start"
             : "w-11 h-11 justify-center",
           active
-            ? "text-primary"
-            : "text-foreground hover:bg-primary/5"
+            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+            : "text-sidebar-foreground hover:bg-muted hover:text-foreground"
         )}
       >
         <Icon className="w-5 h-5 shrink-0" />
@@ -193,11 +193,11 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
   };
 
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    <div className="h-screen bg-[hsl(var(--app-background))] flex overflow-hidden">
       {/* Barra lateral fina / expandida */}
       <aside
         className={cn(
-          "shrink-0 border-r border-border bg-card flex flex-col py-3 gap-2 z-50 transition-all duration-300 ease-in-out relative",
+          "shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col py-3 gap-2 z-50 transition-all duration-300 ease-in-out relative shadow-card",
           isExpanded ? "w-[240px] px-3" : "w-[60px] items-center px-0"
         )}
       >
@@ -226,7 +226,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
         {/* Logo */}
         <Link
           to="/atendimento-v2"
-          className={cn("mb-1 flex items-center justify-center", isExpanded ? "px-1" : "")}
+          className={cn("mb-1 flex items-center rounded-lg", isExpanded ? "justify-start gap-3 px-2" : "justify-center")}
           aria-label="Início"
         >
           <img
@@ -234,6 +234,12 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
             alt="Optimus"
             className="w-11 h-11 object-contain shrink-0"
           />
+          {isExpanded && (
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">Optimus CRM</p>
+              <p className="truncate text-xs text-muted-foreground">Central de operações</p>
+            </div>
+          )}
         </Link>
 
         {/* Seletor de cliente (somente super admin) */}
@@ -251,7 +257,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
         <div className={cn("bg-border my-1", isExpanded ? "w-full h-px" : "w-8 h-px")} />
 
         {/* Navegação principal */}
-        <nav className={cn("flex flex-col gap-1.5 flex-1", isExpanded ? "w-full" : "items-center")}>
+        <nav className={cn("flex flex-col gap-1.5 flex-1", isExpanded ? "w-full" : "items-center")}> 
           {navItems.map(renderRailItem)}
         </nav>
 
@@ -265,7 +271,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Contato Suporte"
-              className="w-full h-10 px-3 gap-3 rounded-lg flex items-center justify-start text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors"
+              className="w-full h-10 px-3 gap-3 rounded-lg flex items-center justify-start text-success bg-success/10 hover:bg-success/20 transition-colors"
             >
               <MessageCircle className="w-5 h-5 shrink-0" />
               <span className="text-sm font-medium truncate">Contato Suporte</span>
@@ -278,7 +284,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Contato Suporte"
-                  className="w-11 h-11 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors"
+                  className="w-11 h-11 rounded-lg flex items-center justify-center text-success bg-success/10 hover:bg-success/20 transition-colors"
                 >
                   <MessageCircle className="w-5 h-5" />
                 </a>
@@ -388,7 +394,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
       {/* Conteúdo */}
       <main
         className={cn(
-          "flex-1 min-w-0 min-h-0 transition-all duration-300 ease-in-out",
+          "flex-1 min-w-0 min-h-0 bg-[hsl(var(--app-background))] transition-all duration-300 ease-in-out",
           noPadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden p-2 sm:p-4 md:p-6"
         )}
       >
