@@ -163,8 +163,8 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
             ? "w-full h-10 px-3 gap-3 justify-start"
             : "w-11 h-11 justify-center",
           active
-            ? "text-primary"
-            : "text-foreground hover:bg-primary/5"
+            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+            : "text-sidebar-foreground hover:bg-muted hover:text-foreground"
         )}
       >
         <Icon className="w-5 h-5 shrink-0" />
@@ -257,7 +257,7 @@ export function TopNavLayoutShell({ children, noPadding = false }: TopNavLayoutP
         <div className={cn("bg-border my-1", isExpanded ? "w-full h-px" : "w-8 h-px")} />
 
         {/* Navegação principal */}
-        <nav className={cn("flex flex-col gap-1.5 flex-1", isExpanded ? "w-full" : "items-center")}>
+        <nav className={cn("flex flex-col gap-1.5 flex-1", isExpanded ? "w-full" : "items-center")}> 
           {navItems.map(renderRailItem)}
         </nav>
 
