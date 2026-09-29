@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { broadcast, corsHeaders, insertMessage, isUuid, json, localDb, msgDb, publicMessage } from "../_shared/webchat.ts";
+import { sendPushToSession } from "../_shared/webpush.ts";
 
 /** Resposta do atendente para uma conversa de Web Chat (sem API externa). */
 Deno.serve(async (req) => {
@@ -43,6 +44,15 @@ Deno.serve(async (req) => {
     }).then(() => {}, () => {});
 
     await broadcast(sessionId, publicMessage(m));
+    const { data: linkInfo } = link?.id
+      ? await localDb.from("webchat_links").select("name, slug").eq("id", link.id).maybeSingle()
+      : { data: null };
+    await sendPushToSession(sessionId, {
+      title: linkInfo?.name || "Nova mensagem",
+      body: text.length > 140 ? `${text.slice(0, 137)}...` : text,
+      tag: `webchat-${sessionId}`,
+      url: linkInfo?.slug ? `/c/${linkInfo.slug}` : link?.id ? `/chat/${link.id}` : "/",
+    }).catch((e) => console.error("[webchat-reply] push", e));
     return json({ success: true, messageId: m.id });
   } catch (e) {
     console.error("[webchat-reply]", e);
