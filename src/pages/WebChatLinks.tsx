@@ -204,7 +204,7 @@ export default function WebChatLinks() {
           <div className="space-y-4">
             <div><Label>Nome (aparece no topo do chat)</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Atendimento KS" /></div>
             <div><Label>Mensagem de boas-vindas</Label><Textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={3} /></div>
-            <div><Label>Texto Pré-definido do Cliente</Label><Textarea value={prefill} onChange={(e) => setPrefill(e.target.value)} rows={2} maxLength={1000} placeholder="Ex.: Olá, quero saber mais sobre o Cartão Consignado" /><p className="mt-1 text-xs text-muted-foreground">Já vem escrito na caixa de mensagem do cliente; ele só precisa tocar em enviar.</p></div>
+            <div><Label>Texto Pré-definido do Cliente</Label><Textarea value={prefill} onChange={(e) => setPrefill(e.target.value)} rows={2} maxLength={1000} placeholder="Ex.: Olá, quero saber mais sobre o Cartão Consignado" /><p className="mt-1 text-xs text-muted-foreground">Fica salvo no link e já aparece escrito na caixa de mensagem do cliente. O link continua curto e limpo.</p></div>
             <div className="flex items-center gap-3"><Label>Cor</Label><input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-14 rounded border border-input bg-transparent" /></div>
             <Button className="w-full" disabled={!name.trim() || saving} onClick={create}>{saving ? "Criando..." : "Criar link"}</Button>
           </div>
