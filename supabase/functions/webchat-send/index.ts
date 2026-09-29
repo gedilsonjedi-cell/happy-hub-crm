@@ -13,11 +13,13 @@ Deno.serve(async (req) => {
     if (!link || !link.channel_id) return json({ error: "Chat indisponível" }, 404);
 
     const phone = threadPhone(sessionId);
-    const { data: assignment } = await msgDb.from("conversation_assignments").select("id, status, assigned_to, sector_id")
+    const { data: assignment } = await msgDb.from("conversation_assignments").select("id, status, assigned_to, sector_id, lead_id")
       .eq("channel_id", link.channel_id).eq("conversation_phone", phone).limit(1).maybeSingle();
     if (!assignment) return json({ error: "Sessão não iniciada" }, 409);
 
-    const { data: lead } = await localDb.from("leads").select("name").eq("organization_id", link.organization_id).or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
+    const { data: lead } = assignment.lead_id
+      ? await localDb.from("leads").select("name").eq("id", assignment.lead_id).eq("organization_id", link.organization_id).maybeSingle()
+      : await localDb.from("leads").select("name").eq("organization_id", link.organization_id).or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
 
     const m = await insertMessage({ channelId: link.channel_id, orgId: link.organization_id, sessionId, content: text,
       direction: "inbound", senderName: lead?.name || "Visitante", linkId: link.id });

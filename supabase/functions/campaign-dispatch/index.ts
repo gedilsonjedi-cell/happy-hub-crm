@@ -236,7 +236,7 @@ async function processCampaignDispatch(
               value = varName;
             }
             if (isButtonLinkVar) {
-              buttonParams.push(value === varName ? '' : value.trim());
+              buttonParams.push(value === varName ? '' : withMagicLeadId(value, (recipient as any).lead_id ?? (recipient as any).leadId));
               continue;
             }
             templateParams.push(value);

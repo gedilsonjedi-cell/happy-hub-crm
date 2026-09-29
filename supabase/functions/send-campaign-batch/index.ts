@@ -687,7 +687,7 @@ Deno.serve(async (req) => {
           if (value.match(/^(VAR_\d+|p\d+)$/i)) value = '';
           if (isButtonLinkVar) {
             // Sem valor informado, meta-send cai no exemplo aprovado.
-            buttonParams.push(value.trim());
+            buttonParams.push(withMagicLeadId(value, recipient.leadId));
             continue;
           }
           // Ensure no empty params - use fallback to prevent Meta rejection

@@ -53,7 +53,9 @@ export default function WebChatPublic() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.functions.invoke("webchat-init", { body: { linkId, sessionId } });
+      // Link Mágico: ?lead_id= vincula a sessão ao contato existente e dispara o Radar de Abandono
+      const leadId = new URLSearchParams(window.location.search).get("lead_id") || undefined;
+      const { data, error } = await supabase.functions.invoke("webchat-init", { body: { linkId, sessionId, leadId } });
       if (cancelled) return;
       if (error || !data?.link) { setStatus("error"); return; }
       setLink(data.link);
