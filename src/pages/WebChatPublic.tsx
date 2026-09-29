@@ -151,6 +151,44 @@ export default function WebChatPublic() {
       });
   };
 
+  // ---- Avisos (Web Push) ----
+  const pushKey = `webchat_push_on:${linkId}`;
+  const pushSupported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+  const [pushState, setPushState] = useState<"idle" | "working" | "done" | "error">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem(`webchat_push_on:${linkId}`) ? "done" : "idle");
+  const [pushDismissed, setPushDismissed] = useState(false);
+  const hasSentOne = messages.some((m) => m.direction === "inbound" && !m.delivery);
+  const showPushCard = pushSupported && hasSentOne && !pushDismissed && pushState !== "done"
+    && (typeof Notification === "undefined" || Notification.permission !== "denied");
+
+  const b64ToBytes = (b64: string) => {
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+
+  const enablePush = async () => {
+    setPushState("working");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { setPushState("idle"); setPushDismissed(true); return; }
+      const reg = await navigator.serviceWorker.register("/webchat-sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      const { data: k, error: kErr } = await supabase.functions.invoke("webchat-push-subscribe", { body: { action: "key", linkId, sessionId } });
+      if (kErr || !k?.publicKey) throw kErr || new Error("sem chave");
+      const sub = (await reg.pushManager.getSubscription())
+        || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.publicKey) }));
+      const { error } = await supabase.functions.invoke("webchat-push-subscribe", { body: { linkId, sessionId, subscription: sub.toJSON() } });
+      if (error) throw error;
+      localStorage.setItem(pushKey, "1");
+      setPushState("done");
+      addMsg({ id: `sys:push-ok`, content: "Avisos configurados! Pode ficar tranquilo. ✅", direction: "system", sender_name: null, created_at: new Date().toISOString() });
+    } catch (e) {
+      console.error("[webchat] push", e);
+      setPushState("error");
+    }
+  };
+
   const color = link?.theme_color?.trim() || WA_HEADER;
 
   if (status === "loading") {
