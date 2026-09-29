@@ -151,14 +151,13 @@ export default function WebChatPublic() {
       });
   };
 
-  // ---- Avisos (Web Push) ----
+  // ---- Avisos (Web Push) — Card de Sistema após a 1ª mensagem do visitante ----
   const pushKey = `webchat_push_on:${linkId}`;
   const pushSupported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
   const [pushState, setPushState] = useState<"idle" | "working" | "done" | "error">(() =>
     typeof localStorage !== "undefined" && localStorage.getItem(`webchat_push_on:${linkId}`) ? "done" : "idle");
-  const [pushDismissed, setPushDismissed] = useState(false);
   const hasSentOne = messages.some((m) => m.direction === "inbound" && !m.delivery);
-  const showPushCard = pushSupported && hasSentOne && !pushDismissed && pushState !== "done"
+  const showPushCard = pushSupported && hasSentOne
     && (typeof Notification === "undefined" || Notification.permission !== "denied");
 
   const b64ToBytes = (b64: string) => {
