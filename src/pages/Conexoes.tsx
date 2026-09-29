@@ -285,7 +285,7 @@ const Conexoes = () => {
   const runEmbeddedSignupExchange = useCallback(async () => {
     const code = embeddedCodeRef.current;
     const { phoneNumberId, wabaId } = embeddedSignupRef.current;
-    if (!code || !phoneNumberId) return;
+    if (!code || (!phoneNumberId && !wabaId)) return;
     if (embeddedExchangingRef.current) return;
 
     const orgId = selectedOrgId || effectiveOrganizationId;
@@ -365,10 +365,18 @@ const Conexoes = () => {
       }
       if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
       console.log("WA_EMBEDDED_SIGNUP message:", payload);
-      if (payload.event === "FINISH" || payload.event === "FINISH_ONLY_WABA") {
+      // FINISH (WABA nova/existente), FINISH_ONLY_WABA e
+      // FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING (Coexistência).
+      if (typeof payload.event === "string" && payload.event.startsWith("FINISH")) {
         const d = payload.data ?? {};
         const phoneNumberId = d.phone_number_id ?? d.phoneNumberId ?? d.phone_number?.id;
-        const wabaId = d.waba_id ?? d.wabaId ?? d.business_id;
+        const wabaId = d.waba_id ?? d.wabaId;
+        if (!phoneNumberId && wabaId) {
+          // Coexistência pode não trazer o número: servidor descobre pela WABA.
+          embeddedSignupRef.current = { phoneNumberId: undefined, wabaId: String(wabaId) };
+          void runEmbeddedSignupExchange();
+          return;
+        }
         if (!phoneNumberId) {
           console.warn(
             "[EmbeddedSignup] evento FINISH sem phone_number_id. Payload completo:",

@@ -44,17 +44,18 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const code = typeof body?.code === "string" ? body.code.trim() : "";
-    const phoneNumberId = body?.phone_number_id ? String(body.phone_number_id).trim() : "";
+    let phoneNumberId = body?.phone_number_id ? String(body.phone_number_id).trim() : "";
     const wabaId = body?.waba_id ? String(body.waba_id).trim() : "";
     const organizationId = body?.organization_id ? String(body.organization_id).trim() : "";
+    console.log("[embedded-signup] request", JSON.stringify({ hasCode: !!code, phoneNumberId, wabaId, organizationId }));
 
-    if (!code || !phoneNumberId || !organizationId) {
+    if (!code || (!phoneNumberId && !wabaId) || !organizationId) {
       return json(
         {
           error: "Parâmetros obrigatórios ausentes.",
           missing: {
             code: !code,
-            phone_number_id: !phoneNumberId,
+            phone_number_id: !phoneNumberId && !wabaId,
             organization_id: !organizationId,
           },
         },
@@ -94,6 +95,19 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       console.warn("[embedded-signup] erro ao obter long-lived token:", String(e));
+    }
+
+    // 2b) Coexistência sem phone_number_id: descobre pela WABA
+    if (!phoneNumberId && wabaId) {
+      const lr = await fetch(`${GRAPH}/${wabaId}/phone_numbers?fields=id,display_phone_number`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const lj = await lr.json().catch(() => ({}));
+      phoneNumberId = lj?.data?.[0]?.id ? String(lj.data[0].id) : "";
+      if (!phoneNumberId) {
+        console.error("[embedded-signup] WABA sem números", JSON.stringify(lj));
+        return json({ error: "Nenhum número encontrado na WABA.", meta: lj }, 400);
+      }
     }
 
     // 3) Detalhes do número
