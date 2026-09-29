@@ -10,6 +10,9 @@ export const json = (body: unknown, status = 200) =>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+const SLUG_RE = /^[a-z0-9]{6,12}$/;
+export const isSlug = (v: unknown): v is string => typeof v === "string" && SLUG_RE.test(v);
+export const isLinkKey = (v: unknown): v is string => isUuid(v) || isSlug(v);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -22,11 +25,11 @@ export const msgDb = extUrl && extKey ? createClient(extUrl, extKey, { auth: { p
 
 export const threadPhone = (sessionId: string) => `webchat:${sessionId}`;
 
-export async function loadActiveLink(linkId: string) {
+export async function loadActiveLink(linkKey: string) {
   const { data } = await localDb
     .from("webchat_links")
     .select("id, organization_id, channel_id, name, greeting_message, theme_color, is_active")
-    .eq("id", linkId)
+    .or(isUuid(linkKey) ? `id.eq.${linkKey}` : `slug.eq.${linkKey}`)
     .maybeSingle();
   if (!data || !data.is_active || !data.organization_id) return null;
   // Isolamento: o canal do link precisa ser web_chat da MESMA organização
