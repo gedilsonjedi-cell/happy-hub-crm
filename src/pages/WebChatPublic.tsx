@@ -265,18 +265,28 @@ export default function WebChatPublic() {
         })}
         {showPushCard && (
           <div className="flex justify-center">
-            <div className="w-full max-w-sm rounded-lg bg-white p-3 text-center text-[#111b21] shadow-sm">
-              <p className="text-sm font-medium">Quer ser avisado quando responderem?</p>
-              <p className="mt-0.5 text-xs text-[#667781]">
-                {pushState === "error" ? "Não foi possível ativar agora. Tente novamente." : "Receba um aviso no celular mesmo com esta página fechada."}
-              </p>
-              <div className="mt-2 flex justify-center gap-2">
-                <button type="button" onClick={() => setPushDismissed(true)} className="rounded-full px-3 py-1.5 text-xs text-[#667781]">Agora não</button>
-                <button type="button" onClick={enablePush} disabled={pushState === "working"}
-                  className="rounded-full px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60" style={{ backgroundColor: color }}>
-                  {pushState === "working" ? "Ativando..." : "Ativar Avisos"}
-                </button>
-              </div>
+            <div className="w-full max-w-sm rounded-lg bg-white p-4 text-center text-[#111b21] shadow-sm">
+              {pushState === "done" ? (
+                <p className="text-sm font-medium">Avisos configurados! Pode ficar tranquilo. ✅</p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Vamos iniciar o seu atendimento.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[#667781]">
+                    {pushState === "error"
+                      ? "Não foi possível ativar agora. Tente novamente."
+                      : "Caso acabe fechando a página sem querer, ative os alertas. Assim, garantimos que você receba nossa mensagem e um melhor atendimento."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={enablePush}
+                    disabled={pushState === "working"}
+                    className="mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                    style={{ backgroundColor: color }}
+                  >
+                    {pushState === "working" ? "Ativando..." : "🔔 Ativar Avisos"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
