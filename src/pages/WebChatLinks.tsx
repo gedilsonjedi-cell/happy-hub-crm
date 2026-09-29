@@ -22,7 +22,17 @@ import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Pencil, MousePo
 
 const pct = (n: number) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const publicUrlFor = (l: WebChatLinkRow) => `https://optimuscrm.com.br/c/${l.slug}`;
-const previewUrlFor = (l: WebChatLinkRow) => `${window.location.origin}/c/${l.slug}`;
+const previewOrigin = () => {
+  const { hostname, origin } = window.location;
+  const projectId = hostname.match(/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i)?.[1];
+
+  if (projectId && hostname.endsWith("lovableproject.com")) {
+    return `https://id-preview--${projectId}.lovable.app`;
+  }
+
+  return origin;
+};
+const previewUrlFor = (l: WebChatLinkRow) => `${previewOrigin()}/c/${l.slug}`;
 
 function Kpi({ icon: Icon, label, value, hint, loading, live }: { icon: any; label: string; value: string; hint: string; loading?: boolean; live?: boolean }) {
   return (
