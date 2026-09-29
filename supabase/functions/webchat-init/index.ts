@@ -4,7 +4,7 @@ import { pickDistribution } from "../_shared/assignment.ts";
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const { linkId, sessionId, visitorName } = await req.json().catch(() => ({}));
+    const { linkId, sessionId, visitorName, leadId: magicLeadId } = await req.json().catch(() => ({}));
     if (!isLinkKey(linkId) || !isUuid(sessionId)) return json({ error: "Parâmetros inválidos" }, 400);
     const name = typeof visitorName === "string" && visitorName.trim() ? visitorName.trim().slice(0, 80) : null;
 
@@ -31,10 +31,19 @@ Deno.serve(async (req) => {
 
     // Lead anônimo: phone SEMPRE NULL; identificado por webchat_id curto + sessão em bsuid.
     let leadId: string | null = null;
-    const { data: existingLead } = await localDb.from("leads").select("id, webchat_id").eq("organization_id", orgId)
+    // Link Mágico: lead existente do CRM (mesma organização) assume a sessão — sem contato anônimo.
+    let magicLead: { id: string; name: string } | null = null;
+    if (isUuid(magicLeadId)) {
+      const { data } = await localDb.from("leads").select("id, name").eq("id", magicLeadId).eq("organization_id", orgId).maybeSingle();
+      magicLead = data ?? null;
+    }
+    const { data: existingLead } = magicLead ? { data: null } : await localDb.from("leads").select("id, webchat_id").eq("organization_id", orgId)
       .or(`bsuid.eq.${sessionId},phone.eq."${phone}"`).limit(1).maybeSingle();
+    if (magicLead) leadId = magicLead.id;
     const newCode = () => String(Math.floor(10000 + Math.random() * 90000));
-    if (existingLead) {
+    if (magicLead) {
+      // nada a criar
+    } else if (existingLead) {
       leadId = existingLead.id;
       const patch: Record<string, unknown> = {};
       if (name) patch.name = name;
@@ -56,7 +65,7 @@ Deno.serve(async (req) => {
 
     // Assignment upsert
     let isNew = false;
-    const { data: existing } = await msgDb.from("conversation_assignments").select("id")
+    const { data: existing } = await msgDb.from("conversation_assignments").select("id, lead_id")
       .eq("channel_id", channelId).eq("conversation_phone", phone).limit(1).maybeSingle();
     if (!existing) {
       // Mesma fila/setor do WhatsApp (setor padrão + round-robin)
@@ -69,6 +78,23 @@ Deno.serve(async (req) => {
       // 23505 = outra requisição concorrente (ex.: duplo carregamento) já criou a conversa
       if (aErr && aErr.code !== "23505") throw aErr;
       isNew = !aErr;
+    } else if (magicLead && existing.lead_id !== magicLead.id) {
+      await msgDb.from("conversation_assignments").update({ lead_id: magicLead.id, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    }
+
+    // Radar de Abandono: avisa o atendente que o cliente abriu o link
+    if (magicLead) {
+      const content = "👀 O cliente abriu o link do Web Chat, mas ainda não iniciou a conversa.";
+      const { data: log } = await msgDb.from("whatsapp_messages").insert({
+        channel_id: channelId, organization_id: orgId, message_id: `webchat_radar_${crypto.randomUUID()}`,
+        sender_phone: phone, sender_name: magicLead.name, message_type: "system_log", content,
+        direction: "inbound", status: "received", is_read: false,
+        metadata: { source: "web_chat", link_id: link.id, system_log: "link_opened", lead_id: magicLead.id },
+      }).select("created_at").single();
+      await msgDb.rpc("upsert_conversation_stats_external", {
+        _organization_id: orgId, _channel_id: channelId, _conversation_phone: phone, _content: content,
+        _direction: "inbound", _is_read: false, _sender_name: magicLead.name, _created_at: log?.created_at ?? new Date().toISOString(),
+      }).then(() => {}, () => {});
     }
 
     if (isNew && link.greeting_message) {
@@ -79,7 +105,7 @@ Deno.serve(async (req) => {
 
     const { data: history } = await msgDb.from("whatsapp_messages")
       .select("id, content, direction, sender_name, created_at")
-      .eq("channel_id", channelId).eq("sender_phone", phone)
+      .eq("channel_id", channelId).eq("sender_phone", phone).neq("message_type", "system_log")
       .order("created_at", { ascending: true }).limit(200);
 
     return json({
