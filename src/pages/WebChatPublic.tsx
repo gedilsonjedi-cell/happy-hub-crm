@@ -236,7 +236,7 @@ export default function WebChatPublic() {
         <form className="flex w-full items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { typedRef.current = true; setText(e.target.value); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             rows={1}
             enterKeyHint="send"
