@@ -93,6 +93,14 @@ export default function WebChatPublic() {
     };
   }, [sessionId]);
 
+  // Presence: alimenta o contador "Online Agora" do painel (só o id da sessão, sem dados pessoais)
+  useEffect(() => {
+    if (!linkId) return;
+    const ch = supabase.channel(`webchat-presence:${linkId}`, { config: { presence: { key: sessionId } } });
+    ch.subscribe((s) => { if (s === "SUBSCRIBED") ch.track({ at: Date.now() }); });
+    return () => { supabase.removeChannel(ch); };
+  }, [linkId, sessionId]);
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, typing]);
 
   // Altura real visível: mantém o botão de enviar acima do teclado sem dar zoom
