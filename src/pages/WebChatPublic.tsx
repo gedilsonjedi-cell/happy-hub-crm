@@ -27,7 +27,7 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hou
 export default function WebChatPublic() {
   const { linkId } = useParams<{ linkId: string }>();
   const [sessionId] = useState(getSessionId);
-  const [link, setLink] = useState<{ name: string; theme_color: string } | null>(null);
+  const [link, setLink] = useState<{ name: string; theme_color: string; prefill_text?: string | null } | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "offline">("loading");
   const [text, setText] = useState(() => {
@@ -37,6 +37,7 @@ export default function WebChatPublic() {
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typedRef = useRef(false);
 
   const addMsg = (m: Msg) => setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
 
@@ -59,6 +60,10 @@ export default function WebChatPublic() {
       setMessages(data.messages || []);
       setStatus("ready");
       document.title = `${data.link.name} — Chat`;
+      // Texto pré-definido vem do link (URL limpa); só quando o cliente ainda não digitou
+      // e quando a URL já não trouxe um ?text= de link antigo.
+      const prefill = typeof data.link.prefill_text === "string" ? data.link.prefill_text.trim().slice(0, 4000) : "";
+      if (prefill && !typedRef.current) setText((prev) => (prev ? prev : prefill));
     })();
     return () => { cancelled = true; };
   }, [linkId, sessionId]);
