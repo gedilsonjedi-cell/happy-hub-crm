@@ -3152,7 +3152,6 @@ export type Database = {
       redirect_links: {
         Row: {
           click_count: number | null
-          click_count_base: number
           created_at: string | null
           created_by: string
           destinations: Json
@@ -3164,10 +3163,10 @@ export type Database = {
           original_url: string | null
           slug: string
           updated_at: string | null
+          webchat_link_id: string | null
         }
         Insert: {
           click_count?: number | null
-          click_count_base?: number
           created_at?: string | null
           created_by: string
           destinations?: Json
@@ -3179,10 +3178,10 @@ export type Database = {
           original_url?: string | null
           slug: string
           updated_at?: string | null
+          webchat_link_id?: string | null
         }
         Update: {
           click_count?: number | null
-          click_count_base?: number
           created_at?: string | null
           created_by?: string
           destinations?: Json
@@ -3194,13 +3193,14 @@ export type Database = {
           original_url?: string | null
           slug?: string
           updated_at?: string | null
+          webchat_link_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "redirect_links_organization_id_fkey"
-            columns: ["organization_id"]
+            foreignKeyName: "redirect_links_webchat_link_id_fkey"
+            columns: ["webchat_link_id"]
             isOneToOne: false
-            referencedRelation: "organizations"
+            referencedRelation: "webchat_links"
             referencedColumns: ["id"]
           },
         ]
@@ -3753,7 +3753,7 @@ export type Database = {
           organization_id: string
           prefill_text?: string | null
           slug?: string
-          theme_color: string
+          theme_color?: string
           updated_at?: string
         }
         Update: {
@@ -3778,6 +3778,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "webchat_links_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3785,6 +3792,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webchat_push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint: string
+          link_id: string | null
+          organization_id: string | null
+          session_id: string
+          subscription: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          link_id?: string | null
+          organization_id?: string | null
+          session_id: string
+          subscription: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          link_id?: string | null
+          organization_id?: string | null
+          session_id?: string
+          subscription?: Json
+          updated_at?: string
+        }
+        Relationships: []
       }
       webhooks: {
         Row: {
@@ -3832,6 +3869,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webpush_config: {
+        Row: {
+          created_at: string
+          id: number
+          private_key: string
+          public_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          private_key: string
+          public_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          private_key?: string
+          public_key?: string
+        }
+        Relationships: []
       }
       welcome_message_config: {
         Row: {
@@ -3913,6 +3971,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      whatsapp_contacts: {
+        Row: {
+          channel_id: string
+          created_at: string | null
+          id: string
+          last_message_at: string | null
+          organization_id: string | null
+          sender_name: string | null
+          sender_phone: string | null
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          organization_id?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          organization_id?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+        }
+        Relationships: []
       }
       whatsapp_messages: {
         Row: {
@@ -4075,6 +4163,10 @@ export type Database = {
         Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
       }
+      archive_conversation_ext: {
+        Args: { p_channel_id: string; p_phone: string }
+        Returns: undefined
+      }
       backfill_conversation_stats: {
         Args: { batch_size?: number }
         Returns: number
@@ -4217,6 +4309,33 @@ export type Database = {
           unread_count: number
         }[]
       }
+      get_attendant_conversations_ext: {
+        Args: {
+          p_channel_ids: string[]
+          p_limit?: number
+          p_organization_id: string
+          p_sector_ids?: string[]
+          p_user_id: string
+        }
+        Returns: {
+          assigned_to: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
       get_available_buttons: {
         Args: { p_days_back?: number; p_organization_id: string }
         Returns: {
@@ -4329,6 +4448,32 @@ export type Database = {
         }[]
       }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
+      get_conversations_summary_paginated_ext: {
+        Args: {
+          p_channel_ids: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+        }
+        Returns: {
+          assigned_to: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
       get_redirect_link_public: {
         Args: { _slug: string }
         Returns: {
@@ -4370,6 +4515,27 @@ export type Database = {
         }[]
       }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
+      get_unread_conversations_full_ext: {
+        Args: { p_channel_ids: string[]; p_organization_id: string }
+        Returns: {
+          assigned_to: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -4452,10 +4618,15 @@ export type Database = {
           id: string
           link_type: string
           original_url: string
+          webchat_link_id: string
         }[]
       }
       restore_conversation: {
         Args: { p_channel_id: string; p_conversation_phone: string }
+        Returns: undefined
+      }
+      restore_conversation_ext: {
+        Args: { p_channel_id: string; p_phone: string }
         Returns: undefined
       }
       run_rls_visibility_check: {
@@ -4467,6 +4638,10 @@ export type Database = {
           passed: boolean
           result: string
         }[]
+      }
+      schedule_campaign_recipients: {
+        Args: { p_campaign_id: string }
+        Returns: number
       }
       search_conversations_global: {
         Args: {
@@ -4491,6 +4666,32 @@ export type Database = {
           lead_id: string
           lead_name: string
           lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+        }[]
+      }
+      search_conversations_global_ext: {
+        Args: {
+          p_channel_ids: string[]
+          p_limit?: number
+          p_organization_id: string
+          p_search_term: string
+        }
+        Returns: {
+          assigned_to: string
+          assignment_id: string
+          assignment_updated_at: string
+          bot_paused_until: string
+          campaign_chatbot_id: string
+          channel_id: string
+          conversation_phone: string
+          is_bot_handling: boolean
+          last_inbound_at: string
+          last_message_at: string
+          last_message_content: string
+          lead_id: string
           sector_id: string
           sender_name: string
           status: string
@@ -4531,6 +4732,19 @@ export type Database = {
       sync_redirect_click_counts: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       update_session_activity: { Args: never; Returns: boolean }
+      upsert_conversation_stats_external: {
+        Args: {
+          _channel_id: string
+          _content: string
+          _conversation_phone: string
+          _created_at?: string
+          _direction: string
+          _is_read: boolean
+          _organization_id: string
+          _sender_name: string
+        }
+        Returns: string
+      }
       upsert_conversation_stats_manual: {
         Args: {
           _channel_id: string

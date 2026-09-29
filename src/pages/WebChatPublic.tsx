@@ -154,11 +154,15 @@ export default function WebChatPublic() {
   // ---- Avisos (Web Push) — Card de Sistema após a 1ª mensagem do visitante ----
   const pushKey = `webchat_push_on:${linkId}`;
   const pushSupported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
-  const [pushState, setPushState] = useState<"idle" | "working" | "done" | "error">(() =>
-    typeof localStorage !== "undefined" && localStorage.getItem(`webchat_push_on:${linkId}`) ? "done" : "idle");
+  const [pushState, setPushState] = useState<"idle" | "working" | "done" | "error" | "blocked">(() => {
+    if (typeof localStorage !== "undefined" && localStorage.getItem(`webchat_push_on:${linkId}`)) return "done";
+    if (typeof Notification !== "undefined" && Notification.permission === "denied") return "blocked";
+    return "idle";
+  });
   const hasSentOne = messages.some((m) => m.direction === "inbound" && !m.delivery);
-  const showPushCard = pushSupported && hasSentOne
-    && (typeof Notification === "undefined" || Notification.permission !== "denied");
+  const showPushCard = pushSupported && hasSentOne;
+  const pushBlocked = pushState === "blocked"
+    || (typeof Notification !== "undefined" && Notification.permission === "denied");
 
   const b64ToBytes = (b64: string) => {
     const pad = "=".repeat((4 - (b64.length % 4)) % 4);
@@ -167,10 +171,21 @@ export default function WebChatPublic() {
   };
 
   const enablePush = async () => {
+    // Antes de pedir: verifica o status atual. Com 'denied' o navegador não exibe o prompt nativo,
+    // então mostramos a instrução de recuperação em vez de tentar pedir permissão.
+    if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      setPushState("blocked");
+      return;
+    }
     setPushState("working");
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { setPushState("idle"); return; }
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          setPushState(perm === "denied" ? "blocked" : "idle");
+          return;
+        }
+      }
       const reg = await navigator.serviceWorker.register("/webchat-sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
       const { data: k, error: kErr } = await supabase.functions.invoke("webchat-push-subscribe", { body: { action: "key", linkId, sessionId } });
@@ -268,6 +283,10 @@ export default function WebChatPublic() {
             <div className="w-full max-w-sm rounded-lg bg-white p-4 text-center text-[#111b21] shadow-sm">
               {pushState === "done" ? (
                 <p className="text-sm font-medium">Avisos configurados! Pode ficar tranquilo. ✅</p>
+              ) : pushBlocked ? (
+                <p className="text-sm leading-relaxed text-[#667781]">
+                  ⚠️ Seus alertas estão bloqueados pelo navegador. Para receber nossos avisos, clique no ícone de cadeado 🔒 (ou configurações) lá em cima na barra de endereços e altere as Notificações para Permitir.
+                </p>
               ) : (
                 <>
                   <p className="text-sm font-medium">Vamos iniciar o seu atendimento.</p>
