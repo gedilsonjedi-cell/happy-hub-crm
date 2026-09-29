@@ -2539,6 +2539,7 @@ export type Database = {
       }
       webchat_links: {
         Row: {
+          avatar_path: string | null
           channel_id: string | null
           created_at: string
           greeting_message: string | null
@@ -2552,6 +2553,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_path?: string | null
           channel_id?: string | null
           created_at?: string
           greeting_message?: string | null
@@ -2565,6 +2567,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_path?: string | null
           channel_id?: string | null
           created_at?: string
           greeting_message?: string | null
