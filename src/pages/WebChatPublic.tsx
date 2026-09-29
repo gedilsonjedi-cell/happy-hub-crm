@@ -283,6 +283,10 @@ export default function WebChatPublic() {
             <div className="w-full max-w-sm rounded-lg bg-white p-4 text-center text-[#111b21] shadow-sm">
               {pushState === "done" ? (
                 <p className="text-sm font-medium">Avisos configurados! Pode ficar tranquilo. ✅</p>
+              ) : pushBlocked ? (
+                <p className="text-sm leading-relaxed text-[#667781]">
+                  ⚠️ Seus alertas estão bloqueados pelo navegador. Para receber nossos avisos, clique no ícone de cadeado 🔒 (ou configurações) lá em cima na barra de endereços e altere as Notificações para Permitir.
+                </p>
               ) : (
                 <>
                   <p className="text-sm font-medium">Vamos iniciar o seu atendimento.</p>
