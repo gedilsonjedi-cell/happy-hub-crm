@@ -79,7 +79,7 @@ export const ConnectionFlipCard = memo(function ConnectionFlipCard({
       ref={ref}
       data-testid="connection-card"
       data-flipped={flipped ? "true" : "false"}
-      className="relative h-20 [perspective:900px]"
+      className="relative h-44 [perspective:900px]"
       onPointerEnter={(e) => { if (e.pointerType === "mouse" || canHover()) setHovered(true); }}
       onPointerLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}
@@ -103,21 +103,26 @@ export const ConnectionFlipCard = memo(function ConnectionFlipCard({
           tabIndex={flipped ? -1 : 0}
           aria-label={`${name}, ${phoneText}, ${statusLabel[status]}`}
           className={cn(
-            "absolute inset-0 flex flex-col justify-center gap-0.5 rounded-xl border border-border bg-card px-3.5 text-card-foreground [backface-visibility:hidden] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "absolute inset-0 flex flex-col justify-between rounded-xl border border-border bg-card p-5 text-card-foreground [backface-visibility:hidden] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "motion-reduce:transition-opacity motion-reduce:duration-200",
             flipped ? "motion-reduce:opacity-0 motion-reduce:pointer-events-none" : "motion-reduce:opacity-100"
           )}
         >
-          <div className="flex min-w-0 items-center gap-2">
-            <span data-testid="status-dot" title={statusLabel[status]} className={cn("h-2 w-2 shrink-0 rounded-full", statusDot[status])} />
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span data-testid="status-dot" aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", statusDot[status])} />
+            <span>{statusLabel[status]}</span>
+          </div>
+          <div className="min-w-0 space-y-1.5">
             <Tooltip delayDuration={400}>
               <TooltipTrigger asChild>
-                <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+                <p className="truncate text-base font-semibold">{name}</p>
               </TooltipTrigger>
               <TooltipContent>{name}</TooltipContent>
             </Tooltip>
+            <p className="text-sm text-muted-foreground">WhatsApp Cloud (Oficial)</p>
+            <p className="truncate text-sm text-card-foreground tabular-nums">{phoneText}</p>
           </div>
-          <p className="truncate pl-4 text-xs text-muted-foreground tabular-nums">{phoneText}</p>
+          <div className="h-2" aria-hidden="true" />
         </div>
 
         {/* Verso */}

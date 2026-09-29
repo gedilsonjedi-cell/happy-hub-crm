@@ -22,3 +22,4 @@
 - [x] Chaves de notificação (VAPID) geradas e guardadas no banco (tabela `webpush_config`, só service_role).
 - [x] Cenário "notificações bloqueadas" (`Notification.permission === 'denied'`): em vez de tentar pedir permissão, o card mostra a instrução de recuperação (cadeado 🔒 na barra de endereços), sem botão.
 - [ ] Aviso chegando de verdade no celular do visitante (só confere no site publicado).
+- [x] Ajustar card de Conexões para tamanho médio, status escrito na frente e grade responsiva; validar sem publicar.

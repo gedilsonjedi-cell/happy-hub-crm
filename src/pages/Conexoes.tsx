@@ -1568,7 +1568,7 @@ const Conexoes = () => {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {filteredChannels.map((channel) => (
               <ConnectionFlipCard
                 key={channel.id}
