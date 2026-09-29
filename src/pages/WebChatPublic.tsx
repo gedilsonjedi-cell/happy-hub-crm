@@ -335,7 +335,7 @@ export default function WebChatPublic() {
               </Popover>
               <textarea ref={textareaRef} value={text} onChange={(event) => { typedRef.current = true; setText(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendText(); } }} rows={1} enterKeyHint="send" maxLength={4000} placeholder="Digite uma mensagem" className="max-h-32 min-h-10 w-full flex-1 resize-none appearance-none rounded-md border-0 bg-webchat-input px-3 py-2 text-[16px] text-webchat-text placeholder:text-webchat-muted focus:outline-none focus:ring-0 md:text-sm" />
               {text.trim() ? <Button type="submit" size="icon" aria-label="Enviar mensagem" className="shrink-0 rounded-full bg-webchat-green text-webchat-text hover:bg-webchat-green-strong"><Send /></Button>
-                : <Button type="button" variant="ghost" size="icon" aria-label="Gravar áudio" onClick={() => void beginRecording()} className="shrink-0 text-webchat-muted hover:bg-webchat-hover hover:text-webchat-text"><Mic /></Button>}
+                : <Button type="button" size="icon" aria-label="Gravar áudio" title="Gravar áudio" onClick={() => void beginRecording()} className="shrink-0 rounded-full bg-webchat-green text-webchat-text hover:bg-webchat-green-strong"><Mic /></Button>}
             </form>
           )}
         </footer>
