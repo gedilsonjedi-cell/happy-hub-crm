@@ -129,6 +129,6 @@ describe("Web Chat público", () => {
       return Promise.resolve({ data: { message: inbound }, error: null });
     });
     render(<WebChatPublic />);
-    expect(await screen.findByRole("img", { hidden: true })).toHaveAttribute("src", "https://example.com/equipe.webp");
+    expect(await screen.findByTestId("webchat-profile-photo")).toHaveAttribute("src", "https://example.com/equipe.webp");
   });
 });

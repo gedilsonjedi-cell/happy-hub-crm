@@ -273,7 +273,7 @@ export default function WebChatPublic() {
         <header className="webchat-header z-30 flex w-full flex-none items-center gap-3 px-4 text-webchat-text shadow-sm">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-webchat-avatar font-semibold text-webchat-text" aria-hidden="true">
             {link?.avatar_url
-              ? <img src={link.avatar_url} alt="" className="h-full w-full object-cover" />
+              ? <img src={link.avatar_url} alt="" data-testid="webchat-profile-photo" className="h-full w-full object-cover" />
               : link?.name?.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
