@@ -30,7 +30,10 @@ export default function WebChatPublic() {
   const [link, setLink] = useState<{ name: string; theme_color: string } | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "offline">("loading");
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("text");
+    return t ? t.slice(0, 4000) : "";
+  });
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

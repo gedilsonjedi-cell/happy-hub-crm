@@ -1,0 +1,1 @@
+ALTER TABLE public.webchat_links ADD COLUMN IF NOT EXISTS prefill_text text;
