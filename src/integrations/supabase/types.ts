@@ -105,7 +105,15 @@ export type Database = {
           use_business_hours?: boolean | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_agents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       attendant_availability: {
         Row: {
@@ -138,7 +146,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "attendant_availability_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       auto_recharge_config: {
         Row: {
@@ -183,7 +199,15 @@ export type Database = {
           recharge_amount?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "auto_recharge_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       away_message_config: {
         Row: {
@@ -210,7 +234,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "away_message_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       balance_transactions: {
         Row: {
@@ -252,7 +284,15 @@ export type Database = {
           reference_type?: string | null
           type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "balance_transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       blacklist: {
         Row: {
@@ -285,7 +325,15 @@ export type Database = {
           reason?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "blacklist_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       business_hours: {
         Row: {
@@ -318,7 +366,15 @@ export type Database = {
           start_time?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "business_hours_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaign_channels: {
         Row: {
@@ -353,6 +409,77 @@ export type Database = {
             referencedRelation: "campaigns"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "campaign_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_channels_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_metric_snapshots: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          delivered_count: number
+          failed_count: number
+          interacted_count: number
+          last_recalculated_at: string
+          organization_id: string
+          read_count: number
+          recipients_count: number
+          sent_count: number
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          delivered_count?: number
+          failed_count?: number
+          interacted_count?: number
+          last_recalculated_at?: string
+          organization_id: string
+          read_count?: number
+          recipients_count?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          delivered_count?: number
+          failed_count?: number
+          interacted_count?: number
+          last_recalculated_at?: string
+          organization_id?: string
+          read_count?: number
+          recipients_count?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_metric_snapshots_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
         ]
       }
       campaign_recipients: {
@@ -364,6 +491,7 @@ export type Database = {
           created_at: string
           delivered_at: string | null
           error_message: string | null
+          flow_bot_id: string | null
           id: string
           last_error_code: string | null
           lead_id: string | null
@@ -372,7 +500,6 @@ export type Database = {
           phone: string
           read_at: string | null
           retry_count: number | null
-          scheduled_at: string | null
           sent_at: string | null
           status: string
           updated_at: string
@@ -385,6 +512,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
+          flow_bot_id?: string | null
           id?: string
           last_error_code?: string | null
           lead_id?: string | null
@@ -393,7 +521,6 @@ export type Database = {
           phone: string
           read_at?: string | null
           retry_count?: number | null
-          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           updated_at?: string
@@ -406,6 +533,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
+          flow_bot_id?: string | null
           id?: string
           last_error_code?: string | null
           lead_id?: string | null
@@ -414,7 +542,6 @@ export type Database = {
           phone?: string
           read_at?: string | null
           retry_count?: number | null
-          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           updated_at?: string
@@ -425,6 +552,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
@@ -514,7 +648,36 @@ export type Database = {
           use_unified_template?: boolean
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_chatbot_id_fkey"
+            columns: ["chatbot_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_unified_template_id_fkey"
+            columns: ["unified_template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       channel_secrets: {
         Row: {
@@ -522,7 +685,6 @@ export type Database = {
           api_token: string | null
           channel_id: string
           created_at: string
-          id: string
           meta_app_secret: string | null
           updated_at: string
           webhook_verify_token: string | null
@@ -532,7 +694,6 @@ export type Database = {
           api_token?: string | null
           channel_id: string
           created_at?: string
-          id?: string
           meta_app_secret?: string | null
           updated_at?: string
           webhook_verify_token?: string | null
@@ -542,7 +703,6 @@ export type Database = {
           api_token?: string | null
           channel_id?: string
           created_at?: string
-          id?: string
           meta_app_secret?: string | null
           updated_at?: string
           webhook_verify_token?: string | null
@@ -583,11 +743,34 @@ export type Database = {
           id?: string
           template_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "channel_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_templates_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_templates_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       channels: {
         Row: {
           access_token: string | null
+          api_token: string | null
           app_name: string | null
           connected: boolean
           created_at: string
@@ -604,6 +787,7 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          api_token?: string | null
           app_name?: string | null
           connected?: boolean
           created_at?: string
@@ -620,6 +804,7 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          api_token?: string | null
           app_name?: string | null
           connected?: boolean
           created_at?: string
@@ -666,7 +851,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_messages: {
         Row: {
@@ -693,7 +886,15 @@ export type Database = {
           metadata?: Json | null
           role?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chatbot_config: {
         Row: {
@@ -756,7 +957,57 @@ export type Database = {
           user_id?: string
           welcome_message?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_config_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_initial_stage_id_fkey"
+            columns: ["initial_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_config_qualified_stage_id_fkey"
+            columns: ["qualified_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       client_portfolios: {
         Row: {
@@ -783,7 +1034,22 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_portfolios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_portfolios_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_assignments: {
         Row: {
@@ -797,7 +1063,6 @@ export type Database = {
           id: string
           is_bot_handling: boolean | null
           lead_id: string | null
-          organization_id: string | null
           sector_id: string | null
           status: string | null
           updated_at: string
@@ -813,7 +1078,6 @@ export type Database = {
           id?: string
           is_bot_handling?: boolean | null
           lead_id?: string | null
-          organization_id?: string | null
           sector_id?: string | null
           status?: string | null
           updated_at?: string
@@ -829,12 +1093,47 @@ export type Database = {
           id?: string
           is_bot_handling?: boolean | null
           lead_id?: string | null
-          organization_id?: string | null
           sector_id?: string | null
           status?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_assignments_campaign_chatbot_id_fkey"
+            columns: ["campaign_chatbot_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_assignments_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_memory: {
         Row: {
@@ -873,7 +1172,29 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_memory_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_memory_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_memory_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_metrics: {
         Row: {
@@ -936,7 +1257,50 @@ export type Database = {
           updated_at?: string
           wait_time_seconds?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_metrics_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_conversation_assignment_id_fkey"
+            columns: ["conversation_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_metrics_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_notes: {
         Row: {
@@ -966,13 +1330,35 @@ export type Database = {
           id?: string
           organization_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_notes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_notes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_stats: {
         Row: {
-          assignment_id: string | null
+          assignment_id: string
           channel_id: string | null
-          conversation_phone: string | null
+          conversation_phone: string
           id: string
           last_inbound_at: string | null
           last_message_at: string | null
@@ -983,9 +1369,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          assignment_id?: string | null
+          assignment_id: string
           channel_id?: string | null
-          conversation_phone?: string | null
+          conversation_phone: string
           id?: string
           last_inbound_at?: string | null
           last_message_at?: string | null
@@ -996,9 +1382,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          assignment_id?: string | null
+          assignment_id?: string
           channel_id?: string | null
-          conversation_phone?: string | null
+          conversation_phone?: string
           id?: string
           last_inbound_at?: string | null
           last_message_at?: string | null
@@ -1008,7 +1394,36 @@ export type Database = {
           unread_count?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversation_stats_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: true
+            referencedRelation: "conversation_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_stats_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dispatch_costs: {
         Row: {
@@ -1047,7 +1462,22 @@ export type Database = {
           total_cost?: number
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_costs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_costs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dispatch_pricing: {
         Row: {
@@ -1079,7 +1509,7 @@ export type Database = {
           ai_fallback_message: string | null
           created_at: string
           description: string | null
-          flow_type: string | null
+          flow_type: string
           id: string
           is_active: boolean | null
           name: string
@@ -1094,7 +1524,7 @@ export type Database = {
           ai_fallback_message?: string | null
           created_at?: string
           description?: string | null
-          flow_type?: string | null
+          flow_type?: string
           id?: string
           is_active?: boolean | null
           name: string
@@ -1109,7 +1539,7 @@ export type Database = {
           ai_fallback_message?: string | null
           created_at?: string
           description?: string | null
-          flow_type?: string | null
+          flow_type?: string
           id?: string
           is_active?: boolean | null
           name?: string
@@ -1119,7 +1549,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "flow_bots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flow_edges: {
         Row: {
@@ -1149,7 +1587,29 @@ export type Database = {
           source_node_id?: string
           target_node_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "flow_edges_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_edges_source_node_id_fkey"
+            columns: ["source_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_edges_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flow_nodes: {
         Row: {
@@ -1182,10 +1642,19 @@ export type Database = {
           position_y?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "flow_nodes_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flow_sessions: {
         Row: {
+          campaign_id: string | null
           channel_id: string | null
           collected_data: Json | null
           contact_phone: string
@@ -1201,6 +1670,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          campaign_id?: string | null
           channel_id?: string | null
           collected_data?: Json | null
           contact_phone: string
@@ -1216,6 +1686,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          campaign_id?: string | null
           channel_id?: string | null
           collected_data?: Json | null
           contact_phone?: string
@@ -1230,7 +1701,36 @@ export type Database = {
           status?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "flow_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_sessions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_sessions_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "flow_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_sessions_flow_bot_id_fkey"
+            columns: ["flow_bot_id"]
+            isOneToOne: false
+            referencedRelation: "flow_bots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_up_instances: {
         Row: {
@@ -1275,7 +1775,43 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_instances_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_up_logs: {
         Row: {
@@ -1305,7 +1841,22 @@ export type Database = {
           sent_at?: string
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_logs_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_logs_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_up_messages: {
         Row: {
@@ -1338,7 +1889,22 @@ export type Database = {
           template_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_messages_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_messages_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_up_sequences: {
         Row: {
@@ -1368,7 +1934,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_sequences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       holidays: {
         Row: {
@@ -1398,7 +1972,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "holidays_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       hygiene_history: {
         Row: {
@@ -1443,7 +2025,159 @@ export type Database = {
           user_id?: string
           valid_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hygiene_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbound_webhook_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          lead_created: boolean
+          name: string | null
+          organization_id: string
+          payload: Json | null
+          phone: string | null
+          template_sent: boolean
+          webhook_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean
+          name?: string | null
+          organization_id: string
+          payload?: Json | null
+          phone?: string | null
+          template_sent?: boolean
+          webhook_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          lead_created?: boolean
+          name?: string | null
+          organization_id?: string
+          payload?: Json | null
+          phone?: string | null
+          template_sent?: boolean
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_webhook_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhook_logs_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbound_webhooks: {
+        Row: {
+          auto_dispatch: boolean
+          channel_id: string | null
+          create_lead: boolean
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          sector_id: string | null
+          tags: string[]
+          template_id: string | null
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          auto_dispatch?: boolean
+          channel_id?: string | null
+          create_lead?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          sector_id?: string | null
+          tags?: string[]
+          template_id?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_dispatch?: boolean
+          channel_id?: string | null
+          create_lead?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          sector_id?: string | null
+          tags?: string[]
+          template_id?: string | null
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_webhooks_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_webhooks_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       knowledge_documents: {
         Row: {
@@ -1476,7 +2210,15 @@ export type Database = {
           id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_documents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_activity_log: {
         Row: {
@@ -1518,6 +2260,78 @@ export type Database = {
           performed_by?: string | null
           title?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activity_log_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activity_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_cleanup_log: {
+        Row: {
+          criado_em: string
+          distinct_campaigns: number | null
+          id: string
+          last_failure_at: string | null
+          lead_id: string
+          motivo: string
+          organization_id: string | null
+          phone: string
+          run_id: string | null
+        }
+        Insert: {
+          criado_em?: string
+          distinct_campaigns?: number | null
+          id?: string
+          last_failure_at?: string | null
+          lead_id: string
+          motivo: string
+          organization_id?: string | null
+          phone: string
+          run_id?: string | null
+        }
+        Update: {
+          criado_em?: string
+          distinct_campaigns?: number | null
+          id?: string
+          last_failure_at?: string | null
+          lead_id?: string
+          motivo?: string
+          organization_id?: string | null
+          phone?: string
+          run_id?: string | null
+        }
         Relationships: []
       }
       lead_custom_field_definitions: {
@@ -1557,7 +2371,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_custom_field_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_tags: {
         Row: {
@@ -1584,7 +2406,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_tags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       leads: {
         Row: {
@@ -1608,7 +2438,6 @@ export type Database = {
           tags: string[] | null
           updated_at: string
           user_id: string
-          webchat_id: string | null
         }
         Insert: {
           avatar_path?: string | null
@@ -1631,7 +2460,6 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id: string
-          webchat_id?: string | null
         }
         Update: {
           avatar_path?: string | null
@@ -1654,7 +2482,66 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id?: string
-          webchat_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      media_migration_progress: {
+        Row: {
+          delete_after: boolean
+          failed: number
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          last_folder: string | null
+          migrated: number
+          skipped: number
+          started_at: string
+          status: string
+          updated_at: string
+          urls_updated: number
+        }
+        Insert: {
+          delete_after?: boolean
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_folder?: string | null
+          migrated?: number
+          skipped?: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+          urls_updated?: number
+        }
+        Update: {
+          delete_after?: boolean
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_folder?: string | null
+          migrated?: number
+          skipped?: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+          urls_updated?: number
         }
         Relationships: []
       }
@@ -1668,6 +2555,8 @@ export type Database = {
           id: string
           name: string
           organization_id: string | null
+          otp_active: boolean
+          otp_last_used_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -1683,6 +2572,8 @@ export type Database = {
           id?: string
           name: string
           organization_id?: string | null
+          otp_active?: boolean
+          otp_last_used_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -1698,13 +2589,23 @@ export type Database = {
           id?: string
           name?: string
           organization_id?: string | null
+          otp_active?: boolean
+          otp_last_used_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
           variable_mappings?: Json | null
           variables?: string[] | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       organization_addons: {
         Row: {
@@ -1740,7 +2641,22 @@ export type Database = {
           quantity?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organization_addons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_addons_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "store_products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       organization_balance: {
         Row: {
@@ -1770,7 +2686,15 @@ export type Database = {
           total_spent?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organization_balance_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       organizations: {
         Row: {
@@ -1789,6 +2713,7 @@ export type Database = {
           max_users: number | null
           name: string
           plan: string
+          report_phone: string | null
           slug: string
           subscription_ends_at: string | null
           subscription_paid_until: string | null
@@ -1812,6 +2737,7 @@ export type Database = {
           max_users?: number | null
           name: string
           plan?: string
+          report_phone?: string | null
           slug: string
           subscription_ends_at?: string | null
           subscription_paid_until?: string | null
@@ -1835,6 +2761,7 @@ export type Database = {
           max_users?: number | null
           name?: string
           plan?: string
+          report_phone?: string | null
           slug?: string
           subscription_ends_at?: string | null
           subscription_paid_until?: string | null
@@ -1842,7 +2769,93 @@ export type Database = {
           subscription_status?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "organizations_default_sector_id_fkey"
+            columns: ["default_sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      otp_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          user_id?: string
+        }
         Relationships: []
+      }
+      otp_settings: {
+        Row: {
+          created_at: string
+          id: boolean
+          otp_channel_id: string | null
+          otp_login_enabled: boolean
+          otp_template_language: string
+          otp_template_name: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          otp_channel_id?: string | null
+          otp_login_enabled?: boolean
+          otp_template_language?: string
+          otp_template_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          otp_channel_id?: string | null
+          otp_login_enabled?: boolean
+          otp_template_language?: string
+          otp_template_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "otp_settings_otp_channel_id_fkey"
+            columns: ["otp_channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "otp_settings_otp_channel_id_fkey"
+            columns: ["otp_channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pending_referrals: {
         Row: {
@@ -1896,7 +2909,22 @@ export type Database = {
           pipeline_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_stages_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipelines: {
         Row: {
@@ -1929,7 +2957,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pix_payments: {
         Row: {
@@ -1977,7 +3013,15 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pix_payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1987,6 +3031,7 @@ export type Database = {
           id: string
           is_active: boolean
           organization_id: string | null
+          otp_last_verified_date: string | null
           updated_at: string
           user_id: string
           whatsapp_phone: string | null
@@ -1998,6 +3043,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           organization_id?: string | null
+          otp_last_verified_date?: string | null
           updated_at?: string
           user_id: string
           whatsapp_phone?: string | null
@@ -2009,11 +3055,20 @@ export type Database = {
           id?: string
           is_active?: boolean
           organization_id?: string | null
+          otp_last_verified_date?: string | null
           updated_at?: string
           user_id?: string
           whatsapp_phone?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       quick_responses: {
         Row: {
@@ -2055,22 +3110,30 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "quick_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       redirect_link_clicks: {
         Row: {
           clicked_at: string
-          id: string
+          id: number
           link_id: string
         }
         Insert: {
           clicked_at?: string
-          id?: string
+          id?: number
           link_id: string
         }
         Update: {
           clicked_at?: string
-          id?: string
+          id?: number
           link_id?: string
         }
         Relationships: [
@@ -2086,6 +3149,7 @@ export type Database = {
       redirect_links: {
         Row: {
           click_count: number | null
+          click_count_base: number
           created_at: string | null
           created_by: string
           destinations: Json
@@ -2097,10 +3161,10 @@ export type Database = {
           original_url: string | null
           slug: string
           updated_at: string | null
-          webchat_link_id: string | null
         }
         Insert: {
           click_count?: number | null
+          click_count_base?: number
           created_at?: string | null
           created_by: string
           destinations?: Json
@@ -2112,10 +3176,10 @@ export type Database = {
           original_url?: string | null
           slug: string
           updated_at?: string | null
-          webchat_link_id?: string | null
         }
         Update: {
           click_count?: number | null
+          click_count_base?: number
           created_at?: string | null
           created_by?: string
           destinations?: Json
@@ -2127,14 +3191,13 @@ export type Database = {
           original_url?: string | null
           slug?: string
           updated_at?: string | null
-          webchat_link_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "redirect_links_webchat_link_id_fkey"
-            columns: ["webchat_link_id"]
+            foreignKeyName: "redirect_links_organization_id_fkey"
+            columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "webchat_links"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2158,7 +3221,15 @@ export type Database = {
           id?: string
           organization_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "referral_codes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referrals: {
         Row: {
@@ -2200,7 +3271,22 @@ export type Database = {
           subscription_value?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_organization_id_fkey"
+            columns: ["referred_organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_organization_id_fkey"
+            columns: ["referrer_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_messages: {
         Row: {
@@ -2254,7 +3340,43 @@ export type Database = {
           updated_at?: string
           variable_values?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sectors: {
         Row: {
@@ -2284,7 +3406,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sectors_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       store_products: {
         Row: {
@@ -2353,7 +3483,22 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "store_purchases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_purchases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "store_products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscription_pricing: {
         Row: {
@@ -2422,7 +3567,36 @@ export type Database = {
           template_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ura_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_config_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_config_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ura_webhook_logs: {
         Row: {
@@ -2455,7 +3629,22 @@ export type Database = {
           metadata?: Json | null
           template_sent?: boolean | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ura_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ura_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -2537,67 +3726,6 @@ export type Database = {
         }
         Relationships: []
       }
-      webchat_links: {
-        Row: {
-          channel_id: string | null
-          created_at: string
-          greeting_message: string | null
-          id: string
-          is_active: boolean
-          name: string
-          organization_id: string
-          prefill_text: string | null
-          theme_color: string
-          updated_at: string
-        }
-        Insert: {
-          channel_id?: string | null
-          created_at?: string
-          greeting_message?: string | null
-          id?: string
-          is_active?: boolean
-          name: string
-          organization_id: string
-          prefill_text?: string | null
-          theme_color?: string
-          updated_at?: string
-        }
-        Update: {
-          channel_id?: string | null
-          created_at?: string
-          greeting_message?: string | null
-          id?: string
-          is_active?: boolean
-          name?: string
-          organization_id?: string
-          prefill_text?: string | null
-          theme_color?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "webchat_links_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "webchat_links_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "webchat_links_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       webhooks: {
         Row: {
           created_at: string
@@ -2635,7 +3763,15 @@ export type Database = {
           updated_at?: string
           url?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       welcome_message_config: {
         Row: {
@@ -2662,7 +3798,15 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "welcome_message_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       welcome_message_sent: {
         Row: {
@@ -2686,37 +3830,29 @@ export type Database = {
           organization_id?: string | null
           sent_at?: string
         }
-        Relationships: []
-      }
-      whatsapp_contacts: {
-        Row: {
-          channel_id: string
-          created_at: string | null
-          id: string
-          last_message_at: string | null
-          organization_id: string | null
-          sender_name: string | null
-          sender_phone: string | null
-        }
-        Insert: {
-          channel_id: string
-          created_at?: string | null
-          id?: string
-          last_message_at?: string | null
-          organization_id?: string | null
-          sender_name?: string | null
-          sender_phone?: string | null
-        }
-        Update: {
-          channel_id?: string
-          created_at?: string | null
-          id?: string
-          last_message_at?: string | null
-          organization_id?: string | null
-          sender_name?: string | null
-          sender_phone?: string | null
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "welcome_message_sent_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "welcome_message_sent_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "welcome_message_sent_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_messages: {
         Row: {
@@ -2773,7 +3909,29 @@ export type Database = {
           status?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -2829,6 +3987,7 @@ export type Database = {
       }
     }
     Functions: {
+      _resolve_auth_role: { Args: never; Returns: string }
       admin_add_product_to_organization: {
         Args: {
           _is_free?: boolean
@@ -2838,12 +3997,38 @@ export type Database = {
         }
         Returns: boolean
       }
-      archive_conversation_ext: {
-        Args: { p_channel_id: string; p_phone: string }
+      admin_create_user_role: {
+        Args: {
+          _role?: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      apply_lead_cleanup_batch: {
+        Args: { _batch: Json; _run_id: string }
+        Returns: {
+          deleted_leads: number
+          inserted_logs: number
+        }[]
+      }
+      archive_conversation: {
+        Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
       }
-      assert_org_access: { Args: { p_org: string }; Returns: undefined }
+      backfill_conversation_stats: {
+        Args: { batch_size?: number }
+        Returns: number
+      }
+      backfill_missing_conversation_stats: { Args: never; Returns: number }
+      calculate_subscription_total: {
+        Args: { _organization_id: string }
+        Returns: number
+      }
       cancel_addon: { Args: { _addon_id: string }; Returns: boolean }
+      channel_belongs_to_user_org: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
       check_organization_balance: {
         Args: { _amount: number; _organization_id: string }
         Returns: boolean
@@ -2864,6 +4049,42 @@ export type Database = {
           retry_count: number
           status: string
         }[]
+      }
+      cleanup_archived_assignments_batch: {
+        Args: { batch_size?: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_local_messages_batch: {
+        Args: { batch_size?: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_assignments: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_campaign_recipients: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_chat_messages: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_conversation_metrics: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_old_follow_up_logs: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_stale_conversation_memory: {
+        Args: { batch_size: number; cutoff_date: string }
+        Returns: number
+      }
+      cleanup_unresponsive_campaign_leads: {
+        Args: { batch_size?: number; days_threshold?: number }
+        Returns: Json
       }
       credit_organization_balance: {
         Args: {
@@ -2886,27 +4107,37 @@ export type Database = {
         }
         Returns: boolean
       }
+      debit_organization_balance_allow_negative: {
+        Args: {
+          _amount: number
+          _description?: string
+          _organization_id: string
+          _reference_id?: string
+          _reference_type?: string
+        }
+        Returns: boolean
+      }
       delete_channel_cascade: {
         Args: { _channel_id: string }
         Returns: boolean
       }
+      delete_old_whatsapp_status_logs: { Args: never; Returns: undefined }
       delete_organization_cascade: {
         Args: { _organization_id: string }
         Returns: boolean
       }
-      effective_org_id: { Args: never; Returns: string }
       force_sync_all_campaign_counts: { Args: never; Returns: undefined }
       generate_referral_code: { Args: never; Returns: string }
-      get_attendant_conversations_ext: {
+      get_attendant_conversations: {
         Args: {
           p_channel_ids: string[]
           p_limit?: number
           p_organization_id: string
-          p_sector_ids?: string[]
           p_user_id: string
         }
         Returns: {
           assigned_to: string
+          assigned_to_name: string
           assignment_id: string
           assignment_updated_at: string
           bot_paused_until: string
@@ -2918,10 +4149,19 @@ export type Database = {
           last_message_at: string
           last_message_content: string
           lead_id: string
+          lead_name: string
+          lead_tags: string[]
           sector_id: string
           sender_name: string
           status: string
           unread_count: number
+        }[]
+      }
+      get_available_buttons: {
+        Args: { p_days_back?: number; p_organization_id: string }
+        Returns: {
+          button_label: string
+          click_count: number
         }[]
       }
       get_campaign_counts: {
@@ -2965,51 +4205,41 @@ export type Database = {
           waba_id: string
         }[]
       }
-      get_conversations_summary_ext:
-        | {
-            Args: {
-              p_channel_ids: string[]
-              p_limit?: number
-              p_offset?: number
-            }
-            Returns: {
-              assigned_to: string
-              assignment_id: string
-              assignment_updated_at: string
-              bot_paused_until: string
-              campaign_chatbot_id: string
-              channel_id: string
-              conversation_phone: string
-              is_bot_handling: boolean
-              last_inbound_at: string
-              last_message_at: string
-              last_message_content: string
-              lead_id: string
-              sector_id: string
-              sender_name: string
-              status: string
-              unread_count: number
-            }[]
-          }
-        | {
-            Args: { p_channel_ids: string[]; p_organization_id: string }
-            Returns: {
-              assigned_to: string
-              assignment_id: string
-              assignment_updated_at: string
-              channel_id: string
-              conversation_phone: string
-              last_inbound_at: string
-              last_message_at: string
-              last_message_content: string
-              lead_id: string
-              sector_id: string
-              sender_name: string
-              status: string
-              unread_count: number
-            }[]
-          }
-      get_conversations_summary_paginated_ext: {
+      get_conversation_heatmap: {
+        Args: {
+          p_button_filter?: string
+          p_days_back?: number
+          p_organization_id: string
+        }
+        Returns: {
+          button_label: string
+          msg_count: number
+          msg_date: string
+          msg_hour: number
+        }[]
+      }
+      get_conversations_summary: {
+        Args: { p_channel_ids: string[]; p_organization_id: string }
+        Returns: {
+          assigned_to: string
+          assigned_to_name: string
+          assignment_id: string
+          channel_id: string
+          conversation_phone: string
+          last_inbound_at: string
+          last_message: string
+          last_message_at: string
+          lead_id: string
+          lead_name: string
+          lead_tags: string[]
+          sector_id: string
+          sender_name: string
+          status: string
+          unread_count: number
+          updated_at: string
+        }[]
+      }
+      get_conversations_summary_paginated: {
         Args: {
           p_channel_ids: string[]
           p_limit?: number
@@ -3018,6 +4248,7 @@ export type Database = {
         }
         Returns: {
           assigned_to: string
+          assigned_to_name: string
           assignment_id: string
           assignment_updated_at: string
           bot_paused_until: string
@@ -3029,14 +4260,22 @@ export type Database = {
           last_message_at: string
           last_message_content: string
           lead_id: string
+          lead_name: string
+          lead_tags: string[]
           sector_id: string
           sender_name: string
           status: string
           unread_count: number
         }[]
       }
-      get_jwt_organization_id: { Args: never; Returns: string }
       get_or_create_referral_code: { Args: { org_id: string }; Returns: string }
+      get_redirect_link_public: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+        }[]
+      }
       get_redirect_link_stats: {
         Args: { _link_ids: string[] }
         Returns: {
@@ -3046,10 +4285,11 @@ export type Database = {
           link_id: string
         }[]
       }
-      get_unread_conversations_full_ext: {
+      get_unread_conversations_full: {
         Args: { p_channel_ids: string[]; p_organization_id: string }
         Returns: {
           assigned_to: string
+          assigned_to_name: string
           assignment_id: string
           assignment_updated_at: string
           bot_paused_until: string
@@ -3061,6 +4301,8 @@ export type Database = {
           last_message_at: string
           last_message_content: string
           lead_id: string
+          lead_name: string
+          lead_tags: string[]
           sector_id: string
           sender_name: string
           status: string
@@ -3075,21 +4317,54 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_redirect_click: {
+        Args: { link_id: string }
+        Returns: undefined
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
       is_phone_blacklisted: {
         Args: { _organization_id: string; _phone: string }
         Returns: boolean
       }
+      is_sector_in_user_organization: {
+        Args: { _sector_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       log_redirect_click: { Args: { link_id: string }; Returns: undefined }
-      purchase_product: {
-        Args: {
-          _organization_id: string
-          _product_id: string
-          _quantity?: number
-        }
+      maintenance_purge_operational_garbage: {
+        Args: never
+        Returns: {
+          http_response_deleted: number
+          job_run_details_deleted: number
+        }[]
+      }
+      otp_login_enabled: { Args: never; Returns: boolean }
+      process_referral_commission: {
+        Args: { referred_org_id: string; subscription_amount: number }
         Returns: boolean
+      }
+      purchase_product:
+        | {
+            Args: { _organization_id: string; _product_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              _organization_id: string
+              _product_id: string
+              _quantity?: number
+            }
+            Returns: boolean
+          }
+      refresh_campaign_metric_snapshot: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
+      }
+      regenerate_channel_api_token: {
+        Args: { _channel_id: string }
+        Returns: string
       }
       register_user_session: {
         Args: {
@@ -3099,12 +4374,17 @@ export type Database = {
         }
         Returns: boolean
       }
-      reset_conversation_unread_ext:
-        | { Args: { p_channel_id: string }; Returns: undefined }
-        | {
-            Args: { p_channel_id: string; p_phone: string }
-            Returns: undefined
-          }
+      reset_conversation_unread: {
+        Args: { p_channel_id: string; p_phone_variants: string[] }
+        Returns: undefined
+      }
+      resolve_redirect_link: {
+        Args: { _slug: string }
+        Returns: {
+          destinations: Json
+          id: string
+        }[]
+      }
       resolve_redirect_link_v2: {
         Args: { _slug: string }
         Returns: {
@@ -3112,18 +4392,23 @@ export type Database = {
           id: string
           link_type: string
           original_url: string
-          webchat_link_id: string
         }[]
       }
-      restore_conversation_ext: {
-        Args: { p_channel_id: string; p_phone: string }
+      restore_conversation: {
+        Args: { p_channel_id: string; p_conversation_phone: string }
         Returns: undefined
       }
-      schedule_campaign_recipients: {
-        Args: { p_campaign_id: string }
-        Returns: number
+      run_rls_visibility_check: {
+        Args: { _user_id: string }
+        Returns: {
+          check_name: string
+          details: string
+          expected: string
+          passed: boolean
+          result: string
+        }[]
       }
-      search_conversations_global_ext: {
+      search_conversations_global: {
         Args: {
           p_channel_ids: string[]
           p_limit?: number
@@ -3132,6 +4417,7 @@ export type Database = {
         }
         Returns: {
           assigned_to: string
+          assigned_to_name: string
           assignment_id: string
           assignment_updated_at: string
           bot_paused_until: string
@@ -3143,6 +4429,8 @@ export type Database = {
           last_message_at: string
           last_message_content: string
           lead_id: string
+          lead_name: string
+          lead_tags: string[]
           sector_id: string
           sender_name: string
           status: string
@@ -3165,8 +4453,25 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_profile_organization: {
+        Args: { _organization_id: string; _user_id: string }
+        Returns: undefined
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
+      sync_all_failed_recipients: { Args: never; Returns: number }
+      sync_failed_recipients_from_messages: {
+        Args: never
+        Returns: {
+          campaign_id: string
+          campaign_name: string
+          updated_count: number
+        }[]
+      }
+      sync_redirect_click_counts: { Args: never; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
       update_session_activity: { Args: never; Returns: boolean }
-      upsert_conversation_stats_external: {
+      upsert_conversation_stats_manual: {
         Args: {
           _channel_id: string
           _content: string
@@ -3174,10 +4479,21 @@ export type Database = {
           _created_at?: string
           _direction: string
           _is_read: boolean
-          _organization_id: string
           _sender_name: string
         }
-        Returns: string
+        Returns: undefined
+      }
+      user_can_access_campaign: {
+        Args: { campaign_sector_id: string }
+        Returns: boolean
+      }
+      user_can_access_conversation: {
+        Args: { conversation_sector_id: string }
+        Returns: boolean
+      }
+      user_in_same_organization: {
+        Args: { _target_user_id: string }
+        Returns: boolean
       }
       validate_user_session: {
         Args: { _session_token: string }
