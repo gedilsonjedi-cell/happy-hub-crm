@@ -104,7 +104,7 @@ const ResetPassword = () => {
   // Show loading while checking session
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <Loader2 className="w-8 h-8 text-primary mx-auto animate-spin" />
           <p className="text-muted-foreground mt-4">Verificando link...</p>
@@ -116,7 +116,7 @@ const ResetPassword = () => {
   // Show error if session is not valid
   if (!isValidSession) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
             <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -137,7 +137,7 @@ const ResetPassword = () => {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
@@ -152,7 +152,7 @@ const ResetPassword = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="dark min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
