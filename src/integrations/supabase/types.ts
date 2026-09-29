@@ -4584,14 +4584,6 @@ export type Database = {
             }
             Returns: boolean
           }
-      purchase_product: {
-        Args: {
-          _organization_id: string
-          _product_id: string
-          _quantity?: number
-        }
-        Returns: boolean
-      }
       refresh_campaign_metric_snapshot: {
         Args: { p_campaign_id: string }
         Returns: undefined
