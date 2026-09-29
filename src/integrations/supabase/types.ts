@@ -2547,6 +2547,7 @@ export type Database = {
           name: string
           organization_id: string
           prefill_text: string | null
+          slug: string
           theme_color: string
           updated_at: string
         }
@@ -2559,6 +2560,7 @@ export type Database = {
           name: string
           organization_id: string
           prefill_text?: string | null
+          slug?: string
           theme_color?: string
           updated_at?: string
         }
@@ -2571,6 +2573,7 @@ export type Database = {
           name?: string
           organization_id?: string
           prefill_text?: string | null
+          slug?: string
           theme_color?: string
           updated_at?: string
         }
