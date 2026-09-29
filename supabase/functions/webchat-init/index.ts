@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true }).limit(200);
 
     return json({
-      link: { name: link.name, theme_color: link.theme_color },
+      link: { name: link.name, theme_color: link.theme_color, prefill_text: link.prefill_text ?? null },
       messages: (history || []).map(publicMessage),
     });
   } catch (e) {
