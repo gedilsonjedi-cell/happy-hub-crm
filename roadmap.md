@@ -11,3 +11,12 @@
 - [x] Reformular a Dashboard com os dados atuais, gráficos reais, filtro de período, estados vazios e barra lateral modernizada; validar desktop, celular e typecheck.
 - [x] Corrigir o carregamento infinito da Dashboard para super admin sem cliente, isolar falhas por módulo, adicionar timeout às consultas e corrigir a ordenação das etapas do Pipeline.
 - [x] Eliminar loading infinito com cliente selecionado e unificar tema/fundo em navegação e recarga.
+
+## Web Chat (texto pré-definido + avisos de notificação)
+
+- [x] Campo "Texto Pré-definido do Cliente" no link e caixa do chat já preenchida ao abrir.
+- [x] Link curto e limpo `optimuscrm.com.br/c/<código>`: o texto pré-definido sai da URL e passa a ser lido do próprio link.
+- [ ] Card no chat pedindo para ativar avisos (botão "Ativar Avisos" + permissão do navegador).
+- [ ] Guardar a inscrição de notificação do visitante e enviar pelo canal `web_chat`.
+- [ ] Service Worker na raiz pública com `push` e `notificationclick`.
+- [ ] Chaves de notificação (VAPID) geradas e guardadas em segredo no servidor — aguardando confirmação.
