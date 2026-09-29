@@ -171,10 +171,21 @@ export default function WebChatPublic() {
   };
 
   const enablePush = async () => {
+    // Antes de pedir: verifica o status atual. Com 'denied' o navegador não exibe o prompt nativo,
+    // então mostramos a instrução de recuperação em vez de tentar pedir permissão.
+    if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      setPushState("blocked");
+      return;
+    }
     setPushState("working");
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { setPushState("idle"); return; }
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          setPushState(perm === "denied" ? "blocked" : "idle");
+          return;
+        }
+      }
       const reg = await navigator.serviceWorker.register("/webchat-sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
       const { data: k, error: kErr } = await supabase.functions.invoke("webchat-push-subscribe", { body: { action: "key", linkId, sessionId } });
