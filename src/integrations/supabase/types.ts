@@ -2418,6 +2418,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          avatar_path: string | null
+          avatar_updated_at: string | null
+          avatar_updated_by: string | null
           bsuid: string | null
           city: string | null
           created_at: string
@@ -2435,8 +2438,12 @@ export type Database = {
           tags: string[] | null
           updated_at: string
           user_id: string
+          webchat_id: string | null
         }
         Insert: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -2454,8 +2461,12 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id: string
+          webchat_id?: string | null
         }
         Update: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -2473,6 +2484,7 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id?: string
+          webchat_id?: string | null
         }
         Relationships: [
           {
@@ -3716,6 +3728,63 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      webchat_links: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          greeting_message: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          prefill_text: string | null
+          slug: string
+          theme_color: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webchat_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhooks: {
         Row: {
