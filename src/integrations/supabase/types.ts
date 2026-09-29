@@ -2601,6 +2601,36 @@ export type Database = {
           },
         ]
       }
+      webchat_push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint: string
+          link_id: string | null
+          organization_id: string | null
+          session_id: string
+          subscription: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          link_id?: string | null
+          organization_id?: string | null
+          session_id: string
+          subscription: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          link_id?: string | null
+          organization_id?: string | null
+          session_id?: string
+          subscription?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       webhooks: {
         Row: {
           created_at: string
@@ -2637,6 +2667,27 @@ export type Database = {
           organization_id?: string | null
           updated_at?: string
           url?: string
+        }
+        Relationships: []
+      }
+      webpush_config: {
+        Row: {
+          created_at: string
+          id: number
+          private_key: string
+          public_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          private_key: string
+          public_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          private_key?: string
+          public_key?: string
         }
         Relationships: []
       }
