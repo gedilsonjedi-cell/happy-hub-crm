@@ -32,3 +32,4 @@
 - [x] Criar testes do componente para aparência, controles, gravação e responsividade.
 - [x] Validar desktop/celular com screenshots, suíte, typecheck e build; não publicar o site.
 - [x] Corrigir o botão de visualização para abrir a versão nova dentro do próprio preview, sem nova aba ou domínio interno bloqueado; manter o link copiado no domínio público.
+- [x] Permitir adicionar, trocar e remover a foto de perfil de cada link e exibi-la com URL temporária no Web Chat público.

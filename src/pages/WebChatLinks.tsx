@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContactAvatar } from "@/components/contacts/ContactAvatar";
+import { CONTACT_AVATAR_BUCKET, resizeToWebp, validateAvatarFile } from "@/lib/contactAvatars";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { useWebChatAnalytics, useWebChatOnline, type WebChatLinkRow, type RadarClick } from "@/hooks/useWebChatAnalytics";
 import { toast } from "sonner";
-import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Pencil, MousePointerClick, CheckCircle2, LogOut, Radio, RefreshCw } from "lucide-react";
+import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Pencil, MousePointerClick, CheckCircle2, LogOut, Radio, RefreshCw, Camera, Loader2 } from "lucide-react";
 
 const pct = (n: number) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const publicUrlFor = (l: WebChatLinkRow) => `https://optimuscrm.com.br/c/${l.slug}`;
@@ -51,6 +52,11 @@ export default function WebChatLinks() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<WebChatLinkRow | null>(null);
   const [editName, setEditName] = useState("");
+  const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
+  const [editAvatarPreview, setEditAvatarPreview] = useState<string | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const db = supabase as any;
 
   const load = useCallback(async () => {
@@ -93,11 +99,61 @@ export default function WebChatLinks() {
     load();
   };
 
-  const saveName = async () => {
-    if (!editing || !editName.trim()) return;
-    const { error } = await db.from("webchat_links").update({ name: editName.trim() }).eq("id", editing.id);
-    if (error) { toast.error("Erro ao renomear"); return; }
-    toast.success("Nome atualizado"); setEditing(null); load();
+  const beginEdit = async (link: WebChatLinkRow) => {
+    setEditing(link);
+    setEditName(link.name);
+    setEditAvatarFile(null);
+    setRemoveAvatar(false);
+    setEditAvatarPreview(null);
+    if (link.avatar_path) {
+      const { data } = await supabase.storage.from(CONTACT_AVATAR_BUCKET).createSignedUrl(link.avatar_path, 3600);
+      setEditAvatarPreview(data?.signedUrl ?? null);
+    }
+  };
+
+  const chooseAvatar = (file: File | undefined) => {
+    if (!file) return;
+    const validationError = validateAvatarFile(file);
+    if (validationError) { toast.error(validationError); return; }
+    if (editAvatarPreview?.startsWith("blob:")) URL.revokeObjectURL(editAvatarPreview);
+    setEditAvatarFile(file);
+    setEditAvatarPreview(URL.createObjectURL(file));
+    setRemoveAvatar(false);
+  };
+
+  const clearAvatar = () => {
+    if (editAvatarPreview?.startsWith("blob:")) URL.revokeObjectURL(editAvatarPreview);
+    setEditAvatarFile(null);
+    setEditAvatarPreview(null);
+    setRemoveAvatar(true);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editName.trim() || !effectiveOrganizationId) return;
+    setSavingEdit(true);
+    let nextPath = removeAvatar ? null : editing.avatar_path ?? null;
+    let uploadedPath: string | null = null;
+    try {
+      if (editAvatarFile) {
+        const blob = await resizeToWebp(editAvatarFile, 256, 0.85);
+        uploadedPath = `${effectiveOrganizationId}/webchat/${editing.id}/${Date.now()}.webp`;
+        const { error: uploadError } = await supabase.storage.from(CONTACT_AVATAR_BUCKET).upload(uploadedPath, blob, { contentType: "image/webp", upsert: false });
+        if (uploadError) throw uploadError;
+        nextPath = uploadedPath;
+      }
+      const { error } = await db.from("webchat_links").update({ name: editName.trim(), avatar_path: nextPath }).eq("id", editing.id);
+      if (error) throw error;
+      if (editing.avatar_path && editing.avatar_path !== nextPath) await supabase.storage.from(CONTACT_AVATAR_BUCKET).remove([editing.avatar_path]);
+      toast.success("Link atualizado");
+      setEditing(null);
+      void load();
+    } catch (error) {
+      if (uploadedPath) await supabase.storage.from(CONTACT_AVATAR_BUCKET).remove([uploadedPath]);
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar o link");
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const openConversation = (c: RadarClick) => {
@@ -166,7 +222,7 @@ export default function WebChatLinks() {
                               <div className="flex justify-end gap-1">
                                 <Button variant="ghost" size="icon" title="Copiar link público" onClick={() => { navigator.clipboard.writeText(publicUrlFor(l)); toast.success("Link público copiado"); }}><Copy className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" title="Visualizar no preview" onClick={() => navigate(`/c/${l.slug}`)}><ExternalLink className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" title="Editar nome" onClick={() => { setEditing(l); setEditName(l.name); }}><Pencil className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" title="Editar nome e foto" onClick={() => void beginEdit(l)}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" title="Excluir" onClick={() => remove(l)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                               </div>
                             </TableCell>
@@ -242,13 +298,27 @@ export default function WebChatLinks() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o && !savingEdit) setEditing(null); }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Editar nome do link</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Editar perfil do Web Chat</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <Input value={editName} onChange={(e) => setEditName(e.target.value)} maxLength={80} />
+            <div className="space-y-2">
+              <Label>Foto de perfil</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+                  {editAvatarPreview ? <img src={editAvatarPreview} alt="Prévia da foto" className="h-full w-full object-cover" /> : editName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => chooseAvatar(event.target.files?.[0])} />
+                  <Button type="button" variant="outline" onClick={() => avatarInputRef.current?.click()}><Camera className="mr-2 h-4 w-4" />{editAvatarPreview ? "Trocar foto" : "Adicionar foto"}</Button>
+                  {editAvatarPreview && <Button type="button" variant="ghost" onClick={clearAvatar}><Trash2 className="mr-2 h-4 w-4" />Remover</Button>}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">JPG, PNG ou WebP, até 5 MB. A imagem será recortada em formato quadrado.</p>
+            </div>
+            <div className="space-y-2"><Label>Nome</Label><Input value={editName} onChange={(e) => setEditName(e.target.value)} maxLength={80} /></div>
             <p className="text-xs text-muted-foreground">O endereço /c/{editing?.slug} continua o mesmo.</p>
-            <Button className="w-full" disabled={!editName.trim()} onClick={saveName}>Salvar</Button>
+            <Button className="w-full" disabled={!editName.trim() || savingEdit} onClick={() => void saveEdit()}>{savingEdit ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : "Salvar"}</Button>
           </div>
         </DialogContent>
       </Dialog>

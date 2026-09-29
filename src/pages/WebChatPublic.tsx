@@ -49,7 +49,7 @@ const fmtDuration = (seconds: number) => `${Math.floor(seconds / 60)}:${String(s
 export default function WebChatPublic() {
   const { linkId } = useParams<{ linkId: string }>();
   const [sessionId] = useState(getSessionId);
-  const [link, setLink] = useState<{ name: string; theme_color: string; prefill_text?: string | null } | null>(null);
+  const [link, setLink] = useState<{ name: string; theme_color: string; prefill_text?: string | null; avatar_url?: string | null } | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "offline">("loading");
   const [text, setText] = useState(() => new URLSearchParams(window.location.search).get("text")?.slice(0, 4000) || "");
@@ -271,8 +271,10 @@ export default function WebChatPublic() {
     <div className="webchat-viewport fixed inset-0 flex w-full justify-center overflow-hidden" style={vh ? { height: `${vh}px` } : undefined}>
       <section className="webchat-shell flex h-full w-full max-w-[100rem] flex-col overflow-hidden" aria-label="Web Chat público">
         <header className="webchat-header z-30 flex w-full flex-none items-center gap-3 px-4 text-webchat-text shadow-sm">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-webchat-avatar font-semibold text-webchat-text" aria-hidden="true">
-            {link?.name?.charAt(0).toUpperCase()}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-webchat-avatar font-semibold text-webchat-text" aria-hidden="true">
+            {link?.avatar_url
+              ? <img src={link.avatar_url} alt="" data-testid="webchat-profile-photo" className="h-full w-full object-cover" />
+              : link?.name?.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold leading-tight">{link?.name}</p>

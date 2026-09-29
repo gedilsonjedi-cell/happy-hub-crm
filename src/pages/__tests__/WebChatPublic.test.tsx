@@ -122,4 +122,13 @@ describe("Web Chat público", () => {
     expect(shell).toHaveClass("w-full", "max-w-[100rem]");
     expect(screen.getByTestId("webchat-history")).toHaveClass("px-3", "sm:px-8", "lg:px-[8%]");
   });
+
+  it("mostra a foto configurada no cabeçalho", async () => {
+    invoke.mockImplementation((name: string) => {
+      if (name === "webchat-init") return Promise.resolve({ data: { link: { name: "Equipe Optimus", theme_color: "#00a884", avatar_url: "https://example.com/equipe.webp" }, messages: [outbound, inbound] }, error: null });
+      return Promise.resolve({ data: { message: inbound }, error: null });
+    });
+    render(<WebChatPublic />);
+    expect(await screen.findByTestId("webchat-profile-photo")).toHaveAttribute("src", "https://example.com/equipe.webp");
+  });
 });

@@ -4,7 +4,7 @@ import { getExternalClient } from "@/lib/externalSupabaseClient";
 
 export interface WebChatLinkRow {
   id: string; slug: string; name: string; greeting_message: string | null; theme_color: string;
-  is_active: boolean; channel_id: string | null; prefill_text?: string | null;
+  is_active: boolean; channel_id: string | null; prefill_text?: string | null; avatar_path?: string | null;
 }
 
 export interface RadarClick {
