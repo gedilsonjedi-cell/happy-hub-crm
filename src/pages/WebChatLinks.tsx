@@ -14,7 +14,7 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Users } from "lucide-react";
 
-interface WebChatLink { id: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; }
+interface WebChatLink { id: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; prefill_text?: string | null; }
 
 interface WebChatVisitor {
   id: string;
@@ -43,6 +43,7 @@ export default function WebChatLinks() {
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("Olá! Como podemos ajudar?");
   const [color, setColor] = useState("#005C4B");
+  const [prefill, setPrefill] = useState("");
   const [saving, setSaving] = useState(false);
   const db = supabase as any;
 
@@ -96,7 +97,7 @@ export default function WebChatLinks() {
     if (!name.trim() || !effectiveOrganizationId || !user) return;
     setSaving(true);
     const { data: link, error } = await db.from("webchat_links").insert({
-      organization_id: effectiveOrganizationId, name: name.trim(), greeting_message: greeting.trim() || null, theme_color: color,
+      organization_id: effectiveOrganizationId, name: name.trim(), greeting_message: greeting.trim() || null, theme_color: color, prefill_text: prefill.trim() || null,
     }).select("id").single();
     if (!error && link) {
       const { data: ch } = await db.from("channels").insert({
@@ -108,7 +109,7 @@ export default function WebChatLinks() {
     setSaving(false);
     if (error) { toast.error("Erro ao criar link: " + error.message); return; }
     toast.success("Link de chat criado");
-    setOpen(false); setName("");
+    setOpen(false); setName(""); setPrefill("");
     load();
   };
 
@@ -123,7 +124,11 @@ export default function WebChatLinks() {
     load();
   };
 
-  const urlFor = (id: string) => `${window.location.origin}/chat/${id}`;
+  const urlFor = (l: WebChatLink) => {
+    const base = `${window.location.origin}/chat/${l.id}`;
+    const t = l.prefill_text?.trim();
+    return t ? `${base}?text=${encodeURIComponent(t)}` : base;
+  };
 
   return (
     <MainLayout>
@@ -145,11 +150,11 @@ export default function WebChatLinks() {
                 <div className="h-10 w-10 rounded-full shrink-0" style={{ backgroundColor: l.theme_color }} />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{l.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{urlFor(l.id)}</p>
+                  <p className="text-xs text-muted-foreground truncate">{urlFor(l)}</p>
                 </div>
                 <Switch checked={l.is_active} onCheckedChange={() => toggle(l)} />
-                <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(urlFor(l.id)); toast.success("Link copiado"); }}><Copy className="h-4 w-4" /></Button>
-                <Button variant="outline" size="icon" onClick={() => window.open(urlFor(l.id), "_blank")}><ExternalLink className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(urlFor(l)); toast.success("Link copiado"); }}><Copy className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" onClick={() => window.open(urlFor(l), "_blank")}><ExternalLink className="h-4 w-4" /></Button>
                 <Button variant="outline" size="icon" onClick={() => remove(l)}><Trash2 className="h-4 w-4" /></Button>
               </CardContent>
             </Card>
@@ -201,6 +206,7 @@ export default function WebChatLinks() {
           <div className="space-y-4">
             <div><Label>Nome (aparece no topo do chat)</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Atendimento KS" /></div>
             <div><Label>Mensagem de boas-vindas</Label><Textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={3} /></div>
+            <div><Label>Texto Pré-definido do Cliente</Label><Textarea value={prefill} onChange={(e) => setPrefill(e.target.value)} rows={2} maxLength={1000} placeholder="Ex.: Olá, quero saber mais sobre o Cartão Consignado" /><p className="mt-1 text-xs text-muted-foreground">Já vem escrito na caixa de mensagem do cliente; ele só precisa tocar em enviar.</p></div>
             <div className="flex items-center gap-3"><Label>Cor</Label><input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-14 rounded border border-input bg-transparent" /></div>
             <Button className="w-full" disabled={!name.trim() || saving} onClick={create}>{saving ? "Criando..." : "Criar link"}</Button>
           </div>
