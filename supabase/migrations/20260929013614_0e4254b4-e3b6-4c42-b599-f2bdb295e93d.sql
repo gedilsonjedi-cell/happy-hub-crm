@@ -1,0 +1,2 @@
+CREATE POLICY "webpush_config_no_client_access" ON public.webpush_config AS RESTRICTIVE FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
+CREATE POLICY "webchat_push_subs_no_client_access" ON public.webchat_push_subscriptions AS RESTRICTIVE FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
