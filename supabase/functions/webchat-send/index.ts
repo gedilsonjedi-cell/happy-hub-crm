@@ -1,11 +1,11 @@
-import { broadcast, corsHeaders, insertMessage, isUuid, json, loadActiveLink, localDb, msgDb, publicMessage, threadPhone } from "../_shared/webchat.ts";
+import { broadcast, corsHeaders, insertMessage, isLinkKey, isUuid, json, loadActiveLink, localDb, msgDb, publicMessage, threadPhone } from "../_shared/webchat.ts";
 import { pickDistribution } from "../_shared/assignment.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const { linkId, sessionId, content } = await req.json().catch(() => ({}));
-    if (!isUuid(linkId) || !isUuid(sessionId)) return json({ error: "Parâmetros inválidos" }, 400);
+    if (!isLinkKey(linkId) || !isUuid(sessionId)) return json({ error: "Parâmetros inválidos" }, 400);
     const text = typeof content === "string" ? content.trim() : "";
     if (!text || text.length > 4000) return json({ error: "Mensagem inválida" }, 400);
 
