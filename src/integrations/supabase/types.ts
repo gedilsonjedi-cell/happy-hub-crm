@@ -2418,6 +2418,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          avatar_path: string | null
+          avatar_updated_at: string | null
+          avatar_updated_by: string | null
           bsuid: string | null
           city: string | null
           created_at: string
@@ -2437,6 +2440,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -2456,6 +2462,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
+          avatar_updated_by?: string | null
           bsuid?: string | null
           city?: string | null
           created_at?: string
@@ -3920,6 +3929,53 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webchat_links: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          greeting_message: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          prefill_text: string | null
+          slug: string
+          theme_color: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color?: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
             referencedColumns: ["id"]
           },
         ]
