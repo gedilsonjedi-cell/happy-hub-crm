@@ -26,8 +26,8 @@
 
 ## Web Chat público estilo WhatsApp
 
-- [ ] Redesenhar a página pública em tema escuro com doodles, bolhas, cabeçalho e compositor responsivo.
-- [ ] Manter somente texto, emoji e áudio; implementar gravação, cancelamento e envio com validações.
-- [ ] Estender e implantar somente a Edge Function `webchat-send` para persistir áudio na conversa existente.
-- [ ] Criar testes do componente para aparência, controles, gravação e responsividade.
-- [ ] Validar desktop/celular com screenshots, suíte, typecheck e build; não publicar o site.
+- [x] Redesenhar a página pública em tema escuro com doodles, bolhas, cabeçalho e compositor responsivo.
+- [x] Manter somente texto, emoji e áudio; implementar gravação, cancelamento e envio com validações.
+- [x] Estender e implantar as Edge Functions do Web Chat necessárias para persistir e recarregar áudio na conversa existente.
+- [x] Criar testes do componente para aparência, controles, gravação e responsividade.
+- [x] Validar desktop/celular com screenshots, suíte, typecheck e build; não publicar o site.
