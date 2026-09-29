@@ -31,3 +31,4 @@
 - [x] Estender e implantar as Edge Functions do Web Chat necessárias para persistir e recarregar áudio na conversa existente.
 - [x] Criar testes do componente para aparência, controles, gravação e responsividade.
 - [x] Validar desktop/celular com screenshots, suíte, typecheck e build; não publicar o site.
+- [x] Corrigir o botão de visualização para abrir a versão nova no preview, mantendo o link copiado apontando para o domínio público.

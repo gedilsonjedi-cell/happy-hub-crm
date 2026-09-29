@@ -91,6 +91,7 @@ describe("Web Chat público", () => {
 
     expect(screen.getByRole("button", { name: "Escolher emoji" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Gravar áudio" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Gravar áudio" })).toHaveClass("bg-webchat-green");
     expect(screen.queryByRole("button", { name: /anex/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/imagem|documento|vídeo/i)).not.toBeInTheDocument();
 
