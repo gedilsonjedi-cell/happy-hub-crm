@@ -16,7 +16,9 @@
 
 - [x] Campo "Texto Pré-definido do Cliente" no link e caixa do chat já preenchida ao abrir.
 - [x] Link curto e limpo `optimuscrm.com.br/c/<código>`: o texto pré-definido sai da URL e passa a ser lido do próprio link.
-- [ ] Card no chat pedindo para ativar avisos (botão "Ativar Avisos" + permissão do navegador).
-- [ ] Guardar a inscrição de notificação do visitante e enviar pelo canal `web_chat`.
-- [ ] Service Worker na raiz pública com `push` e `notificationclick`.
-- [ ] Chaves de notificação (VAPID) geradas e guardadas em segredo no servidor — aguardando confirmação.
+- [x] Card no chat pedindo para ativar avisos (botão "🔔 Ativar Avisos" + permissão do navegador).
+- [x] Guardar a inscrição de notificação do visitante e enviar pelo canal `web_chat`.
+- [x] Service Worker na raiz pública com `push` e `notificationclick`.
+- [x] Chaves de notificação (VAPID) geradas e guardadas no banco (tabela `webpush_config`, só service_role).
+- [x] Cenário "notificações bloqueadas" (`Notification.permission === 'denied'`): em vez de tentar pedir permissão, o card mostra a instrução de recuperação (cadeado 🔒 na barra de endereços), sem botão.
+- [ ] Aviso chegando de verdade no celular do visitante (só confere no site publicado).
