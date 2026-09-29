@@ -108,8 +108,14 @@ Deno.serve(async (req) => {
       .eq("channel_id", channelId).eq("sender_phone", phone).neq("message_type", "system_log")
       .order("created_at", { ascending: true }).limit(200);
 
+    let avatarUrl: string | null = null;
+    if (typeof link.avatar_path === "string" && link.avatar_path) {
+      const { data } = await localDb.storage.from("contact-avatars").createSignedUrl(link.avatar_path, 3600);
+      avatarUrl = data?.signedUrl ?? null;
+    }
+
     return json({
-      link: { name: link.name, theme_color: link.theme_color, prefill_text: link.prefill_text ?? null },
+      link: { name: link.name, theme_color: link.theme_color, prefill_text: link.prefill_text ?? null, avatar_url: avatarUrl },
       messages: (history || []).map(publicMessage),
     });
   } catch (e) {
