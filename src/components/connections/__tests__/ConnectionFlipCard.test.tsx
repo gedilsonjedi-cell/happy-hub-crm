@@ -16,13 +16,16 @@ const mount = (extra = {}) => {
 describe("ConnectionFlipCard", () => {
   beforeEach(() => setHover(true));
 
-  it("frente mostra só nome e número", () => {
+  it("frente mostra status, nome, provedor e número", () => {
     const { card } = mount();
     expect(card).toHaveAttribute("data-flipped", "false");
+    expect(card).toHaveClass("h-44");
+    expect(screen.getByText("Conectado")).toBeInTheDocument();
     expect(screen.getByText("Zentum Cobrança 01")).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp Cloud (Oficial)")).toBeInTheDocument();
     expect(screen.getByText("+55 (11) 98765-4321")).toBeInTheDocument();
     const front = card.querySelector('[aria-hidden="false"]')!;
-    expect(front.textContent).not.toMatch(/Cloud|Oficial|whatsapp\.com|Conectado|Meta/i);
+    expect(front.textContent).not.toMatch(/BM|WABA/i);
   });
 
   it("hover e foco viram o card", () => {
