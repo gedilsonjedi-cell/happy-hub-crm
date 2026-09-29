@@ -63,6 +63,10 @@ describe("Web Chat público", () => {
     recorderState.isRecording = false;
     recorderState.recordingDuration = 0;
     localStorage.clear();
+    window.scrollTo = vi.fn();
+    Element.prototype.scrollIntoView = vi.fn();
+    URL.createObjectURL = vi.fn(() => "blob:audio-preview");
+    URL.revokeObjectURL = vi.fn();
     invoke.mockImplementation((name: string) => {
       if (name === "webchat-init") return Promise.resolve({ data: { link: { name: "Equipe Optimus", theme_color: "#00a884" }, messages: [outbound, inbound] }, error: null });
       return Promise.resolve({ data: { message: inbound }, error: null });
