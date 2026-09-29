@@ -124,11 +124,9 @@ export default function WebChatLinks() {
     load();
   };
 
-  const urlFor = (l: WebChatLink) => {
-    const base = `https://optimuscrm.com.br/c/${l.slug}`;
-    const t = l.prefill_text?.trim();
-    return t ? `${base}?text=${encodeURIComponent(t)}` : base;
-  };
+  // Link sempre limpo: o texto pré-definido mora no próprio link (coluna prefill_text)
+  // e é aplicado pelo chat ao abrir — nunca vai na URL.
+  const urlFor = (l: WebChatLink) => `https://optimuscrm.com.br/c/${l.slug}`;
 
   return (
     <MainLayout>

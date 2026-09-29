@@ -28,7 +28,7 @@ export const threadPhone = (sessionId: string) => `webchat:${sessionId}`;
 export async function loadActiveLink(linkKey: string) {
   const { data } = await localDb
     .from("webchat_links")
-    .select("id, organization_id, channel_id, name, greeting_message, theme_color, is_active")
+    .select("id, organization_id, channel_id, name, greeting_message, theme_color, is_active, prefill_text")
     .or(isUuid(linkKey) ? `id.eq.${linkKey}` : `slug.eq.${linkKey}`)
     .maybeSingle();
   if (!data || !data.is_active || !data.organization_id) return null;
