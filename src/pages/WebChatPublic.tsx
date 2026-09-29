@@ -170,7 +170,7 @@ export default function WebChatPublic() {
     setPushState("working");
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== "granted") { setPushState("idle"); setPushDismissed(true); return; }
+      if (perm !== "granted") { setPushState("idle"); return; }
       const reg = await navigator.serviceWorker.register("/webchat-sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
       const { data: k, error: kErr } = await supabase.functions.invoke("webchat-push-subscribe", { body: { action: "key", linkId, sessionId } });
@@ -181,7 +181,6 @@ export default function WebChatPublic() {
       if (error) throw error;
       localStorage.setItem(pushKey, "1");
       setPushState("done");
-      addMsg({ id: `sys:push-ok`, content: "Avisos configurados! Pode ficar tranquilo. ✅", direction: "system", sender_name: null, created_at: new Date().toISOString() });
     } catch (e) {
       console.error("[webchat] push", e);
       setPushState("error");
