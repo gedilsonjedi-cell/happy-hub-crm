@@ -22,7 +22,6 @@ import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Pencil, MousePo
 
 const pct = (n: number) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const publicUrlFor = (l: WebChatLinkRow) => `https://optimuscrm.com.br/c/${l.slug}`;
-const previewUrlFor = (l: WebChatLinkRow) => `${window.location.origin}/c/${l.slug}`;
 
 function Kpi({ icon: Icon, label, value, hint, loading, live }: { icon: any; label: string; value: string; hint: string; loading?: boolean; live?: boolean }) {
   return (
@@ -166,7 +165,7 @@ export default function WebChatLinks() {
                             <TableCell>
                               <div className="flex justify-end gap-1">
                                 <Button variant="ghost" size="icon" title="Copiar link público" onClick={() => { navigator.clipboard.writeText(publicUrlFor(l)); toast.success("Link público copiado"); }}><Copy className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" title="Abrir no preview" onClick={() => window.open(previewUrlFor(l), "_blank")}><ExternalLink className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" title="Visualizar no preview" onClick={() => navigate(`/c/${l.slug}`)}><ExternalLink className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" title="Editar nome" onClick={() => { setEditing(l); setEditName(l.name); }}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" title="Excluir" onClick={() => remove(l)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                               </div>
