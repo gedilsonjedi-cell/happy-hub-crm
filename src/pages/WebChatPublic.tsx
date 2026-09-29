@@ -151,6 +151,44 @@ export default function WebChatPublic() {
       });
   };
 
+  // ---- Avisos (Web Push) ----
+  const pushKey = `webchat_push_on:${linkId}`;
+  const pushSupported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+  const [pushState, setPushState] = useState<"idle" | "working" | "done" | "error">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem(`webchat_push_on:${linkId}`) ? "done" : "idle");
+  const [pushDismissed, setPushDismissed] = useState(false);
+  const hasSentOne = messages.some((m) => m.direction === "inbound" && !m.delivery);
+  const showPushCard = pushSupported && hasSentOne && !pushDismissed && pushState !== "done"
+    && (typeof Notification === "undefined" || Notification.permission !== "denied");
+
+  const b64ToBytes = (b64: string) => {
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+
+  const enablePush = async () => {
+    setPushState("working");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { setPushState("idle"); setPushDismissed(true); return; }
+      const reg = await navigator.serviceWorker.register("/webchat-sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      const { data: k, error: kErr } = await supabase.functions.invoke("webchat-push-subscribe", { body: { action: "key", linkId, sessionId } });
+      if (kErr || !k?.publicKey) throw kErr || new Error("sem chave");
+      const sub = (await reg.pushManager.getSubscription())
+        || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.publicKey) }));
+      const { error } = await supabase.functions.invoke("webchat-push-subscribe", { body: { linkId, sessionId, subscription: sub.toJSON() } });
+      if (error) throw error;
+      localStorage.setItem(pushKey, "1");
+      setPushState("done");
+      addMsg({ id: `sys:push-ok`, content: "Avisos configurados! Pode ficar tranquilo. ✅", direction: "system", sender_name: null, created_at: new Date().toISOString() });
+    } catch (e) {
+      console.error("[webchat] push", e);
+      setPushState("error");
+    }
+  };
+
   const color = link?.theme_color?.trim() || WA_HEADER;
 
   if (status === "loading") {
@@ -200,6 +238,13 @@ export default function WebChatPublic() {
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {messages.map((m) => {
+          if (m.direction === "system") {
+            return (
+              <div key={m.id} className="flex justify-center">
+                <p className="rounded-lg bg-[#FFF3C4] px-3 py-1.5 text-center text-xs text-[#54656f] shadow-sm">{m.content}</p>
+              </div>
+            );
+          }
           const mine = m.direction === "inbound";
           return (
             <div key={m.id} className={`flex items-end gap-1.5 ${mine ? "justify-end" : "justify-start"}`}>
@@ -220,6 +265,23 @@ export default function WebChatPublic() {
             </div>
           );
         })}
+        {showPushCard && (
+          <div className="flex justify-center">
+            <div className="w-full max-w-sm rounded-lg bg-white p-3 text-center text-[#111b21] shadow-sm">
+              <p className="text-sm font-medium">Quer ser avisado quando responderem?</p>
+              <p className="mt-0.5 text-xs text-[#667781]">
+                {pushState === "error" ? "Não foi possível ativar agora. Tente novamente." : "Receba um aviso no celular mesmo com esta página fechada."}
+              </p>
+              <div className="mt-2 flex justify-center gap-2">
+                <button type="button" onClick={() => setPushDismissed(true)} className="rounded-full px-3 py-1.5 text-xs text-[#667781]">Agora não</button>
+                <button type="button" onClick={enablePush} disabled={pushState === "working"}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60" style={{ backgroundColor: color }}>
+                  {pushState === "working" ? "Ativando..." : "Ativar Avisos"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {typing && (
           <div className="flex justify-start">
             <div className="flex gap-1 rounded-lg rounded-tl-none bg-white px-4 py-3 shadow-sm">
