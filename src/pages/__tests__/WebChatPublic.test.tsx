@@ -2,17 +2,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WebChatPublic from "@/pages/WebChatPublic";
 
-const invoke = vi.fn();
-const startRecording = vi.fn();
-const stopRecording = vi.fn();
-const cancelRecording = vi.fn();
-const recorderState = { isRecording: false, recordingDuration: 0 };
-
-const realtimeChannel = {
-  on: vi.fn(() => realtimeChannel),
-  subscribe: vi.fn(() => realtimeChannel),
-  track: vi.fn(),
-};
+const { invoke, startRecording, stopRecording, cancelRecording, recorderState, realtimeChannel } = vi.hoisted(() => {
+  const channel: { on: ReturnType<typeof vi.fn>; subscribe: ReturnType<typeof vi.fn>; track: ReturnType<typeof vi.fn> } = {
+    on: vi.fn(),
+    subscribe: vi.fn(),
+    track: vi.fn(),
+  };
+  channel.on.mockImplementation(() => channel);
+  channel.subscribe.mockImplementation(() => channel);
+  return {
+    invoke: vi.fn(),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
+    cancelRecording: vi.fn(),
+    recorderState: { isRecording: false, recordingDuration: 0 },
+    realtimeChannel: channel,
+  };
+});
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
