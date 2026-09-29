@@ -194,6 +194,7 @@ const App = () => (
           <Route path="/indique-ganhe/:code" element={<ReferralRedirect />} />
           <Route path="/r/:slug" element={<RedirectPage />} />
           <Route path="/chat/:linkId" element={<WebChatPublic />} />
+          <Route path="/c/:linkId" element={<WebChatPublic />} />
           <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos-de-uso" element={<TermsOfUse />} />
           <Route path="/exclusao-de-dados" element={<DataDeletion />} />
