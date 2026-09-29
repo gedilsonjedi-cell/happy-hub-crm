@@ -58,11 +58,15 @@ export const publicMessage = (m: any) => ({
   direction: m.direction,
   sender_name: m.sender_name,
   created_at: m.created_at,
+  message_type: m.message_type || "text",
+  media_url: m.media_url || null,
+  status: m.status || null,
 });
 
 export async function insertMessage(opts: {
   channelId: string; orgId: string; sessionId: string; content: string;
   direction: "inbound" | "outbound"; senderName: string | null; linkId: string; extra?: Record<string, unknown>;
+  messageType?: "text" | "audio"; mediaUrl?: string | null;
 }) {
   const { data, error } = await msgDb.from("whatsapp_messages").insert({
     channel_id: opts.channelId,
@@ -70,13 +74,14 @@ export async function insertMessage(opts: {
     message_id: `webchat_${crypto.randomUUID()}`,
     sender_phone: threadPhone(opts.sessionId),
     sender_name: opts.senderName,
-    message_type: "text",
+    message_type: opts.messageType || "text",
     content: opts.content,
+    media_url: opts.mediaUrl || null,
     direction: opts.direction,
     status: opts.direction === "outbound" ? "sent" : "received",
     is_read: opts.direction === "outbound",
     metadata: { source: "web_chat", link_id: opts.linkId, ...(opts.extra || {}) },
-  }).select("id, content, direction, sender_name, created_at").single();
+  }).select("id, content, direction, sender_name, created_at, message_type, media_url, status").single();
   if (error) throw error;
   return data;
 }

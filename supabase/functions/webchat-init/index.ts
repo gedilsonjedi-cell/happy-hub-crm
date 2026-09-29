@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: history } = await msgDb.from("whatsapp_messages")
-      .select("id, content, direction, sender_name, created_at")
+      .select("id, content, direction, sender_name, created_at, message_type, media_url, status")
       .eq("channel_id", channelId).eq("sender_phone", phone).neq("message_type", "system_log")
       .order("created_at", { ascending: true }).limit(200);
 

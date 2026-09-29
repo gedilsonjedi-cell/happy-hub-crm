@@ -23,3 +23,11 @@
 - [x] Cenário "notificações bloqueadas" (`Notification.permission === 'denied'`): em vez de tentar pedir permissão, o card mostra a instrução de recuperação (cadeado 🔒 na barra de endereços), sem botão.
 - [ ] Aviso chegando de verdade no celular do visitante (só confere no site publicado).
 - [x] Ajustar card de Conexões para tamanho médio, status escrito na frente e grade responsiva; validar sem publicar.
+
+## Web Chat público estilo WhatsApp
+
+- [x] Redesenhar a página pública em tema escuro com doodles, bolhas, cabeçalho e compositor responsivo.
+- [x] Manter somente texto, emoji e áudio; implementar gravação, cancelamento e envio com validações.
+- [x] Estender e implantar as Edge Functions do Web Chat necessárias para persistir e recarregar áudio na conversa existente.
+- [x] Criar testes do componente para aparência, controles, gravação e responsividade.
+- [x] Validar desktop/celular com screenshots, suíte, typecheck e build; não publicar o site.

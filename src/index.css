@@ -69,6 +69,25 @@
     --app-background: 0 0% 94.9%;
     --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-popover: 0 0 14px 0 rgb(0 0 0 / 0.25);
+
+    /* Web Chat público: paleta isolada inspirada no WhatsApp Web escuro */
+    --webchat-canvas: 165 10% 8%;
+    --webchat-panel: 200 10% 14%;
+    --webchat-header: 200 9% 17%;
+    --webchat-input: 200 8% 20%;
+    --webchat-sent: 162 100% 17%;
+    --webchat-received: 200 9% 20%;
+    --webchat-avatar: 160 8% 30%;
+    --webchat-hover: 200 7% 25%;
+    --webchat-system: 200 28% 14%;
+    --webchat-border: 200 8% 26%;
+    --webchat-text: 0 0% 94%;
+    --webchat-muted: 200 7% 67%;
+    --webchat-green: 160 100% 33%;
+    --webchat-green-strong: 160 100% 29%;
+    --webchat-check: 195 100% 63%;
+    --webchat-error: 3 100% 71%;
+    --webchat-error-surface: 0 33% 17%;
   }
 
   .dark {
@@ -171,6 +190,61 @@
   /* Web Chat: área de segurança inferior (botão de enviar nunca fica sob a home bar) */
   .pb-safe {
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .webchat-viewport,
+  .webchat-shell {
+    background-color: hsl(var(--webchat-canvas));
+  }
+
+  .webchat-header {
+    min-height: calc(3.75rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    background-color: hsl(var(--webchat-header));
+  }
+
+  .webchat-footer {
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    background-color: hsl(var(--webchat-header));
+  }
+
+  .webchat-doodles {
+    background-color: hsl(var(--webchat-canvas));
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.035' stroke-width='1.4'%3E%3Cpath d='M16 24c8-8 16 8 8 16s-16-8-8-16Zm80-10 7 7-7 7-7-7 7-7Zm40 44c8 0 8 14 0 14s-8-14 0-14ZM35 95c12-9 23 8 11 16M90 88c-10 0-15 14-4 20 11 5 17-11 7-16M12 137l14-8 6 12-14 8-6-12Zm112-10 18 18m0-18-18 18M61 50c4 5 12 5 16 0m-8-8v16'/%3E%3Ccircle cx='117' cy='93' r='8'/%3E%3Cpath d='M116 89v8m-4-4h8'/%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .webchat-bubble {
+    border-radius: 0.5rem;
+    color: hsl(var(--webchat-text));
+  }
+
+  .webchat-bubble-sent { background-color: hsl(var(--webchat-sent)); }
+  .webchat-bubble-received { background-color: hsl(var(--webchat-received)); }
+
+  .webchat-bubble-sent::after,
+  .webchat-bubble-received::after {
+    position: absolute;
+    top: 0;
+    width: 0;
+    height: 0;
+    content: "";
+    border-style: solid;
+  }
+
+  .webchat-bubble-sent::after {
+    right: -0.45rem;
+    border-width: 0 0 0.6rem 0.55rem;
+    border-color: transparent transparent transparent hsl(var(--webchat-sent));
+  }
+
+  .webchat-bubble-received::after {
+    left: -0.45rem;
+    border-width: 0.6rem 0.55rem 0 0;
+    border-color: hsl(var(--webchat-received)) transparent transparent transparent;
   }
   .pt-safe {
     padding-top: env(safe-area-inset-top);
