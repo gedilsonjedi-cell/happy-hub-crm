@@ -3933,6 +3933,53 @@ export type Database = {
           },
         ]
       }
+      webchat_links: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          greeting_message: string | null
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          prefill_text: string | null
+          slug: string
+          theme_color: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color?: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          prefill_text?: string | null
+          slug?: string
+          theme_color?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webchat_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       channels_public: {

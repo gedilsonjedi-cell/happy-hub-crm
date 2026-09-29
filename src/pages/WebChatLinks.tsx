@@ -14,7 +14,7 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { Globe, Plus, Copy, ExternalLink, Trash2, MessageCircle, Users } from "lucide-react";
 
-interface WebChatLink { id: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; prefill_text?: string | null; }
+interface WebChatLink { id: string; slug: string; name: string; greeting_message: string | null; theme_color: string; is_active: boolean; channel_id: string | null; prefill_text?: string | null; }
 
 interface WebChatVisitor {
   id: string;
@@ -125,7 +125,7 @@ export default function WebChatLinks() {
   };
 
   const urlFor = (l: WebChatLink) => {
-    const base = `${window.location.origin}/chat/${l.id}`;
+    const base = `https://optimuscrm.com.br/c/${l.slug}`;
     const t = l.prefill_text?.trim();
     return t ? `${base}?text=${encodeURIComponent(t)}` : base;
   };
