@@ -16,6 +16,23 @@ const extensionFor = (mime: string) => {
   return "webm";
 };
 
+async function toMp3(buf: ArrayBuffer, mime: string): Promise<ArrayBuffer | null> {
+  const cloud = Deno.env.get("CLOUDINARY_CLOUD_NAME"), key = Deno.env.get("CLOUDINARY_API_KEY"), secret = Deno.env.get("CLOUDINARY_API_SECRET");
+  if (!cloud || !key || !secret) return null;
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const hash = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`format=mp3&timestamp=${timestamp}${secret}`));
+  const signature = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const fd = new FormData();
+  fd.append("file", new Blob([buf], { type: mime }), `webchat.${extensionFor(mime)}`);
+  fd.append("timestamp", timestamp); fd.append("api_key", key); fd.append("signature", signature); fd.append("format", "mp3");
+  const r = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/video/upload`, { method: "POST", body: fd });
+  if (!r.ok) throw new Error(`cloudinary ${r.status} ${await r.text()}`);
+  const { secure_url } = await r.json();
+  const f = await fetch(secure_url);
+  return f.ok ? await f.arrayBuffer() : null;
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -69,8 +86,15 @@ Deno.serve(async (req) => {
 
     let mediaUrl: string | null = null;
     if (audio) {
-      const path = `${link.organization_id}/webchat/${sessionId}/${Date.now()}_${crypto.randomUUID()}.${extensionFor(audio.type)}`;
-      mediaUrl = await uploadToExternalMedia(path, await audio.arrayBuffer(), audio.type);
+      // WebM/OGG não toca em Safari/iPhone e costuma vir sem duração: converte para MP3
+      let bytes: ArrayBuffer = await audio.arrayBuffer();
+      let mime = audio.type.split(";")[0];
+      if (!mime.includes("mpeg") && !mime.includes("mp4") && !mime.includes("m4a") && !mime.includes("aac")) {
+        const mp3 = await toMp3(bytes, mime).catch((e) => { console.error("[webchat-send] mp3", e); return null; });
+        if (mp3) { bytes = mp3; mime = "audio/mpeg"; }
+      }
+      const path = `${link.organization_id}/webchat/${sessionId}/${Date.now()}_${crypto.randomUUID()}.${extensionFor(mime)}`;
+      mediaUrl = await uploadToExternalMedia(path, bytes, mime);
       if (!mediaUrl) return json({ error: "Não foi possível armazenar o áudio" }, 500);
     }
 
