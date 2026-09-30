@@ -163,6 +163,29 @@ const leadChartColors = [
   "hsl(var(--chart-5))",
 ];
 
+// Status reais gravados em conversation_assignments: pending | in_progress | archived
+// ("active"/"resolved" são legados e continuam aceitos).
+const isPending = (status?: string | null) => status === "pending";
+const isInProgress = (status?: string | null) => status === "in_progress" || status === "active";
+const isResolved = (status?: string | null) => status === "archived" || status === "resolved";
+const SENT_CAMPAIGN_STATUSES = ["running", "paused", "completed"];
+const REFRESH_INTERVAL_MS = 30000;
+
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000,
+  maxPages = 50,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let index = 0; index < maxPages; index += 1) {
+    const { data, error } = await page(index * pageSize, (index + 1) * pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
 function getPeriodStart(period: Period) {
   const today = startOfDay(new Date());
   if (period === "today") return today;
@@ -232,7 +255,7 @@ const Index = () => {
     setStats((current) => ({ ...current, ...values }));
   }, []);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (silent = false) => {
     if (!userId || !effectiveOrganizationId) {
       setLoading(false);
       setModuleLoading(EMPTY_LOADING);
@@ -241,10 +264,12 @@ const Index = () => {
 
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    setModuleErrors({});
-    setModuleLoading(ACTIVE_LOADING);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setModuleErrors({});
+      setModuleLoading(ACTIVE_LOADING);
+    }
 
     const now = new Date();
     const periodStart = getPeriodStart(period);
@@ -297,20 +322,25 @@ const Index = () => {
 
       let assignments: Array<{ assigned_to?: string | null; status?: string | null; created_at?: string | null; updated_at?: string | null }> = [];
       if (channelIds.length > 0) {
-        const externalClient = await withTimeout(getExternalAssignments(), "Dashboard:cliente externo");
-        const assignmentsResult = await withTimeout(
-          externalClient.from("conversation_assignments").select("assigned_to, status, created_at, updated_at").in("channel_id", channelIds),
+        // Passa a organização efetiva: sem isso, o super admin navegando como cliente recebe um token sem a org e o RLS externo devolve vazio.
+        const externalClient = await withTimeout(getExternalAssignments(effectiveOrganizationId), "Dashboard:cliente externo");
+        // Só o que importa para o período: conversas abertas + criadas/atualizadas no período, paginado (evita o corte de 1000 linhas).
+        assignments = await fetchAllPages((from, to) => withTimeout(
+          externalClient.from("conversation_assignments")
+            .select("id, assigned_to, status, created_at, updated_at")
+            .in("channel_id", channelIds)
+            .or(`status.neq.archived,updated_at.gte.${periodStartIso},created_at.gte.${periodStartIso}`)
+            .order("id", { ascending: true })
+            .range(from, to),
           "Dashboard:atendimentos",
-        );
-        if (assignmentsResult.error) throw assignmentsResult.error;
-        assignments = assignmentsResult.data || [];
+        ));
       }
 
       if (requestIdRef.current !== requestId) return;
       const periodAssignments = assignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at).getTime() >= periodStart.getTime());
-      const resolvedInPeriod = assignments.filter((assignment) => assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
-      const pendingConversations = assignments.filter((assignment) => assignment.status === "pending").length;
-      const inProgressConversations = assignments.filter((assignment) => assignment.status === "active").length;
+      const resolvedInPeriod = assignments.filter((assignment) => isResolved(assignment.status) && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
+      const pendingConversations = assignments.filter((assignment) => isPending(assignment.status)).length;
+      const inProgressConversations = assignments.filter((assignment) => isInProgress(assignment.status)).length;
       updateStats({
         openConversations: pendingConversations + inProgressConversations,
         resolvedToday: resolvedInPeriod.length,
@@ -337,9 +367,9 @@ const Index = () => {
       assignments.forEach((assignment) => {
         const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
         if (!metric) return;
-        if (assignment.status === "active") metric.inProgress += 1;
-        if (assignment.status === "pending") metric.pending += 1;
-        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
+        if (isInProgress(assignment.status)) metric.inProgress += 1;
+        if (isPending(assignment.status)) metric.pending += 1;
+        if (isResolved(assignment.status) && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
       });
       setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
 
@@ -360,29 +390,37 @@ const Index = () => {
     });
 
     const leadsPromise = runModule("leads", async () => {
+      const leadsInPeriod = () => supabase.from("leads").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso);
       const [totalLeadsResult, periodLeadsResult, stagesResult] = await Promise.all([
-        withTimeout(supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
-        withTimeout(supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso), "Dashboard:leads do período"),
+        withTimeout(supabase.from("leads").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
+        withTimeout(leadsInPeriod(), "Dashboard:leads do período"),
         withTimeout(supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("order_index", { ascending: true }), "Dashboard:etapas"),
       ]);
       if (totalLeadsResult.error) throw totalLeadsResult.error;
       if (periodLeadsResult.error) throw periodLeadsResult.error;
       if (stagesResult.error) throw stagesResult.error;
       if (requestIdRef.current !== requestId) return;
-      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodLeadsResult.data?.length || 0 });
-      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
-      const distributionMap = new Map<string, number>();
-      (periodLeadsResult.data || []).forEach((lead) => {
-        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
-        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
-      });
-      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
+      const periodTotal = periodLeadsResult.count || 0;
+      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodTotal });
+      // Contagem por etapa no servidor (antes: lista limitada a 1000 linhas).
+      const stages = stagesResult.data || [];
+      const stageCounts = await Promise.all(stages.map(async (stage) => {
+        const result = await withTimeout(leadsInPeriod().eq("stage_id", stage.id), "Dashboard:distribuição");
+        if (result.error) throw result.error;
+        return { name: stage.name, value: result.count || 0 };
+      }));
+      if (requestIdRef.current !== requestId) return;
+      const staged = stageCounts.reduce((total, item) => total + item.value, 0);
+      const distribution = [...stageCounts];
+      if (periodTotal - staged > 0) distribution.push({ name: "Sem etapa", value: periodTotal - staged });
+      setLeadDistribution(distribution.filter((item) => item.value > 0).sort((a, b) => b.value - a.value));
       finishModule("distribution");
     });
 
     const campaignsPromise = runModule("campaigns", async () => {
+      // Campanhas que efetivamente dispararam no período (em andamento, pausadas ou concluídas).
       const result = await withTimeout(
-        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+        supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).in("status", SENT_CAMPAIGN_STATUSES).gte("created_at", periodStartIso),
         "Dashboard:campanhas",
       );
       if (result.error) throw result.error;
@@ -395,13 +433,14 @@ const Index = () => {
         return;
       }
       const [messagesResult, recentMessagesResult] = await Promise.all([
-        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: true }).limit(500), "Dashboard:tempo de resposta"),
-        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
+        // Mais recentes primeiro (antes: as 500 mais ANTIGAS do período, o que congelava o TMR).
+        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).neq("message_type", "system_log").gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(1000), "Dashboard:tempo de resposta"),
+        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).neq("message_type", "system_log").gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
       ]);
       if (messagesResult.error) throw messagesResult.error;
       if (recentMessagesResult.error) throw recentMessagesResult.error;
       if (requestIdRef.current !== requestId) return;
-      const messages = messagesResult.data || [];
+      const messages = [...(messagesResult.data || [])].reverse();
       const recentMessages = recentMessagesResult.data || [];
 
       const messagesByPhone: Record<string, Array<{ direction: string; created_at: string }>> = {};
@@ -472,6 +511,20 @@ const Index = () => {
       return;
     }
     void fetchDashboardData();
+  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, readinessTimedOut, userId]);
+
+  // Atualização automática silenciosa (30s e ao voltar para a aba) — antes só atualizava no F5/botão.
+  useEffect(() => {
+    if (authLoading || organizationLoading || readinessTimedOut || !userId || !effectiveOrganizationId) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void fetchDashboardData(true);
+    };
+    const intervalId = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, readinessTimedOut, userId]);
 
   const stateData = useMemo(() => [
