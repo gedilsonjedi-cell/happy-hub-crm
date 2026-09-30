@@ -65,8 +65,8 @@ export function useSendMessage(
     mutationFn: async (payload) => {
       // Conversa de Web Chat (sessão, sem telefone) nunca vai para a Meta.
       const isWebChat = payload.channelProvider === "web_chat" || /^\+?webchat:/.test(String(payload.destination || ""));
-      if (isWebChat && payload.messageType && payload.messageType !== "text") {
-        throw new Error("No Web Chat, por enquanto só é possível enviar mensagens de texto.");
+      if (isWebChat && payload.messageType && payload.messageType !== "text" && payload.messageType !== "audio") {
+        throw new Error("No Web Chat só é possível enviar texto e áudio.");
       }
       // Conversa de WhatsApp (telefone real) não pode ser respondida pelo canal Web Chat:
       // o visitante do site é identificado por "webchat:<sessão>". Evita o 400 "Conversa inválida".

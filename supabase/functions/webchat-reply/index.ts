@@ -14,8 +14,16 @@ Deno.serve(async (req) => {
     const { data: u } = await userClient.auth.getUser();
     if (!u?.user) return json({ error: "Unauthorized" }, 401);
 
-    const { channelId, destination, message } = await req.json().catch(() => ({}));
-    const text = typeof message === "string" ? message.trim() : "";
+    const { channelId, destination, message, messageType, mediaUrl } = await req.json().catch(() => ({}));
+    const isAudio = messageType === "audio";
+    if (messageType && messageType !== "text" && !isAudio) return json({ error: "No Web Chat só é possível enviar texto e áudio." }, 400);
+    // Áudio do atendente: só aceita arquivos do nosso próprio armazenamento público
+    const allowedHosts = [Deno.env.get("SUPABASE_URL"), Deno.env.get("EXTERNAL_SUPABASE_URL")].filter(Boolean)
+      .map((u) => `${String(u).replace(/\/$/, "")}/storage/v1/object/public/`);
+    if (isAudio && (typeof mediaUrl !== "string" || mediaUrl.length > 1000 || !allowedHosts.some((h) => mediaUrl.startsWith(h)))) {
+      return json({ error: "Áudio inválido" }, 400);
+    }
+    const text = isAudio ? "[Áudio]" : typeof message === "string" ? message.trim() : "";
     if (!isUuid(channelId) || typeof destination !== "string" || !text || text.length > 4000) return json({ error: "Parâmetros inválidos" }, 400);
 
     const { data: channel } = await localDb.from("channels").select("id, organization_id, provider").eq("id", channelId).maybeSingle();
@@ -36,7 +44,8 @@ Deno.serve(async (req) => {
     const { data: link } = await localDb.from("webchat_links").select("id").eq("channel_id", channelId).maybeSingle();
 
     const m = await insertMessage({ channelId, orgId: channel.organization_id, sessionId, content: text,
-      direction: "outbound", senderName: profile?.display_name || "Atendente", linkId: link?.id ?? "", extra: { sent_by: u.user.id } });
+      direction: "outbound", senderName: profile?.display_name || "Atendente", linkId: link?.id ?? "", extra: { sent_by: u.user.id },
+      messageType: isAudio ? "audio" : "text", mediaUrl: isAudio ? mediaUrl : null });
 
     await msgDb.rpc("upsert_conversation_stats_external", {
       _organization_id: channel.organization_id, _channel_id: channelId, _conversation_phone: `webchat:${sessionId}`,
