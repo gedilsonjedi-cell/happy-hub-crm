@@ -163,6 +163,29 @@ const leadChartColors = [
   "hsl(var(--chart-5))",
 ];
 
+// Status reais gravados em conversation_assignments: pending | in_progress | archived
+// ("active"/"resolved" são legados e continuam aceitos).
+const isPending = (status?: string | null) => status === "pending";
+const isInProgress = (status?: string | null) => status === "in_progress" || status === "active";
+const isResolved = (status?: string | null) => status === "archived" || status === "resolved";
+const SENT_CAMPAIGN_STATUSES = ["running", "paused", "completed"];
+const REFRESH_INTERVAL_MS = 30000;
+
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000,
+  maxPages = 50,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let index = 0; index < maxPages; index += 1) {
+    const { data, error } = await page(index * pageSize, (index + 1) * pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
 function getPeriodStart(period: Period) {
   const today = startOfDay(new Date());
   if (period === "today") return today;
@@ -232,7 +255,7 @@ const Index = () => {
     setStats((current) => ({ ...current, ...values }));
   }, []);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (silent = false) => {
     if (!userId || !effectiveOrganizationId) {
       setLoading(false);
       setModuleLoading(EMPTY_LOADING);
@@ -241,10 +264,12 @@ const Index = () => {
 
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    setModuleErrors({});
-    setModuleLoading(ACTIVE_LOADING);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setModuleErrors({});
+      setModuleLoading(ACTIVE_LOADING);
+    }
 
     const now = new Date();
     const periodStart = getPeriodStart(period);
