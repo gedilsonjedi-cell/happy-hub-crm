@@ -4889,11 +4889,20 @@ const AtendimentoV2 = () => {
           organizationId: effectiveOrganizationId,
         },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (error) {
+        // Resposta de erro esperada (ex.: lead não cadastrado) — mostra a mensagem do servidor.
+        let msg = "Falha ao gerar simulação";
+        try {
+          const body = await (error as { context?: Response }).context?.json?.();
+          if (body?.error) msg = String(body.error);
+        } catch { /* corpo não-JSON */ }
+        toast.error(msg, { id: tId });
+        return;
+      }
+      if (data?.error) { toast.error(String(data.error), { id: tId }); return; }
       toast.success("Simulação enviada para o cliente!", { id: tId });
     } catch (err: any) {
-      console.error("[simular] erro:", err);
+      console.warn("[simular] erro:", err?.message);
       toast.error(err?.message || "Falha ao gerar simulação", { id: tId });
     } finally {
       setIsSimulating(false);
