@@ -297,20 +297,25 @@ const Index = () => {
 
       let assignments: Array<{ assigned_to?: string | null; status?: string | null; created_at?: string | null; updated_at?: string | null }> = [];
       if (channelIds.length > 0) {
-        const externalClient = await withTimeout(getExternalAssignments(), "Dashboard:cliente externo");
-        const assignmentsResult = await withTimeout(
-          externalClient.from("conversation_assignments").select("assigned_to, status, created_at, updated_at").in("channel_id", channelIds),
+        // Passa a organização efetiva: sem isso, o super admin navegando como cliente recebe um token sem a org e o RLS externo devolve vazio.
+        const externalClient = await withTimeout(getExternalAssignments(effectiveOrganizationId), "Dashboard:cliente externo");
+        // Só o que importa para o período: conversas abertas + criadas/atualizadas no período, paginado (evita o corte de 1000 linhas).
+        assignments = await fetchAllPages((from, to) => withTimeout(
+          externalClient.from("conversation_assignments")
+            .select("id, assigned_to, status, created_at, updated_at")
+            .in("channel_id", channelIds)
+            .or(`status.neq.archived,updated_at.gte.${periodStartIso},created_at.gte.${periodStartIso}`)
+            .order("id", { ascending: true })
+            .range(from, to),
           "Dashboard:atendimentos",
-        );
-        if (assignmentsResult.error) throw assignmentsResult.error;
-        assignments = assignmentsResult.data || [];
+        ));
       }
 
       if (requestIdRef.current !== requestId) return;
       const periodAssignments = assignments.filter((assignment) => assignment.created_at && new Date(assignment.created_at).getTime() >= periodStart.getTime());
-      const resolvedInPeriod = assignments.filter((assignment) => assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
-      const pendingConversations = assignments.filter((assignment) => assignment.status === "pending").length;
-      const inProgressConversations = assignments.filter((assignment) => assignment.status === "active").length;
+      const resolvedInPeriod = assignments.filter((assignment) => isResolved(assignment.status) && assignment.updated_at && new Date(assignment.updated_at).getTime() >= periodStart.getTime());
+      const pendingConversations = assignments.filter((assignment) => isPending(assignment.status)).length;
+      const inProgressConversations = assignments.filter((assignment) => isInProgress(assignment.status)).length;
       updateStats({
         openConversations: pendingConversations + inProgressConversations,
         resolvedToday: resolvedInPeriod.length,
@@ -337,9 +342,9 @@ const Index = () => {
       assignments.forEach((assignment) => {
         const metric = assignment.assigned_to ? metricsMap[assignment.assigned_to] : undefined;
         if (!metric) return;
-        if (assignment.status === "active") metric.inProgress += 1;
-        if (assignment.status === "pending") metric.pending += 1;
-        if (assignment.status === "resolved" && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
+        if (isInProgress(assignment.status)) metric.inProgress += 1;
+        if (isPending(assignment.status)) metric.pending += 1;
+        if (isResolved(assignment.status) && assignment.updated_at && new Date(assignment.updated_at) >= periodStart) metric.resolved += 1;
       });
       setAttendantMetrics(Object.values(metricsMap).filter((metric) => metric.inProgress > 0 || metric.pending > 0 || metric.resolved > 0 || metric.isAvailable));
 
