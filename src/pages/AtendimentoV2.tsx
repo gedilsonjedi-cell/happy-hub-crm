@@ -2697,6 +2697,9 @@ const AtendimentoV2 = () => {
             impersonatedOrgId: externalImpersonatedOrgIdRef.current,
           })
             .then(async (newAssignment) => {
+              // Sem atendimento criado ainda (distribuição em andamento): não
+              // exibe como "Novo" sem dono — o evento de assignment o trará.
+              if (!newAssignment || (newAssignment as { status?: string }).status === "routing") return;
               let newAssignedToName: string | null = null;
               if (newAssignment?.assigned_to) {
                 const { data: profile } = await supabase
@@ -2802,36 +2805,41 @@ const AtendimentoV2 = () => {
 
         if (!newConversation.lastInboundTime) return prev;
 
-        // Enrich ownership/sector asynchronously. The conversation is already
-        // visible in "Novos" while this lookup runs.
+        // Distribuição oculta: resolve dono/setor ANTES de exibir, para a
+        // conversa nunca "piscar" em "Novos" enquanto a distribuição termina.
+        // Sem registro de atendimento ainda → não exibe; o evento de
+        // conversation_assignments trará a linha já com o dono.
+        const mapStatus = (s?: string | null): Conversation["status"] =>
+          s === "active" || s === "in_progress" ? "in_progress"
+            : s === "resolved" ? "resolved"
+            : s === "archived" ? "archived"
+            : "pending";
         fetchAssignmentByPhoneExternal({
           channelId: stats.channelId,
           phone: normalizedPhone,
           impersonatedOrgId: externalImpersonatedOrgIdRef.current,
         }).then((assignment) => {
-          if (!assignment) return;
-          setAllConversations(current => current.map(conversation =>
-            isMatch(conversation)
-              ? {
-                  ...conversation,
-                  id: assignment.id,
-                  assignedTo: assignment.assigned_to,
-                  sectorId: assignment.sector_id,
-                  status: assignment.status === "active" || assignment.status === "in_progress"
-                    ? "in_progress"
-                    : assignment.status === "resolved"
-                      ? "resolved"
-                      : assignment.status === "archived"
-                        ? "archived"
-                        : "pending",
-                }
-              : conversation
-          ));
+          if (!assignment || assignment.status === "routing") return;
+          setAllConversations(current => {
+            const enriched: Conversation = {
+              ...newConversation,
+              id: assignment.id,
+              assignedTo: assignment.assigned_to,
+              sectorId: assignment.sector_id,
+              status: mapStatus(assignment.status),
+            };
+            if (current.some(isMatch)) {
+              return current.map(c => isMatch(c)
+                ? { ...c, id: assignment.id, assignedTo: assignment.assigned_to, sectorId: assignment.sector_id, status: enriched.status }
+                : c);
+            }
+            return [enriched, ...current];
+          });
         }).catch((error) => {
           console.warn("[handleStatsChangeRealtime] assignment enrichment failed:", error);
         });
 
-        return [newConversation, ...prev];
+        return prev;
       }
 
       // If this conversation is currently open and focused, do NOT bump unread —
@@ -4881,11 +4889,20 @@ const AtendimentoV2 = () => {
           organizationId: effectiveOrganizationId,
         },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (error) {
+        // Resposta de erro esperada (ex.: lead não cadastrado) — mostra a mensagem do servidor.
+        let msg = "Falha ao gerar simulação";
+        try {
+          const body = await (error as { context?: Response }).context?.json?.();
+          if (body?.error) msg = String(body.error);
+        } catch { /* corpo não-JSON */ }
+        toast.error(msg, { id: tId });
+        return;
+      }
+      if (data?.error) { toast.error(String(data.error), { id: tId }); return; }
       toast.success("Simulação enviada para o cliente!", { id: tId });
     } catch (err: any) {
-      console.error("[simular] erro:", err);
+      console.warn("[simular] erro:", err?.message);
       toast.error(err?.message || "Falha ao gerar simulação", { id: tId });
     } finally {
       setIsSimulating(false);
