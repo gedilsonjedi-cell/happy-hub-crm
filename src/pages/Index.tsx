@@ -513,6 +513,20 @@ const Index = () => {
     void fetchDashboardData();
   }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, readinessTimedOut, userId]);
 
+  // Atualização automática silenciosa (30s e ao voltar para a aba) — antes só atualizava no F5/botão.
+  useEffect(() => {
+    if (authLoading || organizationLoading || readinessTimedOut || !userId || !effectiveOrganizationId) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void fetchDashboardData(true);
+    };
+    const intervalId = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [authLoading, effectiveOrganizationId, fetchDashboardData, organizationLoading, readinessTimedOut, userId]);
+
   const stateData = useMemo(() => [
     { name: "Finalizados", value: stats.resolvedToday, key: "resolved", color: "hsl(var(--success))" },
     { name: "Em atendimento", value: stats.inProgressConversations, key: "active", color: "hsl(var(--info))" },
