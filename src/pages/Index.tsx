@@ -365,29 +365,37 @@ const Index = () => {
     });
 
     const leadsPromise = runModule("leads", async () => {
+      const leadsInPeriod = () => supabase.from("leads").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso);
       const [totalLeadsResult, periodLeadsResult, stagesResult] = await Promise.all([
-        withTimeout(supabase.from("leads").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
-        withTimeout(supabase.from("leads").select("stage_id, created_at").eq("organization_id", effectiveOrganizationId).gte("created_at", periodStartIso), "Dashboard:leads do período"),
+        withTimeout(supabase.from("leads").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId), "Dashboard:total de leads"),
+        withTimeout(leadsInPeriod(), "Dashboard:leads do período"),
         withTimeout(supabase.from("pipeline_stages").select("id, name").eq("organization_id", effectiveOrganizationId).order("order_index", { ascending: true }), "Dashboard:etapas"),
       ]);
       if (totalLeadsResult.error) throw totalLeadsResult.error;
       if (periodLeadsResult.error) throw periodLeadsResult.error;
       if (stagesResult.error) throw stagesResult.error;
       if (requestIdRef.current !== requestId) return;
-      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodLeadsResult.data?.length || 0 });
-      const stageNames = new Map((stagesResult.data || []).map((stage) => [stage.id, stage.name]));
-      const distributionMap = new Map<string, number>();
-      (periodLeadsResult.data || []).forEach((lead) => {
-        const name = lead.stage_id ? stageNames.get(lead.stage_id) || "Etapa não encontrada" : "Sem etapa";
-        distributionMap.set(name, (distributionMap.get(name) || 0) + 1);
-      });
-      setLeadDistribution(Array.from(distributionMap, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
+      const periodTotal = periodLeadsResult.count || 0;
+      updateStats({ totalLeads: totalLeadsResult.count || 0, newToday: periodTotal });
+      // Contagem por etapa no servidor (antes: lista limitada a 1000 linhas).
+      const stages = stagesResult.data || [];
+      const stageCounts = await Promise.all(stages.map(async (stage) => {
+        const result = await withTimeout(leadsInPeriod().eq("stage_id", stage.id), "Dashboard:distribuição");
+        if (result.error) throw result.error;
+        return { name: stage.name, value: result.count || 0 };
+      }));
+      if (requestIdRef.current !== requestId) return;
+      const staged = stageCounts.reduce((total, item) => total + item.value, 0);
+      const distribution = [...stageCounts];
+      if (periodTotal - staged > 0) distribution.push({ name: "Sem etapa", value: periodTotal - staged });
+      setLeadDistribution(distribution.filter((item) => item.value > 0).sort((a, b) => b.value - a.value));
       finishModule("distribution");
     });
 
     const campaignsPromise = runModule("campaigns", async () => {
+      // Campanhas que efetivamente dispararam no período (em andamento, pausadas ou concluídas).
       const result = await withTimeout(
-        supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).eq("status", "completed").gte("created_at", periodStartIso),
+        supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("organization_id", effectiveOrganizationId).in("status", SENT_CAMPAIGN_STATUSES).gte("created_at", periodStartIso),
         "Dashboard:campanhas",
       );
       if (result.error) throw result.error;
@@ -400,13 +408,14 @@ const Index = () => {
         return;
       }
       const [messagesResult, recentMessagesResult] = await Promise.all([
-        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: true }).limit(500), "Dashboard:tempo de resposta"),
-        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
+        // Mais recentes primeiro (antes: as 500 mais ANTIGAS do período, o que congelava o TMR).
+        withTimeout(supabase.from("whatsapp_messages").select("direction, sender_phone, created_at").in("channel_id", channelIds).neq("message_type", "system_log").gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(1000), "Dashboard:tempo de resposta"),
+        withTimeout(supabase.from("whatsapp_messages").select("id, sender_name, sender_phone, direction, created_at").in("channel_id", channelIds).neq("message_type", "system_log").gte("created_at", periodStartIso).order("created_at", { ascending: false }).limit(10), "Dashboard:atividade recente"),
       ]);
       if (messagesResult.error) throw messagesResult.error;
       if (recentMessagesResult.error) throw recentMessagesResult.error;
       if (requestIdRef.current !== requestId) return;
-      const messages = messagesResult.data || [];
+      const messages = [...(messagesResult.data || [])].reverse();
       const recentMessages = recentMessagesResult.data || [];
 
       const messagesByPhone: Record<string, Array<{ direction: string; created_at: string }>> = {};
