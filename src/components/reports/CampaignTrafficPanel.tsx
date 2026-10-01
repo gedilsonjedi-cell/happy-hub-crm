@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useCampaignTraffic } from "@/hooks/useCampaignTraffic";
-import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle } from "lucide-react";
+import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle, ThumbsDown } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -32,7 +32,9 @@ export function CampaignTrafficPanel() {
     [campaigns]
   );
   const totalSent = useMemo(() => campaigns.reduce((acc, c) => acc + okSent(c), 0), [campaigns]);
-  const totalClicks = useMemo(() => campaigns.reduce((acc, c) => acc + (c.interactedCount || 0), 0), [campaigns]);
+  const totalRefusals = useMemo(() => campaigns.reduce((acc, c) => acc + (c.refusalCount || 0), 0), [campaigns]);
+  const totalLinkClicks = useMemo(() => campaigns.reduce((acc, c) => acc + (c.linkClickCount || 0), 0), [campaigns]);
+  const pctOf = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
 
   if (loading) {
     return (
@@ -87,10 +89,16 @@ export function CampaignTrafficPanel() {
                 <span className="text-muted-foreground">({totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0}%)</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <MousePointerClick className="w-4 h-4 text-warning" />
-                <span className="text-muted-foreground">Cliques:</span>
-                <span className="font-semibold">{totalClicks.toLocaleString("pt-BR")}</span>
-                <span className="text-muted-foreground">({totalDelivered > 0 ? Math.round((totalClicks / totalDelivered) * 100) : 0}%)</span>
+                <MousePointerClick className="w-4 h-4 text-success" />
+                <span className="text-muted-foreground">Cliques em link (Consultar):</span>
+                <span className="font-semibold">{totalLinkClicks.toLocaleString("pt-BR")}</span>
+                <span className="text-muted-foreground">({pctOf(totalLinkClicks, totalDelivered)}%)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ThumbsDown className="w-4 h-4 text-warning" />
+                <span className="text-muted-foreground">Recusas (Não Quero):</span>
+                <span className="font-semibold">{totalRefusals.toLocaleString("pt-BR")}</span>
+                <span className="text-muted-foreground">({pctOf(totalRefusals, totalDelivered)}%)</span>
               </div>
             </>
           ) : (
@@ -101,6 +109,12 @@ export function CampaignTrafficPanel() {
             </div>
           )}
         </div>
+        {statusFilter === "all" && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Taxas de clique e recusa calculadas sobre Entregues. Cliques em link contam só acessos ao link curto
+            vindos de cada campanha, registrados a partir de 01/10/2026; campanhas anteriores aparecem com 0.
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {campaigns.length === 0 ? (
@@ -117,7 +131,8 @@ export function CampaignTrafficPanel() {
                 ? Math.min(100, Math.round((sent / campaign.totalRecipients) * 100))
                 : 0;
               const deliveryRate = sent > 0 ? Math.round((campaign.deliveredCount / sent) * 100) : 0;
-              const clickRate = campaign.deliveredCount > 0 ? Math.round((campaign.interactedCount / campaign.deliveredCount) * 100) : 0;
+              const linkRate = pctOf(campaign.linkClickCount, campaign.deliveredCount);
+              const refusalRate = pctOf(campaign.refusalCount, campaign.deliveredCount);
               const readRate = campaign.deliveredCount > 0
                 ? Math.round((campaign.readCount / campaign.deliveredCount) * 100)
                 : 0;
@@ -147,7 +162,7 @@ export function CampaignTrafficPanel() {
                   </div>
 
                   {/* Stats row */}
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                     {statusFilter === "all" && (
                       <div className="flex items-center gap-1.5 text-xs">
                       <Send className="w-3.5 h-3.5 text-info" />
@@ -174,10 +189,17 @@ export function CampaignTrafficPanel() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <MousePointerClick className="w-3.5 h-3.5 text-warning" />
+                          <MousePointerClick className="w-3.5 h-3.5 text-success" />
                           <div>
-                            <div className="font-semibold">{campaign.interactedCount}</div>
-                            <div className="text-muted-foreground">Cliques ({clickRate}%)</div>
+                            <div className="font-semibold">{campaign.linkClickCount}</div>
+                            <div className="text-muted-foreground">Cliques em link ({linkRate}%)</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <ThumbsDown className="w-3.5 h-3.5 text-warning" />
+                          <div>
+                            <div className="font-semibold">{campaign.refusalCount}</div>
+                            <div className="text-muted-foreground">Recusas ({refusalRate}%)</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">

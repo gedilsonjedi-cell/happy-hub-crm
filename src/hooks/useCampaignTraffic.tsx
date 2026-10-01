@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveOrganizationId } from "./useEffectiveOrganizationId";
 import { useAuth } from "./useAuth";
+import { isNotWantedLabel } from "@/lib/notWantedButton";
+import { fetchCampaignLinkClicks } from "@/lib/campaignLinkClicks";
 
 export interface CampaignTrafficItem {
   id: string;
@@ -13,6 +15,8 @@ export interface CampaignTrafficItem {
   failedCount: number;
   readCount: number;
   interactedCount: number;
+  refusalCount: number; // botão "Não Quero"
+  linkClickCount: number; // link curto do botão "Consultar", atribuído por campanha
   createdAt: string;
 }
 
@@ -69,6 +73,25 @@ export function useCampaignTraffic() {
         }
       }
 
+      // Recusas: destinatários cujo botão clicado é "Não Quero"
+      const refusals = new Map<string, number>();
+      let from = 0;
+      for (;;) {
+        const { data: rows, error: rErr } = await supabase
+          .from("campaign_recipients")
+          .select("campaign_id, button_clicked")
+          .in("campaign_id", campaignIds)
+          .not("button_clicked", "is", null)
+          .range(from, from + 999);
+        if (rErr) { console.warn("[useCampaignTraffic] recusas", rErr); break; }
+        for (const r of rows || []) {
+          if (isNotWantedLabel(r.button_clicked)) refusals.set(r.campaign_id, (refusals.get(r.campaign_id) || 0) + 1);
+        }
+        if (!rows || rows.length < 1000) break;
+        from += 1000;
+      }
+      const linkClicks = await fetchCampaignLinkClicks(campaignIds);
+
       const results: CampaignTrafficItem[] = campaigns.map((c) => {
         const real = realCounts.get(c.id);
         return {
@@ -81,6 +104,8 @@ export function useCampaignTraffic() {
           failedCount: real ? real.failed : c.failed_count,
           readCount: real ? real.read : 0,
           interactedCount: real ? real.interacted : 0,
+          refusalCount: refusals.get(c.id) || 0,
+          linkClickCount: linkClicks.get(c.id) || 0,
           createdAt: c.created_at,
         };
       });
