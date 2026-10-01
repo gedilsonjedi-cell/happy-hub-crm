@@ -279,6 +279,8 @@ export function DispatchReportSender() {
           t.totalDispatches += d.totalDispatches;
           t.delivered += d.delivered;
           t.failed += d.failed;
+          t.sent += d.sent;
+          t.clicks += d.clicks;
           t.totalCost += d.totalCost;
           t.responses += d.responses;
           t.blocks += d.blocks;
@@ -350,7 +352,7 @@ export function DispatchReportSender() {
           while (hasMore) {
             const { data: recipients } = await supabase
               .from("campaign_recipients")
-              .select("campaign_id, status, error_message, last_error_code, sent_at")
+              .select("campaign_id, status, error_message, last_error_code, sent_at, button_clicked")
               .in("campaign_id", batchIds)
               .gte("sent_at", startISO)
               .lte("sent_at", endISO)
@@ -487,31 +489,29 @@ export function DispatchReportSender() {
     return diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : "Estavel";
   };
 
+  // Saúde da base = sucesso de envio (Enviadas / Destinatários processados).
+  // Falhas não aparecem aqui: muitas vêm de erros da própria Meta.
   const getQualityLabel = (data: DayData) => {
-    const { blocks, restrictions, failed, totalDispatches, delivered } = data;
+    const { sent, totalDispatches } = data;
     if (totalDispatches === 0) return { label: "Sem dados", emoji: "", detail: "Nenhum disparo registrado" };
-    
-    const restrictionRate = (restrictions || blocks) / totalDispatches;
-    const failureRate = failed / totalDispatches;
-    const deliveryRate = delivered / totalDispatches;
-    
-    // Use the worst indicator to determine quality
-    if (restrictionRate > 0.05 || failureRate > 0.15) {
-      return { label: "Critica", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes detectadas` };
-    }
-    if (restrictionRate > 0.03 || failureRate > 0.10) {
-      return { label: "Baixa", emoji: "", detail: `${Math.round(failureRate * 100)}% de falha | ${restrictions || blocks} restricoes` };
-    }
-    if (restrictionRate > 0.01 || failureRate > 0.05) {
-      return { label: "Moderada", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Monitorar restricoes` };
-    }
-    return { label: "Excelente", emoji: "", detail: `Taxa de entrega ${Math.round(deliveryRate * 100)}% | Base saudavel` };
+    const rate = Math.round((sent / totalDispatches) * 100);
+    const detail = `Sucesso de envio ${rate}% (${sent} de ${totalDispatches})`;
+    if (rate >= 95) return { label: "Excelente", emoji: "", detail };
+    if (rate >= 85) return { label: "Boa", emoji: "", detail };
+    if (rate >= 70) return { label: "Moderada", emoji: "", detail };
+    return { label: "Baixa", emoji: "", detail };
   };
+
+  const rateLines = (d: DayData) => [
+    `Taxa de sucesso (enviadas): *${pct(d.sent, d.totalDispatches)}*`,
+    `Taxa de entrega (entregues/enviadas): *${pct(d.delivered, d.sent)}*`,
+    `Taxa de clique (cliques/entregues): *${pct(d.clicks, d.delivered)}*`,
+  ];
 
   const generateInsight = (data: DayData, prev?: DayData) => {
     const lines: string[] = [];
     const responseRate = data.totalDispatches > 0 ? data.responses / data.totalDispatches : 0;
-    const deliveryRate = data.totalDispatches > 0 ? data.delivered / data.totalDispatches : 0;
+    const deliveryRate = data.sent > 0 ? data.delivered / data.sent : 0;
     const blockRate = data.totalDispatches > 0 ? data.blocks / data.totalDispatches : 0;
 
     if (prev && prev.totalDispatches > 0) {
@@ -554,37 +554,24 @@ export function DispatchReportSender() {
     const insights = generateInsight(d, prevDayData);
     const engagementRate = pct(d.responses, d.totalDispatches);
 
-    // Count clicks (status "clicked")
-    // clicks are already included in delivered count logic, but we need a separate count
-    // For now, clicks = responses as proxy (users who interacted)
-    const clickCount = d.responses;
-
-    const deliveryRate = pct(d.delivered, d.totalDispatches);
-    const failRate = pct(d.failed, d.totalDispatches);
-
     return [
       `*RELATORIO DIARIO*`,
       `${selectedDateFormatted}`,
       ``,
       `*ENVIOS*`,
-      `Total: *${d.totalDispatches}*`,
-      `Entregues: *${d.delivered}* (${deliveryRate})`,
-      `Falhas: *${d.failed}* (${failRate})`,
-      `Respostas: *${clickCount}*`,
+      `Destinatarios processados: *${d.totalDispatches}*`,
+      `Enviadas: *${d.sent}*`,
+      `Entregues: *${d.delivered}*`,
+      `Cliques em botao: *${d.clicks}*`,
+      `Respostas: *${d.responses}*`,
       `Engajamento: *${engagementRate}*`,
+      ``,
+      `*PERFORMANCE*`,
+      ...rateLines(d),
       ``,
       `*SAUDE DA BASE*`,
       `Status: *${q.label}*`,
       `${q.detail}`,
-      ...(d.restrictions > 0 || d.blocks > 0 ? [`${d.restrictions || d.blocks} restricoes detectadas`] : []),
-      ...(d.marketing.count > 0 || d.utility.count > 0 || d.service.count > 0 ? [
-        ``,
-        `*CUSTOS*`,
-        `Total: *${fmt(d.totalCost)}*`,
-        ...(d.marketing.count > 0 ? [`Marketing: ${d.marketing.count} - ${fmt(d.marketing.cost)}`] : []),
-        ...(d.utility.count > 0 ? [`Utilidade: ${d.utility.count} - ${fmt(d.utility.cost)}`] : []),
-        ...(d.service.count > 0 ? [`Servico: ${d.service.count} - ${fmt(d.service.cost)}`] : []),
-      ] : []),
       ``,
       `*INSIGHTS*`,
       ...insights,
@@ -608,13 +595,13 @@ export function DispatchReportSender() {
     const weekLines = monthData.weeks.map((w, i) => {
       const weekLabel = `Semana ${i + 1}`;
       const trend = i > 0 ? variation(w.totalDispatches, monthData.weeks[i - 1].totalDispatches) : "";
-      return `${weekLabel}: ${w.totalDispatches} envios | ${w.responses} respostas | ${pct(w.delivered, w.totalDispatches)} entrega ${trend}`.trim();
+      return `${weekLabel}: ${w.totalDispatches} envios | ${w.responses} respostas | ${pct(w.sent, w.totalDispatches)} sucesso ${trend}`.trim();
     });
 
     // Monthly insights
     const insights: string[] = [];
     const responseRate = t.totalDispatches > 0 ? t.responses / t.totalDispatches : 0;
-    const deliveryRate = t.totalDispatches > 0 ? t.delivered / t.totalDispatches : 0;
+    const deliveryRate = t.sent > 0 ? t.delivered / t.sent : 0;
     const blockRate = t.totalDispatches > 0 ? t.blocks / t.totalDispatches : 0;
 
     if (deliveryRate >= 0.95) {
@@ -643,7 +630,7 @@ export function DispatchReportSender() {
 
     if (avgDaily > 0 && monthRange.isCurrentMonth) {
       const projection = avgDaily * daysInMonth;
-      insights.push(`Projecao para o mes: ~${projection} disparos | ~${fmt(t.totalCost / daysPassed * daysInMonth)} investimento.`);
+      insights.push(`Projecao para o mes: ~${projection} disparos.`);
     }
 
     if (insights.length === 0) {
@@ -656,22 +643,16 @@ export function DispatchReportSender() {
       ``,
       `*RESUMO GERAL*`,
       `Total de disparos: *${t.totalDispatches}*`,
+      `Enviadas: *${t.sent}*`,
       `Entregues: *${t.delivered}*`,
+      `Cliques em botao: *${t.clicks}*`,
       `Respostas: *${t.responses}*`,
       `Falhas: *${t.failed}*`,
       `Media diaria: *${avgDaily} envios / ${avgDailyResponses} respostas*`,
       ``,
       `*PERFORMANCE*`,
-      `Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      ...rateLines(t),
       `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
-      `Taxa de restricoes: *${pct(t.restrictions || t.blocks, t.totalDispatches)}*`,
-      `Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
-      ``,
-      `*INVESTIMENTO*`,
-      `Total: *${fmt(t.totalCost)}*`,
-      `Marketing: ${t.marketing.count} - ${fmt(t.marketing.cost)}`,
-      `Utilidade: ${t.utility.count} - ${fmt(t.utility.cost)}`,
-      `Servico: ${t.service.count} - ${fmt(t.service.cost)}`,
       ``,
       `*EVOLUCAO SEMANAL*`,
       ...weekLines,
@@ -679,9 +660,6 @@ export function DispatchReportSender() {
       `*SAUDE DA CONTA*`,
       `Status: *${q.label}*`,
       `${q.detail}`,
-      `Restricoes no mes: *${t.restrictions || t.blocks}*`,
-      `Falhas totais: *${t.failed}*`,
-      `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
       ``,
       `*INSIGHTS*`,
       ...insights,
@@ -698,7 +676,6 @@ export function DispatchReportSender() {
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setDate(weekEndDate.getDate() + 6);
     const weekLabel = `${weekStartDate.toLocaleDateString("pt-BR")} a ${weekEndDate.toLocaleDateString("pt-BR")}`;
-    const costPerResponse = t.responses > 0 ? fmt(t.totalCost / t.responses) : "—";
     const insights = generateInsight(t);
 
     // Day-by-day breakdown
@@ -706,14 +683,14 @@ export function DispatchReportSender() {
     const dayLines = weeklyData.days.map((d, i) => {
       const dayDate = new Date(weekStartDate);
       dayDate.setDate(dayDate.getDate() + i);
-      return `${dayNames[i]} ${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}: ${d.totalDispatches} envios | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ${d.restrictions} restricoes` : ""}`;
+      return `${dayNames[i]} ${dayDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}: ${d.totalDispatches} envios | ${d.sent} enviadas | ${d.delivered} entregues | ${d.responses} respostas${d.restrictions > 0 ? ` | ${d.restrictions} restricoes` : ""}`;
     });
 
     // Best/worst day
     let bestDay = 0, worstDay = 0;
     weeklyData.days.forEach((d, i) => {
       if (d.responses > weeklyData.days[bestDay].responses) bestDay = i;
-      if (d.totalDispatches > 0 && (weeklyData.days[worstDay].totalDispatches === 0 || d.delivered / d.totalDispatches < weeklyData.days[worstDay].delivered / weeklyData.days[worstDay].totalDispatches)) worstDay = i;
+      if (d.totalDispatches > 0 && (weeklyData.days[worstDay].totalDispatches === 0 || d.sent / d.totalDispatches < weeklyData.days[worstDay].sent / weeklyData.days[worstDay].totalDispatches)) worstDay = i;
     });
 
     return [
@@ -722,20 +699,15 @@ export function DispatchReportSender() {
       ``,
       `*RESUMO DA SEMANA*`,
       `Total de disparos: *${t.totalDispatches}*`,
+      `Enviadas: *${t.sent}*`,
       `Entregues: *${t.delivered}*`,
+      `Cliques em botao: *${t.clicks}*`,
       `Respostas: *${t.responses}*`,
       `Falhas: *${t.failed}*`,
       ``,
       `*PERFORMANCE*`,
-      `Taxa de entrega: *${pct(t.delivered, t.totalDispatches)}*`,
+      ...rateLines(t),
       `Taxa de resposta: *${pct(t.responses, t.totalDispatches)}*`,
-      `Custo por resposta: *${costPerResponse}*`,
-      ``,
-      `*INVESTIMENTO*`,
-      `Total: *${fmt(t.totalCost)}*`,
-      `Marketing: ${t.marketing.count} - ${fmt(t.marketing.cost)}`,
-      `Utilidade: ${t.utility.count} - ${fmt(t.utility.cost)}`,
-      `Servico: ${t.service.count} - ${fmt(t.service.cost)}`,
       ``,
       `*DETALHAMENTO DIARIO*`,
       ...dayLines,
@@ -743,7 +715,7 @@ export function DispatchReportSender() {
       ...(weeklyData.days.length > 1 ? [
         `*DESTAQUES*`,
         `Melhor dia: *${dayNames[bestDay]}* - ${weeklyData.days[bestDay].responses} respostas`,
-        `Menor entrega: *${dayNames[worstDay]}* - ${pct(weeklyData.days[worstDay].delivered, weeklyData.days[worstDay].totalDispatches)}`,
+        `Menor sucesso de envio: *${dayNames[worstDay]}* - ${pct(weeklyData.days[worstDay].sent, weeklyData.days[worstDay].totalDispatches)}`,
         ``,
       ] : []),
       `*VS SEMANA ANTERIOR*`,
@@ -755,8 +727,6 @@ export function DispatchReportSender() {
       `*SAUDE DA CONTA*`,
       `Status: *${q.label}*`,
       `${q.detail}`,
-      `Restricoes: *${t.restrictions || t.blocks}*`,
-      `Taxa de falha: *${pct(t.failed, t.totalDispatches)}*`,
       ``,
       `*INSIGHTS*`,
       ...insights,
