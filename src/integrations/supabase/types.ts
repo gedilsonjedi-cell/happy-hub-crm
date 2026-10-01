@@ -2059,21 +2059,31 @@ export type Database = {
       }
       redirect_link_clicks: {
         Row: {
+          campaign_id: string | null
           clicked_at: string
           id: string
           link_id: string
         }
         Insert: {
+          campaign_id?: string | null
           clicked_at?: string
           id?: string
           link_id: string
         }
         Update: {
+          campaign_id?: string | null
           clicked_at?: string
           id?: string
           link_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "redirect_link_clicks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "redirect_link_clicks_link_id_fkey"
             columns: ["link_id"]
@@ -2992,6 +3002,13 @@ export type Database = {
           total_waiting_retry: number
         }[]
       }
+      get_campaign_link_clicks: {
+        Args: { p_campaign_ids: string[]; p_end?: string; p_start?: string }
+        Returns: {
+          campaign_id: string
+          clicks: number
+        }[]
+      }
       get_campaign_real_counts: {
         Args: { p_campaign_ids: string[] }
         Returns: {
@@ -3140,6 +3157,10 @@ export type Database = {
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       log_redirect_click: { Args: { link_id: string }; Returns: undefined }
+      log_redirect_click_v2: {
+        Args: { campaign_id?: string; link_id: string }
+        Returns: undefined
+      }
       purchase_product: {
         Args: {
           _organization_id: string
