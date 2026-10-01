@@ -15,6 +15,8 @@ interface DayData {
   totalDispatches: number;
   delivered: number;
   failed: number;
+  sent: number; // aceitas pela Meta (sent/delivered/read/clicked)
+  clicks: number; // campaign_recipients.button_clicked preenchido
   totalCost: number;
   responses: number;
   blocks: number;
@@ -25,7 +27,7 @@ interface DayData {
 }
 
 const emptyDay = (): DayData => ({
-  totalDispatches: 0, delivered: 0, failed: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
+  totalDispatches: 0, delivered: 0, failed: 0, sent: 0, clicks: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
   marketing: { count: 0, cost: 0, delivered: 0, failed: 0 },
   utility: { count: 0, cost: 0, delivered: 0, failed: 0 },
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
@@ -149,7 +151,7 @@ export function DispatchReportSender() {
         while (hasMore) {
           const { data: recipients } = await supabase
             .from("campaign_recipients")
-            .select("campaign_id, status, error_message, last_error_code")
+            .select("campaign_id, status, error_message, last_error_code, button_clicked")
             .in("campaign_id", batchIds)
             .gte("sent_at", start)
             .lte("sent_at", end)
@@ -164,6 +166,8 @@ export function DispatchReportSender() {
 
             if (isSent || isFailed) result.totalDispatches += 1;
             if (isDelivered) result.delivered += 1;
+            if (isSent) result.sent += 1;
+            if (r.button_clicked) result.clicks += 1;
             if (isFailed) result.failed += 1;
             if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
 
@@ -408,6 +412,8 @@ export function DispatchReportSender() {
 
           if (isSent || isFailed) week.totalDispatches += 1;
           if (isDelivered) week.delivered += 1;
+          if (isSent) week.sent += 1;
+          if (r.button_clicked) week.clicks += 1;
           if (isFailed) week.failed += 1;
           if (isRestriction) { week.blocks += 1; week.restrictions += 1; }
 
@@ -434,6 +440,8 @@ export function DispatchReportSender() {
         total.totalDispatches += week.totalDispatches;
         total.delivered += week.delivered;
         total.failed += week.failed;
+        total.sent += week.sent;
+        total.clicks += week.clicks;
         total.totalCost += week.totalCost;
         total.responses += week.responses;
         total.blocks += week.blocks;
