@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { withMagicLeadId } from "../_shared/magic-link.ts";
+import { withMagicLeadId, withCampaignTracking } from "../_shared/magic-link.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
           if (value.match(/^(VAR_\d+|p\d+)$/i)) value = '';
           if (isButtonLinkVar) {
             // Sem valor informado, meta-send cai no exemplo aprovado.
-            buttonParams.push(withMagicLeadId(value, recipient.leadId));
+            buttonParams.push(withCampaignTracking(withMagicLeadId(value, recipient.leadId), campaignId));
             continue;
           }
           // Ensure no empty params - use fallback to prevent Meta rejection
