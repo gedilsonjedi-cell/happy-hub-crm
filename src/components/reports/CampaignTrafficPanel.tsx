@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { useCampaignTraffic } from "@/hooks/useCampaignTraffic";
-import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle, ThumbsDown } from "lucide-react";
+import { useCampaignTraffic, type CampaignTrafficItem } from "@/hooks/useCampaignTraffic";
+import { Megaphone, Send, CheckCircle2, Eye, MousePointerClick, XCircle, ThumbsDown, FileText } from "lucide-react";
+import { ClientCampaignSummaryDialog } from "./ClientCampaignSummaryDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -23,6 +24,7 @@ function statusBadge(status: string) {
 export function CampaignTrafficPanel() {
   const { campaigns, loading } = useCampaignTraffic();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [summaryCampaign, setSummaryCampaign] = useState<CampaignTrafficItem | null>(null);
 
   // "Enviadas" = mensagens aceitas pela Meta (exclui falhas). O contador do banco
   // inclui as falhas, por isso subtraímos. "Entregues" já inclui as lidas.
@@ -147,9 +149,14 @@ export function CampaignTrafficPanel() {
                       <span className="font-medium text-sm truncate">{campaign.name}</span>
                       {statusBadge(campaign.status)}
                     </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {format(new Date(campaign.createdAt), "dd MMM yyyy", { locale: ptBR })}
-                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSummaryCampaign(campaign)}>
+                        <FileText className="w-3.5 h-3.5 mr-1" /> Resumo para o cliente
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(campaign.createdAt), "dd MMM yyyy", { locale: ptBR })}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Delivery progress */}
@@ -218,6 +225,7 @@ export function CampaignTrafficPanel() {
           </div>
         )}
       </CardContent>
+      <ClientCampaignSummaryDialog campaign={summaryCampaign} onOpenChange={(o) => !o && setSummaryCampaign(null)} />
     </Card>
   );
 }
