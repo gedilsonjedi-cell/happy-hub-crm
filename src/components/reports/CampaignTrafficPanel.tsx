@@ -24,14 +24,15 @@ export function CampaignTrafficPanel() {
   const { campaigns, loading } = useCampaignTraffic();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
+  // "Enviadas" = mensagens aceitas pela Meta (exclui falhas). O contador do banco
+  // inclui as falhas, por isso subtraímos. "Entregues" já inclui as lidas.
+  const okSent = (c: { sentCount: number; failedCount: number }) => Math.max(0, (c.sentCount || 0) - (c.failedCount || 0));
   const totalDelivered = useMemo(
-    () => campaigns.reduce((acc, c) => acc + (c.deliveredCount || 0) + (c.readCount || 0), 0),
+    () => campaigns.reduce((acc, c) => acc + (c.deliveredCount || 0), 0),
     [campaigns]
   );
-  const totalSent = useMemo(
-    () => campaigns.reduce((acc, c) => acc + (c.sentCount || 0), 0),
-    [campaigns]
-  );
+  const totalSent = useMemo(() => campaigns.reduce((acc, c) => acc + okSent(c), 0), [campaigns]);
+  const totalClicks = useMemo(() => campaigns.reduce((acc, c) => acc + (c.interactedCount || 0), 0), [campaigns]);
 
   if (loading) {
     return (
@@ -83,12 +84,19 @@ export function CampaignTrafficPanel() {
                 <CheckCircle2 className="w-4 h-4 text-success" />
                 <span className="text-muted-foreground">Entregues:</span>
                 <span className="font-semibold">{totalDelivered.toLocaleString("pt-BR")}</span>
+                <span className="text-muted-foreground">({totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0}%)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <MousePointerClick className="w-4 h-4 text-warning" />
+                <span className="text-muted-foreground">Cliques:</span>
+                <span className="font-semibold">{totalClicks.toLocaleString("pt-BR")}</span>
+                <span className="text-muted-foreground">({totalDelivered > 0 ? Math.round((totalClicks / totalDelivered) * 100) : 0}%)</span>
               </div>
             </>
           ) : (
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-success" />
-              <span className="text-muted-foreground">Total entregues (delivered + read):</span>
+              <span className="text-muted-foreground">Total entregues:</span>
               <span className="font-semibold text-success">{totalDelivered.toLocaleString("pt-BR")}</span>
             </div>
           )}
@@ -103,9 +111,13 @@ export function CampaignTrafficPanel() {
         ) : (
           <div className="space-y-4">
             {campaigns.map((campaign) => {
-              const deliveryRate = campaign.totalRecipients > 0
-                ? Math.round((campaign.deliveredCount / campaign.totalRecipients) * 100)
+              const sent = okSent(campaign);
+              // Indicador principal de sucesso: Enviadas / Destinatários
+              const successRate = campaign.totalRecipients > 0
+                ? Math.min(100, Math.round((sent / campaign.totalRecipients) * 100))
                 : 0;
+              const deliveryRate = sent > 0 ? Math.round((campaign.deliveredCount / sent) * 100) : 0;
+              const clickRate = campaign.deliveredCount > 0 ? Math.round((campaign.interactedCount / campaign.deliveredCount) * 100) : 0;
               const readRate = campaign.deliveredCount > 0
                 ? Math.round((campaign.readCount / campaign.deliveredCount) * 100)
                 : 0;
@@ -128,10 +140,10 @@ export function CampaignTrafficPanel() {
                   {/* Delivery progress */}
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">Entrega</span>
-                      <span className="font-medium">{deliveryRate}%</span>
+                      <span className="text-muted-foreground">Sucesso de envio (enviadas / destinatários)</span>
+                      <span className="font-medium">{successRate}%</span>
                     </div>
-                    <Progress value={deliveryRate} className="h-1.5" />
+                    <Progress value={successRate} className="h-1.5" />
                   </div>
 
                   {/* Stats row */}
@@ -140,7 +152,7 @@ export function CampaignTrafficPanel() {
                       <div className="flex items-center gap-1.5 text-xs">
                       <Send className="w-3.5 h-3.5 text-info" />
                         <div>
-                          <div className="font-semibold">{campaign.sentCount}</div>
+                          <div className="font-semibold">{sent}</div>
                           <div className="text-muted-foreground">Enviados</div>
                         </div>
                       </div>
@@ -148,8 +160,8 @@ export function CampaignTrafficPanel() {
                     <div className="flex items-center gap-1.5 text-xs">
                       <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                       <div>
-                        <div className="font-semibold">{campaign.deliveredCount + campaign.readCount}</div>
-                        <div className="text-muted-foreground">Entregues</div>
+                        <div className="font-semibold">{campaign.deliveredCount}</div>
+                        <div className="text-muted-foreground">Entregues ({deliveryRate}%)</div>
                       </div>
                     </div>
                     {statusFilter === "all" && (
@@ -165,7 +177,7 @@ export function CampaignTrafficPanel() {
                           <MousePointerClick className="w-3.5 h-3.5 text-warning" />
                           <div>
                             <div className="font-semibold">{campaign.interactedCount}</div>
-                            <div className="text-muted-foreground">Cliques</div>
+                            <div className="text-muted-foreground">Cliques ({clickRate}%)</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
