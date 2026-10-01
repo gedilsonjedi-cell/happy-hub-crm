@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { withMagicLeadId } from "../_shared/magic-link.ts";
+import { withMagicLeadId, withCampaignTracking } from "../_shared/magic-link.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -237,7 +237,7 @@ async function processCampaignDispatch(
               value = varName;
             }
             if (isButtonLinkVar) {
-              buttonParams.push(value === varName ? '' : withMagicLeadId(value, (recipient as any).lead_id ?? (recipient as any).leadId));
+              buttonParams.push(value === varName ? '' : withCampaignTracking(withMagicLeadId(value, (recipient as any).lead_id ?? (recipient as any).leadId), campaignId));
               continue;
             }
             templateParams.push(value);

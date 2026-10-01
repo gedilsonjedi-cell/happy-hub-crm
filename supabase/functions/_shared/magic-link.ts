@@ -11,3 +11,15 @@ export function withMagicLeadId(value: string, leadId: string | null | undefined
   if (/[?&]lead_id=/i.test(v)) return v;
   return `${v}${v.includes("?") ? "&" : "?"}lead_id=${leadId}`;
 }
+
+const SHORT_LINK_RE = /^(https?:\/\/[^/]+)?\/?r\/[a-z0-9_-]+\/?$/i;
+
+/**
+ * Rastreio de campanha: quando a variável do botão é um link curto (ex.: "r/wcnafkwp"),
+ * anexa ?cid=<campanha> para o redirect-link gravar a campanha de origem do clique.
+ */
+export function withCampaignTracking(value: string, campaignId: string | null | undefined): string {
+  const v = (value || "").trim();
+  if (!v || !campaignId || !UUID_RE.test(campaignId) || !SHORT_LINK_RE.test(v)) return v;
+  return `${v.replace(/\/$/, "")}?cid=${campaignId}`;
+}

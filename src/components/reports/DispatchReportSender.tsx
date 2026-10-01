@@ -8,6 +8,8 @@ import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
 import { Phone, Send, Save, FileText, Calendar, TrendingUp, Loader2, BarChart3 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isNotWantedLabel } from "@/lib/notWantedButton";
+import { fetchCampaignLinkClicks, sumClicks } from "@/lib/campaignLinkClicks";
 
 const USD_TO_BRL_RATE = 6.0;
 
@@ -16,7 +18,8 @@ interface DayData {
   delivered: number;
   failed: number;
   sent: number; // aceitas pela Meta (sent/delivered/read/clicked)
-  clicks: number; // campaign_recipients.button_clicked preenchido
+  refusals: number; // botão "Não Quero" (campaign_recipients.button_clicked)
+  linkClicks: number; // link curto do "Consultar" com campanha de origem
   totalCost: number;
   responses: number;
   blocks: number;
@@ -27,7 +30,7 @@ interface DayData {
 }
 
 const emptyDay = (): DayData => ({
-  totalDispatches: 0, delivered: 0, failed: 0, sent: 0, clicks: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
+  totalDispatches: 0, delivered: 0, failed: 0, sent: 0, refusals: 0, linkClicks: 0, totalCost: 0, responses: 0, blocks: 0, restrictions: 0,
   marketing: { count: 0, cost: 0, delivered: 0, failed: 0 },
   utility: { count: 0, cost: 0, delivered: 0, failed: 0 },
   service: { count: 0, cost: 0, delivered: 0, failed: 0 },
@@ -167,7 +170,7 @@ export function DispatchReportSender() {
             if (isSent || isFailed) result.totalDispatches += 1;
             if (isDelivered) result.delivered += 1;
             if (isSent) result.sent += 1;
-            if (r.button_clicked) result.clicks += 1;
+            if (isNotWantedLabel(r.button_clicked)) result.refusals += 1;
             if (isFailed) result.failed += 1;
             if (isRestriction) { result.blocks += 1; result.restrictions += 1; }
 
@@ -212,6 +215,7 @@ export function DispatchReportSender() {
       inbFrom += PAGE_SIZE;
     }
     result.responses = inboundCount;
+    result.linkClicks = sumClicks(await fetchCampaignLinkClicks(campaignIds, start, end));
 
     return result;
   }, [effectiveOrganizationId]);
@@ -280,7 +284,8 @@ export function DispatchReportSender() {
           t.delivered += d.delivered;
           t.failed += d.failed;
           t.sent += d.sent;
-          t.clicks += d.clicks;
+          t.refusals += d.refusals;
+          t.linkClicks += d.linkClicks;
           t.totalCost += d.totalCost;
           t.responses += d.responses;
           t.blocks += d.blocks;
@@ -415,7 +420,7 @@ export function DispatchReportSender() {
           if (isSent || isFailed) week.totalDispatches += 1;
           if (isDelivered) week.delivered += 1;
           if (isSent) week.sent += 1;
-          if (r.button_clicked) week.clicks += 1;
+          if (isNotWantedLabel(r.button_clicked)) week.refusals += 1;
           if (isFailed) week.failed += 1;
           if (isRestriction) { week.blocks += 1; week.restrictions += 1; }
 
@@ -431,6 +436,8 @@ export function DispatchReportSender() {
           if (msgTime >= wStart && msgTime <= wEnd) week.responses += 1;
         });
 
+        week.linkClicks = sumClicks(await fetchCampaignLinkClicks(campaignIds, new Date(wStart).toISOString(), new Date(Math.min(wEnd + 86399999, monthEndDate.getTime())).toISOString()));
+
         // Calculate costs per category
         week.marketing.cost = Math.round(week.marketing.count * (priceMap["marketing"] || 0) * USD_TO_BRL_RATE * 100) / 100;
         week.utility.cost = Math.round(week.utility.count * (priceMap["utility"] || 0) * USD_TO_BRL_RATE * 100) / 100;
@@ -443,7 +450,8 @@ export function DispatchReportSender() {
         total.delivered += week.delivered;
         total.failed += week.failed;
         total.sent += week.sent;
-        total.clicks += week.clicks;
+        total.refusals += week.refusals;
+        total.linkClicks += week.linkClicks;
         total.totalCost += week.totalCost;
         total.responses += week.responses;
         total.blocks += week.blocks;
@@ -505,7 +513,9 @@ export function DispatchReportSender() {
   const rateLines = (d: DayData) => [
     `Taxa de sucesso (enviadas): *${pct(d.sent, d.totalDispatches)}*`,
     `Taxa de entrega (entregues/enviadas): *${pct(d.delivered, d.sent)}*`,
-    `Taxa de clique (cliques/entregues): *${pct(d.clicks, d.delivered)}*`,
+    `Cliques em link (Consultar): *${d.linkClicks}* (${pct(d.linkClicks, d.delivered)} das entregues)`,
+    `Recusas (Nao Quero): *${d.refusals}* (${pct(d.refusals, d.delivered)} das entregues)`,
+    `_Cliques em link por campanha contam a partir de 01/10/2026._`,
   ];
 
   const generateInsight = (data: DayData, prev?: DayData) => {
@@ -562,7 +572,6 @@ export function DispatchReportSender() {
       `Destinatarios processados: *${d.totalDispatches}*`,
       `Enviadas: *${d.sent}*`,
       `Entregues: *${d.delivered}*`,
-      `Cliques em botao: *${d.clicks}*`,
       `Respostas: *${d.responses}*`,
       `Engajamento: *${engagementRate}*`,
       ``,
@@ -645,7 +654,6 @@ export function DispatchReportSender() {
       `Total de disparos: *${t.totalDispatches}*`,
       `Enviadas: *${t.sent}*`,
       `Entregues: *${t.delivered}*`,
-      `Cliques em botao: *${t.clicks}*`,
       `Respostas: *${t.responses}*`,
       `Falhas: *${t.failed}*`,
       `Media diaria: *${avgDaily} envios / ${avgDailyResponses} respostas*`,
@@ -701,7 +709,6 @@ export function DispatchReportSender() {
       `Total de disparos: *${t.totalDispatches}*`,
       `Enviadas: *${t.sent}*`,
       `Entregues: *${t.delivered}*`,
-      `Cliques em botao: *${t.clicks}*`,
       `Respostas: *${t.responses}*`,
       `Falhas: *${t.failed}*`,
       ``,

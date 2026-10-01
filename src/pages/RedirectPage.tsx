@@ -12,7 +12,7 @@ const RedirectPage = () => {
   const { slug } = useParams<{ slug: string }>();
 
   useEffect(() => {
-    if (slug) window.location.replace(`${FUNCTIONS_BASE}/${slug}`);
+    if (slug) window.location.replace(`${FUNCTIONS_BASE}/${slug}${window.location.search}`);
   }, [slug]);
 
   return null;

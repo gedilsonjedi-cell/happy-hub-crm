@@ -25,7 +25,7 @@
           var m = window.location.pathname.match(/^\/r\/([^\/?#]+)/);
           if (m) {
             window.location.replace(
-              "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/redirect-link/" + m[1]
+              "https://vytjufibiwhtvsnvvqri.supabase.co/functions/v1/redirect-link/" + m[1] + window.location.search
             );
           }
         } catch (e) {}
