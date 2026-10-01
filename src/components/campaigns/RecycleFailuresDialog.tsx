@@ -23,6 +23,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffectiveOrganizationId } from "@/hooks/useEffectiveOrganizationId";
 import { toast } from "sonner";
+import { useUserRole } from "@/hooks/useUserRole";
+import { Zap } from "lucide-react";
 
 interface RecycleFailuresDialogProps {
   campaign: {
@@ -58,6 +60,15 @@ interface Channel {
   phone: string;
 }
 
+type CadenceType = "standard" | "warmup" | "full";
+
+// Mesmos valores da criação normal de campanha (Disparos.tsx)
+const CADENCES: Record<CadenceType, { label: string; desc: string; hint: string; min: number; max: number; dispatch: number }> = {
+  full: { label: "Full", desc: "Sem intervalo — todos de uma vez", hint: "Recomendado para reciclagem", min: 0, max: 0, dispatch: 0 },
+  standard: { label: "Padrão", desc: "Intervalos de 5 seg a 1 min 30 seg", hint: "Números já aquecidos", min: 5, max: 90, dispatch: 5 },
+  warmup: { label: "Aquecimento", desc: "Intervalos de 3 min a 5 min", hint: "Números novos ou pouco usados", min: 180, max: 300, dispatch: 180 },
+};
+
 function getManualVariables(template: MessageTemplate): string[] {
   if (!template.variables) return [];
   return template.variables.filter(varName => {
@@ -88,6 +99,13 @@ export function RecycleFailuresDialog({
   const [newCampaignName, setNewCampaignName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [manualVariables, setManualVariables] = useState<Record<string, string>>({});
+  const { role } = useUserRole();
+  const canUseFull = role === "super_admin";
+  const [cadence, setCadence] = useState<CadenceType>("full");
+  useEffect(() => {
+    if (open) setCadence(canUseFull ? "full" : "standard");
+  }, [open, canUseFull]);
+
 
   useEffect(() => {
     if (open && campaign) {
@@ -249,9 +267,9 @@ export function RecycleFailuresDialog({
           sector_id: campaign.sector_id,
           chatbot_enabled: campaign.chatbot_enabled || false,
           chatbot_id: campaign.chatbot_id,
-          dispatch_interval: campaign.min_interval || 5,
-          min_interval: campaign.min_interval || 5,
-          max_interval: campaign.max_interval || 120,
+          dispatch_interval: CADENCES[cadence].dispatch,
+          min_interval: CADENCES[cadence].min,
+          max_interval: CADENCES[cadence].max,
           use_unified_template: useUnified,
           unified_template_id: useUnified ? templateToUse : null,
           status: "running",
@@ -373,6 +391,40 @@ export function RecycleFailuresDialog({
                 placeholder="Nome da campanha de reciclagem"
                 className="bg-background border-border"
               />
+            </div>
+
+            {/* Velocidade de envio */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                Velocidade de envio
+              </Label>
+              <div className={`grid gap-2 ${canUseFull ? "grid-cols-3" : "grid-cols-2"}`}>
+                {(Object.keys(CADENCES) as CadenceType[])
+                  .filter(k => k !== "full" || canUseFull)
+                  .map(k => {
+                    const c = CADENCES[k];
+                    const active = cadence === k;
+                    return (
+                      <button
+                        type="button"
+                        key={k}
+                        onClick={() => setCadence(k)}
+                        aria-pressed={active}
+                        className={`text-left p-3 rounded-lg border-2 transition-all ${
+                          active ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/50"
+                        }`}
+                      >
+                        <span className="flex items-center gap-1 font-medium text-sm text-foreground">
+                          {k === "full" && <Zap className="w-3.5 h-3.5 text-primary" />}
+                          {c.label}
+                        </span>
+                        <span className="block text-xs text-muted-foreground mt-1">{c.desc}</span>
+                        <span className={`block text-xs mt-1 ${k === "full" ? "text-primary" : k === "warmup" ? "text-warning" : "text-muted-foreground"}`}>{c.hint}</span>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
 
             {/* Multi-Select Channels */}
