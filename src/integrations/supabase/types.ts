@@ -355,6 +355,74 @@ export type Database = {
           },
         ]
       }
+      campaign_confirmation_events: {
+        Row: {
+          campaign_id: string
+          event_at: string
+          event_status: string
+          id: number
+          masked_phone: string
+          organization_id: string
+        }
+        Insert: {
+          campaign_id: string
+          event_at?: string
+          event_status: string
+          id?: number
+          masked_phone: string
+          organization_id: string
+        }
+        Update: {
+          campaign_id?: string
+          event_at?: string
+          event_status?: string
+          id?: number
+          masked_phone?: string
+          organization_id?: string
+        }
+        Relationships: []
+      }
+      campaign_live_stats: {
+        Row: {
+          campaign_id: string
+          delivered_count: number
+          failed_count: number
+          organization_id: string
+          read_count: number
+          sending_now: number
+          sent_count: number
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          delivered_count?: number
+          failed_count?: number
+          organization_id: string
+          read_count?: number
+          sending_now?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          delivered_count?: number
+          failed_count?: number
+          organization_id?: string
+          read_count?: number
+          sending_now?: number
+          sent_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_live_stats_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_recipients: {
         Row: {
           button_clicked: string | null
@@ -1660,14 +1728,18 @@ export type Database = {
       }
       message_templates: {
         Row: {
+          category: string | null
           components: Json | null
           content: string
           created_at: string
           dispatch_type: Database["public"]["Enums"]["dispatch_type"]
+          duplicate_group_id: string | null
           header_media_url: string | null
           id: string
           name: string
           organization_id: string | null
+          queue_block_reason: string | null
+          queue_order: number | null
           status: string
           updated_at: string
           user_id: string
@@ -1675,14 +1747,18 @@ export type Database = {
           variables: string[] | null
         }
         Insert: {
+          category?: string | null
           components?: Json | null
           content: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          duplicate_group_id?: string | null
           header_media_url?: string | null
           id?: string
           name: string
           organization_id?: string | null
+          queue_block_reason?: string | null
+          queue_order?: number | null
           status?: string
           updated_at?: string
           user_id: string
@@ -1690,14 +1766,18 @@ export type Database = {
           variables?: string[] | null
         }
         Update: {
+          category?: string | null
           components?: Json | null
           content?: string
           created_at?: string
           dispatch_type?: Database["public"]["Enums"]["dispatch_type"]
+          duplicate_group_id?: string | null
           header_media_url?: string | null
           id?: string
           name?: string
           organization_id?: string | null
+          queue_block_reason?: string | null
+          queue_order?: number | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -1771,6 +1851,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      organization_public_links: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          organization_id: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          organization_id: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          organization_id?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_public_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       organizations: {
         Row: {
@@ -2943,6 +3058,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      dashboard_assignment_stats: {
+        Args: { p_channel_ids: string[]; p_period_start: string; p_tz?: string }
+        Returns: Json
+      }
       debit_organization_balance: {
         Args: {
           _amount: number
@@ -3161,6 +3280,20 @@ export type Database = {
         Args: { campaign_id?: string; link_id: string }
         Returns: undefined
       }
+      maintenance_purge_operational_garbage: {
+        Args: never
+        Returns: {
+          http_response_deleted: number
+          job_run_details_deleted: number
+        }[]
+      }
+      mask_phone_for_public: { Args: { phone: string }; Returns: string }
+      match_lead_by_phone_suffix: {
+        Args: { p_organization_id: string; p_suffix: string }
+        Returns: {
+          id: string
+        }[]
+      }
       purchase_product: {
         Args: {
           _organization_id: string
@@ -3243,6 +3376,8 @@ export type Database = {
         }
         Returns: undefined
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       update_session_activity: { Args: never; Returns: boolean }
       upsert_conversation_stats_external: {
         Args: {
